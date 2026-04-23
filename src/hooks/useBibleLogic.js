@@ -1,0 +1,147 @@
+import { useEffect, useCallback } from 'react';
+import { auth, db } from '../utils/firebase';
+import { calculateSubgroupStats } from '../utils/statsUtils';
+
+// Sub-hooks
+import { useBibleContent } from './useBibleContent';
+import { useMemos } from './useMemos';
+import { useCommunity } from './useCommunity';
+import { useUserBibleActions } from './useUserBibleActions';
+
+export const useBibleLogic = (currentUser, setCurrentUser, view) => {
+    // 1. Content Hook
+    const {
+        verseData, setVerseData, viewingDay, setViewingDay, loadContent
+    } = useBibleContent(currentUser);
+
+    // 2. Community & Stats Hook
+    const {
+        subgroupStats, setSubgroupStats, communityMembers, setCommunityMembers,
+        allMembersForRace, setAllMembersForRace, announcement, loadAnnouncement,
+        kakaoLink, loadKakaoLink, setKakaoLink,
+        loadAllMembers, changeSubgroup
+    } = useCommunity(currentUser, setCurrentUser);
+
+    // 3. User Actions Hook
+    const {
+        readHistory, setReadHistory, hasReadToday, setHasReadToday,
+        showConfetti, setShowConfetti, levelUpToast, setLevelUpToast,
+        bonusToast, setBonusToast, newAchievement, setNewAchievement,
+        handleRead, handleRestart, changeStartDate, checkAchievements
+    } = useUserBibleActions(
+        currentUser, setCurrentUser,
+        setAllMembersForRace, setCommunityMembers, setSubgroupStats,
+        loadAllMembers,
+        setViewingDay,
+        viewingDay
+    );
+
+    // 4. Memos Hook
+    const { memos, setMemos, loadMemos, saveMemo } = useMemos(currentUser);
+
+    // [Effect 1] Load Bible Content when viewingDay changes
+    useEffect(() => {
+        if (view !== 'dashboard' || !currentUser || viewingDay === null) return;
+        loadContent(viewingDay);
+    }, [view, currentUser?.uid, viewingDay, currentUser?.planId, currentUser?.dayOffset, loadContent]);
+
+    // [Effect 2] Initial full load when entering dashboard or user changes
+    useEffect(() => {
+        if (view !== 'dashboard' || !currentUser) return;
+
+        // initial viewingDay setting
+        if (viewingDay === null) {
+            setViewingDay(currentUser.currentDay || 1);
+        }
+
+        const loadDashboardData = async () => {
+            const uid = currentUser.uid;
+
+            // 1. Load Community Data
+            const allMembers = await loadAllMembers();
+            setAllMembersForRace(allMembers);
+            if (allMembers && allMembers.length > 0) {
+                setSubgroupStats(calculateSubgroupStats(allMembers));
+                if (currentUser.communityId) {
+                    const myCommMembers = allMembers.filter(m => m.communityId === currentUser.communityId);
+                    setCommunityMembers(myCommMembers);
+                }
+            }
+
+            // 2. Load User Specific Data (Memos & History)
+            await loadMemos(uid);
+
+            // readHistory loading (combine sub-collection and array field)
+            const historySnap = await db.collection('users').doc(uid).collection('history').get();
+            const subCollectionHistory = historySnap.docs.map(doc => doc.data());
+
+            const userDoc = await db.collection('users').doc(uid).get();
+            const arrayFieldHistory = (userDoc.exists && userDoc.data().readHistory) || [];
+
+            // Combine and de-duplicate by date string
+            const combinedMap = new Map();
+            [...arrayFieldHistory, ...subCollectionHistory].forEach(item => {
+                const dateKey = typeof item === 'string' ? item : item.date;
+                if (dateKey) combinedMap.set(dateKey, item);
+            });
+
+            setReadHistory(Array.from(combinedMap.values()));
+
+            // 3. Load Announcements & Links
+            await loadAnnouncement();
+            await loadKakaoLink();
+        };
+
+        loadDashboardData();
+    }, [
+        view,
+        currentUser?.uid,
+        // We removed viewingDay from here to prevent re-fetching on every day change
+        loadAllMembers, loadMemos, loadAnnouncement, loadKakaoLink,
+        setAllMembersForRace, setSubgroupStats, setCommunityMembers, setReadHistory
+    ]);
+
+    // Check if user has read today
+    useEffect(() => {
+        if (currentUser && currentUser.lastReadDate === new Date().toDateString()) {
+            setHasReadToday(true);
+        } else {
+            setHasReadToday(false);
+        }
+    }, [currentUser, setHasReadToday]);
+
+    return {
+        // States
+        verseData, setVerseData,
+        subgroupStats, setSubgroupStats,
+        communityMembers, setCommunityMembers,
+        allMembersForRace, setAllMembersForRace,
+        memos, setMemos,
+        readHistory, setReadHistory,
+        announcement,
+        kakaoLink,
+        viewingDay, setViewingDay,
+        hasReadToday, setHasReadToday,
+
+        // UI States
+        showConfetti, setShowConfetti,
+        levelUpToast, setLevelUpToast,
+        bonusToast, setBonusToast,
+        newAchievement, setNewAchievement,
+
+        // Actions
+        handleRead,
+        saveMemo: (day, memoText, onComplete) =>
+            saveMemo(day, memoText, verseData.subtitle, checkAchievements, onComplete),
+        changeSubgroup,
+        handleRestart: () => handleRestart(setMemos, setReadHistory),
+        changeStartDate,
+
+        // Data Loaders
+        loadAllMembers,
+        loadMemos,
+        loadAnnouncement,
+        loadKakaoLink,
+        setKakaoLink // 셋터도 추가 (관리자용)
+    };
+};

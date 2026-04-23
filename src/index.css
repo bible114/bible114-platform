@@ -1,0 +1,349 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   🍀 싸이월드 미니홈피 디자인 시스템
+   ============================================ */
+
+/* 메인 브랜드 컬러 */
+:root {
+    /* 싸이월드 시그니처 */
+    --cy-orange: #ff6e00;
+    --cy-orange-light: #ffb366;
+    --cy-orange-dark: #cc5800;
+    --cy-blue: #0080ff;
+    --cy-blue-light: #4da8ff;
+    --cy-blue-dark: #0066cc;
+
+    /* 미니홈피 파스텔 팔레트 */
+    --cy-pink: #ffb3d9;
+    --cy-pink-light: #ffd9ec;
+    --cy-pink-dark: #ff80bf;
+    --cy-mint: #a3e4d7;
+    --cy-mint-light: #d1f2eb;
+    --cy-mint-dark: #76d7c4;
+    --cy-yellow: #ffe066;
+    --cy-yellow-light: #fff0b3;
+    --cy-yellow-dark: #ffd11a;
+    --cy-purple: #c39bd3;
+    --cy-purple-light: #e8daef;
+    --cy-purple-dark: #a569bd;
+    --cy-peach: #ffdab3;
+    --cy-lavender: #d4b3ff;
+    --cy-skyblue: #b3e0ff;
+
+    /* 중립 컬러 */
+    --cy-gray-bg: #e5e5e5;
+    --cy-frame-border: #999;
+    --cy-white: #ffffff;
+    --cy-cream: #fff8f0;
+    --cy-ivory: #fffff0;
+
+    /* 아이템 희귀도 컬러 */
+    --rarity-common: #9ca3af;
+    --rarity-rare: #60a5fa;
+    --rarity-epic: #a78bfa;
+    --rarity-legendary: #fbbf24;
+
+    /* 그라데이션 */
+    --cy-gradient-sunset: linear-gradient(135deg, #ffe8d6 0%, #ffd6e8 50%, #e8d6ff 100%);
+    --cy-gradient-sky: linear-gradient(180deg, #e0f2fe 0%, #bae6fd 50%, #f0f9ff 100%);
+    --cy-gradient-candy: linear-gradient(135deg, #fce7f3 0%, #ddd6fe 50%, #cffafe 100%);
+    --cy-gradient-miniroom: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+
+    /* 그림자 */
+    --cy-shadow-soft: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --cy-shadow-card: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --cy-shadow-popup: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    --cy-shadow-item: 0 2px 8px rgba(0, 0, 0, 0.08);
+    --cy-shadow-glow-orange: 0 0 20px rgba(255, 110, 0, 0.3);
+    --cy-shadow-glow-blue: 0 0 20px rgba(0, 128, 255, 0.3);
+
+    /* 테두리 */
+    --cy-border-radius-sm: 8px;
+    --cy-border-radius-md: 16px;
+    --cy-border-radius-lg: 24px;
+    --cy-border-radius-full: 9999px;
+
+    /* 트랜지션 */
+    --cy-transition-fast: 150ms ease;
+    --cy-transition-normal: 250ms ease;
+    --cy-transition-slow: 400ms ease;
+}
+
+.cy-pixel-font {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.cy-frame-container {
+    background-color: #8cbbd3;
+    /* Classic background blue-gray */
+    padding: 15px;
+    border-radius: 12px;
+    border: 1px solid #7ea6bd;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.cy-inner-frame {
+    background-color: var(--cy-white);
+    border-radius: 8px;
+    border: 1px solid var(--cy-frame-border);
+    padding: 10px;
+    position: relative;
+}
+
+.cy-side-tab {
+    width: 60px;
+    height: 35px;
+    background-color: var(--cy-blue);
+    color: white;
+    border: 1px solid #0066cc;
+    border-left: none;
+    border-radius: 0 8px 8px 0;
+    font-size: 11px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 3px;
+}
+
+.cy-side-tab:not(.active) {
+    background-color: #fff;
+    color: #0080ff;
+    width: 55px;
+}
+
+.cy-miniroom-box {
+    border: 1px solid #ccc;
+    background: #f9f9f9;
+    position: relative;
+    overflow: hidden;
+}
+
+.cy-dotori-badge {
+    background: white;
+    border: 1px solid #ddd;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: #666;
+}
+
+/* Isometric Tile Enhancements */
+.iso-tile-shadow {
+    box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* 기본 폰트 설정 */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #f8fafc;
+    color: #1e293b;
+}
+
+/* 큰 화면에서 기본 글자 크기 조정 */
+@media (min-width: 768px) {
+    html {
+        font-size: 18px;
+    }
+}
+
+@media (min-width: 1024px) {
+    html {
+        font-size: 20px;
+    }
+}
+
+/* Tailwind 로드 전 기본 레이아웃 유지용 */
+#root {
+    min-height: 100vh;
+}
+
+/* 배경 텍스처 */
+.bg-sky-texture {
+    background: linear-gradient(to bottom, #bae6fd 0%, #f0f9ff 100%);
+}
+
+/* 하늘색 그라데이션 */
+.bg-map-texture {
+    background-color: #f0fdf4;
+    background-image: radial-gradient(#86efac 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+/* 스크롤바 숨김 */
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* 점 패턴 */
+/* 애니메이션: 흔들림 효과 */
+@keyframes wiggle {
+
+    0%,
+    100% {
+        transform: rotate(-3deg) scale(1.1);
+    }
+
+    50% {
+        transform: rotate(3deg) scale(1.1);
+    }
+}
+
+.animate-wiggle {
+    animation: wiggle 0.3s ease-in-out infinite;
+}
+
+/* 애니메이션: 떠다니는 효과 (구름용) */
+.animate-float {
+    animation: float 6s ease-in-out infinite;
+}
+
+.animate-float-slow {
+    animation: float 10s ease-in-out infinite;
+}
+
+@keyframes float {
+    0% {
+        transform: translateX(0px);
+    }
+
+    50% {
+        transform: translateX(10px);
+    }
+
+    100% {
+        transform: translateX(0px);
+    }
+}
+
+/* 산 배경 그래픽 (clip-path로 산 모양 표현) */
+.mountain-back {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 70%;
+    background: linear-gradient(to bottom, #86efac, #4ade80);
+    clip-path: polygon(0% 100%, 0% 55%, 5% 48%, 10% 52%, 15% 40%, 20% 45%, 25% 30%, 30% 42%,
+            35% 25%, 40% 38%, 45% 20%, 50% 35%, 55% 15%, 60% 32%, 65% 10%, 70% 28%,
+            75% 18%, 80% 35%, 85% 22%, 90% 40%, 95% 35%, 100% 50%, 100% 100%);
+    z-index: 1;
+    opacity: 0.6;
+}
+
+.mountain-front {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 50%;
+    background: linear-gradient(to bottom, #4ade80, #22c55e);
+    clip-path: polygon(0% 100%, 0% 85%, 8% 70%, 15% 82%, 25% 60%, 35% 85%, 45% 55%, 55% 80%,
+            65% 50%, 75% 88%, 85% 65%, 92% 75%, 100% 55%, 100% 100%);
+    z-index: 2;
+}
+
+/* ============================================
+   카카오톡 플로팅 버튼 스타일
+   ============================================ */
+.kakao-floating-btn {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 9999;
+
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+
+    background-color: #FEE500;
+    color: #391B1B;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15),
+        0 2px 4px rgba(0, 0, 0, 0.12);
+
+    cursor: pointer;
+    text-decoration: none;
+
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: kakao-pulse 2s infinite;
+}
+
+.kakao-floating-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(254, 229, 0, 0.5),
+        0 4px 8px rgba(0, 0, 0, 0.15);
+    animation: none;
+}
+
+.kakao-floating-btn:active {
+    transform: scale(0.95);
+}
+
+.kakao-icon {
+    width: 28px;
+    height: 28px;
+}
+
+.kakao-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    font-size: 14px;
+    animation: kakao-bounce 1s infinite;
+}
+
+@keyframes kakao-pulse {
+
+    0%,
+    100% {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15),
+            0 2px 4px rgba(0, 0, 0, 0.12);
+    }
+
+    50% {
+        box-shadow: 0 4px 20px rgba(254, 229, 0, 0.4),
+            0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+}
+
+@keyframes kakao-bounce {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-3px);
+    }
+}
+
+/* 모바일에서 버튼 위치 조정 */
+@media (max-width: 640px) {
+    .kakao-floating-btn {
+        right: 16px;
+        bottom: 16px;
+        width: 52px;
+        height: 52px;
+    }
+
+    .kakao-icon {
+        width: 24px;
+        height: 24px;
+    }
+}
