@@ -8,16 +8,13 @@ export const PLAN_TYPES = [
 // tagName: 노션 데이터베이스의 태그와 일치해야 함
 export const BIBLE_VERSIONS = {
     '1year': [  // 일년 일독 버전들
-        { id: 'revised', name: '개역개정', desc: '교회에서 평소에 사용하는 성경', tagName: '개역개정 일년일독' },
-        { id: 'new', name: '새번역', desc: '쉬운 현대어로 읽을 수 있는 성경', tagName: '새번역 일년일독' },
-        { id: 'easy', name: '쉬운성경', desc: '어린이도 쉽게 읽을 수 있는 성경', tagName: '쉬운성경 일년일독' },
-        { id: 'saehangul', name: '새한글', desc: '가장 최근에 번역된 현대어 성경', tagName: '새한글 일년일독' },
-        { id: 'sequential', name: '개역개정(순서대로)', desc: '창세기부터 요한계시록까지 순서대로 일독', tagName: '개역개정 순서대로' }
+        { id: 'sequential', name: '개역개정(순서대로)', desc: '창세기부터 요한계시록까지 순서대로 일독', tagName: '개역개정 순서대로' },
+        { id: 'revised', name: '개역개정 114', desc: '교회에서 평소에 사용하는 성경', tagName: '개역개정 일년일독' },
+        { id: 'new', name: '새번역 114', desc: '쉬운 현대어로 읽을 수 있는 성경', tagName: '새번역 일년일독' },
+        { id: 'saehangul', name: '새한글 114', desc: '가장 최근에 번역된 현대어 성경', tagName: '새한글 일년일독' },
     ],
     'nt': [  // 신약 일독 버전들
-        { id: 'new', name: '새번역', desc: '쉬운 현대어로 읽을 수 있는 성경', tagName: '새번역 신약일독' },
-        { id: 'easy', name: '쉬운성경', desc: '어린이도 쉽게 읽을 수 있는 성경', tagName: '쉬운성경 신약일독' },
-        { id: 'saehangul', name: '새한글', desc: '가장 최근에 번역된 현대어 성경', tagName: '새한글 신약일독' },
-        { id: 'message', name: '메시지 성경', desc: '현대 문화와 일상 언어로 생생하게 재해석한 의역 성경', tagName: '메시지 신약일독' }
+        { id: 'new', name: '새번역 114', desc: '쉬운 현대어로 읽을 수 있는 성경', tagName: '새번역 신약일독' },
+        { id: 'saehangul', name: '새한글 114', desc: '가장 최근에 번역된 현대어 성경', tagName: '새한글 신약일독' },
     ]
 };

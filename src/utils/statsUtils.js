@@ -1,42 +1,60 @@
 import { MOCK_COMMUNITIES } from '../data/communities';
 import { TOTAL_DAYS } from '../data/constants';
 
-export const calculateSubgroupStats = (members) => {
+export const calculateSubgroupStats = (members, communities) => {
     const todayStr = new Date().toDateString();
     const stats = {};
-    // 모든 공동체(부서)의 소그룹을 순회하며 통계 계산
-    MOCK_COMMUNITIES.forEach(comm => {
-        comm.subgroups.forEach(sub => {
-            // 해당 부서(communityId) + 해당 소그룹(subgroupId)인 멤버만 필터링
-            const subMembers = members.filter(m => m.communityId === comm.id && m.subgroupId === sub);
-            const totalCount = subMembers.length;
-            const readTodayCount = subMembers.filter(m => m.lastReadDate === todayStr).length;
-            const rate = totalCount > 0 ? Math.round((readTodayCount / totalCount) * 100) : 0;
 
-            // 누적 진행률 계산 (2독 이상 반영)
-            const avgDay = totalCount > 0
-                ? subMembers.reduce((sum, m) => {
-                    const readCount = m.readCount || 1;
-                    const actualProgress = (readCount - 1) * 365 + (m.currentDay || 1);
-                    return sum + actualProgress;
-                }, 0) / totalCount
-                : 0;
-            const progressRate = TOTAL_DAYS > 0 ? Math.round((avgDay / TOTAL_DAYS) * 100) : 0;
-            const totalScore = subMembers.reduce((sum, m) => sum + (m.score || 0), 0);
-
-            stats[`${comm.id}_${sub}`] = {
-                rate,
-                readCount: readTodayCount,
-                totalCount,
-                progressRate,
-                avgDay: Math.round(avgDay),
-                totalScore,
-                communityId: comm.id,
-                communityName: comm.name,
-                subgroupName: sub
-            };
+    let groups;
+    if (communities && communities.length > 0) {
+        groups = [];
+        communities.forEach(comm => {
+            (comm.subgroups || []).forEach(sub => {
+                groups.push({ communityId: comm.id, communityName: comm.name, subgroupName: sub });
+            });
         });
+    } else {
+        const seen = new Map();
+        members.forEach(m => {
+            if (m.communityId && m.subgroupId) {
+                const key = `${m.communityId}_${m.subgroupId}`;
+                if (!seen.has(key)) {
+                    seen.set(key, { communityId: m.communityId, communityName: m.communityId, subgroupName: m.subgroupId });
+                }
+            }
+        });
+        groups = Array.from(seen.values());
+    }
+
+    groups.forEach(({ communityId, communityName, subgroupName }) => {
+        const subMembers = members.filter(m => m.communityId === communityId && m.subgroupId === subgroupName);
+        const totalCount = subMembers.length;
+        const readTodayCount = subMembers.filter(m => m.lastReadDate === todayStr).length;
+        const rate = totalCount > 0 ? Math.round((readTodayCount / totalCount) * 100) : 0;
+
+        const avgDay = totalCount > 0
+            ? subMembers.reduce((sum, m) => {
+                const readCount = m.readCount || 1;
+                const actualProgress = (readCount - 1) * 365 + (m.currentDay || 1);
+                return sum + actualProgress;
+            }, 0) / totalCount
+            : 0;
+        const progressRate = TOTAL_DAYS > 0 ? Math.round((avgDay / TOTAL_DAYS) * 100) : 0;
+        const totalScore = subMembers.reduce((sum, m) => sum + (m.score || 0), 0);
+
+        stats[`${communityId}_${subgroupName}`] = {
+            rate,
+            readCount: readTodayCount,
+            totalCount,
+            progressRate,
+            avgDay: Math.round(avgDay),
+            totalScore,
+            communityId,
+            communityName,
+            subgroupName
+        };
     });
+
     return stats;
 };
 

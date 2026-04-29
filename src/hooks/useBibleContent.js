@@ -232,7 +232,7 @@ export const useBibleContent = (currentUser) => {
         const actualDay = getActualDay(dayToShow, dayOffset);
         const notionData = await fetchNotionData(planId, actualDay);
 
-        const readCountBadge = readCount > 1 ? ` (${readCount}독)` : '';
+        const readCountBadge = readCount > 1 ? ` (${readCount - 1}독 완료)` : '';
 
         if (notionData && notionData.text && !notionData.text.startsWith('[오류]')) {
             let processedText = notionData.text;

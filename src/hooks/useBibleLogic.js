@@ -8,7 +8,7 @@ import { useMemos } from './useMemos';
 import { useCommunity } from './useCommunity';
 import { useUserBibleActions } from './useUserBibleActions';
 
-export const useBibleLogic = (currentUser, setCurrentUser, view) => {
+export const useBibleLogic = (currentUser, setCurrentUser, view, communities) => {
     // 1. Content Hook
     const {
         verseData, setVerseData, viewingDay, setViewingDay, loadContent
@@ -61,7 +61,7 @@ export const useBibleLogic = (currentUser, setCurrentUser, view) => {
             const allMembers = await loadAllMembers();
             setAllMembersForRace(allMembers);
             if (allMembers && allMembers.length > 0) {
-                setSubgroupStats(calculateSubgroupStats(allMembers));
+                setSubgroupStats(calculateSubgroupStats(allMembers, communities));
                 if (currentUser.communityId) {
                     const myCommMembers = allMembers.filter(m => m.communityId === currentUser.communityId);
                     setCommunityMembers(myCommMembers);
@@ -100,6 +100,13 @@ export const useBibleLogic = (currentUser, setCurrentUser, view) => {
         loadAllMembers, loadMemos, loadAnnouncement, loadKakaoLink,
         setAllMembersForRace, setSubgroupStats, setCommunityMembers, setReadHistory
     ]);
+
+    // [Effect 3] Recompute subgroup stats when members OR communities change
+    // communities arrives async after allMembersForRace, so this handles the timing gap
+    useEffect(() => {
+        if (!allMembersForRace || allMembersForRace.length === 0) return;
+        setSubgroupStats(calculateSubgroupStats(allMembersForRace, communities));
+    }, [allMembersForRace, communities, setSubgroupStats]);
 
     // Check if user has read today
     useEffect(() => {

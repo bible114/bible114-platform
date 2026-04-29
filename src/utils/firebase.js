@@ -3,12 +3,12 @@ import 'firebase/compat/auth';
 import 'firebase/compat/firestore';
 
 const firebaseConfig = {
-    apiKey: "AIzaSyAOMubppe1JZbBh0VBv7UIbZyY2S1RI9fw",
-    authDomain: "bible-sungseo.firebaseapp.com",
-    projectId: "bible-sungseo",
-    storageBucket: "bible-sungseo.firebasestorage.app",
-    messagingSenderId: "1061949588108",
-    appId: "1:1061949588108:web:e8e3bbd6c3f73afa5131a9"
+    apiKey: "AIzaSyBF122lgD5fTX70HBtd_nl0ZVKhyyQnyGo",
+    authDomain: "bible114-platform.firebaseapp.com",
+    projectId: "bible114-platform",
+    storageBucket: "bible114-platform.firebasestorage.app",
+    messagingSenderId: "57949868479",
+    appId: "1:57949868479:web:dd40b816fb3c249c4d110a"
 };
 
 // Initialize Firebase

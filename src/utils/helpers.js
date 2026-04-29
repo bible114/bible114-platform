@@ -1,29 +1,36 @@
-// 이름 → 가짜 이메일 변환 (Firebase Auth는 이메일 기반이므로 이름을 이메일로 변환)
-export const makePseudoEmail = (name) => `${encodeURIComponent(String(name || "").trim())}@bible.local`;
+// 교인 로그인용 가짜 이메일 (이름+생년월일+교회ID 조합으로 교회 간 중복 방지)
+export const makePseudoEmail = (name, birthdate, churchId = '') => {
+    const base = `${encodeURIComponent(String(name || "").trim())}_${String(birthdate || "").trim()}`;
+    return churchId ? `${base}_${churchId}@bible.local` : `${base}@bible.local`;
+};
 
 // Firestore 문서 → 사용자 상태 객체 변환
-// Firestore에서 가져온 문서를 앱에서 사용하는 형식으로 변환
 export const userDocToState = (doc) => {
     const d = doc.data();
     return {
-        uid: doc.id,                          // 사용자 고유 ID
-        name: d.name,                         // 이름
-        password: d.password,                 // 비밀번호 (평문 저장 - 개선 필요)
-        startDate: d.startDate,               // 시작 날짜
-        currentDay: (d.currentDay !== undefined && d.currentDay !== null) ? d.currentDay : 1,
-        streak: (d.streak !== undefined && d.streak !== null) ? d.streak : 0,
-        score: (d.score !== undefined && d.score !== null) ? d.score : 0,
-        lastReadDate: (d.lastReadDate !== undefined && d.lastReadDate !== null) ? d.lastReadDate : null,
-        gender: (d.gender !== undefined && d.gender !== null) ? d.gender : "male",
-        communityId: (d.communityId !== undefined && d.communityId !== null) ? d.communityId : null,
-        communityName: (d.communityName !== undefined && d.communityName !== null) ? d.communityName : null,
-        subgroupId: (d.subgroupId !== undefined && d.subgroupId !== null) ? d.subgroupId : null,
-        planId: (d.planId !== undefined && d.planId !== null) ? d.planId : "1year_revised",
-        achievements: (d.achievements !== undefined && d.achievements !== null) ? d.achievements : [],
-        memos: (d.memos !== undefined && d.memos !== null) ? d.memos : {},
-        dayOffset: (d.dayOffset !== undefined && d.dayOffset !== null) ? d.dayOffset : 0,
-        readCount: (d.readCount !== undefined && d.readCount !== null) ? d.readCount : 1,
-        readHistory: (d.readHistory !== undefined && d.readHistory !== null) ? d.readHistory : [],
+        uid: doc.id,
+        name: d.name,
+        email: d.email || null,
+        birthdate: d.birthdate || null,
+        password: d.password,
+        role: d.role || 'member',
+        churchId: d.churchId || null,
+        churchName: d.churchName || null,
+        startDate: d.startDate,
+        currentDay: d.currentDay ?? 1,
+        streak: d.streak ?? 0,
+        score: d.score ?? 0,
+        lastReadDate: d.lastReadDate ?? null,
+        gender: d.gender ?? "male",
+        communityId: d.communityId ?? null,
+        communityName: d.communityName ?? null,
+        subgroupId: d.subgroupId ?? null,
+        planId: d.planId ?? "1year_revised",
+        achievements: d.achievements ?? [],
+        memos: d.memos ?? {},
+        dayOffset: d.dayOffset ?? 0,
+        readCount: d.readCount ?? 1,
+        readHistory: d.readHistory ?? [],
     };
 };
 

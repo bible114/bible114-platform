@@ -6,6 +6,7 @@ import { LEVEL_SYSTEM, getLevelInfo } from './data/levels';
 import { ACHIEVEMENTS } from './data/achievements';
 import { PLAN_TYPES, BIBLE_VERSIONS } from './data/bible_options';
 import { makePseudoEmail, userDocToState, toSinoKorean, dateToOffset, offsetToDateStr, getActualDay } from './utils/helpers';
+import ChurchAdminView from './components/ChurchAdminView';
 import { calculateSubgroupStats, getWeeklyMVP, getMonthlyContest, formatSubgroupRanking, formatProgressRanking, getAdminStats } from './utils/statsUtils';
 import { getSubgroupDisplay } from './utils/dashboardUtils';
 import { generateMemosHTML, generateMemosCSV, downloadCSV, downloadPeriodStatsCSV } from './utils/exportUtils';
@@ -17,7 +18,6 @@ import LoginView from './components/LoginView';
 import AdminView from './components/AdminView';
 import PlanSelectionView from './components/PlanSelectionView';
 import DashboardView from './components/DashboardView';
-import MiniRoomPage from './components/miniroom/MiniRoomPage';
 import { TOTAL_DAYS, PANIC_DISTANCE, AUDIO_BASE_URL, GENESIS_1, SUPABASE_FUNCTION_URL } from './data/constants';
 import { useTTS } from './hooks/useTTS';
 
@@ -31,17 +31,12 @@ const App = () => {
     */
 
     // --- [A] 화면 및 인증 상태 ---
-    const [view, setView] = useState('login');  // 현재 화면: 'login', 'dashboard', 'admin' 등
-    const [loginTab, setLoginTab] = useState('login'); // 로그인/회원가입 탭 ('login' or 'signup')
-    const [signupName, setSignupName] = useState('');   // 회원가입: 이름
-    const [signupPw, setSignupPw] = useState('');       // 회원가입: 비밀번호
-    const [signupPwConfirm, setSignupPwConfirm] = useState(''); // 회원가입: 비밀번호 확인
-    const [signupBirthdate, setSignupBirthdate] = useState(''); // 회원가입: 생년월일
-    const [loginName, setLoginName] = useState('');     // 로그인: 이름
-    const [loginPw, setLoginPw] = useState('');         // 로그인: 비밀번호
-    const [tempUser, setTempUser] = useState(null);     // 임시 사용자 (가입 진행 중)
-    const { currentUser, setCurrentUser, authLoading } = useUserAuth(); // Auth hook
-    const [errorMsg, setErrorMsg] = useState('');       // 에러 메시지
+    const [view, setView] = useState('login');
+    const [tempUser, setTempUser] = useState(null);
+    const { currentUser, setCurrentUser, authLoading } = useUserAuth();
+    const [errorMsg, setErrorMsg] = useState('');
+
+    const [churchCommunities, setChurchCommunities] = useState([]); // 현재 교회 조직 구성
 
     // Bible Logic Hook (Must be called before useTTS)
     const {
@@ -69,7 +64,7 @@ const App = () => {
         loadMemos,
         loadAnnouncement,
         kakaoLink, loadKakaoLink, setKakaoLink
-    } = useBibleLogic(currentUser, setCurrentUser, view);
+    } = useBibleLogic(currentUser, setCurrentUser, view, churchCommunities);
     const [showMonthlyContestInfo, setShowMonthlyContestInfo] = useState(false); // 월간 대항전 설명 모달
     const [rankingCommunityFilter, setRankingCommunityFilter] = useState('all'); // 누적 랭킹 대그룹 필터
     const [rankingSubgroupFilter, setRankingSubgroupFilter] = useState('all'); // 누적 랭킹 소그룹 필터
@@ -101,6 +96,7 @@ const App = () => {
     } = useTTS(verseData.text);
 
     const [allUsers, setAllUsers] = useState([]);             // 전체 사용자 목록 (관리자용)
+    const [allChurches, setAllChurches] = useState([]);       // 전체 교회 목록 (슈퍼관리자용)
 
     const [editingUser, setEditingUser] = useState(null);     // 편집 중인 사용자
     const [changingPassword, setChangingPassword] = useState(null); // 비밀번호 변경 대상
@@ -149,21 +145,23 @@ const App = () => {
 
     // ★ Auth Side Effects (Navigation & Data Sync)
     useEffect(() => {
-        if (authLoading) return; // Wait for loading to finish
+        if (authLoading) return;
 
         if (currentUser) {
-            // If we are currently in login view and just got a user (initial load or login success)
             if (view === 'login') {
-                if (currentUser.communityId && currentUser.subgroupId) {
-                    setView('dashboard');
+                if (currentUser.role === 'superAdmin') {
+                    loadSuperAdminData();
                 } else {
-                    // 설정이 안 된 사용자는 설정 화면으로
-                    setTempUser(currentUser);
-                    setView('plan_type_select');
+                    if (currentUser.churchId) loadChurchCommunities(currentUser.churchId);
+                    if (currentUser.communityId && currentUser.subgroupId) {
+                        setView('dashboard');
+                    } else {
+                        setTempUser(currentUser);
+                        setView('plan_type_select');
+                    }
                 }
             }
         } else {
-            // Not logged in
             if (view !== 'login') setView('login');
         }
     }, [currentUser, authLoading]);
@@ -179,27 +177,25 @@ const App = () => {
 
 
 
-    // 광고/공지 저장 (관리자용)
-    const saveAnnouncement = async () => {
-        if (!db) return;
+    // 공지 저장 (슈퍼관리자용 - 특정 교회 선택 시 해당 교회 경로에 저장)
+    const saveAnnouncement = async (churchId) => {
+        if (!db || !churchId) return;
         try {
-            await db.collection('settings').doc('announcement').set({
+            await db.collection('churches').doc(churchId).collection('settings').doc('announcement').set({
                 ...announcementInput,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
-            setAnnouncement(announcementInput.enabled ? announcementInput : null);
-            alert('광고가 저장되었습니다!');
+            alert('공지가 저장되었습니다!');
         } catch (e) {
-            console.error("광고 저장 실패:", e);
+            console.error("공지 저장 실패:", e);
             alert('저장 실패');
         }
     };
 
-    // 카카오 링크 저장 (관리자용)
-    const saveKakaoLink = async () => {
-        if (!db) return;
+    const saveKakaoLink = async (churchId) => {
+        if (!db || !churchId) return;
         try {
-            await db.collection('settings').doc('kakao').set({
+            await db.collection('churches').doc(churchId).collection('settings').doc('kakao').set({
                 url: kakaoLinkInput,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
@@ -304,183 +300,176 @@ const App = () => {
      회원가입, 로그인, 로그아웃 등 사용자 인증 관련 비즈니스 로직입니다.
     */
 
-    // 로그인/회원가입 폼 제출 핸들러 (관리자 비밀번호: '08283')
-    const handleLogin = async (e) => {
-        e.preventDefault();
-        setErrorMsg('');
-
-        // 회원가입 모드일 때 추가 검증
-        if (loginTab === 'signup') {
-            console.log('=== 회원가입 시작 ===');
-            console.log('이름:', signupName);
-            console.log('암호 길이:', signupPw.length);
-            console.log('생년월일:', signupBirthdate);
-
-            if (!signupName.trim() || !signupPw.trim() || !signupBirthdate) {
-                setErrorMsg("모든 항목을 입력해주세요.");
-                return;
-            }
-            if (signupPw !== signupPwConfirm) {
-                setErrorMsg("암호가 일치하지 않습니다.");
-                return;
-            }
-            if (signupPw.length < 6) {
-                setErrorMsg("암호는 6자리 이상이어야 합니다.");
-                return;
-            }
-        }
-
-        // 로그인 모드 기본 검증
-        const name = loginTab === 'signup' ? signupName : loginName;
-        const pw = loginTab === 'signup' ? signupPw : loginPw;
-
-        if (!name.trim() || !pw.trim()) {
-            setErrorMsg("이름과 암호를 모두 입력해주세요.");
-            return;
-        }
-
-        // ★ 관리자 로그인 체크 (관리자 비밀번호: '08283')
-        // 회원가입 탭에서는 관리자 로그인 불가
-        if (name === 'admin' && pw === '08283' && loginTab === 'login') {
-            try {
-                if (auth && !auth.currentUser) await auth.signInAnonymously();
-                const snap = await db.collection('users').get();
-                setAllUsers(snap.docs.map(doc => userDocToState(doc)));
-
-                const announcementDoc = await db.collection('settings').doc('announcement').get();
-                if (announcementDoc.exists) {
-                    const data = announcementDoc.data();
-                    // 이전 형식(단일 링크)에서 새로운 형식(링크 배열)으로 마이그레이션
-                    if (!data.links && data.linkUrl && data.linkText) {
-                        data.links = [{ url: data.linkUrl, text: data.linkText }];
-                    }
-                    if (!data.links) {
-                        data.links = [{ url: '', text: '' }];
-                    }
-                    setAnnouncementInput(data);
-                }
-
-                const syncDoc = await db.collection('settings').doc('sync').get();
-                if (syncDoc.exists) {
-                    setLastSyncInfo(syncDoc.data());
-                }
-
-                const kakaoDoc = await db.collection('settings').doc('kakao').get();
-                if (kakaoDoc.exists) {
-                    setKakaoLinkInput(kakaoDoc.data().url);
-                }
-
-                setIsAdmin(true);  // 관리자 모드 활성화
-                return;
-            } catch (err) { console.error(err); setErrorMsg('관리자 데이터 로딩 실패'); return; }
-        }
-
-        // 일반 사용자 Firebase 인증
+    const loadChurchCommunities = async (churchId) => {
+        if (!churchId) return;
         try {
-            const email = makePseudoEmail(name);  // 이름 → 가짜 이메일 변환
-            console.log('생성된 이메일:', email);
+            const doc = await db.collection('churches').doc(churchId).get();
+            if (doc.exists) setChurchCommunities(doc.data().communities || []);
+        } catch (e) { console.error(e); }
+    };
 
-            let cred = null;
+    const loadSuperAdminData = async () => {
+        const [usersSnap, churchesSnap] = await Promise.all([
+            db.collection('users').get(),
+            db.collection('churches').get(),
+        ]);
+        setAllUsers(usersSnap.docs.map(doc => userDocToState(doc)));
+        setAllChurches(churchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        setIsAdmin(true);
+    };
 
-            // 먼저 로그인 시도
-            try {
-                console.log('로그인 시도 중...');
-                cred = await auth.signInWithEmailAndPassword(email, pw);
-                console.log('로그인 성공!');
-            } catch (err) {
-                console.log('로그인 실패:', err.code, err.message);
+    // ── 교인 로그인 ──
+    const handleMemberLogin = async (name, birthdate, pw, churchId) => {
+        setErrorMsg('');
+        try {
+            // 신 포맷(이름+생년월일+교회ID) 시도 → 실패 시 구 포맷으로 마이그레이션
+            const newEmail = makePseudoEmail(name, birthdate, churchId);
+            const oldEmail = makePseudoEmail(name, birthdate);
+            let cred = await auth.signInWithEmailAndPassword(newEmail, pw).catch(() => null);
 
-                // 사용자가 없으면 회원가입 진행 (회원가입 탭에서만)
-                if ((err && err.code === 'auth/user-not-found') || (err && err.code === 'auth/invalid-login-credentials') || (err && err.code === 'auth/invalid-credential')) {
-                    // 로그인 탭에서는 회원가입 불가
-                    if (loginTab === 'login') {
-                        setErrorMsg("등록되지 않은 사용자입니다. 회원가입 탭에서 가입해주세요.");
-                        return;
+            if (!cred) {
+                // 구 포맷으로 재시도 (기존 계정 마이그레이션)
+                cred = await auth.signInWithEmailAndPassword(oldEmail, pw).catch(async err => {
+                    if (['auth/user-not-found', 'auth/invalid-login-credentials', 'auth/invalid-credential'].includes(err?.code)) {
+                        setErrorMsg('등록되지 않은 사용자입니다. 회원가입 후 이용해주세요.');
+                    } else if (err?.code === 'auth/wrong-password') {
+                        setErrorMsg('비밀번호가 틀렸습니다.');
+                    } else {
+                        setErrorMsg('로그인 실패. 잠시 후 다시 시도해주세요.');
                     }
-
-                    // 회원가입 탭에서만 신규 계정 생성
-                    console.log('회원가입 시도 중...');
-                    try {
-                        cred = await auth.createUserWithEmailAndPassword(email, pw);
-                        console.log('회원가입 성공!');
-                    } catch (signupErr) {
-                        console.error("회원가입 상세 에러:", signupErr);
-                        console.error("에러 코드:", signupErr ? signupErr.code : null);
-                        console.error("에러 메시지:", signupErr ? signupErr.message : null);
-
-                        if (signupErr && signupErr.code === 'auth/email-already-in-use') {
-                            setErrorMsg("이미 사용 중인 이름입니다. 로그인 탭에서 로그인하거나 다른 이름을 사용해주세요.");
-                        }
-                        else if (signupErr && signupErr.code === 'auth/weak-password') {
-                            setErrorMsg("암호는 6자리 이상이어야 합니다.");
-                        }
-                        else if (signupErr && signupErr.code === 'auth/invalid-email') {
-                            setErrorMsg("이름에 특수문자를 사용할 수 없습니다.");
-                        }
-                        else {
-                            setErrorMsg(`회원가입 실패: ${(signupErr && signupErr.message) || '잠시 후 다시 시도해주세요'}`);
-                        }
-                        return;
-                    }
-                } else if (err && err.code === 'auth/wrong-password') {
-                    setErrorMsg("암호가 틀렸습니다.");
-                    return;
-                }
-                else {
-                    console.error('알 수 없는 로그인 에러:', err);
-                    setErrorMsg("로그인 실패(잠시 후 다시 시도)");
-                    return;
+                    return null;
+                });
+                // 구 포맷 로그인 성공 시 신 포맷으로 이메일 업데이트
+                if (cred) {
+                    await cred.user.updateEmail(newEmail).catch(() => {});
                 }
             }
-
-            const uid = cred.user.uid;
-            console.log('사용자 UID:', uid);
-
-            const ref = db.collection('users').doc(uid);
-            const doc = await ref.get();
-
-            // Firestore에 사용자 데이터가 없으면 신규 생성
-            if (!doc.exists) {
-                console.log('신규 사용자 - Firestore에 데이터 생성 중...');
-                const newUserBase = {
-                    name: name.trim(),          // 이름
-                    password: pw,               // 비밀번호 (평문 - 개선 필요) 
-                    startDate: new Date().toDateString(),
-                    currentDay: 1,
-                    streak: 0,
-                    score: 0,
-                    lastReadDate: null,
-                    gender: 'male',
-                    planId: "1year_revised",
-                    communityId: null,
-                    communityName: null,
-                    subgroupId: null,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                };
-                await ref.set(newUserBase);
-                console.log('Firestore 데이터 생성 완료!');
-
-                setTempUser({ ...newUserBase, uid });
-                setView('plan_type_select');
-                return;
-            }
-
-            console.log('기존 사용자 - 데이터 로드 완료');
+            if (!cred) return;
+            const doc = await db.collection('users').doc(cred.user.uid).get();
+            if (!doc.exists) { setErrorMsg('사용자 정보를 찾을 수 없습니다.'); return; }
             const user = userDocToState(doc);
             setCurrentUser(user);
             setHasReadToday(user.lastReadDate === new Date().toDateString());
+            if (user.churchId) await loadChurchCommunities(user.churchId);
+            if (!user.communityId || !user.subgroupId) { setTempUser(user); setView('plan_type_select'); }
+            else setView('dashboard');
+        } catch (err) {
+            console.error(err);
+            setErrorMsg('로그인 처리 중 오류가 발생했습니다.');
+        }
+    };
 
-            if (!user.communityId || !user.subgroupId) {
-                setTempUser(user);
-                setView('plan_type_select');
-            } else {
-                setView('dashboard');
+    // ── 교회 관리자 / 슈퍼 관리자 로그인 ──
+    const handleChurchAdminLogin = async (email, pw) => {
+        setErrorMsg('');
+        try {
+            const cred = await auth.signInWithEmailAndPassword(email, pw).catch(err => {
+                if (['auth/user-not-found', 'auth/invalid-login-credentials', 'auth/invalid-credential'].includes(err?.code)) {
+                    setErrorMsg('등록되지 않은 이메일입니다.');
+                } else if (err?.code === 'auth/wrong-password') {
+                    setErrorMsg('비밀번호가 틀렸습니다.');
+                } else {
+                    setErrorMsg('로그인 실패. 잠시 후 다시 시도해주세요.');
+                }
+                return null;
+            });
+            if (!cred) return;
+            const doc = await db.collection('users').doc(cred.user.uid).get();
+            if (!doc.exists) { setErrorMsg('사용자 정보를 찾을 수 없습니다.'); return; }
+            const user = userDocToState(doc);
+
+            if (user.role === 'superAdmin') {
+                setCurrentUser(user);
+                await loadSuperAdminData();
+                return;
             }
 
+            setCurrentUser(user);
+            setHasReadToday(user.lastReadDate === new Date().toDateString());
+            if (user.churchId) await loadChurchCommunities(user.churchId);
+            setView('dashboard');
         } catch (err) {
-            console.error('전체 프로세스 에러:', err);
-            setErrorMsg("로그인 처리 중 오류");
+            console.error(err);
+            setErrorMsg('로그인 처리 중 오류가 발생했습니다.');
+        }
+    };
+
+    // ── 교인 가입 ──
+    const handleMemberSignup = async ({ name, birthdate, password, churchId, churchCode }) => {
+        setErrorMsg('');
+        try {
+            // 교회 입장코드 확인
+            const churchDoc = await db.collection('churches').doc(churchId).get();
+            if (!churchDoc.exists) { setErrorMsg('교회를 찾을 수 없습니다.'); return; }
+            if (churchDoc.data().churchCode !== churchCode) { setErrorMsg('교회 입장코드가 틀렸습니다.'); return; }
+
+            const churchName = churchDoc.data().name;
+            const email = makePseudoEmail(name, birthdate, churchId);
+            const cred = await auth.createUserWithEmailAndPassword(email, password).catch(err => {
+                if (err?.code === 'auth/email-already-in-use') setErrorMsg('이미 가입된 이름+생년월일입니다. 로그인해주세요.');
+                else if (err?.code === 'auth/weak-password') setErrorMsg('비밀번호는 6자리 이상이어야 합니다.');
+                else setErrorMsg('가입 실패. 잠시 후 다시 시도해주세요.');
+                return null;
+            });
+            if (!cred) return;
+
+            const newUser = {
+                name, birthdate, password, email,
+                role: 'member', churchId, churchName,
+                startDate: new Date().toDateString(),
+                currentDay: 1, streak: 0, score: 0, readCount: 1,
+                lastReadDate: null, gender: 'male', planId: '1year_revised',
+                communityId: null, communityName: null, subgroupId: null,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            };
+            await db.collection('users').doc(cred.user.uid).set(newUser);
+            await loadChurchCommunities(churchId);
+            setTempUser({ ...newUser, uid: cred.user.uid });
+            setView('plan_type_select');
+        } catch (err) {
+            console.error(err);
+            setErrorMsg('가입 처리 중 오류가 발생했습니다.');
+        }
+    };
+
+    // ── 교회 관리자 가입 ──
+    const handleChurchAdminSignup = async ({ name, email, password, churchName, churchCode, communities }) => {
+        setErrorMsg('');
+        try {
+            const cred = await auth.createUserWithEmailAndPassword(email, password).catch(err => {
+                if (err?.code === 'auth/email-already-in-use') setErrorMsg('이미 사용 중인 이메일입니다.');
+                else if (err?.code === 'auth/weak-password') setErrorMsg('비밀번호는 6자리 이상이어야 합니다.');
+                else setErrorMsg('가입 실패. 잠시 후 다시 시도해주세요.');
+                return null;
+            });
+            if (!cred) return;
+
+            // 교회 문서 생성
+            const churchRef = db.collection('churches').doc();
+            await churchRef.set({
+                name: churchName, churchCode, adminUid: cred.user.uid, adminEmail: email,
+                communities: communities || [],
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            });
+            setChurchCommunities(communities || []);
+
+            const newUser = {
+                name, email, password, birthdate: null,
+                role: 'churchAdmin', churchId: churchRef.id, churchName,
+                startDate: new Date().toDateString(),
+                currentDay: 1, streak: 0, score: 0, readCount: 1,
+                lastReadDate: null, gender: 'male', planId: '1year_revised',
+                communityId: null, communityName: null, subgroupId: null,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            };
+            await db.collection('users').doc(cred.user.uid).set(newUser);
+            setTempUser({ ...newUser, uid: cred.user.uid });
+            setView('plan_type_select');
+        } catch (err) {
+            console.error(err);
+            setErrorMsg('가입 처리 중 오류가 발생했습니다.');
         }
     };
 
@@ -687,7 +676,7 @@ const App = () => {
 
     const handleLogout = () => {
         if (auth) auth.signOut();
-        setCurrentUser(null); setIsAdmin(false); setTempUser(null); setLoginName(''); setLoginPw('');
+        setCurrentUser(null); setIsAdmin(false); setTempUser(null); setChurchCommunities([]);
         setErrorMsg(''); setView('login'); setHasReadToday(false); setEditingUser(null); setCommunityMembers([]);
     };
 
@@ -726,6 +715,7 @@ const App = () => {
                 adminSortBy={adminSortBy}
                 setAdminSortBy={setAdminSortBy}
                 allUsers={allUsers}
+                allChurches={allChurches}
                 MOCK_COMMUNITIES={MOCK_COMMUNITIES}
                 BIBLE_VERSIONS={BIBLE_VERSIONS}
                 announcementInput={announcementInput}
@@ -763,22 +753,12 @@ const App = () => {
     if (view === 'login') {
         return (
             <LoginView
-                loginTab={loginTab}
-                setLoginTab={setLoginTab}
-                loginName={loginName}
-                setLoginName={setLoginName}
-                loginPw={loginPw}
-                setLoginPw={setLoginPw}
-                signupName={signupName}
-                setSignupName={setSignupName}
-                signupBirthdate={signupBirthdate}
-                setSignupBirthdate={setSignupBirthdate}
-                signupPw={signupPw}
-                setSignupPw={setSignupPw}
-                signupPwConfirm={signupPwConfirm}
-                setSignupPwConfirm={setSignupPwConfirm}
+                onMemberLogin={handleMemberLogin}
+                onChurchAdminLogin={handleChurchAdminLogin}
+                onMemberSignup={handleMemberSignup}
+                onChurchAdminSignup={handleChurchAdminSignup}
                 errorMsg={errorMsg}
-                handleLogin={handleLogin}
+                setErrorMsg={setErrorMsg}
             />
         );
     }
@@ -795,6 +775,7 @@ const App = () => {
                 handleVersionSelect={handleVersionSelect}
                 handleCommunitySelect={handleCommunitySelect}
                 handleSubgroupSelect={handleSubgroupSelect}
+                churchCommunities={churchCommunities}
             />
         );
     }
@@ -861,16 +842,17 @@ const App = () => {
                 generateMemosHTML={generateMemosHTML}
                 getWeeklyMVP={() => getWeeklyMVP(communityMembers)}
                 setView={setView}
+                isChurchAdmin={currentUser?.role === 'churchAdmin'}
             />
         );
     }
 
-    if (view === 'mini_room' && currentUser) {
+    if (view === 'church_admin' && currentUser?.role === 'churchAdmin') {
         return (
-            <MiniRoomPage
+            <ChurchAdminView
                 currentUser={currentUser}
-                setCurrentUser={setCurrentUser}
-                setView={setView}
+                handleLogout={handleLogout}
+                onBack={() => setView('dashboard')}
             />
         );
     }
