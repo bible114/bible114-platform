@@ -20,7 +20,8 @@ const DashboardHeader = ({
     planTypeName,
     versionName,
     handleChangeVersionStart,
-    setView // 추가
+    setView,
+    isChurchAdmin,
 }) => {
     return (
         <header className="sticky top-0 z-30 space-y-4 mb-4">
@@ -36,7 +37,9 @@ const DashboardHeader = ({
                             <button type="button" onClick={(e) => { e.stopPropagation(); setShowScoreInfo(true); }} className="text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2.5 py-1.5 rounded-xl hover:bg-blue-100 transition-colors shrink-0">
                                 {myLevel.emoji} {score || 0}pt
                             </button>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); setView('mini_room'); }} className="p-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 shrink-0 flex items-center gap-1" title="미니룸 입장">🏠 <span className="hidden sm:inline">미니룸</span></button>
+                            {isChurchAdmin && (
+                                <button type="button" onClick={(e) => { e.stopPropagation(); setView('church_admin'); }} className="p-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 shrink-0 flex items-center gap-1" title="교회 관리">⛪ <span className="hidden sm:inline">교회관리</span></button>
+                            )}
                             <button type="button" onClick={(e) => { e.stopPropagation(); setShowAchievements(true); }} className="p-1.5 text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-100 rounded-xl hover:bg-yellow-100 shrink-0">🏅</button>
                             <button type="button" onClick={(e) => { e.stopPropagation(); setShowDateSettings(true); }} className="p-1.5 text-xs font-bold text-purple-600 bg-purple-50 border border-purple-100 rounded-xl hover:bg-purple-100 shrink-0">📅</button>
                             <button type="button" onClick={(e) => { e.stopPropagation(); setShowCalendar(true); }} className="p-1.5 text-xs font-bold text-green-600 bg-green-50 border border-green-100 rounded-xl hover:bg-green-100 shrink-0">📆</button>

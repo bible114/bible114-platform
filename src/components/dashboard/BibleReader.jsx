@@ -41,7 +41,7 @@ const BibleReader = ({
                         <h2 className="text-2xl font-bold mb-1">{verseData.loading ? '로딩중...' : verseData.title}</h2>
                         <div className="flex items-center justify-center gap-2">
                             {(currentUser.readCount || 1) > 1 && (
-                                <span className="text-xs bg-purple-500/90 px-2 py-0.5 rounded-full">🏆 {currentUser.readCount}독</span>
+                                <span className="text-xs bg-purple-500/90 px-2 py-0.5 rounded-full">🏆 {currentUser.readCount - 1}독 완료</span>
                             )}
                             <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">🏁 D-{daysRemaining}</span>
                         </div>

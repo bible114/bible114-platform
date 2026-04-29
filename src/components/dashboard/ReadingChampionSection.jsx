@@ -53,7 +53,7 @@ const ReadingChampionSection = ({ getWeeklyMVP }) => {
                             const currentDay = progressMVP.currentDay || 0;
                             const totalDays = (readCount - 1) * 365 + currentDay;
                             if (readCount > 1) {
-                                return `총 ${totalDays}일 (${readCount}독 ${currentDay}일)`;
+                                return `총 ${totalDays}일 (${readCount - 1}독 완료, ${currentDay}일)`;
                             }
                             return `총 ${totalDays}일`;
                         })()}

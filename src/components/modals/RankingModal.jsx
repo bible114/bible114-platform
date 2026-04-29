@@ -92,7 +92,7 @@ const RankingModal = ({
                                         <div className="flex items-center gap-2">
                                             <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${idx === 0 ? 'bg-yellow-100 text-yellow-600' : idx === 1 ? 'bg-slate-200 text-slate-600' : idx === 2 ? 'bg-orange-100 text-orange-600' : 'bg-slate-100 text-slate-400'}`}>{idx + 1}</span>
                                             <span className={`font-bold text-sm ${isMe ? 'text-blue-600' : 'text-slate-700'}`}>{member.name} {isMe && '(나)'}</span>
-                                            {(member.readCount || 1) > 1 && <span className="text-[10px] bg-purple-500 text-white px-1.5 py-0.5 rounded-full font-bold">{member.readCount}독</span>}
+                                            {(member.readCount || 1) > 1 && <span className="text-[10px] bg-purple-500 text-white px-1.5 py-0.5 rounded-full font-bold">{member.readCount - 1}독 완료</span>}
                                             {readTodayFlag && <span className="text-green-500 text-xs">✓</span>}
                                         </div>
                                         <div className="text-right"><p className="text-sm font-bold text-slate-700">Day {((member.readCount || 1) - 1) * 365 + member.currentDay}</p><p className="text-[10px] text-slate-400">{member.score || 0}점</p></div>

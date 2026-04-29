@@ -45,6 +45,22 @@ const ReadingGuideModal = ({ show, onClose }) => {
                         <h4 className="font-bold text-purple-700 mb-1">💪 포기하지 마세요!</h4>
                         <p className="text-slate-600 leading-relaxed">밀렸다고 포기하지 마세요! 주일에 몰아서 읽어도 괜찮습니다. <strong>완주가 목표</strong>입니다. 함께 달려요! 🏃‍♂️</p>
                     </div>
+                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                        <h4 className="font-bold text-slate-700 mb-2">✍️ 성경통독 114를 만든 이유</h4>
+                        <p className="text-xs text-slate-500 mb-2 font-medium">조병수 (합동신학대학원대학교 명예교수)</p>
+                        <p className="text-slate-600 leading-relaxed text-xs mb-2">
+                            나는 어릴 때부터 스코틀랜드의 개혁파 목사였던 맥체인(Robert Murray M'Cheyne, 1813-1843)의 1년 성경통독표를 따라 성경을 읽었다. 그런데 나는 언제부턴가 주위의 사람들로부터 이 표를 따라가는 데 실패한다는 말을 듣게 되었고, 나 자신도 이 표에서 지루함을 느끼기 시작했다. 그 이유는 간단했다. 예를 들어, 맥체인 표는 모세오경을 계속 읽어야 하고, 사복음서도 이어 읽어야 한다. 그러다 보니 출애굽 이후 사건들이나 예수님의 활동에 관한 이야기가 자꾸 반복되어 지루함을 가져다주는 것이었다.
+                        </p>
+                        <p className="text-slate-600 leading-relaxed text-xs mb-2">
+                            나는 이런 문제점을 풀기 위해서 지루한 반복을 피하는 방법을 찾게 되었다. 가장 좋은 단서는 사복음서였다. 1년을 사분기로 나누어 사복음서를 각 분기에 배치하면 좋겠다는 생각이 들었다. 그러고 보니 창세기 이후 4권의 책들도 결국은 모두 출애굽 이후 이스라엘의 광야생활을 다루고 있으므로 각 분기에 나누어두는 것이 가능했다.
+                        </p>
+                        <p className="text-slate-600 leading-relaxed text-xs mb-2">
+                            나는 이런 전제 아래 구약성경과 신약성경을 사분기로 읽을 수 있도록 도표로 나누어보았다. 나는 이것에 편의상 <strong>"성경통독 114"</strong>라는 이름을 붙였다. 그 뜻은 성경전체를 1년에 1번 통독하지만(1년 1독) 4번 읽는 효과를 낸다는 것이다. 달리 말하자면, 3개월마다 성경을 한 번씩 읽는 것과 같다.
+                        </p>
+                        <p className="text-slate-600 leading-relaxed text-xs">
+                            성경통독 114는 성경을 읽는 사람들에게 최소한 두 가지 유익을 준다. <strong>첫째는 속도이다.</strong> 이 표를 따라 읽으면 한 분기(3개월)라는 짧은 시일 안에 창세기부터 요한계시록까지 읽는 듯한 느낌을 얻는다. <strong>둘째는 재기이다.</strong> 이 표는 성경을 사분기로 반복하여 읽도록 고안되어 있어서 4번의 기회를 주기 때문에 실패해도 다시 시도할 수 있다.
+                        </p>
+                    </div>
                 </div>
                 <button onClick={onClose} className="w-full bg-slate-100 font-bold py-3 rounded-xl mt-4 text-slate-600">닫기</button>
             </div>

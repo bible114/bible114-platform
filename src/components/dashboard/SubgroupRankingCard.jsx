@@ -8,6 +8,8 @@ const SubgroupRankingCard = ({
     communityId // 부서 ID 추가
 }) => {
     const ranking = getSubgroupRanking();
+    const communityIds = [...new Set(ranking.map(g => g.communityId))];
+    const hasMultipleCommunities = communityIds.length > 1;
 
     return (
         <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-xl scroll-mt-20">
@@ -25,10 +27,9 @@ const SubgroupRankingCard = ({
                         // 우리 그룹 여부 판별 (부서와 소그룹명이 모두 일치해야 함)
                         const isMyGroup = group.communityId === communityId && group.name === subgroupId;
 
-                        // 장년부가 아니면 앞에 부서명을 붙임
-                        const displayName = group.communityId === 'senior'
-                            ? group.name
-                            : `${group.communityName} ${group.name}`;
+                        const displayName = hasMultipleCommunities
+                            ? `${group.communityName} ${group.name}`
+                            : group.name;
 
                         return (
                             <div key={idx} className={`relative transition-all ${isMyGroup ? 'bg-blue-50/50 p-3 rounded-2xl ring-1 ring-blue-100' : ''}`}>

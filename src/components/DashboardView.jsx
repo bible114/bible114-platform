@@ -91,7 +91,8 @@ const DashboardView = ({
     getSubgroupDisplay,
     generateMemosHTML,
     getWeeklyMVP,
-    setView // 추가
+    setView,
+    isChurchAdmin,
 }) => {
     if (!currentUser) return null;
 
@@ -301,6 +302,7 @@ const DashboardView = ({
                 versionName={versionName}
                 handleChangeVersionStart={handleChangeVersionStart}
                 setView={setView}
+                isChurchAdmin={isChurchAdmin}
             />
 
             <div className="max-w-5xl mx-auto w-full pb-10 mt-8">

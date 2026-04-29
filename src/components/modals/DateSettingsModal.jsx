@@ -25,6 +25,9 @@ const DateSettingsModal = ({
 
     if (!show) return null;
 
+    const planId = currentUser?.planId || '1year_revised';
+    const scheduleData = SCHEDULE_DATA?.[planId] || SCHEDULE_DATA?.whole_bible || [];
+
     const year = dateSettingsDate.getFullYear();
     const month = dateSettingsDate.getMonth();
     const firstDay = new Date(year, month, 1).getDay();
@@ -32,10 +35,10 @@ const DateSettingsModal = ({
     const days = [];
     for (let i = 0; i < firstDay; i++) days.push(null);
     for (let i = 1; i <= lastDate; i++) days.push(i);
-    const planData = SCHEDULE_DATA ? SCHEDULE_DATA[currentUser ? currentUser.planId : null] : null;
 
-    const handleClose = () => {
-        if (canClose) onClose();
+    const getRange = (offset) => {
+        const entry = scheduleData[offset];
+        return entry ? entry.range : null;
     };
 
     return (
@@ -76,7 +79,7 @@ const DateSettingsModal = ({
                         {days.map((day, idx) => {
                             if (!day) return <div key={idx}></div>;
                             const offset = dateToOffset(month + 1, day);
-                            const schedule = planData && planData[offset] ? planData[offset] : null;
+                            const range = getRange(offset);
                             const isToday = new Date().getDate() === day && new Date().getMonth() === month;
                             const dayOfWeek = new Date(year, month, day).getDay();
                             return (
@@ -85,16 +88,16 @@ const DateSettingsModal = ({
                                         e.stopPropagation();
                                         const newOffset = offset - currentDay + 1;
                                         changeStartDate(newOffset);
-                                        onClose(); // 설정 후 바로 닫기
+                                        onClose();
                                     }}
                                     className={`group aspect-square flex flex-col items-center justify-center rounded-lg border transition-all hover:border-purple-400 hover:shadow-sm active:scale-95
                                         ${isToday ? 'bg-purple-50 border-purple-200 ring-1 ring-purple-300' : 'bg-white border-slate-100'}
                                     `}
                                 >
                                     <span className={`text-xs font-bold ${dayOfWeek === 0 ? 'text-red-500' : dayOfWeek === 6 ? 'text-blue-500' : 'text-slate-700'}`}>{day}</span>
-                                    {schedule && (
-                                        <span className="text-[7px] text-slate-400 break-keep leading-[1.1] w-full px-0.5 whitespace-pre-wrap" title={schedule.range}>
-                                            {schedule.range}
+                                    {range && (
+                                        <span className="text-[7px] text-slate-400 break-keep leading-[1.1] w-full px-0.5 whitespace-pre-wrap" title={range}>
+                                            {range}
                                         </span>
                                     )}
                                 </button>
