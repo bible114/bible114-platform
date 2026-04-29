@@ -7,7 +7,7 @@ export const useUserBibleActions = (
     currentUser,
     setCurrentUser,
     setAllMembersForRace,
-    setCommunityMembers,
+    setDepartmentMembers,
     setSubgroupStats,
     loadAllMembers,
     setViewingDay,
@@ -113,9 +113,9 @@ export const useUserBibleActions = (
             setAllMembersForRace(allMembers);
             setSubgroupStats(calculateSubgroupStats(allMembers));
 
-            if (currentUser.communityId) {
-                const myCommMembers = allMembers.filter(m => m.communityId === currentUser.communityId);
-                setCommunityMembers(myCommMembers);
+            if (currentUser.departmentId) {
+                const myCommMembers = allMembers.filter(m => m.departmentId === currentUser.departmentId);
+                setDepartmentMembers(myCommMembers);
             }
 
             if (completedRound) {
@@ -129,7 +129,7 @@ export const useUserBibleActions = (
         } catch (e) {
             console.error("읽기 처리 실패:", e);
         }
-    }, [currentUser, viewingDay, setCurrentUser, setViewingDay, loadAllMembers, setAllMembersForRace, setCommunityMembers, setSubgroupStats, checkAchievements]);
+    }, [currentUser, viewingDay, setCurrentUser, setViewingDay, loadAllMembers, setAllMembersForRace, setDepartmentMembers, setSubgroupStats, checkAchievements]);
 
     const handleRestart = useCallback(async (setMemos, setReadHistory) => {
         if (!currentUser) return;

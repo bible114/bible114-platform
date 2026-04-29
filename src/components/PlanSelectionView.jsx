@@ -1,7 +1,7 @@
 import React from 'react';
 import Icon from './Icon';
 import { PLAN_TYPES, BIBLE_VERSIONS } from '../data/bible_options';
-import { MOCK_COMMUNITIES } from '../data/communities';
+import { DEFAULT_DEPARTMENTS } from '../data/departments';
 import ReadingGuideModal from './modals/ReadingGuideModal';
 
 const COMM_ICONS = ['🏛️', '✨', '📚', '🌟', '🎵', '🙏', '⚡', '🌈', '🏕️', '🌿'];
@@ -42,7 +42,7 @@ const PlanSelectionView = ({
 }) => {
     const communities = (churchCommunities && churchCommunities.length > 0)
         ? churchCommunities
-        : MOCK_COMMUNITIES;
+        : DEFAULT_DEPARTMENTS;
 
     if (view === 'plan_type_select') {
         return (
@@ -142,7 +142,7 @@ const PlanSelectionView = ({
     }
 
     if (view === 'subgroup_select') {
-        const selectedComm = communities.find(c => c.id === (tempUser ? tempUser.communityId : null));
+        const selectedComm = communities.find(c => c.id === (tempUser ? tempUser.departmentId : null));
         return (
             <div className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-center">
                 <div className="w-full max-w-2xl mb-4">
@@ -152,7 +152,7 @@ const PlanSelectionView = ({
                 </div>
                 <div className="text-center mb-6">
                     <h2 className="text-xl font-bold text-slate-800">소그룹 선택</h2>
-                    <p className="text-slate-500 text-sm">{tempUser?.communityName} 내의 소그룹을 선택해주세요.</p>
+                    <p className="text-slate-500 text-sm">{tempUser?.departmentName} 내의 소그룹을 선택해주세요.</p>
                 </div>
                 {(!selectedComm || selectedComm.subgroups.length === 0) ? (
                     <div className="w-full max-w-2xl text-center py-12 bg-white rounded-2xl border border-slate-200 shadow-sm">

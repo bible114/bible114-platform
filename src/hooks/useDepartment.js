@@ -2,9 +2,9 @@ import { useState, useCallback } from 'react';
 import { db, firebase } from '../utils/firebase';
 import { calculateSubgroupStats } from '../utils/statsUtils';
 
-export const useCommunity = (currentUser, setCurrentUser) => {
+export const useDepartment = (currentUser, setCurrentUser) => {
     const [subgroupStats, setSubgroupStats] = useState({});
-    const [communityMembers, setCommunityMembers] = useState([]);
+    const [departmentMembers, setDepartmentMembers] = useState([]);
     const [allMembersForRace, setAllMembersForRace] = useState([]);
     const [announcement, setAnnouncement] = useState(null);
     const [kakaoLink, setKakaoLink] = useState(null);
@@ -62,8 +62,8 @@ export const useCommunity = (currentUser, setCurrentUser) => {
             const allMembers = await loadAllMembers();
             setAllMembersForRace(allMembers);
             setSubgroupStats(calculateSubgroupStats(allMembers));
-            if (currentUser.communityId) {
-                setCommunityMembers(allMembers.filter(m => m.communityId === currentUser.communityId));
+            if (currentUser.departmentId) {
+                setDepartmentMembers(allMembers.filter(m => m.departmentId === currentUser.departmentId));
             }
         } catch (e) {
             console.error("소그룹 변경 실패:", e);
@@ -73,7 +73,7 @@ export const useCommunity = (currentUser, setCurrentUser) => {
 
     return {
         subgroupStats, setSubgroupStats,
-        communityMembers, setCommunityMembers,
+        departmentMembers, setDepartmentMembers,
         allMembersForRace, setAllMembersForRace,
         announcement, setAnnouncement,
         kakaoLink, setKakaoLink,

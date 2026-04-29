@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db, auth, firebase } from './utils/firebase';
-import { MOCK_COMMUNITIES } from './data/communities';
+import { DEFAULT_DEPARTMENTS } from './data/departments';
 import { SCHEDULE_DATA } from './data/schedules';
 import { LEVEL_SYSTEM, getLevelInfo } from './data/levels';
 import { ACHIEVEMENTS } from './data/achievements';
@@ -42,7 +42,7 @@ const App = () => {
     const {
         verseData, setVerseData,
         subgroupStats, setSubgroupStats,
-        communityMembers, setCommunityMembers,
+        departmentMembers, setDepartmentMembers,
         allMembersForRace, setAllMembersForRace,
         memos, setMemos,
         readHistory, setReadHistory,
@@ -153,7 +153,7 @@ const App = () => {
                     loadSuperAdminData();
                 } else {
                     if (currentUser.churchId) loadChurchCommunities(currentUser.churchId);
-                    if (currentUser.communityId && currentUser.subgroupId) {
+                    if (currentUser.departmentId && currentUser.subgroupId) {
                         setView('dashboard');
                     } else {
                         setTempUser(currentUser);
@@ -281,7 +281,7 @@ const App = () => {
         if (!editingUser) return;
         try {
             await db.collection('users').doc(editingUser.uid).set({
-                communityId: editingUser.communityId, communityName: editingUser.communityName,
+                departmentId: editingUser.departmentId, departmentName: editingUser.departmentName,
                 subgroupId: editingUser.subgroupId, planId: editingUser.planId,
                 currentDay: editingUser.currentDay, readCount: editingUser.readCount || 1,
                 score: editingUser.score, streak: editingUser.streak,
@@ -304,7 +304,7 @@ const App = () => {
         if (!churchId) return;
         try {
             const doc = await db.collection('churches').doc(churchId).get();
-            if (doc.exists) setChurchCommunities(doc.data().communities || []);
+            if (doc.exists) setChurchCommunities(doc.data().departments || doc.data().communities || []);
         } catch (e) { console.error(e); }
     };
 
@@ -351,7 +351,7 @@ const App = () => {
             setCurrentUser(user);
             setHasReadToday(user.lastReadDate === new Date().toDateString());
             if (user.churchId) await loadChurchCommunities(user.churchId);
-            if (!user.communityId || !user.subgroupId) { setTempUser(user); setView('plan_type_select'); }
+            if (!user.departmentId || !user.subgroupId) { setTempUser(user); setView('plan_type_select'); }
             else setView('dashboard');
         } catch (err) {
             console.error(err);
@@ -419,7 +419,7 @@ const App = () => {
                 startDate: new Date().toDateString(),
                 currentDay: 1, streak: 0, score: 0, readCount: 1,
                 lastReadDate: null, gender: 'male', planId: '1year_revised',
-                communityId: null, communityName: null, subgroupId: null,
+                departmentId: null, departmentName: null, subgroupId: null,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             };
@@ -434,7 +434,7 @@ const App = () => {
     };
 
     // ── 교회 관리자 가입 ──
-    const handleChurchAdminSignup = async ({ name, email, password, churchName, churchCode, communities }) => {
+    const handleChurchAdminSignup = async ({ name, email, password, churchName, churchCode, departments }) => {
         setErrorMsg('');
         try {
             const cred = await auth.createUserWithEmailAndPassword(email, password).catch(err => {
@@ -449,10 +449,10 @@ const App = () => {
             const churchRef = db.collection('churches').doc();
             await churchRef.set({
                 name: churchName, churchCode, adminUid: cred.user.uid, adminEmail: email,
-                communities: communities || [],
+                departments: departments || [],
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             });
-            setChurchCommunities(communities || []);
+            setChurchCommunities(departments || []);
 
             const newUser = {
                 name, email, password, birthdate: null,
@@ -460,7 +460,7 @@ const App = () => {
                 startDate: new Date().toDateString(),
                 currentDay: 1, streak: 0, score: 0, readCount: 1,
                 lastReadDate: null, gender: 'male', planId: '1year_revised',
-                communityId: null, communityName: null, subgroupId: null,
+                departmentId: null, departmentName: null, subgroupId: null,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             };
@@ -490,7 +490,7 @@ const App = () => {
         }
     };
 
-    const handleCommunitySelect = (commId, commName) => { setTempUser(prev => ({ ...prev, communityId: commId, communityName: commName })); setView('subgroup_select'); };
+    const handleCommunitySelect = (commId, commName) => { setTempUser(prev => ({ ...prev, departmentId: commId, departmentName: commName })); setView('subgroup_select'); };
 
     const handleSubgroupSelect = async (subgroup) => {
         const finalUser = { ...tempUser, subgroupId: subgroup };
@@ -677,7 +677,7 @@ const App = () => {
     const handleLogout = () => {
         if (auth) auth.signOut();
         setCurrentUser(null); setIsAdmin(false); setTempUser(null); setChurchCommunities([]);
-        setErrorMsg(''); setView('login'); setHasReadToday(false); setEditingUser(null); setCommunityMembers([]);
+        setErrorMsg(''); setView('login'); setHasReadToday(false); setEditingUser(null); setDepartmentMembers([]);
     };
 
     const handleChangeVersionStart = () => { setSelectedPlanType(null); setTempUser(null); setView('plan_type_select'); };
@@ -716,7 +716,7 @@ const App = () => {
                 setAdminSortBy={setAdminSortBy}
                 allUsers={allUsers}
                 allChurches={allChurches}
-                MOCK_COMMUNITIES={MOCK_COMMUNITIES}
+                DEFAULT_DEPARTMENTS={DEFAULT_DEPARTMENTS}
                 BIBLE_VERSIONS={BIBLE_VERSIONS}
                 announcementInput={announcementInput}
                 setAnnouncementInput={setAnnouncementInput}
@@ -784,7 +784,7 @@ const App = () => {
         return (
             <DashboardView
                 currentUser={currentUser}
-                communityMembers={communityMembers}
+                departmentMembers={departmentMembers}
                 allMembersForRace={allMembersForRace}
                 memos={memos}
                 currentMemo={currentMemo}
@@ -840,7 +840,7 @@ const App = () => {
                 getProgressRanking={() => formatProgressRanking(subgroupStats)}
                 getSubgroupDisplay={getSubgroupDisplay}
                 generateMemosHTML={generateMemosHTML}
-                getWeeklyMVP={() => getWeeklyMVP(communityMembers)}
+                getWeeklyMVP={() => getWeeklyMVP(departmentMembers)}
                 setView={setView}
                 isChurchAdmin={currentUser?.role === 'churchAdmin'}
             />

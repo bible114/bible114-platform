@@ -155,7 +155,7 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
         }));
         if (validComms.length === 0) { setErrorMsg('최소 하나의 부서를 추가해주세요.'); return; }
         setLoading(true);
-        await onChurchAdminSignup({ name: aName.trim(), email: aEmail.trim(), password: aPw, churchName: aChurchName.trim(), churchCode: aChurchCode.trim(), communities: validComms });
+        await onChurchAdminSignup({ name: aName.trim(), email: aEmail.trim(), password: aPw, churchName: aChurchName.trim(), churchCode: aChurchCode.trim(), departments: validComms });
         setLoading(false);
     };
 
@@ -341,7 +341,7 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                                 <p className="text-xs text-slate-500">부서(장년부, 청년부 등)와 소그룹(1구역, 2팀 등)을 설정합니다.</p>
                                 <p className="text-xs text-indigo-500 mt-1 font-bold">💡 조직은 관리자 메뉴에서도 언제든지 변경이 가능합니다.</p>
                             </div>
-                            <OrgEditor communities={orgComms} onChange={setOrgComms} />
+                            <OrgEditor departments={orgComms} onChange={setOrgComms} />
                             {errorMsg && <p className="text-red-500 text-xs text-center py-1">{errorMsg}</p>}
                             <button type="button" onClick={handleAdminSignupFinal} disabled={loading}
                                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50">

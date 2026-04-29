@@ -1,4 +1,4 @@
-import { MOCK_COMMUNITIES } from '../data/communities';
+import { DEFAULT_DEPARTMENTS } from '../data/departments';
 import { TOTAL_DAYS } from '../data/constants';
 
 export const calculateSubgroupStats = (members, communities) => {
@@ -10,24 +10,24 @@ export const calculateSubgroupStats = (members, communities) => {
         groups = [];
         communities.forEach(comm => {
             (comm.subgroups || []).forEach(sub => {
-                groups.push({ communityId: comm.id, communityName: comm.name, subgroupName: sub });
+                groups.push({ departmentId: comm.id, departmentName: comm.name, subgroupName: sub });
             });
         });
     } else {
         const seen = new Map();
         members.forEach(m => {
-            if (m.communityId && m.subgroupId) {
-                const key = `${m.communityId}_${m.subgroupId}`;
+            if (m.departmentId && m.subgroupId) {
+                const key = `${m.departmentId}_${m.subgroupId}`;
                 if (!seen.has(key)) {
-                    seen.set(key, { communityId: m.communityId, communityName: m.communityId, subgroupName: m.subgroupId });
+                    seen.set(key, { departmentId: m.departmentId, departmentName: m.departmentId, subgroupName: m.subgroupId });
                 }
             }
         });
         groups = Array.from(seen.values());
     }
 
-    groups.forEach(({ communityId, communityName, subgroupName }) => {
-        const subMembers = members.filter(m => m.communityId === communityId && m.subgroupId === subgroupName);
+    groups.forEach(({ departmentId, departmentName, subgroupName }) => {
+        const subMembers = members.filter(m => m.departmentId === departmentId && m.subgroupId === subgroupName);
         const totalCount = subMembers.length;
         const readTodayCount = subMembers.filter(m => m.lastReadDate === todayStr).length;
         const rate = totalCount > 0 ? Math.round((readTodayCount / totalCount) * 100) : 0;
@@ -42,15 +42,15 @@ export const calculateSubgroupStats = (members, communities) => {
         const progressRate = TOTAL_DAYS > 0 ? Math.round((avgDay / TOTAL_DAYS) * 100) : 0;
         const totalScore = subMembers.reduce((sum, m) => sum + (m.score || 0), 0);
 
-        stats[`${communityId}_${subgroupName}`] = {
+        stats[`${departmentId}_${subgroupName}`] = {
             rate,
             readCount: readTodayCount,
             totalCount,
             progressRate,
             avgDay: Math.round(avgDay),
             totalScore,
-            communityId,
-            communityName,
+            departmentId,
+            departmentName,
             subgroupName
         };
     });
@@ -58,8 +58,8 @@ export const calculateSubgroupStats = (members, communities) => {
     return stats;
 };
 
-export const getWeeklyMVP = (communityMembers) => {
-    if (!communityMembers || communityMembers.length === 0) return null;
+export const getWeeklyMVP = (departmentMembers) => {
+    if (!departmentMembers || departmentMembers.length === 0) return null;
 
     const now = new Date();
     const weekStart = new Date(now);
@@ -86,7 +86,7 @@ export const getWeeklyMVP = (communityMembers) => {
         }, 0);
     };
 
-    const weeklyWithCounts = communityMembers
+    const weeklyWithCounts = departmentMembers
         .map(m => ({
             ...m,
             weeklyCount: getWeeklyReadCount(m),
@@ -101,7 +101,7 @@ export const getWeeklyMVP = (communityMembers) => {
     const mvpByWeekly = weeklyWithCounts.length > 0 ? weeklyWithCounts[0] : null;
     const weeklyTop10 = weeklyWithCounts.slice(0, 10);
 
-    const totalWithCounts = communityMembers
+    const totalWithCounts = departmentMembers
         .map(m => ({
             ...m,
             totalCount: ((m.readCount || 1) - 1) * 365 + (m.currentDay || 0)
@@ -120,8 +120,8 @@ export const getWeeklyMVP = (communityMembers) => {
     };
 };
 
-export const getMonthlyContest = (currentUser, communityMembers, mockCommunities) => {
-    if (!currentUser || !currentUser.communityId) return [];
+export const getMonthlyContest = (currentUser, departmentMembers, mockDepartments) => {
+    if (!currentUser || !currentUser.departmentId) return [];
 
     const now = new Date();
     const year = now.getFullYear();
@@ -129,12 +129,12 @@ export const getMonthlyContest = (currentUser, communityMembers, mockCommunities
     const daysPassed = now.getDate();
     const monthStart = new Date(year, month, 1);
 
-    const comm = mockCommunities.find(c => c.id === currentUser.communityId);
+    const comm = mockDepartments.find(c => c.id === currentUser.departmentId);
     if (!comm) return [];
 
     const groupedBySubgroup = {};
     comm.subgroups.forEach(sub => {
-        groupedBySubgroup[sub] = communityMembers.filter(m => m.subgroupId === sub);
+        groupedBySubgroup[sub] = departmentMembers.filter(m => m.subgroupId === sub);
     });
 
     return Object.keys(groupedBySubgroup)
@@ -183,8 +183,8 @@ export const formatSubgroupRanking = (subgroupStats) => {
                 progressRate: data.progressRate || 0,
                 avgDay: data.avgDay || 0,
                 totalScore: data.totalScore || 0,
-                communityId: data.communityId,
-                communityName: data.communityName
+                departmentId: data.departmentId,
+                departmentName: data.departmentName
             };
         })
         .sort(function (a, b) {
@@ -204,8 +204,8 @@ export const formatProgressRanking = (subgroupStats) => {
                 avgDay: data.avgDay || 0,
                 totalScore: data.totalScore || 0,
                 totalCount: data.totalCount || 0,
-                communityId: data.communityId,
-                communityName: data.communityName
+                departmentId: data.departmentId,
+                departmentName: data.departmentName
             };
         })
         .filter(function (g) { return g.totalCount > 0; })
@@ -217,12 +217,12 @@ export const getAdminStats = (allUsers) => {
     const totalUsers = allUsers.length;
     const readToday = allUsers.filter(u => u.lastReadDate === todayStr).length;
     const readRate = totalUsers > 0 ? Math.round((readToday / totalUsers) * 100) : 0;
-    const communityStats = {};
-    MOCK_COMMUNITIES.forEach(comm => {
-        const commUsers = allUsers.filter(u => u.communityId === comm.id);
+    const departmentStats = {};
+    DEFAULT_DEPARTMENTS.forEach(comm => {
+        const commUsers = allUsers.filter(u => u.departmentId === comm.id);
         const commTotal = commUsers.length;
         const commRead = commUsers.filter(u => u.lastReadDate === todayStr).length;
-        communityStats[comm.id] = { name: comm.name, total: commTotal, readToday: commRead, rate: commTotal > 0 ? Math.round((commRead / commTotal) * 100) : 0 };
+        departmentStats[comm.id] = { name: comm.name, total: commTotal, readToday: commRead, rate: commTotal > 0 ? Math.round((commRead / commTotal) * 100) : 0 };
     });
-    return { totalUsers, readToday, readRate, communityStats };
+    return { totalUsers, readToday, readRate, departmentStats };
 };

@@ -2,14 +2,14 @@ import React from 'react';
 import Icon from '../Icon';
 
 const SubgroupRankingCard = ({
-    communityName,
+    departmentName,
     getSubgroupRanking,
     subgroupId,
-    communityId // 부서 ID 추가
+    departmentId // 부서 ID 추가
 }) => {
     const ranking = getSubgroupRanking();
-    const communityIds = [...new Set(ranking.map(g => g.communityId))];
-    const hasMultipleCommunities = communityIds.length > 1;
+    const departmentIds = [...new Set(ranking.map(g => g.departmentId))];
+    const hasMultipleDepartments = departmentIds.length > 1;
 
     return (
         <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-xl scroll-mt-20">
@@ -25,10 +25,10 @@ const SubgroupRankingCard = ({
                 ) : (
                     ranking.map((group, idx) => {
                         // 우리 그룹 여부 판별 (부서와 소그룹명이 모두 일치해야 함)
-                        const isMyGroup = group.communityId === communityId && group.name === subgroupId;
+                        const isMyGroup = group.departmentId === departmentId && group.name === subgroupId;
 
-                        const displayName = hasMultipleCommunities
-                            ? `${group.communityName} ${group.name}`
+                        const displayName = hasMultipleDepartments
+                            ? `${group.departmentName} ${group.name}`
                             : group.name;
 
                         return (

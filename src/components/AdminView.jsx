@@ -10,7 +10,7 @@ const AdminView = ({
     adminSortBy, setAdminSortBy,
     allUsers,
     allChurches,
-    MOCK_COMMUNITIES,
+    DEFAULT_DEPARTMENTS,
     BIBLE_VERSIONS,
     announcementInput, setAnnouncementInput,
     saveAnnouncement,
@@ -44,7 +44,7 @@ const AdminView = ({
 
     const seedFakeUsers = async (church) => {
         if (!confirm(`"${church.name}"에 가짜 교인 50명을 추가합니다. 계속하시겠습니까?`)) return;
-        const comms = church.communities || [];
+        const comms = church.departments || church.communities || [];
         if (comms.length === 0) {
             alert('먼저 이 교회의 조직(부서/소그룹)을 설정해주세요.'); return;
         }
@@ -85,7 +85,7 @@ const AdminView = ({
                     name, birthdate, password: '123456',
                     email: `${encodeURIComponent(name)}_${birthdate}@bible.local`,
                     role: 'member', churchId: church.id, churchName: church.name,
-                    communityId: comm.id, communityName: comm.name, subgroupId: subgroup,
+                    departmentId: comm.id, departmentName: comm.name, subgroupId: subgroup,
                     planId: '1year_revised', currentDay, readCount, score, streak,
                     lastReadDate, gender: isMale ? 'male' : 'female',
                     achievements: [], memos: {}, readHistory: [], dayOffset: 0,
@@ -249,7 +249,7 @@ const AdminView = ({
                                     className={`text-xs px-3 py-1.5 rounded-lg font-bold border ${adminFilter === 'all' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-slate-600 border-slate-200'}`}>
                                     전체
                                 </button>
-                                {MOCK_COMMUNITIES.map(c => (
+                                {DEFAULT_DEPARTMENTS.map(c => (
                                     <button key={c.id} onClick={() => setAdminFilter(c.id)}
                                         className={`text-xs px-3 py-1.5 rounded-lg font-bold border ${adminFilter === c.id ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-slate-600 border-slate-200'}`}>
                                         {c.name}
@@ -259,7 +259,7 @@ const AdminView = ({
                             <div className="max-h-[400px] overflow-y-auto">
                                 {(() => {
                                     const today = new Date();
-                                    let filtered = adminFilter === 'all' ? allUsers : allUsers.filter(u => u.communityId === adminFilter);
+                                    let filtered = adminFilter === 'all' ? allUsers : allUsers.filter(u => u.departmentId === adminFilter);
 
                                     if (adminViewMode === 'today') {
                                         const notRead = filtered.filter(u => u.lastReadDate !== todayStr);
@@ -308,7 +308,7 @@ const AdminView = ({
                                         if (adminSortBy === 'day') return (((b.readCount || 1) - 1) * 365 + (b.currentDay || 1)) - (((a.readCount || 1) - 1) * 365 + (a.currentDay || 1));
                                         if (adminSortBy === 'score') return (b.score || 0) - (a.score || 0);
                                         if (adminSortBy === 'subgroup') {
-                                            const c = (a.communityName || '').localeCompare(b.communityName || '', 'ko-KR');
+                                            const c = (a.departmentName || '').localeCompare(b.departmentName || '', 'ko-KR');
                                             return c !== 0 ? c : (a.subgroupId || '').localeCompare(b.subgroupId || '', 'ko-KR');
                                         }
                                         return b.daysSince - a.daysSince;
@@ -678,7 +678,7 @@ const AdminView = ({
                                             if (adminSortBy === 'day') return (((b.readCount || 1) - 1) * 365 + (b.currentDay || 1)) - (((a.readCount || 1) - 1) * 365 + (a.currentDay || 1));
                                             if (adminSortBy === 'score') return (b.score || 0) - (a.score || 0);
                                             if (adminSortBy === 'subgroup') {
-                                                const c = (a.communityName || '').localeCompare(b.communityName || '', 'ko-KR');
+                                                const c = (a.departmentName || '').localeCompare(b.departmentName || '', 'ko-KR');
                                                 return c !== 0 ? c : (a.subgroupId || '').localeCompare(b.subgroupId || '', 'ko-KR');
                                             }
                                             return 0;
@@ -694,7 +694,7 @@ const AdminView = ({
                                                     <td className="px-3 py-3 font-medium text-slate-900">{u.name}{readToday && <span className="ml-1 text-green-500">✓</span>}</td>
                                                     <td className="px-3 py-3 text-xs text-slate-500">{churchName}</td>
                                                     <td className="px-3 py-3">
-                                                        <span className="font-bold text-slate-700 text-xs">{u.communityName || '-'}</span>
+                                                        <span className="font-bold text-slate-700 text-xs">{u.departmentName || '-'}</span>
                                                         <span className="text-xs text-slate-400 block">{u.subgroupId || ''}</span>
                                                     </td>
                                                     <td className="px-3 py-3 text-center">
@@ -946,18 +946,18 @@ const AdminView = ({
                         <h3 className="font-bold text-lg border-b pb-2">회원 정보 수정 ({editingUser.name})</h3>
                         <div>
                             <label className="block text-xs font-bold text-slate-500 mb-1">소속 공동체</label>
-                            <select value={editingUser.communityId || ''} onChange={e => {
-                                const comm = MOCK_COMMUNITIES.find(c => c.id === e.target.value);
-                                if (comm) setEditingUser({ ...editingUser, communityId: comm.id, communityName: comm.name, subgroupId: comm.subgroups[0] });
+                            <select value={editingUser.departmentId || ''} onChange={e => {
+                                const comm = DEFAULT_DEPARTMENTS.find(c => c.id === e.target.value);
+                                if (comm) setEditingUser({ ...editingUser, departmentId: comm.id, departmentName: comm.name, subgroupId: comm.subgroups[0] });
                             }} className="w-full border rounded p-2 text-sm">
-                                {MOCK_COMMUNITIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                {DEFAULT_DEPARTMENTS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-slate-500 mb-1">소그룹</label>
                             <select value={editingUser.subgroupId || ''} onChange={e => setEditingUser({ ...editingUser, subgroupId: e.target.value })} className="w-full border rounded p-2 text-sm">
                                 {(() => {
-                                    const comm = MOCK_COMMUNITIES.find(c => c.id === editingUser.communityId);
+                                    const comm = DEFAULT_DEPARTMENTS.find(c => c.id === editingUser.departmentId);
                                     return comm ? comm.subgroups.map(s => <option key={s} value={s}>{s}</option>) : null;
                                 })()}
                             </select>

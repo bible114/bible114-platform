@@ -1,6 +1,6 @@
 import React from 'react';
 import Icon from '../Icon';
-import { MOCK_COMMUNITIES } from '../../data/communities';
+import { DEFAULT_DEPARTMENTS } from '../../data/departments';
 
 const RankingModal = ({
     show,
@@ -26,7 +26,7 @@ const RankingModal = ({
                     </div>
                     <div className="mb-3 flex flex-wrap gap-2">
                         <button onClick={() => setRankingCommunityFilter('all')} className={`px-2.5 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap transition-colors ${rankingCommunityFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>전체</button>
-                        {MOCK_COMMUNITIES.map(comm => (
+                        {DEFAULT_DEPARTMENTS.map(comm => (
                             <button key={comm.id} onClick={() => setRankingCommunityFilter(comm.id)} className={`px-2.5 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap transition-colors ${rankingCommunityFilter === comm.id ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{comm.name}</button>
                         ))}
                     </div>
@@ -35,7 +35,7 @@ const RankingModal = ({
                         {(() => {
                             let filteredRanking = progressRanking;
                             if (rankingCommunityFilter !== 'all') {
-                                const selectedComm = MOCK_COMMUNITIES.find(c => c.id === rankingCommunityFilter);
+                                const selectedComm = DEFAULT_DEPARTMENTS.find(c => c.id === rankingCommunityFilter);
                                 if (selectedComm) filteredRanking = progressRanking.filter(g => selectedComm.subgroups.indexOf(g.name) !== -1);
                             }
                             if (filteredRanking.length === 0) return <div className="text-center py-8 text-slate-500"><p className="text-sm">해당 부서의 소그룹 데이터가 없습니다.</p></div>;

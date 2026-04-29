@@ -1,6 +1,6 @@
 import React from 'react';
 import Icon from '../Icon';
-import { MOCK_COMMUNITIES } from '../../data/communities';
+import { DEFAULT_DEPARTMENTS } from '../../data/departments';
 
 const SubgroupChangeModal = ({ show, onClose, currentUser, changeSubgroup }) => {
     if (!show) return null;
@@ -17,7 +17,7 @@ const SubgroupChangeModal = ({ show, onClose, currentUser, changeSubgroup }) => 
                 </div>
                 <div className="grid grid-cols-2 gap-2 max-h-[300px] overflow-y-auto">
                     {(() => {
-                        const comm = MOCK_COMMUNITIES.find(c => c.id === currentUser.communityId);
+                        const comm = DEFAULT_DEPARTMENTS.find(c => c.id === currentUser.departmentId);
                         if (!comm) return null;
                         return comm.subgroups.map((sub, idx) => (
                             <button key={idx} onClick={() => changeSubgroup(sub)} disabled={sub === currentUser.subgroupId} className={`p-3 rounded-xl text-sm font-bold transition-all ${sub === currentUser.subgroupId ? 'bg-blue-100 text-blue-600 border-2 border-blue-300' : 'bg-slate-50 text-slate-700 border-2 border-slate-200 hover:border-blue-300'}`}>

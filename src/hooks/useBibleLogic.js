@@ -5,7 +5,7 @@ import { calculateSubgroupStats } from '../utils/statsUtils';
 // Sub-hooks
 import { useBibleContent } from './useBibleContent';
 import { useMemos } from './useMemos';
-import { useCommunity } from './useCommunity';
+import { useDepartment } from './useDepartment';
 import { useUserBibleActions } from './useUserBibleActions';
 
 export const useBibleLogic = (currentUser, setCurrentUser, view, communities) => {
@@ -16,11 +16,11 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities) =>
 
     // 2. Community & Stats Hook
     const {
-        subgroupStats, setSubgroupStats, communityMembers, setCommunityMembers,
+        subgroupStats, setSubgroupStats, departmentMembers, setDepartmentMembers,
         allMembersForRace, setAllMembersForRace, announcement, loadAnnouncement,
         kakaoLink, loadKakaoLink, setKakaoLink,
         loadAllMembers, changeSubgroup
-    } = useCommunity(currentUser, setCurrentUser);
+    } = useDepartment(currentUser, setCurrentUser);
 
     // 3. User Actions Hook
     const {
@@ -30,7 +30,7 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities) =>
         handleRead, handleRestart, changeStartDate, checkAchievements
     } = useUserBibleActions(
         currentUser, setCurrentUser,
-        setAllMembersForRace, setCommunityMembers, setSubgroupStats,
+        setAllMembersForRace, setDepartmentMembers, setSubgroupStats,
         loadAllMembers,
         setViewingDay,
         viewingDay
@@ -62,9 +62,9 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities) =>
             setAllMembersForRace(allMembers);
             if (allMembers && allMembers.length > 0) {
                 setSubgroupStats(calculateSubgroupStats(allMembers, communities));
-                if (currentUser.communityId) {
-                    const myCommMembers = allMembers.filter(m => m.communityId === currentUser.communityId);
-                    setCommunityMembers(myCommMembers);
+                if (currentUser.departmentId) {
+                    const myCommMembers = allMembers.filter(m => m.departmentId === currentUser.departmentId);
+                    setDepartmentMembers(myCommMembers);
                 }
             }
 
@@ -98,7 +98,7 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities) =>
         currentUser?.uid,
         // We removed viewingDay from here to prevent re-fetching on every day change
         loadAllMembers, loadMemos, loadAnnouncement, loadKakaoLink,
-        setAllMembersForRace, setSubgroupStats, setCommunityMembers, setReadHistory
+        setAllMembersForRace, setSubgroupStats, setDepartmentMembers, setReadHistory
     ]);
 
     // [Effect 3] Recompute subgroup stats when members OR communities change
@@ -121,7 +121,7 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities) =>
         // States
         verseData, setVerseData,
         subgroupStats, setSubgroupStats,
-        communityMembers, setCommunityMembers,
+        departmentMembers, setDepartmentMembers,
         allMembersForRace, setAllMembersForRace,
         memos, setMemos,
         readHistory, setReadHistory,

@@ -60,7 +60,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 const data = churchDoc.data();
                 setChurchInfo(data);
                 setNewChurchCode(data.churchCode || '');
-                setOrgComms(data.communities || []);
+                setOrgComms(data.departments || data.communities || []);
             }
         } catch (e) {
             console.error(e);
@@ -76,7 +76,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         setEditing({ uid: member.uid, mode });
         setNewPw('');
         if (mode === 'subgroup') {
-            setSgCommId(member.communityId || orgComms[0]?.id || '');
+            setSgCommId(member.departmentId || orgComms[0]?.id || '');
             setSgSubId(member.subgroupId || '');
         }
     };
@@ -104,14 +104,14 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         if (!comm) return;
         try {
             await db.collection('users').doc(member.uid).set({
-                communityId: sgCommId,
-                communityName: comm.name,
+                departmentId: sgCommId,
+                departmentName: comm.name,
                 subgroupId: sgSubId,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
             setMembers(prev => prev.map(m =>
                 m.uid === member.uid
-                    ? { ...m, communityId: sgCommId, communityName: comm.name, subgroupId: sgSubId }
+                    ? { ...m, departmentId: sgCommId, departmentName: comm.name, subgroupId: sgSubId }
                     : m
             ));
             setEditing(null);
@@ -173,7 +173,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         setSavingOrg(true);
         try {
             await db.collection('churches').doc(currentUser.churchId).set(
-                { communities: valid, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
+                { departments: valid, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
                 { merge: true }
             );
             setOrgComms(valid);
@@ -193,7 +193,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 key: `${comm.id}__${sub}`,
                 label: orgComms.length > 1 ? `${comm.name} · ${sub}` : sub,
                 members: members
-                    .filter(m => m.communityId === comm.id && m.subgroupId === sub)
+                    .filter(m => m.departmentId === comm.id && m.subgroupId === sub)
                     .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR')),
             }))
         ).filter(g => g.members.length > 0);
@@ -309,7 +309,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
                     {/* 부서/소그룹 */}
                     <td className="px-4 py-3.5">
-                        <div className="font-bold text-slate-700 text-sm">{m.communityName || '-'}</div>
+                        <div className="font-bold text-slate-700 text-sm">{m.departmentName || '-'}</div>
                         <div className="text-xs text-slate-400">{m.subgroupId || '미배정'}</div>
                     </td>
 
@@ -470,7 +470,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                     <p className="text-xs text-indigo-500 mt-1">💡 조직은 관리자 메뉴에서도 변경이 가능합니다.</p>
                                 </div>
                                 <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
-                                    <OrgEditor communities={orgComms} onChange={setOrgComms} />
+                                    <OrgEditor departments={orgComms} onChange={setOrgComms} />
                                     <div className="mt-4 pt-4 border-t border-slate-100">
                                         <button onClick={saveOrg} disabled={savingOrg}
                                             className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl text-sm disabled:opacity-50 hover:bg-indigo-700 transition-colors">

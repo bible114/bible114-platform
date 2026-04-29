@@ -160,7 +160,7 @@ export const downloadCSV = (allUsers) => {
     if (allUsers.length === 0) { alert("데이터가 없습니다."); return; }
     let csvContent = "\uFEFF이름,부서,소그룹,현재Day,총점수,연속일수,마지막읽은날,플랜ID\n";
     allUsers.forEach(u => {
-        csvContent += `${u.name},${u.communityName},${u.subgroupId},${u.currentDay},${u.score},${u.streak},${u.lastReadDate || '없음'},${u.planId || '1year_revised'}\r\n`;
+        csvContent += `${u.name},${u.departmentName},${u.subgroupId},${u.currentDay},${u.score},${u.streak},${u.lastReadDate || '없음'},${u.planId || '1year_revised'}\r\n`;
     });
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -273,7 +273,7 @@ export const downloadPeriodStatsCSV = async (db, allUsers, startDateStr, endDate
             }
 
             // Build user row
-            csvContent += `"${u.name}","${u.communityName || '-'}","${u.subgroupId || '-'}","${periodReadCount}"`;
+            csvContent += `"${u.name}","${u.departmentName || '-'}","${u.subgroupId || '-'}","${periodReadCount}"`;
             dateColumns.forEach(dateStr => {
                 const count = readDaysMap[dateStr];
                 // Don't format as an empty string, show '0' if it's 0 to be more spreadsheet friendly for sum

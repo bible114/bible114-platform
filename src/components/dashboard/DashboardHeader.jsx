@@ -12,7 +12,7 @@ const DashboardHeader = ({
     setShowCalendar,
     setShowReadingGuide,
     getEncouragementMessage,
-    communityName,
+    departmentName,
     setShowFullRanking,
     topProgressGroups,
     subgroupId,
@@ -78,7 +78,7 @@ const DashboardHeader = ({
                         <div className="flex flex-col gap-1">
                             <span className="text-xs font-bold text-blue-600 tracking-tight">{getEncouragementMessage()}</span>
                             <div className="flex items-center gap-2">
-                                <span className="text-xl font-black text-slate-900">🏆 {communityName}</span>
+                                <span className="text-xl font-black text-slate-900">🏆 {departmentName}</span>
                                 <span className="text-sm font-bold text-slate-400">누적 랭킹</span>
                             </div>
                         </div>

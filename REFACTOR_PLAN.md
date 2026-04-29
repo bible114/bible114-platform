@@ -181,14 +181,14 @@ Claude가 처음에 워크트리(`pensive-ardinghelli-13d10d`) 안의 코드만 
 
 작업하면서 이 섹션 업데이트:
 
-- [ ] Step 0 — 베이스라인 확정
-- [ ] Step 1 — 네이밍 통일 (community → department)
+- [x] Step 0 — 베이스라인 확정 (2026-04-29, 커밋 4개: 419d542 / 055cc3c / 98b0e36 / 83fe725, 빌드 ✓)
+- [ ] Step 1 — 네이밍 통일 (community → department) ← 사장님 결정 필요
 - [ ] Step 2 — useAuth 훅 추출
 - [ ] Step 3 — 관리자 뷰 정리
-- [ ] Step 4 — 보안 (비번 평문 제거, churchCode 해시, Firestore 룰)
-- [ ] Step 5 — subgroupId ID/Name 분리 (선택)
+- [ ] Step 4 — 보안 (비번 평문 제거, churchCode 해시, Firestore 룰) ← 사장님 결정 필요
+- [ ] Step 5 — subgroupId ID/Name 분리 (선택) ← 사장님 결정 필요
 - [ ] Step 6 — 디자인 토큰 / Tailwind 확장
-- [ ] Step 7 — LoginView 디자인 적용
+- [ ] Step 7 — LoginView 디자인 적용 ← 사장님 결정 필요
 
 ---
 

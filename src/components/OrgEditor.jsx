@@ -8,26 +8,26 @@ export const DEFAULT_ORG = [
     { id: 'kinder', name: '유치부', subgroups: ['유치부'] },
 ];
 
-const OrgEditor = ({ communities, onChange }) => {
+const OrgEditor = ({ departments, onChange }) => {
     const addCommunity = () =>
-        onChange([...communities, { id: `comm_${Date.now()}`, name: '', subgroups: [''] }]);
+        onChange([...departments, { id: `comm_${Date.now()}`, name: '', subgroups: [''] }]);
 
     const removeCommunity = (idx) =>
-        onChange(communities.filter((_, i) => i !== idx));
+        onChange(departments.filter((_, i) => i !== idx));
 
     const updateName = (idx, name) =>
-        onChange(communities.map((c, i) => i === idx ? { ...c, name } : c));
+        onChange(departments.map((c, i) => i === idx ? { ...c, name } : c));
 
     const addSubgroup = (idx) =>
-        onChange(communities.map((c, i) => i === idx ? { ...c, subgroups: [...c.subgroups, ''] } : c));
+        onChange(departments.map((c, i) => i === idx ? { ...c, subgroups: [...c.subgroups, ''] } : c));
 
     const updateSubgroup = (cIdx, sIdx, val) =>
-        onChange(communities.map((c, i) => i === cIdx
+        onChange(departments.map((c, i) => i === cIdx
             ? { ...c, subgroups: c.subgroups.map((s, j) => j === sIdx ? val : s) }
             : c));
 
     const removeSubgroup = (cIdx, sIdx) =>
-        onChange(communities.map((c, i) => i === cIdx
+        onChange(departments.map((c, i) => i === cIdx
             ? { ...c, subgroups: c.subgroups.filter((_, j) => j !== sIdx) }
             : c));
 
@@ -40,7 +40,7 @@ const OrgEditor = ({ communities, onChange }) => {
             </button>
 
             <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                {communities.map((comm, cIdx) => (
+                {departments.map((comm, cIdx) => (
                     <div key={comm.id} className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm">
                         <div className="flex gap-2 mb-2 items-center">
                             <span className="text-base shrink-0">🏛️</span>
@@ -88,7 +88,7 @@ const OrgEditor = ({ communities, onChange }) => {
                         </div>
                     </div>
                 ))}
-                {communities.length === 0 && (
+                {departments.length === 0 && (
                     <p className="text-center text-slate-300 text-sm py-4">
                         아직 부서가 없습니다. 아래 버튼으로 추가해주세요.
                     </p>

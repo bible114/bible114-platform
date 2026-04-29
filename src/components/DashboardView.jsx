@@ -2,7 +2,7 @@ import React from 'react';
 import { TOTAL_DAYS } from '../data/constants';
 import { BIBLE_VERSIONS, PLAN_TYPES } from '../data/bible_options';
 import { getLevelInfo } from '../data/levels';
-import { MOCK_COMMUNITIES } from '../data/communities';
+import { DEFAULT_DEPARTMENTS } from '../data/departments';
 
 // Modals
 import {
@@ -32,7 +32,7 @@ import {
 
 const DashboardView = ({
     currentUser,
-    communityMembers,
+    departmentMembers,
     allMembersForRace,
     memos,
     currentMemo,
@@ -96,7 +96,7 @@ const DashboardView = ({
 }) => {
     if (!currentUser) return null;
 
-    const { currentDay, score, subgroupId, communityName, planId, streak } = currentUser;
+    const { currentDay, score, subgroupId, departmentName, planId, streak } = currentUser;
     const [planType, version] = (planId || '1year_revised').split('_');
     const planTypeDataDashboard = PLAN_TYPES.find(p => p.id === planType);
     const planTypeName = planTypeDataDashboard ? planTypeDataDashboard.title : '성경 통독';
@@ -106,18 +106,18 @@ const DashboardView = ({
 
     // 격려 메시지 생성 로직
     const getEncouragementMessage = () => {
-        const runnersNearby = communityMembers.filter(r =>
+        const runnersNearby = departmentMembers.filter(r =>
             r.uid !== currentUser.uid &&
             Math.abs(r.currentDay - currentDay) <= 1
         ).length;
 
-        const runnersAhead = communityMembers.filter(r =>
+        const runnersAhead = departmentMembers.filter(r =>
             r.uid !== currentUser.uid &&
             r.currentDay > currentDay
         ).length;
 
-        const avgDayValue = communityMembers.length > 0
-            ? communityMembers.reduce((sum, m) => sum + m.currentDay, 0) / communityMembers.length
+        const avgDayValue = departmentMembers.length > 0
+            ? departmentMembers.reduce((sum, m) => sum + m.currentDay, 0) / departmentMembers.length
             : currentDay;
 
         const isBehind = currentDay < avgDayValue - 3;
@@ -151,13 +151,13 @@ const DashboardView = ({
     const top20Overall = allRacersSorted.slice(0, 20);
     const departmentChampions = {};
     const deptChampionsList = [];
-    const communityIds = ['senior', 'youth', 'middlehigh', 'elementary', 'kinder'];
+    const departmentIds = ['senior', 'youth', 'middlehigh', 'elementary', 'kinder'];
 
-    communityIds.forEach(commId => {
-        const communityEntry = MOCK_COMMUNITIES.find(c => c.id === commId);
-        const commName = communityEntry ? communityEntry.name : null;
+    departmentIds.forEach(commId => {
+        const departmentEntry = DEFAULT_DEPARTMENTS.find(c => c.id === commId);
+        const commName = departmentEntry ? departmentEntry.name : null;
         const deptTop = allRacersSorted.find(r =>
-            r.communityId === commId || (commName && r.communityName === commName)
+            r.departmentId === commId || (commName && r.departmentName === commName)
         );
         if (deptTop) {
             departmentChampions[deptTop.uid] = commName || (commId === 'senior' ? '장년부' : commId);
@@ -168,12 +168,12 @@ const DashboardView = ({
     const me = allRacersSorted.find(r => r.isMe);
     let nearbyRacers = [];
     if (me) {
-        const myCommId = me.communityId;
-        const myCommName = me.communityName;
+        const myCommId = me.departmentId;
+        const myCommName = me.departmentName;
         nearbyRacers = allRacersSorted
             .filter(r => {
-                const isSameComm = (myCommId && r.communityId === myCommId) ||
-                    (myCommName && r.communityName === myCommName);
+                const isSameComm = (myCommId && r.departmentId === myCommId) ||
+                    (myCommName && r.departmentName === myCommName);
                 const isCandidate = !myCommId && !myCommName ? true : isSameComm;
                 return isCandidate &&
                     !r.isMe &&
@@ -293,7 +293,7 @@ const DashboardView = ({
                 setShowCalendar={setShowCalendar}
                 setShowReadingGuide={setShowReadingGuide}
                 getEncouragementMessage={getEncouragementMessage}
-                communityName={communityName}
+                departmentName={departmentName}
                 setShowFullRanking={setShowFullRanking}
                 topProgressGroups={topProgressGroups}
                 subgroupId={subgroupId}
@@ -348,10 +348,10 @@ const DashboardView = ({
                         />
 
                         <SubgroupRankingCard
-                            communityName={communityName}
+                            departmentName={departmentName}
                             getSubgroupRanking={getSubgroupRanking}
                             subgroupId={subgroupId}
-                            communityId={currentUser ? currentUser.communityId : null}
+                            departmentId={currentUser ? currentUser.departmentId : null}
                         />
                     </div>
 
