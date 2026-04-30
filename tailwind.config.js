@@ -6,6 +6,18 @@ export default {
     ],
     theme: {
         extend: {
+            colors: {
+                cream: '#f5efe4',
+                'cream-card': '#fbf6ec',
+                ink: '#2b3a2a',
+                accent: '#b8702a',
+                hairline: 'rgba(43,58,42,0.16)',
+                pulse: '#3b6b4a',
+            },
+            fontFamily: {
+                serif: ['"Noto Serif KR"', '"Nanum Myeongjo"', 'Georgia', 'ui-serif', 'serif'],
+                sans: ['Pretendard', '"Apple SD Gothic Neo"', '"Noto Sans KR"', 'system-ui', 'sans-serif'],
+            },
             animation: {
                 wiggle: 'wiggle 0.3s ease-in-out infinite',
                 float: 'float 6s ease-in-out infinite',
