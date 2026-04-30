@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../utils/firebase';
 import OrgEditor from './OrgEditor';
 
+// ─── Daily verse data ─────────────────────────────────────────────────────────
 const DAILY_VERSES = [
     { text: "내 발에 등이요 내 길에 빛이니이다", ref: "시편 119:105" },
     { text: "여호와는 나의 목자시니 내게 부족함이 없으리로다", ref: "시편 23:1" },
@@ -23,6 +24,46 @@ const todayVerse = () => {
     return DAILY_VERSES[dayOfYear % DAILY_VERSES.length];
 };
 
+// ─── Mock live feed data ───────────────────────────────────────────────────────
+const LIVE_READERS = [
+    { name: '김은혜', church: '소망교회', book: '창세기 1장', at: '방금' },
+    { name: '이성민', church: '사랑의교회', book: '시편 23편', at: '1분 전' },
+    { name: '박지현', church: '온누리교회', book: '요한복음 3장', at: '2분 전' },
+    { name: '최순철', church: '광림교회', book: '로마서 8장', at: '3분 전' },
+    { name: '정미라', church: '영락교회', book: '이사야 40장', at: '4분 전' },
+    { name: '한재원', church: '지구촌교회', book: '마태복음 5장', at: '5분 전' },
+    { name: '윤서연', church: '새문안교회', book: '잠언 3장', at: '6분 전' },
+    { name: '강민준', church: '명성교회', book: '히브리서 11장', at: '7분 전' },
+];
+
+// ─── Mock platform stats ───────────────────────────────────────────────────────
+const PLATFORM = {
+    total_churches: 247,
+    total_readers: 18432,
+    finished_total: 6128,
+    chapters_read_today: 31204,
+    reading_now: 1284,
+};
+
+// ─── Sub-components ────────────────────────────────────────────────────────────
+
+const PulseIndicator = ({ color = '#b8702a', size = 7 }) => (
+    <span className="relative inline-flex" style={{ width: size * 3, height: size * 3 }}>
+        <span
+            className="absolute inset-0 rounded-full"
+            style={{
+                background: color,
+                animation: 'pulseRing 1.6s ease-out infinite',
+                opacity: 0.55,
+            }}
+        />
+        <span
+            className="relative rounded-full block m-auto"
+            style={{ width: size, height: size, background: color, marginTop: size }}
+        />
+    </span>
+);
+
 const AdminContactModal = ({ onClose }) => {
     const [admins, setAdmins] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -39,21 +80,21 @@ const AdminContactModal = ({ onClose }) => {
 
     return (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="bg-white rounded-t-3xl w-full max-w-md p-6 pb-8 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="bg-cream-card rounded-t-3xl w-full max-w-md p-6 pb-8 shadow-2xl border border-hairline" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-bold text-slate-800 text-base">교회별 관리자</h3>
-                    <button onClick={onClose} className="text-slate-400 text-xl leading-none">✕</button>
+                    <h3 className="font-serif font-semibold text-ink text-base">교회별 관리자</h3>
+                    <button onClick={onClose} className="text-ink/40 text-xl leading-none hover:text-ink/70 transition-colors">✕</button>
                 </div>
                 {loading ? (
-                    <p className="text-center text-slate-400 text-sm py-4">불러오는 중...</p>
+                    <p className="text-center text-ink/40 text-sm py-4">불러오는 중...</p>
                 ) : admins.length === 0 ? (
-                    <p className="text-center text-slate-400 text-sm py-4">등록된 관리자가 없습니다.</p>
+                    <p className="text-center text-ink/40 text-sm py-4">등록된 관리자가 없습니다.</p>
                 ) : (
                     <ul className="space-y-2 max-h-64 overflow-y-auto">
                         {admins.map((a, i) => (
-                            <li key={i} className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-3">
-                                <span className="text-sm font-bold text-slate-700">{a.churchName || '(교회명 없음)'}</span>
-                                <span className="text-sm text-slate-500">{a.name}</span>
+                            <li key={i} className="flex items-center justify-between bg-cream border border-hairline rounded-xl px-4 py-3">
+                                <span className="text-sm font-semibold text-ink">{a.churchName || '(교회명 없음)'}</span>
+                                <span className="text-sm text-ink/55">{a.name}</span>
                             </li>
                         ))}
                     </ul>
@@ -63,20 +104,33 @@ const AdminContactModal = ({ onClose }) => {
     );
 };
 
+// ─── Input style helper ────────────────────────────────────────────────────────
+const inputCls = "w-full bg-cream border border-hairline rounded-lg px-3.5 py-3 text-sm text-ink placeholder-ink/40 focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent/60 transition-all font-sans";
+
+// ─── Main LoginView ────────────────────────────────────────────────────────────
 const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurchAdminSignup, errorMsg, setErrorMsg }) => {
-    const [tab, setTab] = useState('login');
-    const [loginType, setLoginType] = useState('member');
-    const [signupType, setSignupType] = useState(null);
+    // Tab: 'member' | 'admin' | 'memberSignup' | 'adminSignup'
+    const [activeTab, setActiveTab] = useState('member');
     const [signupStep, setSignupStep] = useState(1);
     const [showAdminContact, setShowAdminContact] = useState(false);
-    const [userCount, setUserCount] = useState(null);
 
+    // Live counter
+    const [readingNow, setReadingNow] = useState(PLATFORM.reading_now);
+    useEffect(() => {
+        const id = setInterval(() => {
+            setReadingNow(n => Math.max(1100, n + (Math.floor(Math.random() * 7) - 3)));
+        }, 2200);
+        return () => clearInterval(id);
+    }, []);
+
+    // Login form state
     const [loginName, setLoginName] = useState('');
     const [loginBirthdate, setLoginBirthdate] = useState('');
     const [loginChurchId, setLoginChurchId] = useState('');
     const [loginEmail, setLoginEmail] = useState('');
     const [loginPw, setLoginPw] = useState('');
 
+    // Member signup state
     const [mName, setMName] = useState('');
     const [mBirthdate, setMBirthdate] = useState('');
     const [mPw, setMPw] = useState('');
@@ -84,32 +138,27 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
     const [mChurchId, setMChurchId] = useState('');
     const [mChurchCode, setMChurchCode] = useState('');
 
+    // Admin signup state
     const [aName, setAName] = useState('');
     const [aEmail, setAEmail] = useState('');
     const [aPw, setAPw] = useState('');
     const [aPwConfirm, setAPwConfirm] = useState('');
     const [aChurchName, setAChurchName] = useState('');
     const [aChurchCode, setAChurchCode] = useState('');
-
     const [orgComms, setOrgComms] = useState([{ id: 'comm_0', name: '', subgroups: [{ id: 'sub_0', name: '' }] }]);
+
     const [churches, setChurches] = useState([]);
     const [loading, setLoading] = useState(false);
 
     const verse = todayVerse();
 
     useEffect(() => {
-        db.collection('users').where('role', '==', 'member').get()
-            .then(snap => setUserCount(snap.size))
-            .catch(() => {});
-    }, []);
-
-    useEffect(() => {
-        if (signupType === 'member' || loginType === 'member') {
+        if (activeTab === 'member' || activeTab === 'memberSignup') {
             db.collection('churches').get().then(snap => {
                 setChurches(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR')));
             }).catch(() => {});
         }
-    }, [signupType, loginType]);
+    }, [activeTab]);
 
     const clearError = () => setErrorMsg('');
 
@@ -163,196 +212,351 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
         setLoading(false);
     };
 
-    const resetAdminSignup = () => { setSignupType(null); setSignupStep(1); setOrgComms([{ id: 'comm_0', name: '', subgroups: [{ id: 'sub_0', name: '' }] }]); clearError(); };
+    const resetAdminSignup = () => { setSignupStep(1); setOrgComms([{ id: 'comm_0', name: '', subgroups: [{ id: 'sub_0', name: '' }] }]); clearError(); };
 
-    const inputCls = "w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all";
+    // Selected church display name
+    const selectedChurchName = churches.find(c => c.id === loginChurchId)?.name || null;
 
+    // ── Render login card content ────────────────────────────────────────────
+    const renderCard = () => {
+        // ── Member Login ──
+        if (activeTab === 'member') return (
+            <form onSubmit={handleMemberLogin} className="space-y-3.5">
+                {/* Church selector */}
+                <div>
+                    <label className="block text-[11px] font-semibold text-ink/55 mb-1.5 uppercase tracking-wide">출석 교회</label>
+                    {selectedChurchName ? (
+                        <div className="flex items-center gap-2.5 bg-cream border border-hairline rounded-lg px-3.5 py-2.5">
+                            <div className="w-7 h-7 rounded-md bg-ink text-cream flex items-center justify-center font-serif text-[11px] font-bold shrink-0">
+                                {selectedChurchName[0]}
+                            </div>
+                            <span className="flex-1 text-sm font-semibold text-ink">{selectedChurchName}</span>
+                            <button type="button" onClick={() => setLoginChurchId('')} className="text-[11px] text-ink/40 hover:text-ink/70 transition-colors">변경 ↓</button>
+                        </div>
+                    ) : (
+                        <select value={loginChurchId} onChange={e => setLoginChurchId(e.target.value)} className={inputCls}>
+                            <option value="">교회를 선택하세요</option>
+                            {churches.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                    )}
+                </div>
+                <div>
+                    <label className="block text-[11px] font-semibold text-ink/55 mb-1.5 uppercase tracking-wide">이름</label>
+                    <input type="text" value={loginName} onChange={e => setLoginName(e.target.value)} placeholder="홍길동" className={inputCls} />
+                </div>
+                <div>
+                    <label className="block text-[11px] font-semibold text-ink/55 mb-1.5 uppercase tracking-wide">생년월일</label>
+                    <input type="text" inputMode="numeric" value={loginBirthdate} onChange={e => setLoginBirthdate(e.target.value.replace(/\D/g, ''))}
+                        placeholder="19900101" maxLength={8} className={inputCls} />
+                </div>
+                <div>
+                    <label className="block text-[11px] font-semibold text-ink/55 mb-1.5 uppercase tracking-wide">비밀번호</label>
+                    <input type="password" value={loginPw} onChange={e => setLoginPw(e.target.value)} placeholder="••••••••" className={inputCls} />
+                </div>
+                {errorMsg && <p className="text-red-500 text-xs text-center py-1 bg-red-50 rounded-lg px-3">{errorMsg}</p>}
+                <button type="submit" disabled={loading}
+                    className="w-full bg-ink text-cream font-semibold py-3.5 rounded-full text-sm flex items-center justify-center gap-2 hover:bg-ink/90 transition-colors disabled:opacity-50 mt-1">
+                    {loading ? '로그인 중...' : <>오늘의 본문 펼치기 <span className="opacity-60">→</span></>}
+                </button>
+                <div className="flex items-center justify-between pt-1">
+                    <button type="button" onClick={() => { setActiveTab('memberSignup'); clearError(); }}
+                        className="text-[12px] text-ink/50 hover:text-ink transition-colors">
+                        처음 오셨나요? <span className="underline underline-offset-2 font-semibold">회원가입</span>
+                    </button>
+                    <button type="button" onClick={() => setShowAdminContact(true)}
+                        className="text-[11px] text-ink/40 hover:text-ink/60 transition-colors underline underline-offset-2">
+                        비밀번호 문의
+                    </button>
+                </div>
+            </form>
+        );
+
+        // ── Admin Login ──
+        if (activeTab === 'admin') return (
+            <form onSubmit={handleAdminLogin} className="space-y-3.5">
+                <div className="bg-accent/10 border border-accent/25 rounded-lg px-3.5 py-2.5 flex gap-2.5 items-start">
+                    <div className="w-5 h-5 rounded-full bg-accent text-cream flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">!</div>
+                    <p className="text-[12px] text-ink leading-relaxed"><b>교회 관리자 전용</b>입니다. 구역 편성, 성도 관리, 통독 진행률 대시보드를 사용할 수 있어요.</p>
+                </div>
+                <div>
+                    <label className="block text-[11px] font-semibold text-ink/55 mb-1.5 uppercase tracking-wide">관리자 이메일</label>
+                    <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} placeholder="admin@church.kr" className={inputCls} />
+                </div>
+                <div>
+                    <label className="block text-[11px] font-semibold text-ink/55 mb-1.5 uppercase tracking-wide">비밀번호</label>
+                    <input type="password" value={loginPw} onChange={e => setLoginPw(e.target.value)} placeholder="••••••••" className={inputCls} />
+                </div>
+                {errorMsg && <p className="text-red-500 text-xs text-center py-1 bg-red-50 rounded-lg px-3">{errorMsg}</p>}
+                <button type="submit" disabled={loading}
+                    className="w-full bg-accent text-cream font-semibold py-3.5 rounded-full text-sm flex items-center justify-center gap-2 hover:bg-accent/90 transition-colors disabled:opacity-50 mt-1">
+                    {loading ? '로그인 중...' : <>관리자 대시보드 열기 <span className="opacity-70">→</span></>}
+                </button>
+                <div className="pt-1 text-center">
+                    <span className="text-[12px] text-ink/50">교회 코드가 없으신가요?{' '}</span>
+                    <button type="button" onClick={() => { setActiveTab('adminSignup'); clearError(); }}
+                        className="text-[12px] text-ink font-semibold underline underline-offset-2 hover:text-accent transition-colors">
+                        교회 등록 신청
+                    </button>
+                </div>
+            </form>
+        );
+
+        // ── Member Signup ──
+        if (activeTab === 'memberSignup') return (
+            <form onSubmit={handleMemberSignup} className="space-y-3">
+                <button type="button" onClick={() => { setActiveTab('member'); clearError(); }}
+                    className="text-[12px] text-ink/50 hover:text-ink flex items-center gap-1 mb-1 transition-colors">← 로그인으로</button>
+                <input type="text" value={mName} onChange={e => setMName(e.target.value)} placeholder="이름" className={inputCls} />
+                <input type="text" inputMode="numeric" value={mBirthdate} onChange={e => setMBirthdate(e.target.value.replace(/\D/g, ''))}
+                    placeholder="생년월일 8자리 (예: 19900101)" maxLength={8} className={inputCls} />
+                <input type="password" value={mPw} onChange={e => setMPw(e.target.value)} placeholder="비밀번호 (6자리 이상)" className={inputCls} />
+                <input type="password" value={mPwConfirm} onChange={e => setMPwConfirm(e.target.value)} placeholder="비밀번호 확인"
+                    className={`w-full bg-cream border rounded-lg px-3.5 py-3 text-sm placeholder-ink/40 focus:outline-none focus:ring-2 transition-all font-sans ${mPwConfirm && mPw !== mPwConfirm ? 'border-red-400 focus:ring-red-400/40' : 'border-hairline focus:ring-accent/40 focus:border-accent/60'}`} />
+                <select value={mChurchId} onChange={e => setMChurchId(e.target.value)} className={inputCls}>
+                    <option value="">교회를 선택하세요</option>
+                    {churches.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <input type="password" value={mChurchCode} onChange={e => setMChurchCode(e.target.value)}
+                    placeholder="교회 입장코드 (관리자에게 문의)" className={inputCls} />
+                {errorMsg && <p className="text-red-500 text-xs text-center py-1 bg-red-50 rounded-lg px-3">{errorMsg}</p>}
+                <button type="submit" disabled={loading}
+                    className="w-full bg-ink text-cream font-semibold py-3.5 rounded-full text-sm flex items-center justify-center gap-2 hover:bg-ink/90 transition-colors disabled:opacity-50">
+                    {loading ? '가입 중...' : '교인으로 가입하기'}
+                </button>
+            </form>
+        );
+
+        // ── Admin Signup Step 1 ──
+        if (activeTab === 'adminSignup' && signupStep === 1) return (
+            <form onSubmit={handleAdminStep1} className="space-y-3">
+                <button type="button" onClick={() => { setActiveTab('admin'); resetAdminSignup(); clearError(); }}
+                    className="text-[12px] text-ink/50 hover:text-ink flex items-center gap-1 mb-1 transition-colors">← 뒤로</button>
+                <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-bold text-accent bg-accent/10 px-2 py-1 rounded-full">1단계 / 2단계</span>
+                    <span className="text-[11px] text-ink/40">기본 정보 입력</span>
+                </div>
+                <input type="text" value={aName} onChange={e => setAName(e.target.value)} placeholder="이름" className={inputCls} />
+                <input type="email" value={aEmail} onChange={e => setAEmail(e.target.value)} placeholder="이메일" className={inputCls} />
+                <input type="password" value={aPw} onChange={e => setAPw(e.target.value)} placeholder="비밀번호 (6자리 이상)" className={inputCls} />
+                <input type="password" value={aPwConfirm} onChange={e => setAPwConfirm(e.target.value)} placeholder="비밀번호 확인"
+                    className={`w-full bg-cream border rounded-lg px-3.5 py-3 text-sm placeholder-ink/40 focus:outline-none focus:ring-2 transition-all font-sans ${aPwConfirm && aPw !== aPwConfirm ? 'border-red-400 focus:ring-red-400/40' : 'border-hairline focus:ring-accent/40 focus:border-accent/60'}`} />
+                <div className="border-t border-hairline pt-3 space-y-2">
+                    <p className="text-[11px] text-ink/55 font-semibold uppercase tracking-wide">교회 정보</p>
+                    <input type="text" value={aChurchName} onChange={e => setAChurchName(e.target.value)} placeholder="교회 이름 (예: ○○교회)" className={inputCls} />
+                    <input type="text" value={aChurchCode} onChange={e => setAChurchCode(e.target.value)} placeholder="교회 입장코드 설정 (4자리 이상)" className={inputCls} />
+                    <p className="text-[10px] text-ink/40 ml-1">입장코드는 교인들이 가입할 때 사용합니다. 나중에 변경 가능합니다.</p>
+                </div>
+                {errorMsg && <p className="text-red-500 text-xs text-center py-1 bg-red-50 rounded-lg px-3">{errorMsg}</p>}
+                <button type="submit"
+                    className="w-full bg-accent text-cream font-semibold py-3.5 rounded-full text-sm flex items-center justify-center gap-2 hover:bg-accent/90 transition-colors">
+                    다음: 조직 구성 →
+                </button>
+            </form>
+        );
+
+        // ── Admin Signup Step 2 ──
+        if (activeTab === 'adminSignup' && signupStep === 2) return (
+            <div className="space-y-4">
+                <button type="button" onClick={() => { setSignupStep(1); clearError(); }}
+                    className="text-[12px] text-ink/50 hover:text-ink flex items-center gap-1 transition-colors">← 뒤로</button>
+                <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-accent bg-accent/10 px-2 py-1 rounded-full">2단계 / 2단계</span>
+                    <span className="text-[11px] text-ink/40">조직 구성</span>
+                </div>
+                <div className="bg-accent/8 rounded-xl p-3 border border-accent/20">
+                    <p className="text-sm font-semibold text-ink mb-1">교회 조직을 구성해주세요</p>
+                    <p className="text-[11px] text-ink/60">부서(장년부, 청년부 등)와 소그룹(1구역, 2팀 등)을 설정합니다.</p>
+                    <p className="text-[11px] text-accent mt-1 font-semibold">조직은 관리자 메뉴에서도 언제든지 변경이 가능합니다.</p>
+                </div>
+                <OrgEditor departments={orgComms} onChange={setOrgComms} />
+                {errorMsg && <p className="text-red-500 text-xs text-center py-1 bg-red-50 rounded-lg px-3">{errorMsg}</p>}
+                <button type="button" onClick={handleAdminSignupFinal} disabled={loading}
+                    className="w-full bg-accent text-cream font-semibold py-3.5 rounded-full text-sm flex items-center justify-center gap-2 hover:bg-accent/90 transition-colors disabled:opacity-50">
+                    {loading ? '교회 만드는 중...' : '교회 만들기 완료'}
+                </button>
+            </div>
+        );
+
+        return null;
+    };
+
+    const isSignupTab = activeTab === 'memberSignup' || activeTab === 'adminSignup';
+    const cardTitle = {
+        member: '로그인',
+        admin: '관리자 로그인',
+        memberSignup: '성도 회원가입',
+        adminSignup: '교회 등록',
+    }[activeTab] || '로그인';
+
+    // ── DESKTOP Layout (md+) / MOBILE Layout ──────────────────────────────────
     return (
-        <div className="min-h-screen bg-gradient-to-b from-blue-600 via-blue-700 to-indigo-800 flex flex-col">
+        <div className="min-h-screen bg-cream relative md:grid md:grid-cols-[1.15fr_1fr]">
 
-            {/* 히어로 */}
-            <div className="flex-shrink-0 pt-12 pb-8 px-6 text-center">
-                <div className="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-3xl flex items-center justify-center text-5xl mx-auto mb-4 shadow-lg border border-white/30">
-                    📖
-                </div>
-                <h1 className="text-3xl font-extrabold text-white tracking-tight">천로역정 성경 레이스</h1>
-                <p className="text-blue-200 text-sm mt-1.5">여러 교회가 함께하는 성경읽기</p>
+            {/* paper warmth gradient overlay */}
+            <div className="absolute inset-0 pointer-events-none opacity-55"
+                style={{
+                    backgroundImage:
+                        'radial-gradient(circle at 18% 12%, rgba(184,112,42,0.06), transparent 42%),' +
+                        'radial-gradient(circle at 82% 88%, rgba(43,58,42,0.05), transparent 40%)',
+                }}
+            />
 
-                {/* 참여자 수 */}
-                {userCount !== null && (
-                    <div className="mt-4 inline-flex items-center gap-2 bg-white/15 backdrop-blur-sm border border-white/25 rounded-full px-4 py-1.5">
-                        <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-                        <span className="text-white text-xs font-semibold">현재 {userCount.toLocaleString()}명이 함께 읽고 있습니다</span>
+            {/* ═══ TOP NAV (desktop only) ══════════════════════════════════════ */}
+            <div className="hidden md:flex absolute top-0 left-0 right-0 h-16 items-center justify-between px-14 z-10">
+                {/* Logo */}
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-[7px] bg-ink text-cream flex items-center justify-center font-serif font-bold text-[14px] tracking-wide">
+                        114
                     </div>
-                )}
-
-                {/* 오늘의 말씀 */}
-                <div className="mt-4 bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl px-5 py-3 text-left mx-auto max-w-xs">
-                    <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-1">오늘의 말씀</p>
-                    <p className="text-white text-xs leading-relaxed italic">"{verse.text}"</p>
-                    <p className="text-blue-200 text-[10px] mt-1 text-right">— {verse.ref}</p>
+                    <span className="font-serif text-[17px] font-semibold text-ink tracking-tight">성경통독 114</span>
                 </div>
+                {/* Nav links */}
+                <nav className="flex gap-7 text-[13px] text-ink/55">
+                    <span className="text-ink border-b border-b-accent pb-0.5 cursor-default">소개</span>
+                    <span className="cursor-default hover:text-ink transition-colors">참여 교회</span>
+                    <span className="cursor-default hover:text-ink transition-colors">읽는 방법</span>
+                    <span className="cursor-default hover:text-ink transition-colors">도움말</span>
+                </nav>
+                {/* CTA */}
+                <button
+                    onClick={() => { setActiveTab('adminSignup'); clearError(); }}
+                    className="text-[12px] text-ink/55 hover:text-ink transition-colors cursor-pointer">
+                    교회 등록 신청 →
+                </button>
             </div>
 
-            {/* 폼 카드 */}
-            <div className="flex-1 bg-white rounded-t-3xl shadow-2xl">
-                {/* 탭 */}
-                <div className="flex border-b border-slate-100 mx-6 pt-5">
-                    {[['login', '로그인'], ['signup', '회원가입']].map(([t, label]) => (
-                        <button key={t} type="button"
-                            onClick={() => { setTab(t); setSignupType(null); setSignupStep(1); clearError(); }}
-                            className={`flex-1 pb-3 text-sm font-bold transition-all border-b-2 ${tab === t ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
-                            {label}
-                        </button>
+            {/* ═══ LEFT — Editorial Hero (desktop) / Hero strip (mobile) ═══════ */}
+            <div className="relative z-[1] flex flex-col pt-16 pb-8 px-6 md:pt-[100px] md:pb-10 md:px-14">
+
+                {/* Mobile logo bar */}
+                <div className="flex items-center gap-2 mb-6 md:hidden">
+                    <div className="w-7 h-7 rounded-[6px] bg-ink text-cream flex items-center justify-center font-serif font-bold text-[13px]">114</div>
+                    <span className="font-serif text-base font-semibold text-ink">성경통독 114</span>
+                </div>
+
+                {/* Eyebrow — live counter */}
+                <div className="flex items-center gap-2.5 mb-5">
+                    <PulseIndicator color="#b8702a" size={7} />
+                    <span className="text-[12px] tracking-[0.14em] uppercase text-ink/55 font-semibold">
+                        지금{' '}
+                        <span className="text-ink tabular-nums">{readingNow.toLocaleString()}</span>
+                        명이 함께 펼치는 중
+                    </span>
+                </div>
+
+                {/* H1 Headline */}
+                <h1 className="font-serif font-semibold text-4xl md:text-5xl lg:text-[56px] leading-[1.16] tracking-tight mb-4 whitespace-pre-line">
+                    {"혼자가 아니라,\n"}
+                    <span>
+                        <span className="text-accent">같이</span> 펼칩니다.
+                    </span>
+                </h1>
+
+                {/* Subhead */}
+                <p className="text-[14px] md:text-[15px] leading-[1.65] text-ink/78 max-w-md mb-5">
+                    전국 <b className="text-ink">{PLATFORM.total_churches}개 교회</b>,{' '}
+                    <b className="text-ink">{PLATFORM.total_readers.toLocaleString()}명</b>의 성도가
+                    오늘도 같은 페이지를 넘기고 있습니다. 천로역정 같은 통독의 길, 함께 걸어요.
+                </p>
+
+                {/* Stat strip */}
+                <div className="grid grid-cols-4 border-t border-b border-hairline py-4 mb-5">
+                    {[
+                        { num: PLATFORM.total_churches.toString(), label: '함께하는 교회' },
+                        { num: PLATFORM.total_readers.toLocaleString(), label: '참여 성도' },
+                        { num: PLATFORM.finished_total.toLocaleString(), label: '올해 완독자' },
+                        { num: PLATFORM.chapters_read_today.toLocaleString(), label: '오늘 읽은 장수' },
+                    ].map((s, i) => (
+                        <div key={i} className={`${i > 0 ? 'border-l border-hairline pl-3 md:pl-4' : ''} pr-3 md:pr-4`}>
+                            <div className="font-serif text-[20px] md:text-[26px] font-semibold tracking-tight tabular-nums leading-tight">{s.num}</div>
+                            <div className="text-[10px] md:text-[11px] text-ink/55 mt-1 leading-tight">{s.label}</div>
+                        </div>
                     ))}
                 </div>
 
-                <div className="px-6 py-6">
+                {/* Today's passage card */}
+                <div className="bg-cream-card border border-hairline rounded-sm px-5 py-4 max-w-lg relative mb-5">
+                    <div className="absolute top-[-1px] left-[22px] w-9 h-3 bg-accent rounded-b-sm" />
+                    <p className="font-serif text-[14px] md:text-[16px] leading-[1.65] text-ink/85 italic font-medium mb-2">
+                        "{verse.text}"
+                    </p>
+                    <div className="font-serif text-[12px] md:text-[13px] text-ink/55 text-right">— {verse.ref}</div>
+                </div>
 
-                    {/* ── 로그인 ── */}
-                    {tab === 'login' && (
-                        <>
-                            {/* 교인 / 관리자 토글 */}
-                            <div className="flex gap-1.5 mb-5 bg-slate-100 p-1 rounded-xl">
-                                {[['member', '교인'], ['admin', '교회 관리자']].map(([t, label]) => (
-                                    <button key={t} type="button"
-                                        onClick={() => { setLoginType(t); clearError(); }}
-                                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${loginType === t ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>
-                                        {label}
-                                    </button>
-                                ))}
-                            </div>
+                {/* Live feed — hidden on mobile to keep it clean */}
+                <div className="hidden md:flex flex-col flex-1 min-h-0 overflow-hidden">
+                    <div className="flex items-center justify-between mb-2.5">
+                        <span className="text-[11px] text-ink/55 tracking-[0.08em] uppercase font-semibold">방금 펼친 성도들</span>
+                        <span className="flex items-center gap-1.5 text-[11px] text-ink/55">
+                            <PulseIndicator color="#3b6b4a" size={5} /> 실시간
+                        </span>
+                    </div>
+                    <div
+                        className="flex-1 overflow-hidden relative min-h-0"
+                        style={{ maskImage: 'linear-gradient(180deg, #000 70%, transparent)' }}
+                    >
+                        <div style={{ animation: 'scrollFeed 32s linear infinite' }}>
+                            {[...LIVE_READERS, ...LIVE_READERS].map((r, i) => (
+                                <div key={i} className="flex items-center gap-3 mb-2.5">
+                                    <div className="w-7 h-7 rounded-full bg-ink text-cream flex items-center justify-center font-serif text-[11px] font-bold shrink-0">
+                                        {r.name[0]}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-baseline gap-2 flex-wrap">
+                                            <span className="font-serif text-[14px] font-semibold text-ink">{r.name}</span>
+                                            <span className="text-[11px] text-accent">{r.church}</span>
+                                            <span className="text-[11px] text-ink/55 ml-auto">{r.at}</span>
+                                        </div>
+                                        <div className="text-[12px] text-ink/65 mt-0.5">{r.book} 펼침</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-                            {loginType === 'member' ? (
-                                <form onSubmit={handleMemberLogin} className="space-y-3">
-                                    <select value={loginChurchId} onChange={e => setLoginChurchId(e.target.value)} className={inputCls}>
-                                        <option value="">교회를 선택하세요</option>
-                                        {churches.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                    </select>
-                                    <input type="text" value={loginName} onChange={e => setLoginName(e.target.value)}
-                                        placeholder="이름" className={inputCls} />
-                                    <input type="text" inputMode="numeric" value={loginBirthdate} onChange={e => setLoginBirthdate(e.target.value.replace(/\D/g, ''))}
-                                        placeholder="생년월일 8자리 (예: 19900101)" maxLength={8} className={inputCls} />
-                                    <input type="password" value={loginPw} onChange={e => setLoginPw(e.target.value)}
-                                        placeholder="비밀번호" className={inputCls} />
-                                    {errorMsg && <p className="text-red-500 text-xs text-center py-1">{errorMsg}</p>}
-                                    <button type="submit" disabled={loading}
-                                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50 mt-1">
-                                        {loading ? '로그인 중...' : '입장하기'}
-                                    </button>
-                                    <button type="button" onClick={() => setShowAdminContact(true)}
-                                        className="w-full text-[11px] text-blue-500 text-center mt-0.5 hover:text-blue-700 transition-colors underline underline-offset-2">
-                                        비밀번호를 잊으셨으면 각 교회 관리자에게 문의해 주세요.
-                                    </button>
-                                </form>
-                            ) : (
-                                <form onSubmit={handleAdminLogin} className="space-y-3">
-                                    <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)}
-                                        placeholder="이메일" className={inputCls} />
-                                    <input type="password" value={loginPw} onChange={e => setLoginPw(e.target.value)}
-                                        placeholder="비밀번호" className={inputCls} />
-                                    {errorMsg && <p className="text-red-500 text-xs text-center py-1">{errorMsg}</p>}
-                                    <button type="submit" disabled={loading}
-                                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50 mt-1">
-                                        {loading ? '로그인 중...' : '관리자 로그인'}
-                                    </button>
-                                </form>
-                            )}
-                        </>
-                    )}
+            {/* ═══ RIGHT — Login Card ══════════════════════════════════════════ */}
+            <div className="relative z-[1] flex flex-col px-5 pb-10 md:pt-[100px] md:pb-10 md:px-7 md:pl-7 md:items-center md:justify-center">
+                <div
+                    className="w-full max-w-sm md:max-w-none bg-[#fbf7ee] border border-hairline rounded-lg p-7 md:p-9"
+                    style={{ boxShadow: '0 1px 0 rgba(255,255,255,0.6) inset, 0 30px 60px -30px rgba(43,58,42,0.28)' }}
+                >
+                    {/* Card header */}
+                    <div className="mb-5">
+                        <h2 className="font-serif text-[26px] font-semibold text-ink tracking-tight">{cardTitle}</h2>
+                    </div>
 
-                    {/* ── 회원가입 - 유형 선택 ── */}
-                    {tab === 'signup' && !signupType && (
-                        <div className="space-y-3">
-                            <p className="text-sm text-slate-500 text-center mb-2">가입 유형을 선택해주세요</p>
-                            <button type="button" onClick={() => { setSignupType('member'); clearError(); }}
-                                className="w-full p-4 rounded-2xl border-2 border-blue-100 bg-blue-50 text-left hover:border-blue-400 transition-all">
-                                <div className="font-bold text-blue-700 text-sm">👤 일반 교인으로 가입</div>
-                                <div className="text-xs text-slate-500 mt-0.5">교회 관리자가 만든 교회 페이지에 참여합니다</div>
-                            </button>
-                            <button type="button" onClick={() => { setSignupType('churchAdmin'); setSignupStep(1); clearError(); }}
-                                className="w-full p-4 rounded-2xl border-2 border-indigo-100 bg-indigo-50 text-left hover:border-indigo-400 transition-all">
-                                <div className="font-bold text-indigo-700 text-sm">⛪ 교회 관리자로 가입</div>
-                                <div className="text-xs text-slate-500 mt-0.5">우리 교회 전용 페이지를 새로 만듭니다</div>
-                            </button>
+                    {/* Role tabs (only for login tabs) */}
+                    {!isSignupTab && (
+                        <div className="grid grid-cols-2 gap-2 bg-ink/[0.06] p-1 rounded-[10px] mb-6">
+                            {[
+                                { key: 'member', title: '성도', sub: '오늘의 본문 읽기' },
+                                { key: 'admin', title: '교회 관리자', sub: '구역·진행률 관리' },
+                            ].map(tab => {
+                                const active = activeTab === tab.key;
+                                return (
+                                    <button
+                                        key={tab.key}
+                                        type="button"
+                                        onClick={() => { setActiveTab(tab.key); clearError(); }}
+                                        className={`text-left px-3.5 py-2.5 rounded-[7px] transition-all ${active ? 'bg-cream shadow-sm' : 'hover:bg-ink/5'}`}
+                                    >
+                                        <div className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                                            {tab.title}
+                                            {active && tab.key === 'admin' && (
+                                                <span className="text-[9px] font-bold text-cream bg-accent px-1.5 py-0.5 rounded tracking-wide">ADMIN</span>
+                                            )}
+                                        </div>
+                                        <div className="text-[11px] text-ink/55 mt-0.5">{tab.sub}</div>
+                                    </button>
+                                );
+                            })}
                         </div>
                     )}
 
-                    {/* ── 교인 가입 ── */}
-                    {tab === 'signup' && signupType === 'member' && (
-                        <form onSubmit={handleMemberSignup} className="space-y-3">
-                            <button type="button" onClick={() => { setSignupType(null); clearError(); }}
-                                className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 mb-1">← 뒤로</button>
-                            <input type="text" value={mName} onChange={e => setMName(e.target.value)} placeholder="이름" className={inputCls} />
-                            <input type="text" inputMode="numeric" value={mBirthdate} onChange={e => setMBirthdate(e.target.value.replace(/\D/g, ''))}
-                                placeholder="생년월일 8자리 (예: 19900101)" maxLength={8} className={inputCls} />
-                            <input type="password" value={mPw} onChange={e => setMPw(e.target.value)} placeholder="비밀번호 (6자리 이상)" className={inputCls} />
-                            <input type="password" value={mPwConfirm} onChange={e => setMPwConfirm(e.target.value)} placeholder="비밀번호 확인"
-                                className={`w-full bg-white border rounded-xl px-4 py-3 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 transition-all ${mPwConfirm && mPw !== mPwConfirm ? 'border-red-300 focus:ring-red-400' : 'border-slate-200 focus:ring-blue-400 focus:border-transparent'}`} />
-                            <select value={mChurchId} onChange={e => setMChurchId(e.target.value)} className={inputCls}>
-                                <option value="">교회를 선택하세요</option>
-                                {churches.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
-                            <input type="password" value={mChurchCode} onChange={e => setMChurchCode(e.target.value)}
-                                placeholder="교회 입장코드 (관리자에게 문의)" className={inputCls} />
-                            {errorMsg && <p className="text-red-500 text-xs text-center py-1">{errorMsg}</p>}
-                            <button type="submit" disabled={loading}
-                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50">
-                                {loading ? '가입 중...' : '교인으로 가입하기'}
-                            </button>
-                        </form>
-                    )}
-
-                    {/* ── 교회 관리자 가입 Step 1 ── */}
-                    {tab === 'signup' && signupType === 'churchAdmin' && signupStep === 1 && (
-                        <form onSubmit={handleAdminStep1} className="space-y-3">
-                            <button type="button" onClick={resetAdminSignup}
-                                className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 mb-1">← 뒤로</button>
-                            <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">1단계 / 2단계</span>
-                                <span className="text-xs text-slate-400">기본 정보 입력</span>
-                            </div>
-                            <input type="text" value={aName} onChange={e => setAName(e.target.value)} placeholder="이름" className={inputCls} />
-                            <input type="email" value={aEmail} onChange={e => setAEmail(e.target.value)} placeholder="이메일" className={inputCls} />
-                            <input type="password" value={aPw} onChange={e => setAPw(e.target.value)} placeholder="비밀번호 (6자리 이상)" className={inputCls} />
-                            <input type="password" value={aPwConfirm} onChange={e => setAPwConfirm(e.target.value)} placeholder="비밀번호 확인"
-                                className={`w-full bg-white border rounded-xl px-4 py-3 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 transition-all ${aPwConfirm && aPw !== aPwConfirm ? 'border-red-300 focus:ring-red-400' : 'border-slate-200 focus:ring-indigo-400 focus:border-transparent'}`} />
-                            <div className="border-t border-slate-100 pt-3 space-y-2">
-                                <p className="text-xs text-slate-400 font-bold">교회 정보</p>
-                                <input type="text" value={aChurchName} onChange={e => setAChurchName(e.target.value)} placeholder="교회 이름 (예: ○○교회)" className={inputCls} />
-                                <input type="text" value={aChurchCode} onChange={e => setAChurchCode(e.target.value)} placeholder="교회 입장코드 설정 (4자리 이상)" className={inputCls} />
-                                <p className="text-[10px] text-slate-400 ml-1">입장코드는 교인들이 가입할 때 사용합니다. 나중에 변경 가능합니다.</p>
-                            </div>
-                            {errorMsg && <p className="text-red-500 text-xs text-center py-1">{errorMsg}</p>}
-                            <button type="submit"
-                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all active:scale-95">
-                                다음: 조직 구성 →
-                            </button>
-                        </form>
-                    )}
-
-                    {/* ── 교회 관리자 가입 Step 2 ── */}
-                    {tab === 'signup' && signupType === 'churchAdmin' && signupStep === 2 && (
-                        <div className="space-y-4">
-                            <button type="button" onClick={() => { setSignupStep(1); clearError(); }}
-                                className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1">← 뒤로</button>
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">2단계 / 2단계</span>
-                                <span className="text-xs text-slate-400">조직 구성</span>
-                            </div>
-                            <div className="bg-indigo-50 rounded-xl p-3 border border-indigo-100">
-                                <p className="text-sm font-bold text-indigo-700 mb-1">📋 교회 조직을 구성해주세요</p>
-                                <p className="text-xs text-slate-500">부서(장년부, 청년부 등)와 소그룹(1구역, 2팀 등)을 설정합니다.</p>
-                                <p className="text-xs text-indigo-500 mt-1 font-bold">💡 조직은 관리자 메뉴에서도 언제든지 변경이 가능합니다.</p>
-                            </div>
-                            <OrgEditor departments={orgComms} onChange={setOrgComms} />
-                            {errorMsg && <p className="text-red-500 text-xs text-center py-1">{errorMsg}</p>}
-                            <button type="button" onClick={handleAdminSignupFinal} disabled={loading}
-                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50">
-                                {loading ? '교회 만드는 중...' : '✅ 교회 만들기 완료'}
-                            </button>
-                        </div>
-                    )}
+                    {/* Form content */}
+                    {renderCard()}
                 </div>
             </div>
 
