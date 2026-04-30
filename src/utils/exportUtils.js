@@ -1,17 +1,28 @@
+// 메모 키 파싱: "3_42" → {round:3, day:42} / 구형 "42" → {round:1, day:42}
+const parseMemoKeyForExport = (key) => {
+    const parts = String(key).split('_');
+    if (parts.length === 2) return { round: Number(parts[0]), day: Number(parts[1]) };
+    return { round: 1, day: Number(key) };
+};
+
 export const generateMemosHTML = (userName, userMemos, userStats = {}) => {
-    const memoCount = Object.keys(userMemos).length;
-    const sortedMemos = Object.keys(userMemos).map(function (key) { return [key, userMemos[key]]; }).sort(function (a, b) { return Number(a[0]) - Number(b[0]); });
+    const entries = Object.entries(userMemos)
+        .map(([key, memo]) => ({ key, memo, ...parseMemoKeyForExport(key) }))
+        .sort((a, b) => a.round - b.round || a.day - b.day);
+
+    const memoCount = entries.length;
 
     // 묵상 항목들 HTML 생성
     let memosHTML = '';
-    sortedMemos.forEach(([day, memo]) => {
+    entries.forEach(({ key, memo, round, day }) => {
         const dateStr = memo.date ? new Date(memo.date).toLocaleDateString('ko-KR') : '';
         const memoTexts = Array.isArray(memo.texts) ? memo.texts : [memo.text || ''];
+        const label = round > 1 ? `${round}독 DAY ${day + 1}` : `DAY ${day + 1}`;
 
         memosHTML += `
                     <div style="background: white; border-radius: 16px; padding: 24px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #e2e8f0;">
-                            <span style="background: linear-gradient(135deg, #4f46e5, #7c3aed); color: white; padding: 8px 20px; border-radius: 25px; font-weight: bold; font-size: 18px;">DAY ${day}</span>
+                            <span style="background: linear-gradient(135deg, #4f46e5, #7c3aed); color: white; padding: 8px 20px; border-radius: 25px; font-weight: bold; font-size: 18px;">${label}</span>
                             <span style="color: #64748b; font-size: 16px;">${dateStr}</span>
                         </div>
                         <div style="color: #475569; font-size: 17px; font-weight: 600; margin-bottom: 16px;">${memo.title || ''}</div>
@@ -134,12 +145,14 @@ export const generateMemosCSV = async (db) => {
             const subgroup = data.subgroupId || '-';
             const memos = data.memos || {};
 
-            Object.keys(memos).forEach(function (day) {
-                var memo = memos[day];
+            Object.keys(memos).forEach(function (key) {
+                var memo = memos[key];
+                const { round, day } = parseMemoKeyForExport(key);
+                const label = round > 1 ? `${round}독 DAY ${day + 1}` : `DAY ${day + 1}`;
                 const dateStr = memo.date ? new Date(memo.date).toLocaleDateString('ko-KR') : '';
                 const title = (memo.title || '').replace(/,/g, ';').replace(/\n/g, ' ');
                 const text = (memo.text || '').replace(/,/g, ';').replace(/\n/g, ' ');
-                csvContent += `"${userName}","${subgroup}","${day}","${dateStr}","${title}","${text}"\n`;
+                csvContent += `"${userName}","${subgroup}","${label}","${dateStr}","${title}","${text}"\n`;
             });
         });
 
@@ -240,16 +253,23 @@ export const downloadPeriodStatsCSV = async (db, allUsers, startDateStr, endDate
 
         for (const u of allUsers) {
             let periodReadCount = 0;
-            // tracking read Days amount per calendar day
             const readDaysMap = {};
             dateColumns.forEach(dateStr => readDaysMap[dateStr] = 0);
 
-            const userDoc = await db.collection('users').doc(u.uid).get();
+            // history 서브컬렉션 (신형) + readHistory 배열 필드 (구형) 양쪽 통합
+            const [historySnap, userDoc] = await Promise.all([
+                db.collection('users').doc(u.uid).collection('history').get(),
+                db.collection('users').doc(u.uid).get(),
+            ]);
+            const subColHistory = historySnap.docs.map(d => d.data());
             const arrayHistory = (userDoc.exists && userDoc.data().readHistory) || [];
-
-            // Use readHistory array directly (same as Reading Champion logic)
-            // Do NOT de-duplicate - each entry represents one Day read action
-            const historyValues = Array.isArray(arrayHistory) ? arrayHistory : [];
+            // 날짜 기준 중복 제거 (구형→신형 순서로 병합)
+            const seenDates = new Map();
+            [...(Array.isArray(arrayHistory) ? arrayHistory : []), ...subColHistory].forEach(item => {
+                const dateKey = typeof item === 'string' ? item : item.date;
+                if (dateKey) seenDates.set(dateKey + '_' + (item.day ?? ''), item);
+            });
+            const historyValues = Array.from(seenDates.values());
 
             for (let i = 0; i < historyValues.length; i++) {
                 const item = historyValues[i];
