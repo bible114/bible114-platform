@@ -51,13 +51,17 @@ export const useDepartment = (currentUser, setCurrentUser) => {
     const changeSubgroup = useCallback(async (newSubgroup) => {
         const uid = currentUser?.uid;
         if (!uid) return;
+        // Support both legacy string and new { id, name } object
+        const subgroupId = typeof newSubgroup === 'string' ? newSubgroup : newSubgroup.id;
+        const subgroupName = typeof newSubgroup === 'string' ? newSubgroup : newSubgroup.name;
         try {
             await db.collection('users').doc(uid).set({
-                subgroupId: newSubgroup,
+                subgroupId,
+                subgroupName,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
-            setCurrentUser(prev => ({ ...prev, subgroupId: newSubgroup }));
-            alert(`소그룹이 "${newSubgroup}"(으)로 변경되었습니다!`);
+            setCurrentUser(prev => ({ ...prev, subgroupId, subgroupName }));
+            alert(`소그룹이 "${subgroupName}"(으)로 변경되었습니다!`);
 
             const allMembers = await loadAllMembers();
             setAllMembersForRace(allMembers);

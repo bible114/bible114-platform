@@ -1,11 +1,13 @@
 import React from 'react';
 
+const genSubId = () => 'sub_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+
 export const DEFAULT_ORG = [
-    { id: 'senior', name: '장년부', subgroups: ['1구역', '2구역', '3구역'] },
-    { id: 'youth', name: '청년부', subgroups: ['1팀', '2팀'] },
-    { id: 'middlehigh', name: '중고등부', subgroups: ['중등부', '고등부'] },
-    { id: 'elementary', name: '초등부', subgroups: ['초등1부', '초등2부'] },
-    { id: 'kinder', name: '유치부', subgroups: ['유치부'] },
+    { id: 'senior', name: '장년부', subgroups: [{ id: genSubId(), name: '1구역' }, { id: genSubId(), name: '2구역' }, { id: genSubId(), name: '3구역' }] },
+    { id: 'youth', name: '청년부', subgroups: [{ id: genSubId(), name: '1팀' }, { id: genSubId(), name: '2팀' }] },
+    { id: 'middlehigh', name: '중고등부', subgroups: [{ id: genSubId(), name: '중등부' }, { id: genSubId(), name: '고등부' }] },
+    { id: 'elementary', name: '초등부', subgroups: [{ id: genSubId(), name: '초등1부' }, { id: genSubId(), name: '초등2부' }] },
+    { id: 'kinder', name: '유치부', subgroups: [{ id: genSubId(), name: '유치부' }] },
 ];
 
 const OrgEditor = ({ departments, onChange }) => {
@@ -19,11 +21,14 @@ const OrgEditor = ({ departments, onChange }) => {
         onChange(departments.map((c, i) => i === idx ? { ...c, name } : c));
 
     const addSubgroup = (idx) =>
-        onChange(departments.map((c, i) => i === idx ? { ...c, subgroups: [...c.subgroups, ''] } : c));
+        onChange(departments.map((c, i) => i === idx ? { ...c, subgroups: [...c.subgroups, { id: genSubId(), name: '' }] } : c));
+
+    // Support both legacy string subgroups and new { id, name } objects
+    const getSubName = (s) => (typeof s === 'string' ? s : s.name);
 
     const updateSubgroup = (cIdx, sIdx, val) =>
         onChange(departments.map((c, i) => i === cIdx
-            ? { ...c, subgroups: c.subgroups.map((s, j) => j === sIdx ? val : s) }
+            ? { ...c, subgroups: c.subgroups.map((s, j) => j === sIdx ? (typeof s === 'string' ? val : { ...s, name: val }) : s) }
             : c));
 
     const removeSubgroup = (cIdx, sIdx) =>
@@ -60,11 +65,11 @@ const OrgEditor = ({ departments, onChange }) => {
                         </div>
                         <div className="space-y-1.5 ml-6">
                             {comm.subgroups.map((sub, sIdx) => (
-                                <div key={sIdx} className="flex gap-1 items-center">
+                                <div key={typeof sub === 'string' ? sIdx : sub.id} className="flex gap-1 items-center">
                                     <span className="text-slate-300 text-xs shrink-0">└</span>
                                     <input
                                         type="text"
-                                        value={sub}
+                                        value={getSubName(sub)}
                                         onChange={e => updateSubgroup(cIdx, sIdx, e.target.value)}
                                         placeholder={`소그룹 ${sIdx + 1}`}
                                         className="flex-1 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-200"

@@ -5,12 +5,17 @@
 /**
  * Returns display information for a subgroup, including abbreviated names and background colors.
  * Used for the Race Map and other UI elements.
- * 
- * @param {string} subgroupId - The ID of the subgroup (e.g., '1구역', '여성실버1')
+ *
+ * @param {string} subgroupId - The ID of the subgroup (e.g., 'sub_xxx' or legacy '1구역')
+ * @param {string} [subgroupName] - The display name (takes precedence for display if present)
  * @returns {object} { lines: Array<string>, bgColor: string }
  */
-export const getSubgroupDisplay = (subgroupId) => {
-    if (!subgroupId) return { lines: ['미지정'], bgColor: 'bg-gradient-to-br from-slate-400 to-slate-500' };
+export const getSubgroupDisplay = (subgroupId, subgroupName) => {
+    // Use subgroupName for display if available (backward compatible)
+    const displayKey = subgroupName || subgroupId;
+    if (!displayKey) return { lines: ['미지정'], bgColor: 'bg-gradient-to-br from-slate-400 to-slate-500' };
+    // Alias subgroupId to displayKey for the rest of the function
+    const subgroupId_ = displayKey;
 
     // 선명하고 확실한 색상 매핑 (천로역정 레이스용)
     const colorMap = {
@@ -58,32 +63,32 @@ export const getSubgroupDisplay = (subgroupId) => {
     };
 
     // 구역은 그대로 표시 (1구역, 2구역 등)
-    if (subgroupId.match(/^\d+구역$/)) {
+    if (subgroupId_.match(/^\d+구역$/)) {
         return {
-            lines: [subgroupId],
-            bgColor: colorMap[subgroupId] || 'bg-slate-400'
+            lines: [subgroupId_],
+            bgColor: colorMap[subgroupId_] || 'bg-slate-400'
         };
     }
 
     // 목장은 그대로 표시 (1목장, 2목장 등)
-    if (subgroupId.match(/^\d+목장$/)) {
+    if (subgroupId_.match(/^\d+목장$/)) {
         return {
-            lines: [subgroupId],
-            bgColor: colorMap[subgroupId] || 'bg-slate-400'
+            lines: [subgroupId_],
+            bgColor: colorMap[subgroupId_] || 'bg-slate-400'
         };
     }
 
     // 축약이 정의된 경우
-    if (abbreviations[subgroupId]) {
+    if (abbreviations[subgroupId_]) {
         return {
-            lines: abbreviations[subgroupId],
-            bgColor: colorMap[subgroupId] || 'bg-slate-400'
+            lines: abbreviations[subgroupId_],
+            bgColor: colorMap[subgroupId_] || 'bg-slate-400'
         };
     }
 
     // 기본: 그대로 표시
     return {
-        lines: [subgroupId],
-        bgColor: colorMap[subgroupId] || 'bg-slate-400'
+        lines: [subgroupId_],
+        bgColor: colorMap[subgroupId_] || 'bg-slate-400'
     };
 };

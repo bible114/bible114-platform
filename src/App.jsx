@@ -343,7 +343,10 @@ const App = () => {
     const handleCommunitySelect = (commId, commName) => { setTempUser(prev => ({ ...prev, departmentId: commId, departmentName: commName })); setView('subgroup_select'); };
 
     const handleSubgroupSelect = async (subgroup) => {
-        const finalUser = { ...tempUser, subgroupId: subgroup };
+        // Support both legacy string and new { id, name } object
+        const subgroupId = typeof subgroup === 'string' ? subgroup : subgroup.id;
+        const subgroupName = typeof subgroup === 'string' ? subgroup : subgroup.name;
+        const finalUser = { ...tempUser, subgroupId, subgroupName };
         setCurrentUser(finalUser); setTempUser(null); setView('dashboard');
         try {
             const uid = (auth.currentUser ? auth.currentUser.uid : null) || finalUser.uid;

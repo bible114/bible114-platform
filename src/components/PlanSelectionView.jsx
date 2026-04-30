@@ -128,7 +128,7 @@ const PlanSelectionView = ({
                                     <div className="flex-1">
                                         <div className="font-bold text-slate-800 text-lg">{comm.name}</div>
                                         {comm.subgroups && comm.subgroups.length > 0 && (
-                                            <div className="text-xs text-slate-400 mt-0.5">{comm.subgroups.slice(0, 3).join(', ')}{comm.subgroups.length > 3 ? ' 외...' : ''}</div>
+                                            <div className="text-xs text-slate-400 mt-0.5">{comm.subgroups.slice(0, 3).map(s => typeof s === 'string' ? s : s.name).join(', ')}{comm.subgroups.length > 3 ? ' 외...' : ''}</div>
                                         )}
                                     </div>
                                     <Icon name="arrowRight" className="text-slate-300" />
@@ -164,13 +164,16 @@ const PlanSelectionView = ({
                     </div>
                 ) : (
                     <div className="w-full max-w-2xl grid grid-cols-2 gap-3 max-h-[55vh] overflow-y-auto content-start">
-                        {selectedComm.subgroups.map((sub, idx) => (
-                            <button key={idx} onClick={() => handleSubgroupSelect(sub)}
-                                className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:border-blue-500 hover:bg-blue-50 transition-all text-center flex flex-col items-center justify-center aspect-video">
-                                <span className="text-2xl mb-2 opacity-80">🏕️</span>
-                                <span className="font-bold text-slate-700 text-sm">{sub}</span>
-                            </button>
-                        ))}
+                        {selectedComm.subgroups.map((sub, idx) => {
+                            const subName = typeof sub === 'string' ? sub : sub.name;
+                            return (
+                                <button key={typeof sub === 'string' ? idx : sub.id} onClick={() => handleSubgroupSelect(sub)}
+                                    className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:border-blue-500 hover:bg-blue-50 transition-all text-center flex flex-col items-center justify-center aspect-video">
+                                    <span className="text-2xl mb-2 opacity-80">🏕️</span>
+                                    <span className="font-bold text-slate-700 text-sm">{subName}</span>
+                                </button>
+                            );
+                        })}
                     </div>
                 )}
             </div>

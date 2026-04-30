@@ -48,7 +48,7 @@ const RaceMap = ({ racers, departmentChampions, getSubgroupDisplay }) => {
 
                 const p = Math.min(getNonLinearPos(displayDay), 100);
                 const isMe = racer.isMe;
-                const subgroupInfo = getSubgroupDisplay(racer.subgroupId);
+                const subgroupInfo = getSubgroupDisplay(racer.subgroupId, racer.subgroupName);
                 const isDeptChampion = departmentChampions[racer.uid];
                 const zIndex = isMe ? 29 : is2ndRound ? 28 : 25;
                 const topPos = isMe ? '50%' : is2ndRound ? '8%' : `${15 + (idx % 10) * 8}%`;

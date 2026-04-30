@@ -91,7 +91,7 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
     const [aChurchName, setAChurchName] = useState('');
     const [aChurchCode, setAChurchCode] = useState('');
 
-    const [orgComms, setOrgComms] = useState([{ id: 'comm_0', name: '', subgroups: [''] }]);
+    const [orgComms, setOrgComms] = useState([{ id: 'comm_0', name: '', subgroups: [{ id: 'sub_0', name: '' }] }]);
     const [churches, setChurches] = useState([]);
     const [loading, setLoading] = useState(false);
 
@@ -149,9 +149,13 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
     };
 
     const handleAdminSignupFinal = async () => {
+        const getSubName = (s) => (typeof s === 'string' ? s : s.name);
+        const getSubId = (s) => (typeof s === 'string' ? null : s.id);
         const validComms = orgComms.filter(c => c.name.trim()).map(c => ({
             id: c.id, name: c.name.trim(),
-            subgroups: c.subgroups.filter(s => s.trim()).map(s => s.trim()),
+            subgroups: c.subgroups
+                .filter(s => getSubName(s).trim())
+                .map(s => ({ id: getSubId(s) || ('sub_' + Date.now().toString(36)), name: getSubName(s).trim() })),
         }));
         if (validComms.length === 0) { setErrorMsg('최소 하나의 부서를 추가해주세요.'); return; }
         setLoading(true);
@@ -159,7 +163,7 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
         setLoading(false);
     };
 
-    const resetAdminSignup = () => { setSignupType(null); setSignupStep(1); setOrgComms([{ id: 'comm_0', name: '', subgroups: [''] }]); clearError(); };
+    const resetAdminSignup = () => { setSignupType(null); setSignupStep(1); setOrgComms([{ id: 'comm_0', name: '', subgroups: [{ id: 'sub_0', name: '' }] }]); clearError(); };
 
     const inputCls = "w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all";
 
