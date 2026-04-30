@@ -4,7 +4,6 @@ import { PLAN_TYPES, BIBLE_VERSIONS } from '../data/bible_options';
 import { DEFAULT_DEPARTMENTS } from '../data/departments';
 import ReadingGuideModal from './modals/ReadingGuideModal';
 
-const COMM_ICONS = ['🏛️', '✨', '📚', '🌟', '🎵', '🙏', '⚡', '🌈', '🏕️', '🌿'];
 
 const Bible114Guide = () => {
     const [showGuide, setShowGuide] = React.useState(false);
@@ -118,13 +117,14 @@ const PlanSelectionView = ({
                     </div>
                 ) : (
                     <div className="w-full max-w-2xl space-y-3">
-                        {communities.map((comm, idx) => {
-                            const icon = comm.icon || COMM_ICONS[idx % COMM_ICONS.length];
+                        {communities.map((comm) => {
                             return (
                                 <button key={comm.id}
                                     onClick={() => handleCommunitySelect(comm.id, comm.name)}
                                     className="w-full bg-white p-4 rounded-2xl shadow-sm border border-slate-200 hover:border-blue-500 hover:bg-blue-50 transition-all flex items-center gap-4 text-left">
-                                    <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center text-2xl border border-slate-100">{icon}</div>
+                                    <div className="w-12 h-12 rounded-full bg-ink flex items-center justify-center text-cream font-serif font-bold text-lg flex-shrink-0">
+                                        {(comm.name || '부')[0]}
+                                    </div>
                                     <div className="flex-1">
                                         <div className="font-bold text-slate-800 text-lg">{comm.name}</div>
                                         {comm.subgroups && comm.subgroups.length > 0 && (

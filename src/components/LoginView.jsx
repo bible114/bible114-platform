@@ -36,14 +36,7 @@ const LIVE_READERS = [
     { name: '강민준', church: '명성교회', book: '히브리서 11장', at: '7분 전' },
 ];
 
-// ─── Mock platform stats ───────────────────────────────────────────────────────
-const PLATFORM = {
-    total_churches: 247,
-    total_readers: 18432,
-    finished_total: 6128,
-    chapters_read_today: 31204,
-    reading_now: 1284,
-};
+// ─── (PLATFORM mock 제거 — Firestore에서 실시간 로드) ─────────────────────────
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
@@ -114,8 +107,63 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
     const [signupStep, setSignupStep] = useState(1);
     const [showAdminContact, setShowAdminContact] = useState(false);
 
+    // Platform stats (Firestore)
+    const [stats, setStats] = useState({
+        total_churches: 0,
+        total_readers: 0,
+        finished_total: 0,
+        chapters_read_today: 0,
+    });
+
+    useEffect(() => {
+        if (!db) return;
+        const today = new Date().toDateString();
+        Promise.all([
+            db.collection('churches').get(),
+            db.collection('users').where('role', '==', 'member').get(),
+        ]).then(([churchSnap, userSnap]) => {
+            const users = userSnap.docs.map(d => d.data());
+            setStats({
+                total_churches: churchSnap.size,
+                total_readers: users.length,
+                finished_total: users.filter(u => (u.readCount || 1) >= 2).length,
+                chapters_read_today: users.filter(u => u.lastReadDate === today).length,
+            });
+        }).catch(() => {}); // 실패 시 0으로 유지
+    }, []);
+
+    // Live feed (Firestore, fallback: mock)
+    const [liveFeed, setLiveFeed] = useState(LIVE_READERS);
+
+    useEffect(() => {
+        if (!db) return;
+        const today = new Date().toDateString();
+        db.collection('users').where('role', '==', 'member').limit(50).get()
+            .then(snap => {
+                const items = snap.docs
+                    .map(d => d.data())
+                    .filter(d => d.lastReadDate)
+                    .sort((a, b) => (b.lastReadDate > a.lastReadDate ? 1 : -1))
+                    .slice(0, 10)
+                    .map(d => ({
+                        name: d.name || '성도',
+                        church: d.churchName || '',
+                        book: `${d.currentDay || 1}일차`,
+                        at: d.lastReadDate === today ? '오늘' : '최근',
+                    }));
+                if (items.length >= 3) setLiveFeed(items);
+            }).catch(() => {}); // 실패 시 mock 유지
+    }, []);
+
     // Live counter
-    const [readingNow, setReadingNow] = useState(PLATFORM.reading_now);
+    const [readingNow, setReadingNow] = useState(1284);
+
+    useEffect(() => {
+        if (stats.total_readers > 0) {
+            setReadingNow(Math.max(1100, Math.round(stats.total_readers * 0.08)));
+        }
+    }, [stats.total_readers]);
+
     useEffect(() => {
         const id = setInterval(() => {
             setReadingNow(n => Math.max(1100, n + (Math.floor(Math.random() * 7) - 3)));
@@ -454,18 +502,18 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
 
                 {/* Subhead */}
                 <p className="text-[14px] md:text-[15px] leading-[1.65] text-ink/78 max-w-md mb-5">
-                    전국 <b className="text-ink">{PLATFORM.total_churches}개 교회</b>,{' '}
-                    <b className="text-ink">{PLATFORM.total_readers.toLocaleString()}명</b>의 성도가
+                    전국 <b className="text-ink">{stats.total_churches > 0 ? `${stats.total_churches}개 교회` : '여러 교회'}</b>,{' '}
+                    <b className="text-ink">{stats.total_readers > 0 ? `${stats.total_readers.toLocaleString()}명` : '많은 성도들'}</b>이
                     오늘도 같은 페이지를 넘기고 있습니다. 천로역정 같은 통독의 길, 함께 걸어요.
                 </p>
 
                 {/* Stat strip */}
                 <div className="grid grid-cols-4 border-t border-b border-hairline py-4 mb-5">
                     {[
-                        { num: PLATFORM.total_churches.toString(), label: '함께하는 교회' },
-                        { num: PLATFORM.total_readers.toLocaleString(), label: '참여 성도' },
-                        { num: PLATFORM.finished_total.toLocaleString(), label: '올해 완독자' },
-                        { num: PLATFORM.chapters_read_today.toLocaleString(), label: '오늘 읽은 장수' },
+                        { num: stats.total_churches > 0 ? stats.total_churches.toString() : '—', label: '함께하는 교회' },
+                        { num: stats.total_readers > 0 ? stats.total_readers.toLocaleString() : '—', label: '참여 성도' },
+                        { num: stats.finished_total > 0 ? stats.finished_total.toLocaleString() : '—', label: '올해 완독자' },
+                        { num: stats.chapters_read_today > 0 ? stats.chapters_read_today.toLocaleString() : '—', label: '오늘 읽은 성도' },
                     ].map((s, i) => (
                         <div key={i} className={`${i > 0 ? 'border-l border-hairline pl-3 md:pl-4' : ''} pr-3 md:pr-4`}>
                             <div className="font-serif text-[20px] md:text-[26px] font-semibold tracking-tight tabular-nums leading-tight">{s.num}</div>
@@ -496,7 +544,7 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                         style={{ maskImage: 'linear-gradient(180deg, #000 70%, transparent)' }}
                     >
                         <div style={{ animation: 'scrollFeed 32s linear infinite' }}>
-                            {[...LIVE_READERS, ...LIVE_READERS].map((r, i) => (
+                            {[...liveFeed, ...liveFeed].map((r, i) => (
                                 <div key={i} className="flex items-center gap-3 mb-2.5">
                                     <div className="w-7 h-7 rounded-full bg-ink text-cream flex items-center justify-center font-serif text-[11px] font-bold shrink-0">
                                         {r.name[0]}

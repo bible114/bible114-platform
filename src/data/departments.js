@@ -10,9 +10,9 @@ const kindergartenSubgroups = ['소망반', '빌립반', '믿음반'];
 
 // 공동체(부서) 목록
 export const DEFAULT_DEPARTMENTS = [
-    { id: 'senior', name: '장년부', color: 'bg-orange-500', icon: '🏔️', subgroups: seniorSubgroups },
-    { id: 'youth', name: '청년부', color: 'bg-blue-500', icon: '🏃', subgroups: youthSubgroups },
-    { id: 'middlehigh', name: '중고등부', color: 'bg-purple-500', icon: '🏫', subgroups: middleHighSubgroups },
-    { id: 'elementary', name: '유초등부', color: 'bg-yellow-500', icon: '🐥', subgroups: elementarySubgroups },
-    { id: 'kinder', name: '유아유치부', color: 'bg-pink-500', icon: '🍼', subgroups: kindergartenSubgroups },
+    { id: 'senior', name: '장년부', color: 'bg-orange-500', subgroups: seniorSubgroups },
+    { id: 'youth', name: '청년부', color: 'bg-blue-500', subgroups: youthSubgroups },
+    { id: 'middlehigh', name: '중고등부', color: 'bg-purple-500', subgroups: middleHighSubgroups },
+    { id: 'elementary', name: '유초등부', color: 'bg-yellow-500', subgroups: elementarySubgroups },
+    { id: 'kinder', name: '유아유치부', color: 'bg-pink-500', subgroups: kindergartenSubgroups },
 ];
