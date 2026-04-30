@@ -2,7 +2,7 @@ import React from 'react';
 import Icon from './Icon';
 import { firebase } from '../utils/firebase';
 
-const AdminView = ({
+const PlatformAdminView = ({
     handleLogout,
     downloadCSV,
     adminViewMode, setAdminViewMode,
@@ -1019,4 +1019,4 @@ const AdminView = ({
     );
 };
 
-export default AdminView;
+export default PlatformAdminView;

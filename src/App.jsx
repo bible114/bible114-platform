@@ -13,7 +13,7 @@ import { useAuth } from './hooks/useAuth';
 import Icon from './components/Icon';
 import MarkdownRenderer from './components/MarkdownRenderer';
 import LoginView from './components/LoginView';
-import AdminView from './components/AdminView';
+import PlatformAdminView from './components/PlatformAdminView';
 import PlanSelectionView from './components/PlanSelectionView';
 import DashboardView from './components/DashboardView';
 import { SUPABASE_FUNCTION_URL } from './data/constants';
@@ -83,7 +83,6 @@ const App = () => {
 
     // --- 관리자 관련 상태 ---
     const [selectedPlanType, setSelectedPlanType] = useState(null); // 선택된 플랜 타입
-    const [isAdmin, setIsAdmin] = useState(false);            // 관리자 모드 여부
 
     // --- [Hooks] Extract Logic ---
     const {
@@ -312,7 +311,6 @@ const App = () => {
         ]);
         setAllUsers(usersSnap.docs.map(doc => userDocToState(doc)));
         setAllChurches(churchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        setIsAdmin(true);
     };
 
     const { errorMsg, setErrorMsg, handleMemberLogin, handleMemberSignup, handleChurchAdminLogin, handleChurchAdminSignup } = useAuth({
@@ -528,7 +526,7 @@ const App = () => {
 
     const handleLogout = () => {
         if (auth) auth.signOut();
-        setCurrentUser(null); setIsAdmin(false); setTempUser(null); setChurchCommunities([]);
+        setCurrentUser(null); setTempUser(null); setChurchCommunities([]);
         setErrorMsg(''); setView('login'); setHasReadToday(false); setEditingUser(null); setDepartmentMembers([]);
     };
 
@@ -555,9 +553,9 @@ const App = () => {
         );
     }
 
-    if (isAdmin) {
+    if (currentUser?.role === 'superAdmin' || currentUser?.role === 'platformAdmin') {
         return (
-            <AdminView
+            <PlatformAdminView
                 handleLogout={handleLogout}
                 downloadCSV={downloadCSV}
                 adminViewMode={adminViewMode}
