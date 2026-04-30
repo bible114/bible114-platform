@@ -71,21 +71,10 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities) =>
             // 2. Load User Specific Data (Memos & History)
             await loadMemos(uid);
 
-            // readHistory loading (combine sub-collection and array field)
-            const historySnap = await db.collection('users').doc(uid).collection('history').get();
-            const subCollectionHistory = historySnap.docs.map(doc => doc.data());
-
-            const userDoc = await db.collection('users').doc(uid).get();
-            const arrayFieldHistory = (userDoc.exists && userDoc.data().readHistory) || [];
-
-            // Combine and de-duplicate by date string
-            const combinedMap = new Map();
-            [...arrayFieldHistory, ...subCollectionHistory].forEach(item => {
-                const dateKey = typeof item === 'string' ? item : item.date;
-                if (dateKey) combinedMap.set(dateKey, item);
-            });
-
-            setReadHistory(Array.from(combinedMap.values()));
+            // readHistory: 서브컬렉션만 사용 (배열 필드는 문서 크기 무한 증가 문제로 폐기)
+            const historySnap = await db.collection('users').doc(uid).collection('history')
+                .orderBy('date', 'desc').limit(365).get();
+            setReadHistory(historySnap.docs.map(doc => doc.data()));
 
             // 3. Load Announcements & Links
             await loadAnnouncement();
@@ -138,10 +127,10 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities) =>
 
         // Actions
         handleRead,
-        saveMemo: (day, memoText, onComplete) =>
-            saveMemo(day, memoText, verseData.subtitle, checkAchievements, onComplete),
+        saveMemo: (readCount, day, memoText, onComplete) =>
+            saveMemo(readCount, day, memoText, verseData?.subtitle, checkAchievements, onComplete),
         changeSubgroup,
-        handleRestart: () => handleRestart(setMemos, setReadHistory),
+        handleRestart: () => handleRestart(setReadHistory),
         changeStartDate,
 
         // Data Loaders

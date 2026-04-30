@@ -344,6 +344,7 @@ const DashboardView = ({
                             saveMemo={saveMemo}
                             viewingDay={viewingDay}
                             currentDay={currentDay}
+                            readCount={currentUser?.readCount || 1}
                             memos={memos}
                         />
 

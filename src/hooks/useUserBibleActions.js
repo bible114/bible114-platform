@@ -44,55 +44,68 @@ export const useUserBibleActions = (
         if (!currentUser) return;
         const uid = currentUser.uid;
         const todayStr = new Date().toDateString();
+        const vDay = viewingDay || currentUser.currentDay || 1;
 
-        // currentDay가 365를 초과하면 안전하게 보정
-        let currentProgressDay = currentUser.currentDay || 1;
-        if (currentProgressDay > 365) {
-            currentProgressDay = ((currentProgressDay - 1) % 365) + 1;
-        }
-        const vDay = viewingDay || currentProgressDay; // 현재 보고 있는 날짜
-        const oldScore = currentUser.score || 0;
-        const oldLevel = Math.floor(oldScore / 100);
-
-        const streakBonus = Math.min(5, currentUser.streak || 0);
-        const addedScore = 10 + streakBonus;
-        const newScore = oldScore + addedScore;
-        const newLevel = Math.floor(newScore / 100);
-
-        // 다음으로 이동할 날짜 (무조건 현재 보고 있는 날짜의 다음 날짜)
-        const nextViewingDay = vDay >= 365 ? 1 : vDay + 1;
-
-        // 진도 업데이트 (읽기 버튼 누르면 무조건 진도 상승)
-        let newProgressDay = currentProgressDay >= 365 ? 1 : currentProgressDay + 1;
-        let newReadCount = currentProgressDay >= 365 ? (currentUser.readCount || 1) + 1 : (currentUser.readCount || 1);
-        let completedRound = currentProgressDay >= 365;
-
-        // 연속 읽기 계산
-        let newStreak = 1;
-        if (currentUser.lastReadDate) {
-            const lastDate = new Date(currentUser.lastReadDate);
-            const todayDate = new Date(todayStr);
-            const diffDays = Math.floor((todayDate - lastDate) / (1000 * 60 * 60 * 24));
-
-            if (diffDays === 1) newStreak = (currentUser.streak || 0) + 1;
-            else if (diffDays === 0) newStreak = currentUser.streak || 0;
-        }
-
-        const historyItem = { date: todayStr, day: vDay, score: addedScore };
-
-        const updateData = {
-            currentDay: newProgressDay,
-            readCount: newReadCount,
-            score: newScore,
-            streak: newStreak,
-            lastReadDate: todayStr,
-            readHistory: firebase.firestore.FieldValue.arrayUnion(historyItem),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
+        let resultData = null;
+        let completedRound = false;
 
         try {
-            await db.collection('users').doc(uid).set(updateData, { merge: true });
-            await db.collection('users').doc(uid).collection('history').add(historyItem);
+            // Firestore Transaction: 동시 다중 클릭/멀티 디바이스 race condition 방지
+            // 문서에서 최신 값을 읽어 계산하므로 점수/진도 손실 없음
+            await db.runTransaction(async (transaction) => {
+                const userRef = db.collection('users').doc(uid);
+                const userSnap = await transaction.get(userRef);
+                if (!userSnap.exists) throw new Error('USER_NOT_FOUND');
+
+                const data = userSnap.data();
+
+                let currentProgressDay = data.currentDay || 1;
+                if (currentProgressDay > 365) {
+                    currentProgressDay = ((currentProgressDay - 1) % 365) + 1;
+                }
+
+                const oldScore = data.score || 0;
+                const oldLevel = Math.floor(oldScore / 100);
+                const streakBonus = Math.min(5, data.streak || 0);
+                const addedScore = 10 + streakBonus;
+                const newScore = oldScore + addedScore;
+                const newLevel = Math.floor(newScore / 100);
+
+                const nextViewingDay = vDay >= 365 ? 1 : vDay + 1;
+                completedRound = currentProgressDay >= 365;
+                const newProgressDay = completedRound ? 1 : currentProgressDay + 1;
+                const newReadCount = completedRound ? (data.readCount || 1) + 1 : (data.readCount || 1);
+
+                let newStreak = 1;
+                if (data.lastReadDate) {
+                    const diffDays = Math.floor(
+                        (new Date(todayStr) - new Date(data.lastReadDate)) / 86400000
+                    );
+                    if (diffDays === 1) newStreak = (data.streak || 0) + 1;
+                    else if (diffDays === 0) newStreak = data.streak || 0;
+                }
+
+                const historyItem = { date: todayStr, day: vDay, score: addedScore };
+                const updateData = {
+                    currentDay: newProgressDay,
+                    readCount: newReadCount,
+                    score: newScore,
+                    streak: newStreak,
+                    lastReadDate: todayStr,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+
+                transaction.update(userRef, updateData);
+
+                // history 서브컬렉션 쓰기 (배열 필드 대신 서브컬렉션만 사용 — 문서 크기 무한 증가 방지)
+                const histRef = db.collection('users').doc(uid).collection('history').doc();
+                transaction.set(histRef, historyItem);
+
+                resultData = { updateData, newLevel, oldLevel, streakBonus, newStreak, newReadCount, nextViewingDay, historyItem, newProgressDay };
+            });
+
+            if (!resultData) return;
+            const { updateData, newLevel, oldLevel, streakBonus, newStreak, newReadCount, nextViewingDay, historyItem, newProgressDay } = resultData;
 
             // 플랫폼 통계 업데이트 (fire & forget)
             const statsUpdate = {
@@ -105,7 +118,7 @@ export const useUserBibleActions = (
 
             const updatedUser = { ...currentUser, ...updateData };
             setCurrentUser(updatedUser);
-            setViewingDay(nextViewingDay); // 무조건 다음 날짜로 이동
+            setViewingDay(nextViewingDay);
             setHasReadToday(true);
             setReadHistory(prev => [historyItem, ...prev]);
 
@@ -114,7 +127,7 @@ export const useUserBibleActions = (
                 setTimeout(() => setLevelUpToast(false), 5000);
             }
             if (streakBonus > 0) {
-                setBonusToast(`${streakBonus}일 연속 보너스 +${streakBonus}pt!`);
+                setBonusToast(`${newStreak}일 연속 보너스 +${streakBonus}pt!`);
                 setTimeout(() => setBonusToast(null), 3000);
             }
 
@@ -136,19 +149,20 @@ export const useUserBibleActions = (
             checkAchievements(updatedUser, {});
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (e) {
-            console.error("읽기 처리 실패:", e);
+            if (e.message !== 'USER_NOT_FOUND') console.error("읽기 처리 실패:", e);
         }
     }, [currentUser, viewingDay, setCurrentUser, setViewingDay, loadAllMembers, setAllMembersForRace, setDepartmentMembers, setSubgroupStats, checkAchievements]);
 
-    const handleRestart = useCallback(async (setMemos, setReadHistory) => {
+    const handleRestart = useCallback(async (setReadHistory) => {
         if (!currentUser) return;
         const uid = currentUser.uid;
 
         try {
             const today = new Date().toDateString();
+            // memos는 보존 — 재시작해도 묵상 기록은 유지
             await db.collection('users').doc(uid).set({
                 currentDay: 1, score: 0, streak: 0, startDate: today,
-                lastReadDate: null, memos: {}, achievements: [],
+                lastReadDate: null, achievements: [],
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
 
@@ -156,7 +170,6 @@ export const useUserBibleActions = (
                 ...prev, currentDay: 1, score: 0, streak: 0, startDate: today,
                 lastReadDate: null, achievements: [], readCount: 1
             }));
-            if (setMemos) setMemos({});
             if (setReadHistory) setReadHistory([]);
             alert('재시작되었습니다! 오늘부터 Day 1입니다. 화이팅! 🔥');
         } catch (e) {
