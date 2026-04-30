@@ -126,6 +126,11 @@ export const useAuth = ({
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             };
             await db.collection('users').doc(cred.user.uid).set(newUser);
+            // 신규 성도 → 통계 증가
+            db.collection('settings').doc('platformStats').set({
+                total_readers: firebase.firestore.FieldValue.increment(1),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true }).catch(() => {});
             await loadChurchCommunities(churchId);
             setTempUser({ ...newUser, uid: cred.user.uid });
             setView('plan_type_select');
@@ -168,6 +173,11 @@ export const useAuth = ({
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             };
             await db.collection('users').doc(cred.user.uid).set(newUser);
+            // 신규 교회 + 관리자 → 통계 증가
+            db.collection('settings').doc('platformStats').set({
+                total_churches: firebase.firestore.FieldValue.increment(1),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true }).catch(() => {});
             setTempUser({ ...newUser, uid: cred.user.uid });
             setView('plan_type_select');
         } catch (err) {

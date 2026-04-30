@@ -53,7 +53,13 @@ service cloud.firestore {
       allow write: if isPlatformAdmin();
     }
 
-    // 동기화 설정
+    // 플랫폼 집계 통계 — 미인증 공개 읽기 (로그인 페이지에서 사용)
+    match /settings/platformStats {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 그 외 설정 문서
     match /settings/{settingId} {
       allow read: if isSignedIn();
       allow write: if isPlatformAdmin();

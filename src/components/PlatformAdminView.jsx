@@ -37,6 +37,33 @@ const PlatformAdminView = ({
     const [selectedChurchId, setSelectedChurchId] = React.useState(null);
     const [announcementChurchId, setAnnouncementChurchId] = React.useState('');
     const [seedingData, setSeedingData] = React.useState(false);
+    const [statsRefreshing, setStatsRefreshing] = React.useState(false);
+
+    const refreshPlatformStats = async () => {
+        if (!db) return;
+        setStatsRefreshing(true);
+        try {
+            const today = new Date().toDateString();
+            const [churchSnap, userSnap] = await Promise.all([
+                db.collection('churches').get(),
+                db.collection('users').where('role', '==', 'member').get(),
+            ]);
+            const users = userSnap.docs.map(d => d.data());
+            await db.collection('settings').doc('platformStats').set({
+                total_churches: churchSnap.size,
+                total_readers: users.length,
+                finished_total: users.filter(u => (u.readCount || 1) >= 2).length,
+                readers_today: users.filter(u => u.lastReadDate === today).length,
+                today_date: today,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            });
+            alert(`통계 갱신 완료!\n교회 ${churchSnap.size}개 / 성도 ${users.length}명`);
+        } catch (e) {
+            alert('갱신 실패: ' + e.message);
+        } finally {
+            setStatsRefreshing(false);
+        }
+    };
 
     const LASTNAMES = ['김', '이', '박', '최', '정', '강', '조', '윤', '장', '임', '한', '오', '서', '신', '권', '황', '안', '송', '류', '전'];
     const FIRSTNAMES_M = ['민준', '서준', '도윤', '예준', '시우', '하준', '주원', '지호', '준서', '준혁', '도현', '건우', '현우', '우진', '성민', '재원', '태양', '승현', '찬호', '정우'];
@@ -840,6 +867,19 @@ const PlatformAdminView = ({
                 {/* ── 노션 동기화 ── */}
                 {tab === 'sync' && (
                     <div className="bg-white rounded-xl shadow-sm p-6">
+                        {/* 플랫폼 통계 초기화 */}
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+                            <h3 className="text-sm font-bold text-amber-800 mb-1">📊 첫 페이지 통계 초기화</h3>
+                            <p className="text-xs text-amber-700 mb-3">로그인 첫 페이지에 표시되는 통계를 Firestore 실제 데이터로 갱신합니다. 처음 한 번 실행하거나, 숫자가 맞지 않을 때 실행하세요.</p>
+                            <button
+                                onClick={refreshPlatformStats}
+                                disabled={statsRefreshing}
+                                className="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+                            >
+                                {statsRefreshing ? '갱신 중...' : '통계 지금 갱신'}
+                            </button>
+                        </div>
+
                         <h2 className="text-base font-bold text-slate-800 mb-4">🔄 노션 데이터 동기화</h2>
                         <div className="bg-blue-50 p-4 rounded-xl border border-blue-200 mb-4">
                             <p className="text-sm text-blue-700">

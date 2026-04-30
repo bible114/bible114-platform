@@ -118,42 +118,34 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
     useEffect(() => {
         if (!db) return;
         const today = new Date().toDateString();
-        Promise.all([
-            db.collection('churches').get(),
-            db.collection('users').where('role', '==', 'member').get(),
-        ]).then(([churchSnap, userSnap]) => {
-            const users = userSnap.docs.map(d => d.data());
-            setStats({
-                total_churches: churchSnap.size,
-                total_readers: users.length,
-                finished_total: users.filter(u => (u.readCount || 1) >= 2).length,
-                chapters_read_today: users.filter(u => u.lastReadDate === today).length,
+        // settings/platformStats는 미인증 공개 읽기 허용 (Firestore 룰)
+        db.collection('settings').doc('platformStats').get()
+            .then(doc => {
+                if (doc.exists) {
+                    const d = doc.data();
+                    setStats({
+                        total_churches: d.total_churches || 0,
+                        total_readers: d.total_readers || 0,
+                        finished_total: d.finished_total || 0,
+                        chapters_read_today: d.today_date === today ? (d.readers_today || 0) : 0,
+                    });
+                } else {
+                    // platformStats 없으면 교회 수만 직접 조회
+                    db.collection('churches').get()
+                        .then(snap => setStats(prev => ({ ...prev, total_churches: snap.size })))
+                        .catch(() => {});
+                }
+            })
+            .catch(() => {
+                // 실패 시 교회 수만 시도
+                db.collection('churches').get()
+                    .then(snap => setStats(prev => ({ ...prev, total_churches: snap.size })))
+                    .catch(() => {});
             });
-        }).catch(() => {}); // 실패 시 0으로 유지
     }, []);
 
-    // Live feed (Firestore, fallback: mock)
-    const [liveFeed, setLiveFeed] = useState(LIVE_READERS);
-
-    useEffect(() => {
-        if (!db) return;
-        const today = new Date().toDateString();
-        db.collection('users').where('role', '==', 'member').limit(50).get()
-            .then(snap => {
-                const items = snap.docs
-                    .map(d => d.data())
-                    .filter(d => d.lastReadDate)
-                    .sort((a, b) => (b.lastReadDate > a.lastReadDate ? 1 : -1))
-                    .slice(0, 10)
-                    .map(d => ({
-                        name: d.name || '성도',
-                        church: d.churchName || '',
-                        book: `${d.currentDay || 1}일차`,
-                        at: d.lastReadDate === today ? '오늘' : '최근',
-                    }));
-                if (items.length >= 3) setLiveFeed(items);
-            }).catch(() => {}); // 실패 시 mock 유지
-    }, []);
+    // Live feed — mock 유지 (실제 피드는 인증 후 사용 가능)
+    const [liveFeed] = useState(LIVE_READERS);
 
     // Live counter
     const [readingNow, setReadingNow] = useState(1284);

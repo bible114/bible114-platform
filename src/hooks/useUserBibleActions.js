@@ -94,6 +94,15 @@ export const useUserBibleActions = (
             await db.collection('users').doc(uid).set(updateData, { merge: true });
             await db.collection('users').doc(uid).collection('history').add(historyItem);
 
+            // 플랫폼 통계 업데이트 (fire & forget)
+            const statsUpdate = {
+                readers_today: firebase.firestore.FieldValue.increment(1),
+                today_date: todayStr,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            };
+            if (completedRound) statsUpdate.finished_total = firebase.firestore.FieldValue.increment(1);
+            db.collection('settings').doc('platformStats').set(statsUpdate, { merge: true }).catch(() => {});
+
             const updatedUser = { ...currentUser, ...updateData };
             setCurrentUser(updatedUser);
             setViewingDay(nextViewingDay); // 무조건 다음 날짜로 이동
