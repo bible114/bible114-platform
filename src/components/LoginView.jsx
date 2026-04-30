@@ -363,7 +363,7 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                     <span className="text-[11px] font-bold text-accent bg-accent/10 px-2 py-1 rounded-full">2단계 / 2단계</span>
                     <span className="text-[11px] text-ink/40">조직 구성</span>
                 </div>
-                <div className="bg-accent/8 rounded-xl p-3 border border-accent/20">
+                <div className="bg-accent/10 rounded-xl p-3 border border-accent/20">
                     <p className="text-sm font-semibold text-ink mb-1">교회 조직을 구성해주세요</p>
                     <p className="text-[11px] text-ink/60">부서(장년부, 청년부 등)와 소그룹(1구역, 2팀 등)을 설정합니다.</p>
                     <p className="text-[11px] text-accent mt-1 font-semibold">조직은 관리자 메뉴에서도 언제든지 변경이 가능합니다.</p>
