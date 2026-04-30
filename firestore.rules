@@ -32,6 +32,13 @@ service cloud.firestore {
         isPlatformAdmin();
       allow delete: if isPlatformAdmin() ||
         (isSignedIn() && isChurchAdmin(resource.data.churchId));
+
+      // 읽기 기록 서브컬렉션 — 본인만 읽기/쓰기, 관리자 읽기
+      match /history/{historyId} {
+        allow read: if request.auth.uid == uid || isPlatformAdmin();
+        allow create: if request.auth.uid == uid;
+        allow delete: if isPlatformAdmin();
+      }
     }
 
     // 교회 문서 (가입 전 교회 목록 조회 필요 → 미인증 read 허용)
