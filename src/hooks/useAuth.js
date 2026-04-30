@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { auth, db, firebase } from '../utils/firebase';
 import { makePseudoEmail, userDocToState } from '../utils/helpers';
+import { sha256 } from '../utils/crypto';
 
 export const useAuth = ({
     setCurrentUser,
@@ -73,7 +74,7 @@ export const useAuth = ({
             if (!doc.exists) { setErrorMsg('사용자 정보를 찾을 수 없습니다.'); return; }
             const user = userDocToState(doc);
 
-            if (user.role === 'superAdmin') {
+            if (user.role === 'superAdmin' || user.role === 'platformAdmin') {
                 setCurrentUser(user);
                 await loadSuperAdminData();
                 return;
@@ -96,7 +97,13 @@ export const useAuth = ({
             // 교회 입장코드 확인
             const churchDoc = await db.collection('churches').doc(churchId).get();
             if (!churchDoc.exists) { setErrorMsg('교회를 찾을 수 없습니다.'); return; }
-            if (churchDoc.data().churchCode !== churchCode) { setErrorMsg('교회 입장코드가 틀렸습니다.'); return; }
+            const storedHash = churchDoc.data().churchCodeHash;
+            if (storedHash) {
+                const inputHash = await sha256(churchCode);
+                if (storedHash !== inputHash) { setErrorMsg('교회 입장코드가 틀렸습니다.'); return; }
+            } else {
+                if (churchDoc.data().churchCode !== churchCode) { setErrorMsg('교회 입장코드가 틀렸습니다.'); return; }
+            }
 
             const churchName = churchDoc.data().name;
             const email = makePseudoEmail(name, birthdate, churchId);
@@ -142,8 +149,9 @@ export const useAuth = ({
 
             // 교회 문서 생성
             const churchRef = db.collection('churches').doc();
+            const churchCodeHash = await sha256(churchCode);
             await churchRef.set({
-                name: churchName, churchCode, adminUid: cred.user.uid, adminEmail: email,
+                name: churchName, churchCodeHash, adminUid: cred.user.uid, adminEmail: email,
                 departments: departments || [],
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             });

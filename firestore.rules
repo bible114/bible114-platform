@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function myData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function isPlatformAdmin() {
+      return isSignedIn() &&
+        myData().role in ['platformAdmin', 'superAdmin'];
+    }
+    function isChurchAdmin(churchId) {
+      return isSignedIn() &&
+        myData().role == 'churchAdmin' &&
+        myData().churchId == churchId;
+    }
+    function sameChurch(churchId) {
+      return isSignedIn() && myData().churchId == churchId;
+    }
+
+    // 사용자 문서
+    match /users/{uid} {
+      allow read: if request.auth.uid == uid ||
+        (isSignedIn() && isChurchAdmin(resource.data.churchId)) ||
+        isPlatformAdmin();
+      allow create: if isSignedIn() && request.auth.uid == uid;
+      allow update: if request.auth.uid == uid ||
+        (isSignedIn() && isChurchAdmin(resource.data.churchId)) ||
+        isPlatformAdmin();
+      allow delete: if isPlatformAdmin() ||
+        (isSignedIn() && isChurchAdmin(resource.data.churchId));
+    }
+
+    // 교회 문서 (가입 전 교회 목록 조회 필요 → 미인증 read 허용)
+    match /churches/{churchId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update: if isChurchAdmin(churchId) || isPlatformAdmin();
+      allow delete: if isPlatformAdmin();
+
+      match /settings/{settingId} {
+        allow read: if sameChurch(churchId) || isPlatformAdmin();
+        allow write: if isChurchAdmin(churchId) || isPlatformAdmin();
+      }
+    }
+
+    // 말씀 (verses) — 읽기 전용
+    match /verses/{verseId} {
+      allow read: if isSignedIn();
+      allow write: if isPlatformAdmin();
+    }
+
+    // 동기화 설정
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isPlatformAdmin();
+    }
+  }
+}

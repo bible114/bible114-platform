@@ -145,7 +145,7 @@ const App = () => {
 
         if (currentUser) {
             if (view === 'login') {
-                if (currentUser.role === 'superAdmin') {
+                if (currentUser.role === 'superAdmin' || currentUser.role === 'platformAdmin') {
                     loadSuperAdminData();
                 } else {
                     if (currentUser.churchId) loadChurchCommunities(currentUser.churchId);

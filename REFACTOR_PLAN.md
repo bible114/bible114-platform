@@ -185,7 +185,7 @@ Claude가 처음에 워크트리(`pensive-ardinghelli-13d10d`) 안의 코드만 
 - [x] Step 1 — 네이밍 통일 (community → department) (2026-04-29, 커밋 6baa658, 빌드 ✓)
 - [x] Step 2 — useAuth 훅 추출 (2026-04-30, 빌드 ✓, App.jsx 865→717줄)
 - [x] Step 3 — 관리자 뷰 정리 (2026-04-30, 빌드 ✓, role 기반 라우팅 완료)
-- [ ] Step 4 — 보안 (비번 평문 제거, churchCode 해시, Firestore 룰) ← 사장님 결정 필요
+- [x] Step 4 — 보안 (churchCode 해시, Firestore 룰 작성, platformAdmin 코드 통일) (2026-04-30, 빌드 ✓) (users.password 평문은 사장님 결정으로 유지 — 어르신 지원 목적)
 - [ ] Step 5 — subgroupId ID/Name 분리 (선택) ← 사장님 결정 필요
 - [ ] Step 6 — 디자인 토큰 / Tailwind 확장
 - [ ] Step 7 — LoginView 디자인 적용 ← 사장님 결정 필요
