@@ -147,6 +147,10 @@ const App = () => {
             if (view === 'login') {
                 if (currentUser.role === 'superAdmin' || currentUser.role === 'platformAdmin') {
                     loadSuperAdminData();
+                } else if (currentUser.role === 'churchAdmin') {
+                    // 교회 관리자는 부서/소그룹 없이 바로 대시보드로
+                    if (currentUser.churchId) loadChurchCommunities(currentUser.churchId);
+                    setView('dashboard');
                 } else {
                     if (currentUser.churchId) loadChurchCommunities(currentUser.churchId);
                     if (currentUser.departmentId && currentUser.subgroupId) {
@@ -228,13 +232,11 @@ const App = () => {
 
 
     const deleteUser = async (uid, userName) => {
-        if (confirm(`${userName}님의 데이터를 정말 삭제하시겠습니까?`)) {
-            try {
-                await db.collection('users').doc(uid).delete();
-                setAllUsers(prev => prev.filter(u => u.uid !== uid));
-                alert("삭제되었습니다.");
-            } catch (e) { console.error(e); alert("삭제 실패"); }
-        }
+        try {
+            await db.collection('users').doc(uid).delete();
+            setAllUsers(prev => prev.filter(u => u.uid !== uid));
+            alert(`✅ ${userName}님이 삭제되었습니다.`);
+        } catch (e) { console.error(e); alert('삭제 실패: ' + e.message); }
     };
 
     const changePassword = async (uid, userName, currentPassword) => {
@@ -696,6 +698,7 @@ const App = () => {
                 getWeeklyMVP={() => getWeeklyMVP(departmentMembers)}
                 setView={setView}
                 isChurchAdmin={currentUser?.role === 'churchAdmin'}
+                churchCommunities={churchCommunities}
             />
         );
     }

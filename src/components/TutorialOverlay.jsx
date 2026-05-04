@@ -48,6 +48,7 @@ const STEPS = [
         emoji: '◀️▶️',
         title: '날짜 이동 & 본문 제목',
         text: '좌우 화살표로 다른 날의 본문을 볼 수 있어요.\n오늘 분량 외에 어제 내용 복습이나 내일 분량 미리 보기도 가능해요. D-숫자는 완독까지 남은 일수예요.',
+        warning: '⚠️ 화살표로 다른 날 본문을 보더라도, 읽음 처리는 되지 않아요. 반드시 오늘 날짜로 돌아와서 아래 "한 장 더 읽기" 버튼을 눌러야 기록됩니다!',
         position: 'below',
     },
     {
@@ -229,7 +230,12 @@ const TutorialOverlay = ({ onClose, onComplete }) => {
                                 <span className="text-2xl leading-none">{current.emoji}</span>
                                 <h4 className="font-black text-slate-800 text-sm leading-snug">{current.title}</h4>
                             </div>
-                            <p className="text-[13px] text-slate-600 leading-relaxed whitespace-pre-line mb-4">{current.text}</p>
+                            <p className="text-[13px] text-slate-600 leading-relaxed whitespace-pre-line mb-3">{current.text}</p>
+                            {current.warning && (
+                                <div className="mb-4 px-3 py-2.5 bg-red-50 border border-red-200 rounded-xl">
+                                    <p className="text-[12px] text-red-700 font-bold leading-relaxed whitespace-pre-line">{current.warning}</p>
+                                </div>
+                            )}
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={onClose}

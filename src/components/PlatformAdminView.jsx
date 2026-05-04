@@ -38,6 +38,8 @@ const PlatformAdminView = ({
     const [announcementChurchId, setAnnouncementChurchId] = React.useState('');
     const [seedingData, setSeedingData] = React.useState(false);
     const [statsRefreshing, setStatsRefreshing] = React.useState(false);
+    const [confirmDelete, setConfirmDelete] = React.useState(null); // { type: 'church'|'user', target }
+    const [deleteUserConfirm, setDeleteUserConfirm] = React.useState(null); // { uid, name }
 
     const refreshPlatformStats = async () => {
         if (!db) return;
@@ -149,16 +151,13 @@ const PlatformAdminView = ({
     };
 
     const deleteChurch = async (church) => {
-        const confirmed = window.confirm(
-            `⚠️ 교회 삭제 경고\n\n"${church.name}" 교회와 소속된 모든 교인 데이터를 영구 삭제합니다.\n\n이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?`
-        );
-        if (!confirmed) return;
-        const reconfirmed = window.confirm(`마지막 확인: "${church.name}"을 정말 삭제하시겠습니까?`);
-        if (!reconfirmed) return;
+        setConfirmDelete({ type: 'church', target: church });
+    };
 
+    const doDeleteChurch = async (church) => {
+        setConfirmDelete(null);
         setSeedingData(true);
         try {
-            // 교인 전체 삭제 (500명 초과 시 배치 반복)
             const membersSnap = await db.collection('users').where('churchId', '==', church.id).get();
             const memberDocs = membersSnap.docs;
             for (let i = 0; i < memberDocs.length; i += 490) {
@@ -166,10 +165,10 @@ const PlatformAdminView = ({
                 memberDocs.slice(i, i + 490).forEach(d => batch.delete(d.ref));
                 await batch.commit();
             }
-            // 교회 문서 삭제
             await db.collection('churches').doc(church.id).delete();
-            alert(`✅ "${church.name}" 교회와 교인 ${memberDocs.length}명이 삭제되었습니다.\n페이지를 새로고침합니다.`);
-            window.location.reload();
+            setSeedingData(false);
+            setSelectedChurchId(null);
+            alert(`✅ "${church.name}" 교회와 교인 ${memberDocs.length}명이 삭제되었습니다.`);
         } catch (e) {
             alert('삭제 실패: ' + e.message);
             setSeedingData(false);
@@ -209,6 +208,38 @@ const PlatformAdminView = ({
 
     return (
         <div className="min-h-screen bg-slate-100">
+            {/* 교회 삭제 확인 모달 */}
+            {confirmDelete?.type === 'church' && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-4">
+                    <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full">
+                        <h3 className="font-black text-red-600 text-lg mb-2">🗑️ 교회 영구 삭제</h3>
+                        <p className="text-sm text-slate-700 mb-1">
+                            <b>"{confirmDelete.target.name}"</b> 교회와 소속 교인 전체를 삭제합니다.
+                        </p>
+                        <p className="text-xs text-red-500 font-bold mb-5">이 작업은 되돌릴 수 없습니다!</p>
+                        <div className="flex gap-2">
+                            <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50">취소</button>
+                            <button onClick={() => doDeleteChurch(confirmDelete.target)} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700">삭제 확인</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* 교인 삭제 확인 모달 */}
+            {deleteUserConfirm && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-4">
+                    <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full">
+                        <h3 className="font-black text-red-600 text-lg mb-2">🗑️ 교인 삭제</h3>
+                        <p className="text-sm text-slate-700 mb-1">
+                            <b>{deleteUserConfirm.name}</b>님의 데이터를 영구 삭제합니다.
+                        </p>
+                        <p className="text-xs text-red-500 font-bold mb-5">이 작업은 되돌릴 수 없습니다!</p>
+                        <div className="flex gap-2">
+                            <button onClick={() => setDeleteUserConfirm(null)} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50">취소</button>
+                            <button onClick={async () => { const t = deleteUserConfirm; setDeleteUserConfirm(null); await deleteUser(t.uid, t.name); }} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700">삭제 확인</button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* Header */}
             <div className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-30 shadow-sm">
                 <div>
@@ -612,7 +643,7 @@ const PlatformAdminView = ({
                                                                     <div className="flex justify-center gap-1">
                                                                         <button onClick={() => setChangingPassword(u)} className="text-purple-500 p-1 bg-purple-50 rounded hover:bg-purple-100" title="암호 변경"><Icon name="refresh" size={14} /></button>
                                                                         <button onClick={() => startEditUser(u)} className="text-blue-500 p-1 bg-blue-50 rounded hover:bg-blue-100" title="정보 수정"><Icon name="edit" size={14} /></button>
-                                                                        <button onClick={() => deleteUser(u.uid, u.name)} className="text-red-500 p-1 bg-red-50 rounded hover:bg-red-100" title="삭제"><Icon name="trash" size={14} /></button>
+                                                                        <button onClick={() => setDeleteUserConfirm({ uid: u.uid, name: u.name })} className="text-red-500 p-1 bg-red-50 rounded hover:bg-red-100" title="삭제"><Icon name="trash" size={14} /></button>
                                                                     </div>
                                                                 </td>
                                                             </tr>
@@ -772,7 +803,7 @@ const PlatformAdminView = ({
                                                         <div className="flex justify-center gap-1">
                                                             <button onClick={() => setChangingPassword(u)} className="text-purple-500 p-1 bg-purple-50 rounded" title="암호 변경"><Icon name="refresh" size={14} /></button>
                                                             <button onClick={() => startEditUser(u)} className="text-blue-500 p-1 bg-blue-50 rounded" title="정보 수정"><Icon name="edit" size={14} /></button>
-                                                            <button onClick={() => deleteUser(u.uid, u.name)} className="text-red-500 p-1 bg-red-50 rounded" title="삭제"><Icon name="trash" size={14} /></button>
+                                                            <button onClick={() => setDeleteUserConfirm({ uid: u.uid, name: u.name })} className="text-red-500 p-1 bg-red-50 rounded" title="삭제"><Icon name="trash" size={14} /></button>
                                                         </div>
                                                     </td>
                                                 </tr>
