@@ -27,17 +27,6 @@ const todayVerse = () => {
 };
 
 // ─── Mock live feed data ───────────────────────────────────────────────────────
-const LIVE_READERS = [
-    { name: '김은혜', church: '소망교회', book: '창세기 1장', at: '방금' },
-    { name: '이성민', church: '사랑의교회', book: '시편 23편', at: '1분 전' },
-    { name: '박지현', church: '온누리교회', book: '요한복음 3장', at: '2분 전' },
-    { name: '최순철', church: '광림교회', book: '로마서 8장', at: '3분 전' },
-    { name: '정미라', church: '영락교회', book: '이사야 40장', at: '4분 전' },
-    { name: '한재원', church: '지구촌교회', book: '마태복음 5장', at: '5분 전' },
-    { name: '윤서연', church: '새문안교회', book: '잠언 3장', at: '6분 전' },
-    { name: '강민준', church: '명성교회', book: '히브리서 11장', at: '7분 전' },
-];
-
 // ─── (PLATFORM mock 제거 — Firestore에서 실시간 로드) ─────────────────────────
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
@@ -147,18 +136,6 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                     .catch(() => {});
             });
     }, []);
-
-    // Live feed — mock 유지 (실제 피드는 인증 후 사용 가능)
-    const [liveFeed] = useState(LIVE_READERS);
-
-    // Live counter
-    const [readingNow, setReadingNow] = useState(1284);
-
-    useEffect(() => {
-        if (stats.total_readers > 0) {
-            setReadingNow(Math.max(1100, Math.round(stats.total_readers * 0.08)));
-        }
-    }, [stats.total_readers]);
 
     useEffect(() => {
         const id = setInterval(() => {
@@ -452,13 +429,11 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                     <div className="w-8 h-8 rounded-[7px] bg-ink text-cream flex items-center justify-center font-serif font-bold text-[14px] tracking-wide">
                         114
                     </div>
-                    <span className="font-serif text-[17px] font-semibold text-ink tracking-tight">성경통독 114</span>
+                    <span className="font-serif text-[17px] font-semibold text-ink tracking-tight">천로역정 성경읽기</span>
                 </div>
                 {/* Nav links */}
                 <nav className="flex gap-7 text-[13px] text-ink/55">
                     <span className="text-ink border-b border-b-accent pb-0.5 cursor-default">소개</span>
-                    <span className="cursor-default hover:text-ink transition-colors">참여 교회</span>
-                    <button type="button" onClick={() => setShowDemoTour(true)} className="hover:text-ink transition-colors cursor-pointer">읽는 방법</button>
                     <span className="cursor-default hover:text-ink transition-colors">도움말</span>
                 </nav>
                 {/* CTA */}
@@ -475,17 +450,7 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                 {/* Mobile logo bar */}
                 <div className="flex items-center gap-2 mb-6 md:hidden">
                     <div className="w-7 h-7 rounded-[6px] bg-ink text-cream flex items-center justify-center font-serif font-bold text-[13px]">114</div>
-                    <span className="font-serif text-base font-semibold text-ink">성경통독 114</span>
-                </div>
-
-                {/* Eyebrow — live counter */}
-                <div className="flex items-center gap-2.5 mb-5">
-                    <PulseIndicator color="#b8702a" size={7} />
-                    <span className="text-[12px] tracking-[0.14em] uppercase text-ink/55 font-semibold">
-                        지금{' '}
-                        <span className="text-ink tabular-nums">{readingNow.toLocaleString()}</span>
-                        명이 함께 펼치는 중
-                    </span>
+                    <span className="font-serif text-base font-semibold text-ink">천로역정 성경읽기</span>
                 </div>
 
                 {/* H1 Headline */}
@@ -527,37 +492,6 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                     <div className="font-serif text-[12px] md:text-[13px] text-ink/55 text-right">— {verse.ref}</div>
                 </div>
 
-                {/* Live feed — hidden on mobile to keep it clean */}
-                <div className="hidden md:flex flex-col flex-1 min-h-0 overflow-hidden">
-                    <div className="flex items-center justify-between mb-2.5">
-                        <span className="text-[11px] text-ink/55 tracking-[0.08em] uppercase font-semibold">방금 펼친 성도들</span>
-                        <span className="flex items-center gap-1.5 text-[11px] text-ink/55">
-                            <PulseIndicator color="#3b6b4a" size={5} /> 실시간
-                        </span>
-                    </div>
-                    <div
-                        className="flex-1 overflow-hidden relative min-h-0"
-                        style={{ maskImage: 'linear-gradient(180deg, #000 70%, transparent)' }}
-                    >
-                        <div style={{ animation: 'scrollFeed 32s linear infinite' }}>
-                            {[...liveFeed, ...liveFeed].map((r, i) => (
-                                <div key={i} className="flex items-center gap-3 mb-2.5">
-                                    <div className="w-7 h-7 rounded-full bg-ink text-cream flex items-center justify-center font-serif text-[11px] font-bold shrink-0">
-                                        {r.name[0]}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-baseline gap-2 flex-wrap">
-                                            <span className="font-serif text-[14px] font-semibold text-ink">{r.name}</span>
-                                            <span className="text-[11px] text-accent">{r.church}</span>
-                                            <span className="text-[11px] text-ink/55 ml-auto">{r.at}</span>
-                                        </div>
-                                        <div className="text-[12px] text-ink/65 mt-0.5">{r.book} 펼침</div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
             </div>
 
             {/* ═══ RIGHT — Login Card ══════════════════════════════════════════ */}
