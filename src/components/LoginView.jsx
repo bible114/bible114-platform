@@ -435,7 +435,6 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                 <nav className="flex gap-7 text-[13px] text-ink/55">
                     <span className="text-ink border-b border-b-accent pb-0.5 cursor-default">소개</span>
                     <button type="button" onClick={() => setShowDemoTour(true)} className="hover:text-ink transition-colors cursor-pointer">읽는 방법</button>
-                    <span className="cursor-default hover:text-ink transition-colors">도움말</span>
                 </nav>
                 {/* CTA */}
                 <button
