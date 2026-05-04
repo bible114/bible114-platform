@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { TOTAL_DAYS } from '../data/constants';
 import { BIBLE_VERSIONS, PLAN_TYPES } from '../data/bible_options';
 import { getLevelInfo } from '../data/levels';
@@ -29,6 +29,7 @@ import {
     ReadingChampionSection,
     KakaoChannelButton
 } from './dashboard';
+import TutorialOverlay from './TutorialOverlay';
 
 const DashboardView = ({
     currentUser,
@@ -93,8 +94,11 @@ const DashboardView = ({
     getWeeklyMVP,
     setView,
     isChurchAdmin,
+    churchCommunities,
 }) => {
     if (!currentUser) return null;
+
+    const [showTutorial, setShowTutorial] = useState(false);
 
     const { currentDay, score, subgroupId, departmentName, planId, streak } = currentUser;
     const [planType, version] = (planId || '1year_revised').split('_');
@@ -243,7 +247,7 @@ const DashboardView = ({
 
             {/* Modals */}
             <ScoreInfoModal show={showScoreInfo} onClose={() => setShowScoreInfo(false)} myLevel={myLevel} score={score} />
-            <ReadingGuideModal show={showReadingGuide} onClose={() => setShowReadingGuide(false)} />
+            <ReadingGuideModal show={showReadingGuide} onClose={() => setShowReadingGuide(false)} onStartTutorial={() => setShowTutorial(true)} />
             <AchievementsModal show={showAchievements} onClose={() => setShowAchievements(false)} />
             <CalendarModal show={showCalendar} onClose={() => setShowCalendar(false)} calendarDate={calendarDate} setCalendarDate={setCalendarDate} readHistory={readHistory} />
             <MonthlyContestInfoModal show={showMonthlyContestInfo} onClose={() => setShowMonthlyContestInfo(false)} />
@@ -269,6 +273,7 @@ const DashboardView = ({
                 setSelectedSubgroupDetail={setSelectedSubgroupDetail}
                 rankingCommunityFilter={rankingCommunityFilter}
                 setRankingCommunityFilter={setRankingCommunityFilter}
+                churchCommunities={churchCommunities}
             />
             <MemoListModal
                 show={showMemoList}
@@ -280,7 +285,13 @@ const DashboardView = ({
                 currentUser={currentUser}
                 generateMemosHTML={generateMemosHTML}
             />
-            <SubgroupChangeModal show={showSubgroupChange} onClose={() => setShowSubgroupChange(false)} currentUser={currentUser} changeSubgroup={changeSubgroup} />
+            <SubgroupChangeModal show={showSubgroupChange} onClose={() => setShowSubgroupChange(false)} currentUser={currentUser} changeSubgroup={changeSubgroup} churchCommunities={churchCommunities} />
+            {showTutorial && (
+                <TutorialOverlay
+                    onClose={() => setShowTutorial(false)}
+                    onComplete={() => { setShowTutorial(false); setShowReadingGuide(true); }}
+                />
+            )}
 
             <DashboardHeader
                 handleLogout={handleLogout}

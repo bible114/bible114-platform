@@ -148,6 +148,34 @@ const PlatformAdminView = ({
         }
     };
 
+    const deleteChurch = async (church) => {
+        const confirmed = window.confirm(
+            `⚠️ 교회 삭제 경고\n\n"${church.name}" 교회와 소속된 모든 교인 데이터를 영구 삭제합니다.\n\n이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?`
+        );
+        if (!confirmed) return;
+        const reconfirmed = window.confirm(`마지막 확인: "${church.name}"을 정말 삭제하시겠습니까?`);
+        if (!reconfirmed) return;
+
+        setSeedingData(true);
+        try {
+            // 교인 전체 삭제 (500명 초과 시 배치 반복)
+            const membersSnap = await db.collection('users').where('churchId', '==', church.id).get();
+            const memberDocs = membersSnap.docs;
+            for (let i = 0; i < memberDocs.length; i += 490) {
+                const batch = db.batch();
+                memberDocs.slice(i, i + 490).forEach(d => batch.delete(d.ref));
+                await batch.commit();
+            }
+            // 교회 문서 삭제
+            await db.collection('churches').doc(church.id).delete();
+            alert(`✅ "${church.name}" 교회와 교인 ${memberDocs.length}명이 삭제되었습니다.\n페이지를 새로고침합니다.`);
+            window.location.reload();
+        } catch (e) {
+            alert('삭제 실패: ' + e.message);
+            setSeedingData(false);
+        }
+    };
+
     const churches = allChurches || [];
     const todayStr = new Date().toDateString();
 
@@ -602,7 +630,7 @@ const PlatformAdminView = ({
 
                                     <div className="mt-6 pt-5 border-t-2 border-dashed border-red-100">
                                         <p className="text-xs font-bold text-red-400 mb-3">🧪 테스트 데이터 관리 (개발용)</p>
-                                        <div className="flex gap-2">
+                                        <div className="flex gap-2 mb-3">
                                             <button
                                                 onClick={() => seedFakeUsers(selectedChurch)}
                                                 disabled={seedingData}
@@ -616,6 +644,12 @@ const PlatformAdminView = ({
                                                 테스트 데이터 삭제
                                             </button>
                                         </div>
+                                        <button
+                                            onClick={() => deleteChurch(selectedChurch)}
+                                            disabled={seedingData}
+                                            className="w-full bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition-colors border border-red-700">
+                                            🗑️ 이 교회 영구 삭제 (교인 포함)
+                                        </button>
                                     </div>
                                 </div>
                             </div>

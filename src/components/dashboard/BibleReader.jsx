@@ -27,7 +27,7 @@ const BibleReader = ({
 }) => {
     return (
         <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
-            <div className="p-6 text-white relative bg-gradient-to-br from-indigo-600 to-blue-700">
+            <div id="tut-bible-header" className="p-6 text-white relative bg-gradient-to-br from-indigo-600 to-blue-700">
                 <div className="flex items-center justify-between mb-2 px-2">
                     <button
                         onClick={() => setViewingDay(prev => Math.max(1, prev - 1))}
@@ -62,7 +62,7 @@ const BibleReader = ({
                         </p>
                         <p className="opacity-80 text-xs">{getEncouragementMessage()}</p>
                     </div>
-                    <div className="flex items-center gap-1 bg-white/20 backdrop-blur-md rounded-full px-2 py-1 shadow-sm shrink-0 ml-4">
+                    <div id="tut-font-size" className="flex items-center gap-1 bg-white/20 backdrop-blur-md rounded-full px-2 py-1 shadow-sm shrink-0 ml-4">
                         <button
                             onClick={() => {
                                 const newSize = Math.max(12, fontSize - 2);
@@ -92,7 +92,7 @@ const BibleReader = ({
 
                 {/* TTS UI */}
                 {verseData.text && verseData.text.length > 20 && !verseData.loading && (
-                    <div className="mt-3 bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/20">
+                    <div id="tut-tts-area" className="mt-3 bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/20">
                         <div className="flex flex-col gap-2">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
@@ -169,7 +169,7 @@ const BibleReader = ({
             </div>
 
             <div className="p-6 bg-white">
-                <div className="prose prose-slate max-w-none mb-10 min-h-[300px]">
+                <div id="tut-bible-text" className="prose prose-slate max-w-none mb-10 min-h-[300px]">
                     {verseData.loading ? (
                         <div className="flex flex-col items-center justify-center py-20 space-y-4">
                             <div className="w-12 h-12 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin"></div>
@@ -186,7 +186,7 @@ const BibleReader = ({
                 </div>
 
                 {!verseData.loading && (
-                    <div className="mt-8 pt-6 border-t border-slate-100">
+                    <div id="tut-read-btn" className="mt-8 pt-6 border-t border-slate-100">
                         <button
                             onClick={handleRead}
                             className={`w-full py-5 rounded-3xl font-bold text-xl transition-all shadow-xl hover:shadow-2xl active:scale-95 flex items-center justify-center gap-3

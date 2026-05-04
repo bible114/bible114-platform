@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../utils/firebase';
 import OrgEditor from './OrgEditor';
+import DemoTour from './DemoTour';
+import ReadingGuideModal from './modals/ReadingGuideModal';
 
 // ─── Daily verse data ─────────────────────────────────────────────────────────
 const DAILY_VERSES = [
@@ -106,6 +108,8 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
     const [activeTab, setActiveTab] = useState('member');
     const [signupStep, setSignupStep] = useState(1);
     const [showAdminContact, setShowAdminContact] = useState(false);
+    const [showDemoTour, setShowDemoTour] = useState(false);
+    const [showReadingGuide, setShowReadingGuide] = useState(false);
 
     // Platform stats (Firestore)
     const [stats, setStats] = useState({
@@ -454,7 +458,7 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                 <nav className="flex gap-7 text-[13px] text-ink/55">
                     <span className="text-ink border-b border-b-accent pb-0.5 cursor-default">소개</span>
                     <span className="cursor-default hover:text-ink transition-colors">참여 교회</span>
-                    <span className="cursor-default hover:text-ink transition-colors">읽는 방법</span>
+                    <button type="button" onClick={() => setShowDemoTour(true)} className="hover:text-ink transition-colors cursor-pointer">읽는 방법</button>
                     <span className="cursor-default hover:text-ink transition-colors">도움말</span>
                 </nav>
                 {/* CTA */}
@@ -601,6 +605,18 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
             </div>
 
             {showAdminContact && <AdminContactModal onClose={() => setShowAdminContact(false)} />}
+
+            {showDemoTour && (
+                <DemoTour
+                    onClose={() => setShowDemoTour(false)}
+                    onComplete={() => { setShowDemoTour(false); setShowReadingGuide(true); }}
+                />
+            )}
+
+            <ReadingGuideModal
+                show={showReadingGuide}
+                onClose={() => setShowReadingGuide(false)}
+            />
         </div>
     );
 };

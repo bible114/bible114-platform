@@ -19,7 +19,7 @@ const MemoSection = ({
     const existingMemo = memos[key] || memos[dayIdx];
 
     return (
-        <div className="mt-4 bg-[#fdf4ff] p-5 rounded-3xl border border-purple-100 shadow-sm">
+        <div id="tut-memo-section" className="mt-4 bg-[#fdf4ff] p-5 rounded-3xl border border-purple-100 shadow-sm">
             <div className="flex justify-between items-center mb-3">
                 <h3 className="font-bold text-purple-700 flex items-center gap-2">✍️ 오늘의 묵상</h3>
                 <button

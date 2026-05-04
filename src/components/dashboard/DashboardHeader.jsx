@@ -31,18 +31,18 @@ const DashboardHeader = ({
                     {/* 상단: 사용자 상태 및 로그아웃 (모바일에서 먼저보이고 좌우 꽉차게) */}
                     <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide w-full md:w-auto md:order-2 justify-between md:justify-end py-1">
                         <div className="flex items-center gap-1.5">
-                            <div className={`text-xs font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 shrink-0 ${streak > 0 ? 'bg-orange-50 text-orange-600 border border-orange-100' : 'bg-slate-100 text-slate-400'}`}>
+                            <div id="tut-streak" className={`text-xs font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 shrink-0 ${streak > 0 ? 'bg-orange-50 text-orange-600 border border-orange-100' : 'bg-slate-100 text-slate-400'}`}>
                                 <Icon name="flame" size={12} />{streak}일
                             </div>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); setShowScoreInfo(true); }} className="text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2.5 py-1.5 rounded-xl hover:bg-blue-100 transition-colors shrink-0">
+                            <button id="tut-score" type="button" onClick={(e) => { e.stopPropagation(); setShowScoreInfo(true); }} className="text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2.5 py-1.5 rounded-xl hover:bg-blue-100 transition-colors shrink-0">
                                 {myLevel.emoji} {score || 0}pt
                             </button>
                             {isChurchAdmin && (
                                 <button type="button" onClick={(e) => { e.stopPropagation(); setView('church_admin'); }} className="p-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 shrink-0 flex items-center gap-1" title="교회 관리">⛪ <span className="hidden sm:inline">교회관리</span></button>
                             )}
-                            <button type="button" onClick={(e) => { e.stopPropagation(); setShowAchievements(true); }} className="p-1.5 text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-100 rounded-xl hover:bg-yellow-100 shrink-0">🏅</button>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); setShowDateSettings(true); }} className="p-1.5 text-xs font-bold text-purple-600 bg-purple-50 border border-purple-100 rounded-xl hover:bg-purple-100 shrink-0">📅</button>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); setShowCalendar(true); }} className="p-1.5 text-xs font-bold text-green-600 bg-green-50 border border-green-100 rounded-xl hover:bg-green-100 shrink-0">📆</button>
+                            <button id="tut-achievements" type="button" onClick={(e) => { e.stopPropagation(); setShowAchievements(true); }} className="p-1.5 text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-100 rounded-xl hover:bg-yellow-100 shrink-0">🏅</button>
+                            <button id="tut-date-settings" type="button" onClick={(e) => { e.stopPropagation(); setShowDateSettings(true); }} className="p-1.5 text-xs font-bold text-purple-600 bg-purple-50 border border-purple-100 rounded-xl hover:bg-purple-100 shrink-0">📅</button>
+                            <button id="tut-calendar" type="button" onClick={(e) => { e.stopPropagation(); setShowCalendar(true); }} className="p-1.5 text-xs font-bold text-green-600 bg-green-50 border border-green-100 rounded-xl hover:bg-green-100 shrink-0">📆</button>
                             <button type="button" onClick={(e) => { e.stopPropagation(); setShowReadingGuide(true); }} className="p-1.5 text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded-xl hover:bg-slate-200 shrink-0">
                                 <Icon name="helpbook" size={14} />
                             </button>
@@ -57,6 +57,7 @@ const DashboardHeader = ({
 
                     {/* 하단: 버전 정보 (모바일에서 아래로) */}
                     <button
+                        id="tut-version-btn"
                         onClick={handleChangeVersionStart}
                         className="flex items-center gap-2 px-3 py-1.5 bg-slate-100/80 hover:bg-slate-200 rounded-full transition-colors group shrink-0 md:order-1 self-start md:self-center"
                     >
@@ -94,7 +95,7 @@ const DashboardHeader = ({
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex justify-between text-xs mb-1.5">
-                                        <span className={`font-bold truncate ${group.name === subgroupId ? 'text-blue-600' : 'text-slate-700'}`}>
+                                        <span className={`font-bold truncate ${(group.subgroupId === subgroupId || group.name === subgroupId) ? 'text-blue-600' : 'text-slate-700'}`}>
                                             {group.name}
                                         </span>
                                         <span className="font-bold text-slate-500 shrink-0">

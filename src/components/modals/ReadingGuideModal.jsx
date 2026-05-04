@@ -1,8 +1,13 @@
 import React from 'react';
 import Icon from '../Icon';
 
-const ReadingGuideModal = ({ show, onClose }) => {
+const ReadingGuideModal = ({ show, onClose, onStartTutorial }) => {
     if (!show) return null;
+
+    const handleStartTutorial = () => {
+        onClose();
+        setTimeout(() => onStartTutorial && onStartTutorial(), 80);
+    };
 
     return (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -11,6 +16,27 @@ const ReadingGuideModal = ({ show, onClose }) => {
                     <h3 className="text-xl font-bold text-slate-800">📖 성경통독 114 가이드</h3>
                     <button onClick={onClose} className="text-slate-400"><Icon name="close" /></button>
                 </div>
+
+                {/* 앱 투어 버튼 */}
+                <button
+                    onClick={onStartTutorial ? handleStartTutorial : undefined}
+                    disabled={!onStartTutorial}
+                    className={`w-full mb-2 py-3.5 rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 transition-all
+                        ${onStartTutorial
+                            ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-white hover:from-amber-500 hover:to-yellow-600 cursor-pointer'
+                            : 'bg-amber-50 text-amber-400 border border-amber-200 cursor-default'
+                        }`}
+                >
+                    <span className="text-lg">❓</span>
+                    앱 화면 사용법 투어 시작하기
+                    <span className="text-base opacity-80">→</span>
+                </button>
+                <p className={`text-center text-xs mb-4 ${onStartTutorial ? 'text-slate-400' : 'text-amber-500'}`}>
+                    {onStartTutorial
+                        ? '앱의 주요 기능을 화면 상단부터 순서대로 안내해 드립니다.'
+                        : '로그인 후 이용 가능합니다'}
+                </p>
+
                 <a href="https://www.bible114.net/8e616cd9-5ca0-4dd3-9e63-64280fc66f38" target="_blank" rel="noopener noreferrer" className="block w-full mb-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-center py-3 rounded-xl font-bold shadow-md hover:from-blue-600 hover:to-blue-700 transition-all">
                     🎥 성경통독 114 설명 영상 보기
                 </a>
