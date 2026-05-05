@@ -4722,7 +4722,7 @@ ${x}`)});r.push(c)}return r.join(`
 탭하면 내가 달성한 배지와 아직 받지 못한 배지를 한눈에 볼 수 있어요.`,position:"below"},{id:"tut-date-settings",emoji:"📅",title:"시작 날짜 조정",text:`통독 시작 날짜를 조정할 수 있어요.
 실제 독서 진도와 날짜가 맞지 않을 때 이 설정으로 맞춰주세요.`,position:"below"},{id:"tut-calendar",emoji:"📆",title:"읽기 달력",text:`내가 언제 읽었는지 달력으로 확인해요.
 읽은 날은 색깔로 표시되어 한눈에 볼 수 있어요.`,position:"below"},{id:"tut-bible-header",emoji:"◀️▶️",title:"날짜 이동 & 본문 제목",text:`좌우 화살표로 다른 날의 본문을 볼 수 있어요.
-오늘 분량 외에 어제 내용 복습이나 내일 분량 미리 보기도 가능해요. D-숫자는 완독까지 남은 일수예요.`,warning:'⚠️ 화살표로 다른 날 본문을 보더라도, 읽음 처리는 되지 않아요. 반드시 오늘 날짜로 돌아와서 아래 "한 장 더 읽기" 버튼을 눌러야 기록됩니다!',position:"below"},{id:"tut-font-size",emoji:"🔤",title:"글자 크기 조절",text:`− 는 작게, + 는 크게 조절해요.
+오늘 분량 외에 어제 내용 복습이나 내일 분량 미리 보기도 가능해요. D-숫자는 완독까지 남은 일수예요.`,warning:'⚠️ 화살표로 다른 날 본문을 보더라도, 읽음 처리는 되지 않아요. 아래 "한 장 더 읽기" 버튼을 눌러야 기록됩니다!',position:"below"},{id:"tut-font-size",emoji:"🔤",title:"글자 크기 조절",text:`− 는 작게, + 는 크게 조절해요.
 설정한 크기는 다음 접속에도 그대로 유지돼요.`,position:"below"},{id:"tut-tts-area",emoji:"🔊",title:"성경 읽어주기 (TTS)",text:`"듣기 ▶️" 버튼을 누르면 기기가 본문을 읽어줘요.
 − / + 로 속도도 조절할 수 있어요. 운전 중·이동 중에 특히 유용합니다!`,position:"below"},{id:"tut-bible-text",emoji:"📖",title:"성경 본문",text:`오늘의 성경 본문이 여기에 표시돼요.
 절 번호를 탭하면 그 절부터 낭독을 시작할 수 있어요. 천천히 읽으며 말씀을 묵상해보세요!`,position:"above"},{id:"tut-read-btn",emoji:"✅",title:"읽기 완료 버튼",text:`본문을 다 읽었으면 꼭 이 버튼을 눌러주세요!
