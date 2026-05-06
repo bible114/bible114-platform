@@ -138,13 +138,6 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
             });
     }, []);
 
-    useEffect(() => {
-        const id = setInterval(() => {
-            setReadingNow(n => Math.max(1100, n + (Math.floor(Math.random() * 7) - 3)));
-        }, 2200);
-        return () => clearInterval(id);
-    }, []);
-
     // Login form state
     const [loginName, setLoginName] = useState('');
     const [loginBirthdate, setLoginBirthdate] = useState('');

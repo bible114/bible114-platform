@@ -2,6 +2,27 @@ import React, { useEffect } from 'react';
 import { toSinoKorean } from '../utils/helpers';
 
 const MarkdownRenderer = ({ content, fontSize = 16, activeChunkIndex = -1, onSegmentClick = null }) => {
+    // 자동 스크롤 기능 (부드러움 개선: 필요할 때만 스크롤)
+    useEffect(() => {
+        if (activeChunkIndex >= 0) {
+            const activeElement = document.getElementById(`tts-segment-${activeChunkIndex}`);
+            if (activeElement) {
+                const rect = activeElement.getBoundingClientRect();
+                const viewHeight = window.innerHeight;
+
+                // 현재 구절이 화면의 적절한 위치(상단 30% ~ 하단 70%)에 이미 있다면 스크롤하지 않음
+                const isWellVisible = (rect.top > viewHeight * 0.3) && (rect.bottom < viewHeight * 0.7);
+
+                if (!isWellVisible) {
+                    activeElement.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center'
+                    });
+                }
+            }
+        }
+    }, [activeChunkIndex]);
+
     if (!content) return null;
 
     // 제목은 본문보다 크게
@@ -42,28 +63,6 @@ const MarkdownRenderer = ({ content, fontSize = 16, activeChunkIndex = -1, onSeg
 
         return parts.length > 0 ? parts : [{ type: 'text', content: text }];
     };
-
-    // 자동 스크롤 기능 (부드러움 개선: 필요할 때만 스크롤)
-    useEffect(() => {
-        if (activeChunkIndex >= 0) {
-            const activeElement = document.getElementById(`tts-segment-${activeChunkIndex}`);
-            if (activeElement) {
-                const rect = activeElement.getBoundingClientRect();
-                const viewHeight = window.innerHeight;
-
-                // 현재 구절이 화면의 적절한 위치(상단 30% ~ 하단 70%)에 이미 있다면 스크롤하지 않음
-                // 이렇게 하면 매 문장마다 화면이 덜컥거리는 현상을 방지하고 훨씬 부드럽게 느껴집니다.
-                const isWellVisible = (rect.top > viewHeight * 0.3) && (rect.bottom < viewHeight * 0.7);
-
-                if (!isWellVisible) {
-                    activeElement.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'center'
-                    });
-                }
-            }
-        }
-    }, [activeChunkIndex]);
 
     // 전체 세그먼트 카운터 (한 번의 렌더링 동안 유지)
     let segmentCounter = 0;
