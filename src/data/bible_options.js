@@ -11,10 +11,8 @@ export const BIBLE_VERSIONS = {
         { id: 'sequential', name: '개역개정(순서대로)', desc: '창세기부터 요한계시록까지 순서대로 일독', tagName: '개역개정 순서대로' },
         { id: 'revised', name: '개역개정 114', desc: '교회에서 평소에 사용하는 성경', tagName: '개역개정 일년일독' },
         { id: 'new', name: '새번역 114', desc: '쉬운 현대어로 읽을 수 있는 성경', tagName: '새번역 일년일독' },
-        { id: 'saehangul', name: '새한글 114', desc: '가장 최근에 번역된 현대어 성경', tagName: '새한글 일년일독' },
     ],
     'nt': [  // 신약 일독 버전들
         { id: 'new', name: '새번역 114', desc: '쉬운 현대어로 읽을 수 있는 성경', tagName: '새번역 신약일독' },
-        { id: 'saehangul', name: '새한글 114', desc: '가장 최근에 번역된 현대어 성경', tagName: '새한글 신약일독' },
     ]
 };
