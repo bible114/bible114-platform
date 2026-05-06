@@ -553,10 +553,6 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                 onClose={() => setShowReadingGuide(false)}
             />
 
-            {/* 하단 고정 광고 배너 */}
-            <div className="fixed bottom-0 left-0 right-0 z-40 flex justify-center bg-white/80 backdrop-blur-sm py-1 border-t border-slate-100">
-                <KakaoAdBanner />
-            </div>
         </div>
     );
 };

@@ -1,5 +1,6 @@
 import React from 'react';
 import MarkdownRenderer from '../MarkdownRenderer';
+import KakaoAdBanner from '../KakaoAdBanner';
 
 const BibleReader = ({
     verseData,
@@ -204,6 +205,9 @@ const BibleReader = ({
                                 : "읽기를 완료하면 점수와 불꽃이 올라갑니다!"
                             }
                         </p>
+                        <div className="flex justify-center mt-6">
+                            <KakaoAdBanner />
+                        </div>
                     </div>
                 )}
             </div>

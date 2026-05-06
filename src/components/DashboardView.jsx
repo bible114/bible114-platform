@@ -386,10 +386,6 @@ const DashboardView = ({
             )}
             <KakaoChannelButton kakaoLink={kakaoLink} />
 
-            {/* 하단 광고 배너 */}
-            <div className="flex justify-center py-4">
-                <KakaoAdBanner />
-            </div>
         </div>
     );
 };
