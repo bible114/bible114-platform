@@ -70,7 +70,7 @@ const RaceMap = ({ racers, departmentChampions, getSubgroupDisplay }) => {
                                     {racer.name}
                                 </div>
                                 <div className={`text-[9px] pl-1 pr-1.5 py-0.5 font-bold whitespace-nowrap text-white flex items-center ${subgroupInfo.bgColor} border-l border-white/30`}>
-                                    {racer.subgroupId}
+                                    {subgroupInfo.lines.join(' ')}
                                 </div>
                             </div>
                         </div>

@@ -24,7 +24,7 @@ export const userDocToState = (doc) => {
         gender: d.gender ?? "male",
         departmentId: d.departmentId ?? d.communityId ?? null,
         departmentName: d.departmentName ?? d.communityName ?? null,
-        subgroupId: d.subgroupId ?? null,
+        subgroupId: (typeof d.subgroupId === 'string' ? d.subgroupId : (d.subgroupId?.name ?? null)) ?? null,
         planId: d.planId ?? "1year_revised",
         achievements: d.achievements ?? [],
         memos: d.memos ?? {},
