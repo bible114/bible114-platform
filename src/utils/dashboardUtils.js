@@ -11,8 +11,10 @@
  * @returns {object} { lines: Array<string>, bgColor: string }
  */
 export const getSubgroupDisplay = (subgroupId, subgroupName) => {
+    // {id,name} 객체가 들어온 경우 name 문자열로 정규화
+    const toStr = (v) => (typeof v === 'string' ? v : (v?.name ?? null));
     // Use subgroupName for display if available (backward compatible)
-    const displayKey = subgroupName || subgroupId;
+    const displayKey = toStr(subgroupName) || toStr(subgroupId);
     if (!displayKey) return { lines: ['미지정'], bgColor: 'bg-gradient-to-br from-slate-400 to-slate-500' };
     // Alias subgroupId to displayKey for the rest of the function
     const subgroupId_ = displayKey;

@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { db, firebase } from '../utils/firebase';
 import { calculateSubgroupStats } from '../utils/statsUtils';
+import { userDocToState } from '../utils/helpers';
 
 export const useDepartment = (currentUser, setCurrentUser) => {
     const [subgroupStats, setSubgroupStats] = useState({});
@@ -15,7 +16,7 @@ export const useDepartment = (currentUser, setCurrentUser) => {
             const snapshot = await db.collection('users')
                 .where('churchId', '==', currentUser.churchId)
                 .get();
-            return snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+            return snapshot.docs.map(doc => userDocToState(doc));
         } catch (e) {
             console.error("멤버 로딩 실패:", e);
             return [];
@@ -65,6 +66,7 @@ export const useDepartment = (currentUser, setCurrentUser) => {
 
             const allMembers = await loadAllMembers();
             setAllMembersForRace(allMembers);
+            // useBibleLogic의 [Effect 3]에서 communities와 함께 다시 계산되므로 임시로만 업데이트
             setSubgroupStats(calculateSubgroupStats(allMembers));
             if (currentUser.departmentId) {
                 setDepartmentMembers(allMembers.filter(m => m.departmentId === currentUser.departmentId));
