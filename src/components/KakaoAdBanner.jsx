@@ -18,8 +18,12 @@ const KakaoAdBanner = ({ unitId = 'DAN-BParwOqQnhFQeArp', width = 320, height = 
 
         // ba.min.js가 로드된 후 광고 초기화
         const tryInit = () => {
-            if (window.kakaoAdFit) {
-                window.kakaoAdFit.push({});
+            try {
+                if (window.kakaoAdFit && typeof window.kakaoAdFit.push === 'function') {
+                    window.kakaoAdFit.push({});
+                }
+            } catch (e) {
+                // 광고 초기화 실패는 무시 (앱 크래시 방지)
             }
         };
         tryInit();
