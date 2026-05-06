@@ -97,9 +97,9 @@ const DashboardView = ({
     isChurchAdmin,
     churchCommunities,
 }) => {
-    if (!currentUser) return null;
-
     const [showTutorial, setShowTutorial] = useState(false);
+
+    if (!currentUser) return null;
 
     const { currentDay, score, subgroupId, departmentName, planId, streak } = currentUser;
     const [planType, version] = (planId || '1year_revised').split('_');
