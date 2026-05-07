@@ -1,6 +1,7 @@
 import React from 'react';
 import Icon from './Icon';
 import { firebase } from '../utils/firebase';
+import ChurchAdminView from './ChurchAdminView';
 
 const PlatformAdminView = ({
     handleLogout,
@@ -40,6 +41,7 @@ const PlatformAdminView = ({
     const [statsRefreshing, setStatsRefreshing] = React.useState(false);
     const [confirmDelete, setConfirmDelete] = React.useState(null); // { type: 'church'|'user', target }
     const [deleteUserConfirm, setDeleteUserConfirm] = React.useState(null); // { uid, name }
+    const [viewingChurchAsAdmin, setViewingChurchAsAdmin] = React.useState(false);
 
     const refreshPlatformStats = async () => {
         if (!db) return;
@@ -205,6 +207,32 @@ const PlatformAdminView = ({
         ['announcement', '📢 공지 관리'],
         ['sync', '🔄 동기화'],
     ];
+
+    if (viewingChurchAsAdmin && selectedChurch) {
+        const fakeChurchAdmin = {
+            churchId: selectedChurch.id,
+            churchName: selectedChurch.name,
+            name: '슈퍼관리자',
+            role: 'churchAdmin',
+        };
+        return (
+            <div>
+                <div className="bg-amber-500 text-white text-xs font-bold px-4 py-2 flex items-center justify-between sticky top-0 z-50">
+                    <span>🛠️ 슈퍼관리자 모드 — {selectedChurch.name} 교회관리자 화면 미리보기</span>
+                    <button
+                        onClick={() => setViewingChurchAsAdmin(false)}
+                        className="bg-white text-amber-600 px-3 py-1 rounded-lg font-bold text-xs hover:bg-amber-50">
+                        ← 슈퍼관리자로 돌아가기
+                    </button>
+                </div>
+                <ChurchAdminView
+                    currentUser={fakeChurchAdmin}
+                    handleLogout={handleLogout}
+                    onBack={() => setViewingChurchAsAdmin(false)}
+                />
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-slate-100">
@@ -576,10 +604,17 @@ const PlatformAdminView = ({
                     <>
                         {selectedChurch ? (
                             <div>
-                                <button onClick={() => setSelectedChurchId(null)}
-                                    className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-4 font-bold">
-                                    ← 교회 목록으로
-                                </button>
+                                <div className="flex items-center justify-between mb-4">
+                                    <button onClick={() => setSelectedChurchId(null)}
+                                        className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 font-bold">
+                                        ← 교회 목록으로
+                                    </button>
+                                    <button
+                                        onClick={() => setViewingChurchAsAdmin(true)}
+                                        className="flex items-center gap-1.5 bg-blue-600 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-blue-700 shadow-sm">
+                                        ⛪ 교회관리자 화면으로 보기
+                                    </button>
+                                </div>
                                 <div className="bg-white rounded-xl shadow-sm p-6">
                                     <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
                                         <div>
