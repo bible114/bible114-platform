@@ -442,9 +442,17 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
             <div className="relative z-[1] flex flex-col pt-16 pb-8 px-6 md:pt-[100px] md:pb-10 md:px-14">
 
                 {/* Mobile logo bar */}
-                <div className="flex items-center gap-2 mb-6 md:hidden">
-                    <div className="w-7 h-7 rounded-[6px] bg-ink text-cream flex items-center justify-center font-serif font-bold text-[13px]">114</div>
-                    <span className="font-serif text-base font-semibold text-ink">천로역정 성경읽기</span>
+                <div className="flex items-center justify-between mb-6 md:hidden">
+                    <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-[6px] bg-ink text-cream flex items-center justify-center font-serif font-bold text-[13px]">114</div>
+                        <span className="font-serif text-base font-semibold text-ink">천로역정 성경읽기</span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => { setActiveTab('adminSignup'); clearError(); }}
+                        className="text-[13px] font-semibold text-accent border border-accent/40 bg-accent/8 hover:bg-accent/15 transition-colors px-3 py-1.5 rounded-full">
+                        교회 등록 →
+                    </button>
                 </div>
 
                 {/* H1 Headline */}

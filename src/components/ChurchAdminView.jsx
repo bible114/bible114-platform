@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, firebase } from '../utils/firebase';
 import OrgEditor from './OrgEditor';
+import ChurchAdminTutorial from './ChurchAdminTutorial';
 
 const SORT_OPTIONS = [
     { key: 'name',     label: '이름순' },
@@ -16,10 +17,16 @@ const formatReadDate = (dateStr) => {
     return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}.`;
 };
 
+// subgroups는 레거시 string("1구역") 또는 신 포맷({id, name}) 둘 다 지원
+const getSubId = (s) => (typeof s === 'string' ? s : s.id);
+const getSubName = (s) => (typeof s === 'string' ? s : s.name);
+const genSubId = () => 'sub_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+
 const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [tab, setTab] = useState('members');
+    const [showTutorial, setShowTutorial] = useState(false);
 
     // 교인 관리
     const [sortBy, setSortBy] = useState('name');
@@ -31,6 +38,13 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     // 공지사항
     const [announcement, setAnnouncement] = useState({ text: '', links: [{ url: '', text: '' }], enabled: false });
     const [saving, setSaving] = useState(false);
+
+    // 카카오 채널
+    const [kakaoLink, setKakaoLink] = useState('');
+    const [savingKakao, setSavingKakao] = useState(false);
+
+    // 플랫폼 문의 채널
+    const [platformKakaoUrl, setPlatformKakaoUrl] = useState('');
 
     // 설정
     const [churchInfo, setChurchInfo] = useState(null);
@@ -49,10 +63,12 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [membersSnap, announcementDoc, churchDoc] = await Promise.all([
+            const [membersSnap, announcementDoc, churchDoc, kakaoDoc, platformDoc] = await Promise.all([
                 db.collection('users').where('churchId', '==', currentUser.churchId).get(),
                 db.collection('churches').doc(currentUser.churchId).collection('settings').doc('announcement').get(),
                 db.collection('churches').doc(currentUser.churchId).get(),
+                db.collection('churches').doc(currentUser.churchId).collection('settings').doc('kakao').get(),
+                db.collection('settings').doc('platform').get(),
             ]);
             setMembers(membersSnap.docs.map(d => ({ uid: d.id, ...d.data() })).filter(m => m.role !== 'churchAdmin'));
             if (announcementDoc.exists) setAnnouncement(announcementDoc.data());
@@ -62,6 +78,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 setNewChurchCode(data.churchCode || '');
                 setOrgComms(data.departments || data.communities || []);
             }
+            if (kakaoDoc.exists) setKakaoLink(kakaoDoc.data().url || '');
+            if (platformDoc.exists) setPlatformKakaoUrl(platformDoc.data().kakaoUrl || '');
         } catch (e) {
             console.error(e);
         }
@@ -102,16 +120,20 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         if (!sgCommId || !sgSubId) { alert('부서와 소그룹을 모두 선택해주세요.'); return; }
         const comm = orgComms.find(c => c.id === sgCommId);
         if (!comm) return;
+        // sgSubId 는 신 포맷에서는 sub.id, 레거시에서는 sub 이름 자체
+        const subEntry = (comm.subgroups || []).find(s => getSubId(s) === sgSubId);
+        const subgroupName = subEntry ? getSubName(subEntry) : sgSubId;
         try {
             await db.collection('users').doc(member.uid).set({
                 departmentId: sgCommId,
                 departmentName: comm.name,
                 subgroupId: sgSubId,
+                subgroupName,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
             setMembers(prev => prev.map(m =>
                 m.uid === member.uid
-                    ? { ...m, departmentId: sgCommId, departmentName: comm.name, subgroupId: sgSubId }
+                    ? { ...m, departmentId: sgCommId, departmentName: comm.name, subgroupId: sgSubId, subgroupName }
                     : m
             ));
             setEditing(null);
@@ -146,6 +168,21 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         setSaving(false);
     };
 
+    const saveKakaoLink = async () => {
+        setSavingKakao(true);
+        try {
+            await db.collection('churches').doc(currentUser.churchId)
+                .collection('settings').doc('kakao').set({
+                    url: kakaoLink,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            alert('카카오 링크가 저장되었습니다!');
+        } catch (e) {
+            alert('저장 실패');
+        }
+        setSavingKakao(false);
+    };
+
     const saveChurchCode = async () => {
         if (!newChurchCode || newChurchCode.length < 4) { alert('입장코드는 4자리 이상이어야 합니다.'); return; }
         setSavingCode(true);
@@ -167,7 +204,12 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             .map(c => ({
                 id: c.id,
                 name: c.name.trim(),
-                subgroups: c.subgroups.filter(s => s.trim()).map(s => s.trim()),
+                subgroups: c.subgroups
+                    .filter(s => getSubName(s).trim())
+                    .map(s => ({
+                        id: (typeof s === 'string' ? null : s.id) || genSubId(),
+                        name: getSubName(s).trim(),
+                    })),
             }));
         if (valid.length === 0) { alert('최소 하나의 부서를 추가해주세요.'); return; }
         setSavingOrg(true);
@@ -189,13 +231,17 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     // 소그룹순: orgComms 순서 기준 그룹핑, 내부 가나다순
     const subgroupGroups = (() => {
         const groups = orgComms.flatMap(comm =>
-            (comm.subgroups || []).map(sub => ({
-                key: `${comm.id}__${sub}`,
-                label: orgComms.length > 1 ? `${comm.name} · ${sub}` : sub,
-                members: members
-                    .filter(m => m.departmentId === comm.id && m.subgroupId === sub)
-                    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR')),
-            }))
+            (comm.subgroups || []).map(sub => {
+                const sId = getSubId(sub);
+                const sName = getSubName(sub);
+                return {
+                    key: `${comm.id}__${sId}`,
+                    label: orgComms.length > 1 ? `${comm.name} · ${sName}` : sName,
+                    members: members
+                        .filter(m => m.departmentId === comm.id && (m.subgroupId === sId || m.subgroupId === sName))
+                        .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR')),
+                };
+            })
         ).filter(g => g.members.length > 0);
 
         const assignedUids = new Set(groups.flatMap(g => g.members.map(m => m.uid)));
@@ -254,7 +300,11 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                         className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm min-w-[120px]"
                                         disabled={!sgCommId}>
                                         <option value="">소그룹 선택</option>
-                                        {(sgComm?.subgroups || []).map(s => <option key={s} value={s}>{s}</option>)}
+                                        {(sgComm?.subgroups || []).map((s, i) => {
+                                            const sId = getSubId(s);
+                                            const sName = getSubName(s);
+                                            return <option key={sId || i} value={sId}>{sName}</option>;
+                                        })}
                                     </select>
                                     <button onClick={() => changeSubgroup(m)}
                                         className="bg-indigo-600 text-white text-xs px-4 py-1.5 rounded-lg font-bold">저장</button>
@@ -310,7 +360,16 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     {/* 부서/소그룹 */}
                     <td className="px-4 py-3.5">
                         <div className="font-bold text-slate-700 text-sm">{m.departmentName || '-'}</div>
-                        <div className="text-xs text-slate-400">{m.subgroupId || '미배정'}</div>
+                        <div className="text-xs text-slate-400">{(() => {
+                            if (!m.subgroupId) return '미배정';
+                            if (m.subgroupName) return m.subgroupName;
+                            // 신 포맷의 id 라면 orgComms에서 이름 lookup
+                            for (const c of orgComms) {
+                                const found = (c.subgroups || []).find(s => getSubId(s) === m.subgroupId);
+                                if (found) return getSubName(found);
+                            }
+                            return m.subgroupId;
+                        })()}</div>
                     </td>
 
                     {/* DAY */}
@@ -369,7 +428,17 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     <h1 className="font-extrabold text-slate-800">⛪ 교회 관리</h1>
                     <p className="text-xs text-slate-400">{currentUser.churchName}</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap justify-end">
+                    {platformKakaoUrl && (
+                        <a href={platformKakaoUrl} target="_blank" rel="noopener noreferrer"
+                            className="text-xs bg-[#FEE500] text-[#3c1e1e] px-3 py-2 rounded-lg font-bold flex items-center gap-1">
+                            💬 운영자 문의
+                        </a>
+                    )}
+                    <button onClick={() => setShowTutorial(true)}
+                        className="text-xs bg-blue-50 text-blue-600 px-3 py-2 rounded-lg font-bold">
+                        사용법 보기
+                    </button>
                     <button onClick={onBack}
                         className="text-xs bg-slate-100 text-slate-600 px-3 py-2 rounded-lg font-bold">
                         대시보드
@@ -382,7 +451,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             </div>
 
             {/* 탭 */}
-            <div className="flex gap-0 border-b border-slate-200 bg-white overflow-x-auto">
+            <div id="admin-tut-tabs" className="flex gap-0 border-b border-slate-200 bg-white overflow-x-auto">
                 {TABS.map(([t, label]) => (
                     <button key={t} onClick={() => setTab(t)}
                         className={`flex-shrink-0 py-3 px-4 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${tab === t ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-400'}`}>
@@ -405,7 +474,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                         👥 전체 회원 목록
                                         <span className="text-sm font-normal text-slate-400">({members.length}명)</span>
                                     </h2>
-                                    <div className="flex gap-1">
+                                    <div id="admin-tut-sort-options" className="flex gap-1">
                                         {SORT_OPTIONS.map(({ key, label }) => (
                                             <button key={key} onClick={() => setSortBy(key)}
                                                 className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all ${sortBy === key ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:border-blue-200'}`}>
@@ -421,7 +490,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                         <p>아직 가입한 교인이 없습니다</p>
                                     </div>
                                 ) : (
-                                    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                                    <div id="admin-tut-member-list" className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                                         <div className="overflow-x-auto">
                                             <table className="w-full">
                                                 <thead>
@@ -432,7 +501,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                                         <th className="px-4 py-3 text-center text-xs text-slate-400 font-bold">DAY</th>
                                                         <th className="px-4 py-3 text-center text-xs text-slate-400 font-bold">점수</th>
                                                         <th className="px-4 py-3 text-center text-xs text-slate-400 font-bold">마지막읽은날</th>
-                                                        <th className="px-4 py-3 text-center text-xs text-slate-400 font-bold">관리</th>
+                                                        <th id="admin-tut-manage-btns" className="px-4 py-3 text-center text-xs text-slate-400 font-bold">관리</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -463,7 +532,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
                         {/* ── 조직 관리 ── */}
                         {tab === 'org' && (
-                            <div className="space-y-4 max-w-2xl">
+                            <div id="admin-tut-org-section" className="space-y-4 max-w-2xl">
                                 <div className="bg-indigo-50 rounded-2xl p-4 border border-indigo-100">
                                     <p className="text-sm font-bold text-indigo-700 mb-1">📋 교회 조직 관리</p>
                                     <p className="text-xs text-slate-500">부서와 소그룹을 자유롭게 구성할 수 있습니다.</p>
@@ -493,8 +562,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                                     <div>
                                                         <span className="font-bold text-slate-700 text-sm">{comm.name}</span>
                                                         <div className="flex flex-wrap gap-1 mt-1">
-                                                            {comm.subgroups.filter(s => s.trim()).map((sub, i) => (
-                                                                <span key={i} className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{sub}</span>
+                                                            {comm.subgroups.filter(s => getSubName(s).trim()).map((sub, i) => (
+                                                                <span key={i} className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{getSubName(sub)}</span>
                                                             ))}
                                                         </div>
                                                     </div>
@@ -508,7 +577,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
                         {/* ── 공지사항 ── */}
                         {tab === 'announcement' && (
-                            <div className="space-y-4 max-w-2xl">
+                            <div id="admin-tut-announcement-section" className="space-y-4 max-w-2xl">
                                 <div className="bg-white rounded-2xl p-4 border border-slate-100">
                                     <label className="flex items-center gap-2 mb-4 cursor-pointer">
                                         <input type="checkbox" checked={announcement.enabled}
@@ -562,12 +631,30 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                         {saving ? '저장 중...' : '공지 저장'}
                                     </button>
                                 </div>
+
+                                <div className="bg-white rounded-2xl p-4 border border-slate-100">
+                                    <p className="font-bold text-slate-700 mb-1 flex items-center gap-2">
+                                        💬 카카오톡 채널
+                                    </p>
+                                    <p className="text-xs text-slate-400 mb-3">
+                                        카카오톡 채널 관리자 센터에서 채팅 URL을 복사해 붙여넣으세요.<br />
+                                        설정하면 대시보드에 카카오톡 채널 버튼이 표시됩니다.
+                                    </p>
+                                    <input type="url" value={kakaoLink}
+                                        onChange={e => setKakaoLink(e.target.value)}
+                                        placeholder="https://pf.kakao.com/_xxxx/chat"
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400" />
+                                    <button onClick={saveKakaoLink} disabled={savingKakao}
+                                        className="w-full mt-3 bg-[#FEE500] text-[#3c1e1e] font-bold py-2.5 rounded-xl text-sm disabled:opacity-50 hover:bg-[#FDD835]">
+                                        {savingKakao ? '저장 중...' : '💬 카카오 링크 저장'}
+                                    </button>
+                                </div>
                             </div>
                         )}
 
                         {/* ── 설정 ── */}
                         {tab === 'settings' && (
-                            <div className="space-y-4 max-w-2xl">
+                            <div id="admin-tut-settings-section" className="space-y-4 max-w-2xl">
                                 <div className="bg-white rounded-2xl p-4 border border-slate-100">
                                     <p className="font-bold text-slate-700 mb-1">교회 입장코드 변경</p>
                                     <p className="text-xs text-slate-400 mb-3">교인들이 가입할 때 사용하는 코드입니다.</p>
@@ -591,6 +678,14 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     </>
                 )}
             </div>
+
+            {showTutorial && (
+                <ChurchAdminTutorial
+                    onClose={() => setShowTutorial(false)}
+                    onComplete={() => setShowTutorial(false)}
+                    onTabChange={setTab}
+                />
+            )}
         </div>
     );
 };

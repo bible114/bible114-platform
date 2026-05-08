@@ -1,6 +1,7 @@
 import React from 'react';
 import Icon from './Icon';
 import { firebase } from '../utils/firebase';
+import ChurchAdminView from './ChurchAdminView';
 
 const PlatformAdminView = ({
     handleLogout,
@@ -40,6 +41,31 @@ const PlatformAdminView = ({
     const [statsRefreshing, setStatsRefreshing] = React.useState(false);
     const [confirmDelete, setConfirmDelete] = React.useState(null); // { type: 'church'|'user', target }
     const [deleteUserConfirm, setDeleteUserConfirm] = React.useState(null); // { uid, name }
+    const [viewingChurchAsAdmin, setViewingChurchAsAdmin] = React.useState(false);
+    const [platformKakaoInput, setPlatformKakaoInput] = React.useState('');
+    const [savingPlatformKakao, setSavingPlatformKakao] = React.useState(false);
+
+    React.useEffect(() => {
+        if (!db) return;
+        db.collection('settings').doc('platform').get().then(doc => {
+            if (doc.exists) setPlatformKakaoInput(doc.data().kakaoUrl || '');
+        });
+    }, [db]);
+
+    const savePlatformKakao = async () => {
+        if (!db) return;
+        setSavingPlatformKakao(true);
+        try {
+            await db.collection('settings').doc('platform').set({
+                kakaoUrl: platformKakaoInput,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true });
+            alert('플랫폼 문의 카카오 링크가 저장되었습니다!');
+        } catch (e) {
+            alert('저장 실패: ' + e.message);
+        }
+        setSavingPlatformKakao(false);
+    };
 
     const refreshPlatformStats = async () => {
         if (!db) return;
@@ -191,7 +217,7 @@ const PlatformAdminView = ({
             readRate: members.length > 0 ? Math.round((readToday / members.length) * 100) : 0,
             avgDay,
         };
-    }).sort((a, b) => b.memberCount - a.memberCount);
+    }).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR'));
 
     const selectedChurch = selectedChurchId ? churchStats.find(c => c.id === selectedChurchId) : null;
     const selectedChurchMembers = selectedChurchId
@@ -205,6 +231,32 @@ const PlatformAdminView = ({
         ['announcement', '📢 공지 관리'],
         ['sync', '🔄 동기화'],
     ];
+
+    if (viewingChurchAsAdmin && selectedChurch) {
+        const fakeChurchAdmin = {
+            churchId: selectedChurch.id,
+            churchName: selectedChurch.name,
+            name: '슈퍼관리자',
+            role: 'churchAdmin',
+        };
+        return (
+            <div>
+                <div className="bg-amber-500 text-white text-xs font-bold px-4 py-2 flex items-center justify-between sticky top-0 z-50">
+                    <span>🛠️ 슈퍼관리자 모드 — {selectedChurch.name} 교회관리자 화면 미리보기</span>
+                    <button
+                        onClick={() => setViewingChurchAsAdmin(false)}
+                        className="bg-white text-amber-600 px-3 py-1 rounded-lg font-bold text-xs hover:bg-amber-50">
+                        ← 슈퍼관리자로 돌아가기
+                    </button>
+                </div>
+                <ChurchAdminView
+                    currentUser={fakeChurchAdmin}
+                    handleLogout={handleLogout}
+                    onBack={() => setViewingChurchAsAdmin(false)}
+                />
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-slate-100">
@@ -576,10 +628,17 @@ const PlatformAdminView = ({
                     <>
                         {selectedChurch ? (
                             <div>
-                                <button onClick={() => setSelectedChurchId(null)}
-                                    className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-4 font-bold">
-                                    ← 교회 목록으로
-                                </button>
+                                <div className="flex items-center justify-between mb-4">
+                                    <button onClick={() => setSelectedChurchId(null)}
+                                        className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 font-bold">
+                                        ← 교회 목록으로
+                                    </button>
+                                    <button
+                                        onClick={() => setViewingChurchAsAdmin(true)}
+                                        className="flex items-center gap-1.5 bg-blue-600 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-blue-700 shadow-sm">
+                                        ⛪ 교회관리자 화면으로 보기
+                                    </button>
+                                </div>
                                 <div className="bg-white rounded-xl shadow-sm p-6">
                                     <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
                                         <div>
@@ -825,7 +884,7 @@ const PlatformAdminView = ({
                             <select value={announcementChurchId} onChange={e => setAnnouncementChurchId(e.target.value)}
                                 className="w-full border border-slate-200 rounded-xl p-3 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400">
                                 <option value="">교회를 선택하세요</option>
-                                {churches.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                {[...churches].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR')).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
                         </div>
 
@@ -931,6 +990,21 @@ const PlatformAdminView = ({
 
                 {/* ── 노션 동기화 ── */}
                 {tab === 'sync' && (
+                    <div className="space-y-5">
+                    {/* 플랫폼 문의 카카오 채널 */}
+                    <div className="bg-white rounded-xl shadow-sm p-6">
+                        <h2 className="text-base font-bold text-slate-800 mb-1">💬 플랫폼 문의 카카오 채널</h2>
+                        <p className="text-xs text-slate-400 mb-4">교회관리자 화면 상단에 표시되는 문의 버튼입니다. 교회 관리자들이 운영자에게 직접 연락할 수 있습니다.</p>
+                        <input type="url" value={platformKakaoInput}
+                            onChange={e => setPlatformKakaoInput(e.target.value)}
+                            placeholder="https://pf.kakao.com/_xxxx/chat"
+                            className="w-full border border-slate-200 rounded-xl p-3 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-yellow-400 mb-3" />
+                        <button onClick={savePlatformKakao} disabled={savingPlatformKakao}
+                            className="bg-[#FEE500] text-[#3c1e1e] px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[#FDD835] disabled:opacity-50">
+                            {savingPlatformKakao ? '저장 중...' : '💬 저장하기'}
+                        </button>
+                    </div>
+
                     <div className="bg-white rounded-xl shadow-sm p-6">
                         {/* 플랫폼 통계 초기화 */}
                         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
@@ -1040,6 +1114,7 @@ const PlatformAdminView = ({
                                 </button>
                             </div>
                         )}
+                    </div>
                     </div>
                 )}
             </div>
