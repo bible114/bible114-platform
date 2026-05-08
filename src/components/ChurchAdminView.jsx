@@ -39,6 +39,10 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [announcement, setAnnouncement] = useState({ text: '', links: [{ url: '', text: '' }], enabled: false });
     const [saving, setSaving] = useState(false);
 
+    // 카카오 채널
+    const [kakaoLink, setKakaoLink] = useState('');
+    const [savingKakao, setSavingKakao] = useState(false);
+
     // 설정
     const [churchInfo, setChurchInfo] = useState(null);
     const [newChurchCode, setNewChurchCode] = useState('');
@@ -56,10 +60,11 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [membersSnap, announcementDoc, churchDoc] = await Promise.all([
+            const [membersSnap, announcementDoc, churchDoc, kakaoDoc] = await Promise.all([
                 db.collection('users').where('churchId', '==', currentUser.churchId).get(),
                 db.collection('churches').doc(currentUser.churchId).collection('settings').doc('announcement').get(),
                 db.collection('churches').doc(currentUser.churchId).get(),
+                db.collection('churches').doc(currentUser.churchId).collection('settings').doc('kakao').get(),
             ]);
             setMembers(membersSnap.docs.map(d => ({ uid: d.id, ...d.data() })).filter(m => m.role !== 'churchAdmin'));
             if (announcementDoc.exists) setAnnouncement(announcementDoc.data());
@@ -69,6 +74,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 setNewChurchCode(data.churchCode || '');
                 setOrgComms(data.departments || data.communities || []);
             }
+            if (kakaoDoc.exists) setKakaoLink(kakaoDoc.data().url || '');
         } catch (e) {
             console.error(e);
         }
@@ -155,6 +161,21 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             alert('저장 실패');
         }
         setSaving(false);
+    };
+
+    const saveKakaoLink = async () => {
+        setSavingKakao(true);
+        try {
+            await db.collection('churches').doc(currentUser.churchId)
+                .collection('settings').doc('kakao').set({
+                    url: kakaoLink,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            alert('카카오 링크가 저장되었습니다!');
+        } catch (e) {
+            alert('저장 실패');
+        }
+        setSavingKakao(false);
     };
 
     const saveChurchCode = async () => {
@@ -597,6 +618,24 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                     <button onClick={saveAnnouncement} disabled={saving}
                                         className="w-full mt-3 bg-blue-600 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-50 hover:bg-blue-700">
                                         {saving ? '저장 중...' : '공지 저장'}
+                                    </button>
+                                </div>
+
+                                <div className="bg-white rounded-2xl p-4 border border-slate-100">
+                                    <p className="font-bold text-slate-700 mb-1 flex items-center gap-2">
+                                        💬 카카오톡 채널
+                                    </p>
+                                    <p className="text-xs text-slate-400 mb-3">
+                                        카카오톡 채널 관리자 센터에서 채팅 URL을 복사해 붙여넣으세요.<br />
+                                        설정하면 대시보드에 카카오톡 채널 버튼이 표시됩니다.
+                                    </p>
+                                    <input type="url" value={kakaoLink}
+                                        onChange={e => setKakaoLink(e.target.value)}
+                                        placeholder="https://pf.kakao.com/_xxxx/chat"
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400" />
+                                    <button onClick={saveKakaoLink} disabled={savingKakao}
+                                        className="w-full mt-3 bg-[#FEE500] text-[#3c1e1e] font-bold py-2.5 rounded-xl text-sm disabled:opacity-50 hover:bg-[#FDD835]">
+                                        {savingKakao ? '저장 중...' : '💬 카카오 링크 저장'}
                                     </button>
                                 </div>
                             </div>
