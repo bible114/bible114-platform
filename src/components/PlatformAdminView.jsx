@@ -217,7 +217,7 @@ const PlatformAdminView = ({
             readRate: members.length > 0 ? Math.round((readToday / members.length) * 100) : 0,
             avgDay,
         };
-    }).sort((a, b) => b.memberCount - a.memberCount);
+    }).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR'));
 
     const selectedChurch = selectedChurchId ? churchStats.find(c => c.id === selectedChurchId) : null;
     const selectedChurchMembers = selectedChurchId
@@ -884,7 +884,7 @@ const PlatformAdminView = ({
                             <select value={announcementChurchId} onChange={e => setAnnouncementChurchId(e.target.value)}
                                 className="w-full border border-slate-200 rounded-xl p-3 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400">
                                 <option value="">교회를 선택하세요</option>
-                                {churches.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                {[...churches].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR')).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
                         </div>
 
