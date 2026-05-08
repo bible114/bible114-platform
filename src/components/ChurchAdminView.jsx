@@ -43,6 +43,9 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [kakaoLink, setKakaoLink] = useState('');
     const [savingKakao, setSavingKakao] = useState(false);
 
+    // 플랫폼 문의 채널
+    const [platformKakaoUrl, setPlatformKakaoUrl] = useState('');
+
     // 설정
     const [churchInfo, setChurchInfo] = useState(null);
     const [newChurchCode, setNewChurchCode] = useState('');
@@ -60,11 +63,12 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [membersSnap, announcementDoc, churchDoc, kakaoDoc] = await Promise.all([
+            const [membersSnap, announcementDoc, churchDoc, kakaoDoc, platformDoc] = await Promise.all([
                 db.collection('users').where('churchId', '==', currentUser.churchId).get(),
                 db.collection('churches').doc(currentUser.churchId).collection('settings').doc('announcement').get(),
                 db.collection('churches').doc(currentUser.churchId).get(),
                 db.collection('churches').doc(currentUser.churchId).collection('settings').doc('kakao').get(),
+                db.collection('settings').doc('platform').get(),
             ]);
             setMembers(membersSnap.docs.map(d => ({ uid: d.id, ...d.data() })).filter(m => m.role !== 'churchAdmin'));
             if (announcementDoc.exists) setAnnouncement(announcementDoc.data());
@@ -75,6 +79,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 setOrgComms(data.departments || data.communities || []);
             }
             if (kakaoDoc.exists) setKakaoLink(kakaoDoc.data().url || '');
+            if (platformDoc.exists) setPlatformKakaoUrl(platformDoc.data().kakaoUrl || '');
         } catch (e) {
             console.error(e);
         }
@@ -423,7 +428,13 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     <h1 className="font-extrabold text-slate-800">⛪ 교회 관리</h1>
                     <p className="text-xs text-slate-400">{currentUser.churchName}</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap justify-end">
+                    {platformKakaoUrl && (
+                        <a href={platformKakaoUrl} target="_blank" rel="noopener noreferrer"
+                            className="text-xs bg-[#FEE500] text-[#3c1e1e] px-3 py-2 rounded-lg font-bold flex items-center gap-1">
+                            💬 운영자 문의
+                        </a>
+                    )}
                     <button onClick={() => setShowTutorial(true)}
                         className="text-xs bg-blue-50 text-blue-600 px-3 py-2 rounded-lg font-bold">
                         사용법 보기

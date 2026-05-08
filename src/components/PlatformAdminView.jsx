@@ -42,6 +42,30 @@ const PlatformAdminView = ({
     const [confirmDelete, setConfirmDelete] = React.useState(null); // { type: 'church'|'user', target }
     const [deleteUserConfirm, setDeleteUserConfirm] = React.useState(null); // { uid, name }
     const [viewingChurchAsAdmin, setViewingChurchAsAdmin] = React.useState(false);
+    const [platformKakaoInput, setPlatformKakaoInput] = React.useState('');
+    const [savingPlatformKakao, setSavingPlatformKakao] = React.useState(false);
+
+    React.useEffect(() => {
+        if (!db) return;
+        db.collection('settings').doc('platform').get().then(doc => {
+            if (doc.exists) setPlatformKakaoInput(doc.data().kakaoUrl || '');
+        });
+    }, [db]);
+
+    const savePlatformKakao = async () => {
+        if (!db) return;
+        setSavingPlatformKakao(true);
+        try {
+            await db.collection('settings').doc('platform').set({
+                kakaoUrl: platformKakaoInput,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true });
+            alert('플랫폼 문의 카카오 링크가 저장되었습니다!');
+        } catch (e) {
+            alert('저장 실패: ' + e.message);
+        }
+        setSavingPlatformKakao(false);
+    };
 
     const refreshPlatformStats = async () => {
         if (!db) return;
@@ -966,6 +990,21 @@ const PlatformAdminView = ({
 
                 {/* ── 노션 동기화 ── */}
                 {tab === 'sync' && (
+                    <div className="space-y-5">
+                    {/* 플랫폼 문의 카카오 채널 */}
+                    <div className="bg-white rounded-xl shadow-sm p-6">
+                        <h2 className="text-base font-bold text-slate-800 mb-1">💬 플랫폼 문의 카카오 채널</h2>
+                        <p className="text-xs text-slate-400 mb-4">교회관리자 화면 상단에 표시되는 문의 버튼입니다. 교회 관리자들이 운영자에게 직접 연락할 수 있습니다.</p>
+                        <input type="url" value={platformKakaoInput}
+                            onChange={e => setPlatformKakaoInput(e.target.value)}
+                            placeholder="https://pf.kakao.com/_xxxx/chat"
+                            className="w-full border border-slate-200 rounded-xl p-3 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-yellow-400 mb-3" />
+                        <button onClick={savePlatformKakao} disabled={savingPlatformKakao}
+                            className="bg-[#FEE500] text-[#3c1e1e] px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[#FDD835] disabled:opacity-50">
+                            {savingPlatformKakao ? '저장 중...' : '💬 저장하기'}
+                        </button>
+                    </div>
+
                     <div className="bg-white rounded-xl shadow-sm p-6">
                         {/* 플랫폼 통계 초기화 */}
                         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
@@ -1075,6 +1114,7 @@ const PlatformAdminView = ({
                                 </button>
                             </div>
                         )}
+                    </div>
                     </div>
                 )}
             </div>
