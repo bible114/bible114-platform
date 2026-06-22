@@ -21,13 +21,73 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Pretendard -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-  <!-- Kakao AdFit: SDK는 KakaoAdBanner 컴포넌트에서 동적으로 로드 -->
-  <script type="module" crossorigin src="/assets/index-CT6D2lEw.js"></script>
+  <style>
+    #kakao-static-ad-layer {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 6px);
+      z-index: 1000;
+      display: flex;
+      justify-content: center;
+      max-width: 100vw;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    #kakao-static-ad-slot {
+      width: 320px;
+      max-width: 100vw;
+      pointer-events: auto;
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/index-P5XzIt3L.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-BkswAMpD.css">
 </head>
 
 <body>
   <div id="root"></div>
+  <div id="kakao-static-ad-layer" data-ad-layer="kakao-bottom">
+    <div id="kakao-static-ad-slot"></div>
+  </div>
+  <script>
+    (function () {
+      window.adfitNoAd = function (elm) {
+        try {
+          localStorage.setItem('last_kakao_ad_fail', JSON.stringify({
+            failedAt: new Date().toISOString(),
+            pageUrl: location.href,
+            userAgent: navigator.userAgent,
+            iframeCount: elm ? elm.querySelectorAll('iframe').length : null
+          }));
+        } catch (e) {}
+      };
+
+      window.refreshKakaoAdBanner = function () {
+        var slot = document.getElementById('kakao-static-ad-slot');
+        if (!slot) return;
+        slot.innerHTML = '';
+
+        var ins = document.createElement('ins');
+        ins.className = 'kakao_ad_area';
+        ins.style.cssText = 'display:none;width:100%;';
+        ins.setAttribute('data-ad-unit', 'DAN-5kQI2NSgaEFGai2t');
+        ins.setAttribute('data-ad-width', '320');
+        ins.setAttribute('data-ad-height', '50');
+        ins.setAttribute('data-ad-onfail', 'adfitNoAd');
+
+        var script = document.createElement('script');
+        script.async = true;
+        script.type = 'text/javascript';
+        script.charset = 'utf-8';
+        script.src = 'https://t1.kakaocdn.net/kas/static/ba.min.js';
+
+        slot.appendChild(ins);
+        slot.appendChild(script);
+      };
+
+      window.refreshKakaoAdBanner();
+    })();
+  </script>
 </body>
 
 </html>
