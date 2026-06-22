@@ -1,10 +1,11 @@
 {
-  "version": "2026-06-22-static-ad-v2",
+  "version": "2026-06-22-auth-guard-v1",
   "updatedAt": "2026-06-22",
   "adMode": "static-index-html",
   "notes": [
     "AdFit banner is rendered from index.html outside React.",
     "No service worker is registered by this app.",
+    "Transient user data loading failures now show a retry screen instead of the login page.",
     "If iPhone Home Screen keeps an old build, remove and re-add the Home Screen icon."
   ]
 }
