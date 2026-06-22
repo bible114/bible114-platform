@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AdFit Mobile Test</title>
+  <style>
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+    main {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 24px 20px 120px;
+    }
+    .panel {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 16px;
+      box-shadow: 0 8px 28px rgba(15, 23, 42, 0.08);
+    }
+    .ad-wrap {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 6px);
+      z-index: 10;
+      display: flex;
+      justify-content: center;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .ad-inner {
+      width: 320px;
+      max-width: 100vw;
+      pointer-events: auto;
+    }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+      line-height: 1.5;
+      background: #f1f5f9;
+      border-radius: 8px;
+      padding: 12px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>AdFit Mobile Test</h1>
+    <div class="panel">
+      <p>이 페이지는 React 앱을 거치지 않고 Kakao AdFit 공식 웹 배너 태그만 테스트합니다.</p>
+      <p>휴대폰에서 이 페이지 하단에 광고가 뜨면 앱 쪽 문제, 안 뜨면 광고단위/도메인/모바일 환경 문제일 가능성이 큽니다.</p>
+      <pre id="status">checking...</pre>
+    </div>
+  </main>
+
+  <div class="ad-wrap" data-ad-layer="static-test">
+    <div class="ad-inner">
+      <ins class="kakao_ad_area" style="display:none;width:100%;"
+        data-ad-unit="DAN-5kQI2NSgaEFGai2t"
+        data-ad-width="320"
+        data-ad-height="50"
+        data-ad-onfail="adfitNoAd"></ins>
+      <script async type="text/javascript" charset="utf-8" src="https://t1.kakaocdn.net/kas/static/ba.min.js"></script>
+    </div>
+  </div>
+
+  <script>
+    var statusEl = document.getElementById('status');
+    var noAdInfo = null;
+
+    function adfitNoAd(elm) {
+      noAdInfo = {
+        at: new Date().toISOString(),
+        iframeCount: elm ? elm.querySelectorAll('iframe').length : null,
+        userAgent: navigator.userAgent
+      };
+      writeStatus();
+    }
+
+    function writeStatus() {
+      var ins = document.querySelector('.kakao_ad_area');
+      var layer = document.querySelector('[data-ad-layer="static-test"]');
+      var rect = layer && layer.getBoundingClientRect();
+      var script = document.querySelector('script[src*="ba.min.js"]');
+      var data = {
+        url: location.href,
+        viewport: { width: innerWidth, height: innerHeight },
+        adfitType: typeof window.adfit,
+        iframeCount: document.querySelectorAll('.kakao_ad_area iframe').length,
+        insDisplay: ins ? getComputedStyle(ins).display : null,
+        scriptLoaded: !!window.adfit,
+        scriptSrc: script ? script.src : null,
+        layerPosition: layer ? getComputedStyle(layer).position : null,
+        layerBottom: layer ? getComputedStyle(layer).bottom : null,
+        layerRect: rect ? {
+          top: Math.round(rect.top),
+          bottom: Math.round(rect.bottom),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height)
+        } : null,
+        noAdInfo: noAdInfo
+      };
+      statusEl.textContent = JSON.stringify(data, null, 2);
+    }
+
+    setInterval(writeStatus, 1000);
+    writeStatus();
+  </script>
+</body>
+</html>
