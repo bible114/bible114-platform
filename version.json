@@ -1,5 +1,5 @@
 {
-  "version": "2026-06-22-bottom-safe-v1",
+  "version": "2026-06-22-content-error-v1",
   "updatedAt": "2026-06-22",
   "adMode": "static-index-html",
   "notes": [
@@ -7,6 +7,7 @@
     "No service worker is registered by this app.",
     "Transient user data loading failures now show a retry screen instead of the login page.",
     "Dashboard bottom spacing and floating controls account for iPhone safe-area plus the bottom AdFit banner.",
+    "Missing Bible content now shows a friendly message and hides read/TTS actions.",
     "If iPhone Home Screen keeps an old build, remove and re-add the Home Screen icon."
   ]
 }
