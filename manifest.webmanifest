@@ -2,7 +2,7 @@
   "name": "성경통독 114",
   "short_name": "성경통독",
   "description": "천로역정 성경읽기",
-  "start_url": "/?v=20260622-versions",
+  "start_url": "/?v=20260622-static-ad-v2",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f8fafc",

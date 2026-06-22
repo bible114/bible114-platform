@@ -1,0 +1,10 @@
+{
+  "version": "2026-06-22-static-ad-v2",
+  "updatedAt": "2026-06-22",
+  "adMode": "static-index-html",
+  "notes": [
+    "AdFit banner is rendered from index.html outside React.",
+    "No service worker is registered by this app.",
+    "If iPhone Home Screen keeps an old build, remove and re-add the Home Screen icon."
+  ]
+}
