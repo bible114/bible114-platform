@@ -29,43 +29,48 @@ export const useMiniRoom = (currentUser, setCurrentUser) => {
     const [previewItem, setPreviewItem] = useState(null);
 
     // 유저 데이터에서 미니룸 정보 로드
+    // 필드별로 독립 적용: 저장된 필드는 사용하고, 없는 필드만 기본값 유지
+    // (예: 아이템만 구매하고 방은 안 꾸민 유저 — inventory는 있고 miniroom은 없음)
     useEffect(() => {
-        if (currentUser && currentUser.miniroom) {
-            setRoomData(currentUser.miniroom);
-            if (currentUser.character) setCharacter(currentUser.character);
-            if (currentUser.inventory) setInventory(currentUser.inventory);
-            setLoading(false);
-        } else if (currentUser) {
-            // 초기 데이터 설정
-            const initialData = {
-                miniroom: {
-                    unlockedRooms: 1,
-                    activeRoomIndex: 0,
-                    rooms: [{
-                        wallpaper: 'wall_plain_white',
-                        floor: 'floor_plain_white',
-                        items: [],
-                        characterPos: { x: 4, y: 4 }
-                    }]
-                },
-                character: {
-                    baseId: 'base_man',
-                    hairId: null,
-                    accessoryId: null,
-                    outfitId: null,
-                    eyeId: 'eye_basic',
-                    expressionId: 'expr_happy',
-                    handId: null
-                },
-                inventory: ['wall_plain_white', 'floor_plain_white', 'base_man', 'eye_basic', 'expr_happy']
-            };
-            setRoomData(initialData.miniroom);
-            setCharacter(initialData.character);
-            setInventory(initialData.inventory);
-            setLoading(false);
+        if (!currentUser) return;
 
-            // 최초 접속 시 DB 초기화는 나중에 저장 시점에 수행
+        if (currentUser.miniroom) {
+            setRoomData(currentUser.miniroom);
+        } else {
+            setRoomData({
+                unlockedRooms: 1,
+                activeRoomIndex: 0,
+                rooms: [{
+                    wallpaper: 'wall_plain_white',
+                    floor: 'floor_plain_white',
+                    items: [],
+                    characterPos: { x: 4, y: 4 }
+                }]
+            });
         }
+
+        if (currentUser.character) {
+            setCharacter(currentUser.character);
+        } else {
+            setCharacter({
+                baseId: 'base_man',
+                hairId: null,
+                accessoryId: null,
+                outfitId: null,
+                eyeId: 'eye_basic',
+                expressionId: 'expr_happy',
+                handId: null
+            });
+        }
+
+        if (currentUser.inventory) {
+            setInventory(currentUser.inventory);
+        } else {
+            setInventory(['wall_plain_white', 'floor_plain_white', 'base_man', 'eye_basic', 'expr_happy']);
+        }
+
+        setLoading(false);
+        // 최초 접속 시 DB 초기화는 나중에 저장 시점에 수행
     }, [currentUser]);
 
     const saveToDb = async (newData) => {
