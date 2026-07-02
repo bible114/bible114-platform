@@ -1,7 +1,40 @@
+import { db } from './firebase';
+import { SHOP_ITEMS } from '../data/shop_items';
+
 // 교인 로그인용 가짜 이메일 (이름+생년월일+교회ID 조합으로 교회 간 중복 방지)
 export const makePseudoEmail = (name, birthdate, churchId = '') => {
     const base = `${encodeURIComponent(String(name || "").trim())}_${String(birthdate || "").trim()}`;
     return churchId ? `${base}_${churchId}@bible.local` : `${base}@bible.local`;
+};
+
+const FREE_DEFAULTS = ['wall_plain_white', 'floor_plain_white', 'base_man', 'eye_basic', 'expr_happy'];
+
+// 지연(lazy) 마이그레이션: score/talent 이중화 이전 계정을 1회성으로 복구한다.
+// talentMigrated가 없으면 과거 구매 총액(아이템+방 해금)을 역산해
+// talent = 기존 score, score = 기존 score + 구매총액 으로 갱신한다.
+// 반환값: 마이그레이션 후 반영해야 할 { talent, score } 또는 null(마이그레이션 불필요)
+export const migrateTalentIfNeeded = async (uid, data) => {
+    if (data.talentMigrated) return null;
+
+    const spentItems = (data.inventory || [])
+        .filter(id => !FREE_DEFAULTS.includes(id))
+        .reduce((sum, id) => sum + (SHOP_ITEMS.find(i => i.id === id)?.price || 0), 0);
+
+    const unlocked = data.miniroom?.unlockedRooms || 1;
+    let spentRooms = 0;
+    for (let i = 1; i < unlocked; i++) spentRooms += 800 + (i - 1) * 400;
+
+    const spent = spentItems + spentRooms;
+    const talent = data.score || 0;
+    const score = (data.score || 0) + spent;
+
+    await db.collection('users').doc(uid).update({
+        talent,
+        score,
+        talentMigrated: true,
+    });
+
+    return { talent, score };
 };
 
 // Firestore 문서 → 사용자 상태 객체 변환
@@ -20,6 +53,8 @@ export const userDocToState = (doc) => {
         currentDay: d.currentDay ?? 1,
         streak: d.streak ?? 0,
         score: d.score ?? 0,
+        talent: d.talent,
+        talentMigrated: d.talentMigrated ?? false,
         lastReadDate: d.lastReadDate ?? null,
         gender: d.gender ?? "male",
         departmentId: d.departmentId ?? d.communityId ?? null,

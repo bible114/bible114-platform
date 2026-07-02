@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { auth, authReady, db } from '../utils/firebase';
-import { userDocToState } from '../utils/helpers';
+import { userDocToState, migrateTalentIfNeeded } from '../utils/helpers';
 
 export const useUserAuth = () => {
     const [currentUser, setCurrentUser] = useState(null);
@@ -39,6 +39,16 @@ export const useUserAuth = () => {
                         if (userDoc.exists) {
                             const user = userDocToState(userDoc);
                             console.log('✅ 사용자 데이터 복원:', user.name);
+
+                            // [점수 이중화] talent 지갑 지연 마이그레이션 (1회성)
+                            // 마이그레이션이 끝나기 전에는 talent가 undefined이므로,
+                            // score로 대체 표시하지 않고 완료를 기다린다 (구매 화면에서 잔액 0 오표시 방지).
+                            const migrated = await migrateTalentIfNeeded(firebaseUser.uid, userDoc.data());
+                            if (migrated) {
+                                user.talent = migrated.talent;
+                                user.score = migrated.score;
+                                user.talentMigrated = true;
+                            }
 
                             // [안전장치] currentDay > 365 자동 보정 (모든 사용자)
                             var needsUpdate = {};

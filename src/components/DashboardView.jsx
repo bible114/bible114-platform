@@ -100,7 +100,7 @@ const DashboardView = ({
 
     if (!currentUser) return null;
 
-    const { currentDay, score, subgroupId, departmentName, planId, streak } = currentUser;
+    const { currentDay, score, talent, subgroupId, departmentName, planId, streak } = currentUser;
     const [planType, version] = (planId || '1year_revised').split('_');
     const planTypeDataDashboard = PLAN_TYPES.find(p => p.id === planType);
     const planTypeName = planTypeDataDashboard ? planTypeDataDashboard.title : '성경 통독';
@@ -297,6 +297,7 @@ const DashboardView = ({
                 handleLogout={handleLogout}
                 streak={streak}
                 score={score}
+                talent={talent}
                 myLevel={myLevel}
                 setShowScoreInfo={setShowScoreInfo}
                 setShowAchievements={setShowAchievements}

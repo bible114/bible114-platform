@@ -35,7 +35,7 @@ git add -A && git commit -m "chore: initial snapshot before 2026-07 upgrade"
 - `test_simulation.mjs`는 **유지** (부하 테스트용으로 유효)
 
 ### 0-3. 죽은 코드 제거
-- `src/components/DemoTour.jsx` 삭제 + `LoginView.jsx`의 import 제거 (import만 되고 렌더링 안 됨. `TutorialOverlay.jsx`는 DashboardView에서 사용 중이므로 유지)
+- ~~`src/components/DemoTour.jsx` 삭제~~ → **취소됨**: 구현 검증 결과 LoginView.jsx 438행 "읽는 방법" 버튼에서 실제 렌더링됨(553~558행). 유지.
 - `statsUtils.js`의 `getMonthlyContest` 함수 삭제 + `App.jsx`의 import에서 제거 (WORKLOG.md에도 죽은 코드로 기록됨)
 
 ### 0-4. .gitignore 보강

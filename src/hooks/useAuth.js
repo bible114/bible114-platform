@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { auth, authReady, db, firebase } from '../utils/firebase';
-import { makePseudoEmail, userDocToState } from '../utils/helpers';
+import { makePseudoEmail, userDocToState, migrateTalentIfNeeded } from '../utils/helpers';
 import { sha256 } from '../utils/crypto';
 
 export const useAuth = ({
@@ -18,7 +18,7 @@ export const useAuth = ({
         name, birthdate, password, email,
         role: 'member', churchId, churchName,
         startDate: new Date().toDateString(),
-        currentDay: 1, streak: 0, score: 0, readCount: 1,
+        currentDay: 1, streak: 0, score: 0, talent: 0, talentMigrated: true, readCount: 1,
         lastReadDate: null, gender: 'male', planId: '1year_revised',
         departmentId: null, departmentName: null, subgroupId: null,
         isDeleted: false, deletedAt: null, deletedBy: null,
@@ -71,6 +71,13 @@ export const useAuth = ({
             if (!doc.exists) { setErrorMsg('사용자 정보를 찾을 수 없습니다.'); return; }
             if (doc.data().isDeleted) { setErrorMsg('삭제 처리된 계정입니다. 교회 관리자에게 복원을 요청해주세요.'); return; }
             const user = userDocToState(doc);
+            // [점수 이중화] talent 지갑 지연 마이그레이션 (1회성) — 대시보드 진입 전에 완료해 잔액 미표시 방지
+            const migrated = await migrateTalentIfNeeded(cred.user.uid, doc.data());
+            if (migrated) {
+                user.talent = migrated.talent;
+                user.score = migrated.score;
+                user.talentMigrated = true;
+            }
             setCurrentUser(user);
             setHasReadToday(user.lastReadDate === new Date().toDateString());
             if (user.churchId) await loadChurchCommunities(user.churchId);
@@ -101,6 +108,13 @@ export const useAuth = ({
             const doc = await db.collection('users').doc(cred.user.uid).get();
             if (!doc.exists) { setErrorMsg('사용자 정보를 찾을 수 없습니다.'); return; }
             const user = userDocToState(doc);
+            // [점수 이중화] talent 지갑 지연 마이그레이션 (1회성)
+            const migrated = await migrateTalentIfNeeded(cred.user.uid, doc.data());
+            if (migrated) {
+                user.talent = migrated.talent;
+                user.score = migrated.score;
+                user.talentMigrated = true;
+            }
 
             if (user.role === 'superAdmin' || user.role === 'platformAdmin') {
                 setCurrentUser(user);
@@ -207,7 +221,7 @@ export const useAuth = ({
                 name, email, password, birthdate: null,
                 role: 'churchAdmin', churchId: churchRef.id, churchName,
                 startDate: new Date().toDateString(),
-                currentDay: 1, streak: 0, score: 0, readCount: 1,
+                currentDay: 1, streak: 0, score: 0, talent: 0, talentMigrated: true, readCount: 1,
                 lastReadDate: null, gender: 'male', planId: '1year_revised',
                 departmentId: null, departmentName: null, subgroupId: null,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),

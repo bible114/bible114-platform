@@ -27,9 +27,10 @@ const MiniRoomPage = ({ currentUser, setView, setCurrentUser }) => {
         setActiveTab('main');
     };
 
-    if (loading) return <div className="p-20 text-center">방을 불러오는 중...</div>;
+    // talent 마이그레이션이 끝나기 전(undefined)에는 잔액을 0으로 오표시하지 않고 대기한다.
+    if (loading || currentUser.talent === undefined) return <div className="p-20 text-center">방을 불러오는 중...</div>;
 
-    const currentTalants = currentUser.score || 0;
+    const currentTalants = currentUser.talent || 0;
 
     return (
         <div className="min-h-screen bg-slate-200 flex items-center justify-center p-2 sm:p-4 cy-pixel-font overflow-hidden">

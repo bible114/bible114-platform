@@ -5,6 +5,7 @@ const DashboardHeader = ({
     handleLogout,
     streak,
     score,
+    talent,
     myLevel,
     setShowScoreInfo,
     setShowAchievements,
@@ -37,6 +38,11 @@ const DashboardHeader = ({
                             <button id="tut-score" type="button" onClick={(e) => { e.stopPropagation(); setShowScoreInfo(true); }} className="text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2.5 py-1.5 rounded-xl hover:bg-blue-100 transition-colors shrink-0">
                                 {myLevel.emoji} {score || 0}pt
                             </button>
+                            {talent !== undefined && (
+                                <div className="text-xs font-bold text-orange-600 bg-orange-50 border border-orange-100 px-2.5 py-1.5 rounded-xl shrink-0" title="미니룸에서 사용할 수 있는 달란트">
+                                    ⭐ {talent || 0} 달란트
+                                </div>
+                            )}
                             {isChurchAdmin && (
                                 <button type="button" onClick={(e) => { e.stopPropagation(); setView('church_admin'); }} className="p-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 shrink-0 flex items-center gap-1" title="교회 관리">⛪ <span className="hidden sm:inline">교회관리</span></button>
                             )}

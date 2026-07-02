@@ -71,6 +71,7 @@ export const useUserBibleActions = (
                 const addedScore = 10 + streakBonus;
                 const newScore = oldScore + addedScore;
                 const newLevel = Math.floor(newScore / 100);
+                const newTalent = (data.talent || 0) + addedScore;
 
                 const nextViewingDay = vDay >= 365 ? 1 : vDay + 1;
                 completedRound = currentProgressDay >= 365;
@@ -91,6 +92,7 @@ export const useUserBibleActions = (
                     currentDay: newProgressDay,
                     readCount: newReadCount,
                     score: newScore,
+                    talent: newTalent,
                     streak: newStreak,
                     lastReadDate: todayStr,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()

@@ -79,7 +79,7 @@ export const useMiniRoom = (currentUser, setCurrentUser) => {
     };
 
     const buyItem = async (item) => {
-        if (!currentUser || (currentUser.score || 0) < item.price) {
+        if (!currentUser || currentUser.talent === undefined || (currentUser.talent || 0) < item.price) {
             alert("달란트가 부족합니다!");
             return false;
         }
@@ -92,22 +92,51 @@ export const useMiniRoom = (currentUser, setCurrentUser) => {
             return false;
         }
 
-        const newScore = (currentUser.score || 0) - item.price;
-        const newInventory = [...inventory, item.id];
-
-        const update = {
-            score: newScore,
-            inventory: newInventory,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
+        const uid = currentUser.uid;
+        const userRef = db.collection('users').doc(uid);
 
         try {
-            await saveToDb(update);
+            let newTalent = null;
+            let newInventory = null;
+
+            await db.runTransaction(async (transaction) => {
+                const snap = await transaction.get(userRef);
+                if (!snap.exists) throw new Error('USER_NOT_FOUND');
+                const data = snap.data();
+                const freshTalent = data.talent || 0;
+
+                if (freshTalent < item.price) {
+                    throw new Error('INSUFFICIENT_TALENT');
+                }
+
+                const freshInventory = data.inventory || [];
+                if (isOneTime && freshInventory.includes(item.id)) {
+                    throw new Error('ALREADY_OWNED');
+                }
+
+                newTalent = freshTalent - item.price;
+                newInventory = [...freshInventory, item.id];
+
+                transaction.update(userRef, {
+                    talent: newTalent,
+                    inventory: newInventory,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            });
+
+            setCurrentUser(prev => ({ ...prev, talent: newTalent, inventory: newInventory }));
             setInventory(newInventory);
             alert(`${item.name}을(를) 구매했습니다!`);
             return true;
         } catch (e) {
-            alert("구매 실패");
+            if (e.message === 'INSUFFICIENT_TALENT') {
+                alert("달란트가 부족합니다!");
+            } else if (e.message === 'ALREADY_OWNED') {
+                alert("이미 보유 중인 아이템입니다.");
+            } else {
+                console.error("구매 실패:", e);
+                alert("구매 실패");
+            }
             return false;
         }
     };
@@ -176,32 +205,66 @@ export const useMiniRoom = (currentUser, setCurrentUser) => {
 
     const unlockRoom = async () => {
         if (roomData.unlockedRooms >= 5) return;
+        if (!currentUser || currentUser.talent === undefined) return;
 
         const cost = 800 + (roomData.unlockedRooms - 1) * 400;
-        if ((currentUser.score || 0) < cost) {
+        if ((currentUser.talent || 0) < cost) {
             alert(`달란트가 부족합니다! (필요: ${cost})`);
             return;
         }
 
         if (confirm(`방을 확장하시겠습니까? (${cost} 달란트 소요)`)) {
-            const newScore = (currentUser.score || 0) - cost;
-            const newRoomData = {
-                ...roomData,
-                unlockedRooms: roomData.unlockedRooms + 1,
-                rooms: [...roomData.rooms, {
-                    wallpaper: 'wall_plain_white',
-                    floor: 'floor_plain_white',
-                    items: [],
-                    characterPos: { x: 4, y: 4 }
-                }]
-            };
+            const uid = currentUser.uid;
+            const userRef = db.collection('users').doc(uid);
 
-            await saveToDb({
-                score: newScore,
-                miniroom: newRoomData,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            setRoomData(newRoomData);
+            try {
+                let newTalent = null;
+                let newRoomData = null;
+
+                await db.runTransaction(async (transaction) => {
+                    const snap = await transaction.get(userRef);
+                    if (!snap.exists) throw new Error('USER_NOT_FOUND');
+                    const data = snap.data();
+                    const freshTalent = data.talent || 0;
+
+                    if (freshTalent < cost) {
+                        throw new Error('INSUFFICIENT_TALENT');
+                    }
+
+                    const freshRoomData = data.miniroom || roomData;
+                    if ((freshRoomData.unlockedRooms || 1) >= 5) {
+                        throw new Error('MAX_ROOMS');
+                    }
+
+                    newTalent = freshTalent - cost;
+                    newRoomData = {
+                        ...freshRoomData,
+                        unlockedRooms: (freshRoomData.unlockedRooms || 1) + 1,
+                        rooms: [...freshRoomData.rooms, {
+                            wallpaper: 'wall_plain_white',
+                            floor: 'floor_plain_white',
+                            items: [],
+                            characterPos: { x: 4, y: 4 }
+                        }]
+                    };
+
+                    transaction.update(userRef, {
+                        talent: newTalent,
+                        miniroom: newRoomData,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                });
+
+                setCurrentUser(prev => ({ ...prev, talent: newTalent, miniroom: newRoomData }));
+                setRoomData(newRoomData);
+            } catch (e) {
+                if (e.message === 'INSUFFICIENT_TALENT') {
+                    alert(`달란트가 부족합니다! (필요: ${cost})`);
+                } else if (e.message !== 'MAX_ROOMS') {
+                    console.error("방 확장 실패:", e);
+                    alert("방 확장 실패");
+                }
+            }
         }
     };
 
