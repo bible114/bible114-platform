@@ -126,56 +126,6 @@ export const getWeeklyMVP = (departmentMembers) => {
     };
 };
 
-export const getMonthlyContest = (currentUser, departmentMembers, mockDepartments) => {
-    if (!currentUser || !currentUser.departmentId) return [];
-
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    const daysPassed = now.getDate();
-    const monthStart = new Date(year, month, 1);
-
-    const comm = mockDepartments.find(c => c.id === currentUser.departmentId);
-    if (!comm) return [];
-
-    const groupedBySubgroup = {};
-    comm.subgroups.forEach(sub => {
-        groupedBySubgroup[sub] = departmentMembers.filter(m => m.subgroupId === sub);
-    });
-
-    return Object.keys(groupedBySubgroup)
-        .map(function (subgroupName) {
-            var members = groupedBySubgroup[subgroupName];
-            const totalCount = members.length;
-            if (totalCount === 0) return null;
-
-            const totalReads = members.reduce(function (sum, member) {
-                if (!member.readHistory || !Array.isArray(member.readHistory)) return sum;
-
-                const monthlyReads = member.readHistory.filter(function (item) {
-                    var dateStr = typeof item === 'string' ? item : item.date;
-                    const readDate = new Date(dateStr);
-                    return readDate >= monthStart && readDate <= now;
-                }).length;
-
-                return sum + monthlyReads;
-            }, 0);
-
-            const maxPossible = totalCount * daysPassed;
-            const monthlyRate = maxPossible > 0 ? Math.round((totalReads / maxPossible) * 100) : 0;
-
-            return {
-                name: subgroupName,
-                rate: monthlyRate,
-                totalCount,
-                totalReads,
-                maxPossible,
-                daysPassed
-            };
-        })
-        .filter(g => g !== null && g.totalCount > 0)
-        .sort((a, b) => b.rate - a.rate);
-};
 export const formatSubgroupRanking = (subgroupStats) => {
     if (!subgroupStats || Object.keys(subgroupStats).length === 0) return [];
     return Object.keys(subgroupStats)

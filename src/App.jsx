@@ -4,7 +4,7 @@ import { DEFAULT_DEPARTMENTS } from './data/departments';
 import { BIBLE_VERSIONS, isBibleVersionVisibleForUser } from './data/bible_options';
 import { userDocToState, dateToOffset } from './utils/helpers';
 import ChurchAdminView from './components/ChurchAdminView';
-import { calculateSubgroupStats, getWeeklyMVP, getMonthlyContest, formatSubgroupRanking, formatProgressRanking, getAdminStats } from './utils/statsUtils';
+import { calculateSubgroupStats, getWeeklyMVP, formatSubgroupRanking, formatProgressRanking, getAdminStats } from './utils/statsUtils';
 import { getSubgroupDisplay } from './utils/dashboardUtils';
 import { generateMemosHTML, downloadCSV, downloadPeriodStatsCSV } from './utils/exportUtils';
 import { useUserAuth } from './hooks/useUserAuth';
