@@ -104,6 +104,51 @@ export const extractYouTubeId = (url) => {
     return null;
 };
 
+// 재생목록 URL 또는 순수 ID에서 재생목록 ID를 추출.
+// "https://www.youtube.com/playlist?list=PLxxxx" 형식과 원본 ID(PL..., UU...) 둘 다 허용.
+export const extractYouTubePlaylistId = (input) => {
+    if (!input || typeof input !== 'string') return null;
+    const trimmed = input.trim();
+    const m = trimmed.match(/[?&]list=([A-Za-z0-9_-]+)/);
+    if (m) return m[1];
+    return trimmed || null;
+};
+
+// "매일성경 해설 0:00" / "0:00 매일성경 해설" 양쪽 지원.
+// 유튜브 설명문에서 타임스탬프(0:00, 3:20, 1:02:15)를 찾아 같은 줄의 텍스트를 라벨로 추출한다.
+export const parseChapters = (desc) => {
+    const out = [];
+    for (const line of (desc || '').split('\n')) {
+        const m = line.match(/(\d{1,2}:)?(\d{1,2}):(\d{2})/);
+        if (!m) continue;
+        const sec = (m[1] ? parseInt(m[1]) * 3600 : 0) + parseInt(m[2]) * 60 + parseInt(m[3]);
+        const label = line.replace(m[0], '').trim().replace(/^[-–|·:]+|[-–|·:]+$/g, '').trim();
+        if (label) out.push({ label, sec });
+    }
+    return out;
+};
+
+// 파싱된 자유 라벨을 표준 라벨(해설/성경읽기/기도)로 매핑. 매핑 안 되면 null.
+export const mapToStandardLabel = (label) => {
+    if (label.includes('해설')) return '해설';
+    if (label.includes('성경') || label.includes('읽기')) return '성경읽기';
+    if (label.includes('기도')) return '기도';
+    return null;
+};
+
+// 설명문을 파싱해 표준 라벨로 매핑된 챕터 배열을 반환 (매핑 안 되는 챕터는 무시, 라벨당 최초 1개만 채택)
+export const parseAndMapChapters = (desc) => {
+    const parsed = parseChapters(desc);
+    const mapped = [];
+    parsed.forEach(({ label, sec }) => {
+        const std = mapToStandardLabel(label);
+        if (std && !mapped.find(m => m.label === std)) {
+            mapped.push({ label: std, sec });
+        }
+    });
+    return mapped;
+};
+
 // 숫자를 한자어 수사(일, 이, 삼...)로 변환 (안드로이드 '세 장' 방지용)
 export const toSinoKorean = (numStr) => {
     const sinoMap = ['영', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];

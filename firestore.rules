@@ -82,16 +82,28 @@ service cloud.firestore {
       allow create: if isPlatformAdmin();
     }
 
+    // 매일 영상 자동화 설정 (YouTube API 키·재생목록 ID). 아래의 포괄적
+    // settings/{settingId} 규칙과 겹치지만 명시적으로 둔다.
+    match /settings/videoAutoConfig {
+      allow read: if isSignedIn();
+      allow write: if isPlatformAdmin();
+    }
+
     // 그 외 설정 문서
     match /settings/{settingId} {
       allow read: if isSignedIn();
       allow write: if isPlatformAdmin();
     }
 
-    // 매일 유튜브 영상 (플랫폼 관리자가 전체 교회 공용으로 등록)
+    // 매일 유튜브 영상 (플랫폼 관리자가 전체 교회 공용으로 등록).
+    // Phase 2b: 로그인 사용자가 최초 접속 시 YouTube API로 자동 채움(lazy fill)한 문서를
+    // 스스로 생성할 수 있도록 create만 필드 화이트리스트로 허용한다. 이미 있는 문서를
+    // 덮어쓰는 수정/삭제(수동 등록 오버라이드 포함)는 플랫폼 관리자만 가능.
     match /dailyVideos/{dateId} {
       allow read: if isSignedIn();
-      allow write: if isPlatformAdmin();
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly(['adult', 'kids', 'updatedAt', 'autoFilled']);
+      allow update, delete: if isPlatformAdmin();
     }
   }
 }

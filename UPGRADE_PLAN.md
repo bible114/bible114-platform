@@ -210,6 +210,64 @@ export const getVideoDateKST = () => {
 
 ---
 
+## Phase 2b — 매일 영상 자동화 (YouTube Data API)
+
+> 배경: 매일 수동 등록은 운영 불가(사용자 확인). 재생목록 임베드 방식은 챕터 버튼·3시 컷오프를 잃으므로 API 자동화로 확정.
+
+### 2b-1. 설정 문서
+`settings/videoAutoConfig` (플랫폼 관리자가 1회 등록):
+```js
+{
+  apiKey: "AIza...",          // YouTube Data API v3 키 (HTTP referrer 제한 권장)
+  adultPlaylistId: "PL... 또는 UU...",
+  kidsPlaylistId: "...",       // 없으면 null
+  enabled: true,
+  updatedAt: Timestamp
+}
+```
+firestore.rules: `read: if isSignedIn(); write: if isPlatformAdmin();` (구체 match가 일반 settings 규칙과 겹쳐도 결과 동일하지만 명시 추가).
+참고: referrer 제한된 YouTube 키는 로그인 사용자에게 노출되어도 수용 가능한 위험 (조회 전용 API).
+
+### 2b-2. 자동 채움(lazy fill) 흐름 — DailyVideoCard 수정
+1. `dailyVideos/{videoDate}` 조회 (기존 로직). **있으면 그대로 사용** (수동 등록 = 오버라이드).
+2. 없으면 `settings/videoAutoConfig` 조회. `enabled`가 아니면 카드 숨김(기존 동작).
+3. 모드별로 YouTube API 호출:
+   - `GET https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId={id}&maxResults=10&key={apiKey}`
+   - 후보 중 `publishedAt <= now`인 가장 최신 영상 선택. (채널 업로드 재생목록 `UU...`는 최신순 보장. 일반 재생목록이면 snippet.publishedAt 기준 정렬 후 선택.)
+   - `GET .../videos?part=snippet&id={videoId}&key={apiKey}` 로 설명문(description) 획득.
+4. 설명문을 `parseChapters`로 파싱 (PlatformAdminView에 있는 파서와 매핑 로직을 **src/utils/helpers.js로 이동**해서 양쪽에서 공유).
+5. 결과를 `dailyVideos/{videoDate}`에 저장(캐시) 후 렌더링. 이후 사용자는 캐시만 읽음 → API 쿼터 절약 (하루 모드당 2 unit, 기본 쿼터 10,000 unit).
+6. API 실패/후보 없음 → 카드 숨김, 콘솔 경고만.
+
+### 2b-3. 규칙 변경 (자동 채움 쓰기 허용)
+`dailyVideos` write가 현재 platformAdmin 전용 → 로그인 사용자의 **create만** 필드 화이트리스트로 허용:
+```
+match /dailyVideos/{dateId} {
+  allow read: if isSignedIn();
+  allow create: if isSignedIn()
+    && request.resource.data.keys().hasOnly(['adult','kids','updatedAt','autoFilled']);
+  allow update, delete: if isPlatformAdmin();
+}
+```
+자동 채움 문서에는 `autoFilled: true` 필드 포함 (관리자 목록에서 뱃지로 구분 표시).
+
+### 2b-4. 관리자 UI 확장 — PlatformAdminView "매일 영상" 탭
+- 상단에 "자동화 설정" 카드: API 키, 성인용/어린이용 재생목록 ID, enabled 토글, 저장 버튼. "연결 테스트" 버튼(playlistItems 1회 호출해서 최신 영상 제목 표시).
+- 등록 목록에 autoFilled 뱃지(🤖 자동 / ✍️ 수동). 수동 등록/수정은 기존 그대로 → 자동 캐시를 덮어쓰는 오버라이드로 동작.
+- 재생목록 ID 입력 도움말: 채널 업로드 전체 목록은 채널 ID의 `UC`를 `UU`로 바꾼 값. 재생목록 URL의 `list=` 파라미터 값도 허용 (URL 붙여넣으면 자동 추출).
+
+### 검수 기준
+- [ ] dailyVideos 문서가 없는 날 첫 접속 → 자동으로 문서 생성 + 카드 표시 + 챕터 버튼 동작
+- [ ] 이미 수동 등록된 날은 API 호출 없이 수동 데이터 사용
+- [ ] API 키 미설정/오류 시 조용히 숨김 (사용자 화면에 에러 노출 없음)
+- [ ] 두 번째 사용자 접속 시 YouTube API 호출 없음 (Firestore 캐시 사용)
+
+### 운영 안내 (사용자에게 전달할 것)
+- 영상을 **새벽 3시 예약 공개**로 올리면 컷오프와 정확히 맞물림.
+- API 키 발급: Google Cloud Console → bible114-platform 프로젝트 → YouTube Data API v3 활성화 → 사용자 인증 정보에서 API 키 생성 → HTTP referrer를 서비스 도메인으로 제한.
+
+---
+
 ## Phase 3 — 로그인 개편 + 보안 규칙
 
 ### 3-1. 교회 디렉토리 문서 (읽기 비용·노출 문제 동시 해결)

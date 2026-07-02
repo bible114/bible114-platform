@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { db } from '../../utils/firebase';
-import { getVideoDateKST, extractYouTubeId } from '../../utils/helpers';
+import { db, firebase } from '../../utils/firebase';
+import { getVideoDateKST, extractYouTubeId, parseAndMapChapters } from '../../utils/helpers';
 
 const CHAPTER_ORDER = [
     { key: '해설', emoji: '📖' },
@@ -8,10 +8,37 @@ const CHAPTER_ORDER = [
     { key: '기도', emoji: '🙏' },
 ];
 
+// 재생목록에서 지금 시점 기준 가장 최신 영상을 하나 골라 { url, chapters }를 만든다.
+// UU(채널 업로드) 재생목록은 이미 최신순이지만, 일반 재생목록도 안전하게 처리하려고
+// snippet.publishedAt 기준 내림차순 정렬 후 publishedAt <= now인 것 중 첫 항목을 택한다.
+// 실패(쿼터 초과, 잘못된 키/ID, 후보 없음)하면 null을 반환하고 호출부에서 console.warn만 남긴다.
+const fetchLatestFromPlaylist = async (playlistId, apiKey) => {
+    const itemsUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${encodeURIComponent(playlistId)}&maxResults=10&key=${encodeURIComponent(apiKey)}`;
+    const itemsRes = await fetch(itemsUrl);
+    if (!itemsRes.ok) throw new Error(`playlistItems HTTP ${itemsRes.status}`);
+    const itemsJson = await itemsRes.json();
+    const now = Date.now();
+    const candidates = (itemsJson.items || [])
+        .filter(it => it?.snippet?.publishedAt && new Date(it.snippet.publishedAt).getTime() <= now)
+        .sort((a, b) => new Date(b.snippet.publishedAt) - new Date(a.snippet.publishedAt));
+    const chosen = candidates[0];
+    const videoId = chosen?.contentDetails?.videoId || chosen?.snippet?.resourceId?.videoId;
+    if (!videoId) throw new Error('재생목록에 사용 가능한 영상이 없음');
+
+    const videoUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${encodeURIComponent(videoId)}&key=${encodeURIComponent(apiKey)}`;
+    const videoRes = await fetch(videoUrl);
+    if (!videoRes.ok) throw new Error(`videos HTTP ${videoRes.status}`);
+    const videoJson = await videoRes.json();
+    const description = videoJson.items?.[0]?.snippet?.description || '';
+    const chapters = parseAndMapChapters(description);
+
+    return { url: `https://youtu.be/${videoId}`, chapters };
+};
+
 // 매일 유튜브 영상 카드 — 읽기 탭 최상단에 표시.
 // dailyVideos/{getVideoDateKST()} 문서가 없거나 두 모드 모두 url이 없으면 렌더링하지 않는다.
 const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
-    const [video, setVideo] = useState(undefined); // undefined: 로딩중, null: 문서 없음
+    const [video, setVideo] = useState(undefined); // undefined: 로딩중, null: 문서 없음(또는 자동 채움 실패)
     const [mode, setMode] = useState(currentUser?.videoMode === 'kids' ? 'kids' : 'adult');
     const [playing, setPlaying] = useState(false);
     const iframeRef = useRef(null);
@@ -19,10 +46,72 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
     useEffect(() => {
         let cancelled = false;
         if (!db) { setVideo(null); return; }
-        db.collection('dailyVideos').doc(getVideoDateKST()).get()
+
+        const videoDate = getVideoDateKST();
+        const docRef = db.collection('dailyVideos').doc(videoDate);
+
+        const tryAutoFill = async () => {
+            try {
+                const configDoc = await db.collection('settings').doc('videoAutoConfig').get();
+                if (cancelled) return;
+                if (!configDoc.exists) { setVideo(null); return; }
+                const config = configDoc.data();
+                if (!config.enabled || !config.apiKey) { setVideo(null); return; }
+
+                const modes = [
+                    ['adult', config.adultPlaylistId],
+                    ['kids', config.kidsPlaylistId],
+                ].filter(([, playlistId]) => !!playlistId);
+
+                if (modes.length === 0) { setVideo(null); return; }
+
+                const results = await Promise.all(modes.map(async ([key, playlistId]) => {
+                    try {
+                        const entry = await fetchLatestFromPlaylist(playlistId, config.apiKey);
+                        return [key, entry];
+                    } catch (e) {
+                        console.warn(`매일 영상 자동 채움 실패 (${key}):`, e);
+                        return [key, null];
+                    }
+                }));
+                if (cancelled) return;
+
+                const payload = { adult: null, kids: null };
+                results.forEach(([key, entry]) => { payload[key] = entry; });
+
+                if (!payload.adult?.url && !payload.kids?.url) { setVideo(null); return; }
+
+                payload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+                payload.autoFilled = true;
+
+                // 이중 채움 방지: 쓰기 직전에 다시 한번 문서 존재 여부를 확인한다.
+                // (동시 접속 시 완벽한 레이스 방지는 아니지만, Firestore create 규칙이
+                // 필드 화이트리스트로 제한돼 있어 set({merge:false}) 대신 여기서는
+                // "생성"만 하고 이미 있으면 건드리지 않는 것으로 충분 — 최악의 경우 같은
+                // 문서가 몇 초 안에 한 번 더 자동 채움으로 덮여써도 내용은 동등하다.)
+                const recheck = await docRef.get();
+                if (cancelled) return;
+                if (recheck.exists) {
+                    setVideo(recheck.data());
+                    return;
+                }
+                await docRef.set(payload);
+                if (cancelled) return;
+                setVideo(payload);
+            } catch (e) {
+                console.warn('매일 영상 자동 채움 실패:', e);
+                if (!cancelled) setVideo(null);
+            }
+        };
+
+        docRef.get()
             .then(doc => {
                 if (cancelled) return;
-                setVideo(doc.exists ? doc.data() : null);
+                if (doc.exists) {
+                    setVideo(doc.data());
+                    return;
+                }
+                return tryAutoFill();
             })
             .catch(() => {
                 if (!cancelled) setVideo(null);

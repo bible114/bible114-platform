@@ -2,41 +2,8 @@ import React from 'react';
 import Icon from './Icon';
 import { firebase } from '../utils/firebase';
 import ChurchAdminView from './ChurchAdminView';
-import { getVideoDateKST } from '../utils/helpers';
+import { getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
 import { rebuildChurchDirectory, removeChurchFromDirectory } from '../utils/churchDirectory';
-
-// "매일성경 해설 0:00" / "0:00 매일성경 해설" 양쪽 지원
-const parseChapters = (desc) => {
-    const out = [];
-    for (const line of (desc || '').split('\n')) {
-        const m = line.match(/(\d{1,2}:)?(\d{1,2}):(\d{2})/);
-        if (!m) continue;
-        const sec = (m[1] ? parseInt(m[1]) * 3600 : 0) + parseInt(m[2]) * 60 + parseInt(m[3]);
-        const label = line.replace(m[0], '').trim().replace(/^[-–|·:]+|[-–|·:]+$/g, '').trim();
-        if (label) out.push({ label, sec });
-    }
-    return out;
-};
-
-// 파싱된 자유 라벨을 표준 라벨(해설/성경읽기/기도)로 매핑. 매핑 안 되면 null.
-const mapToStandardLabel = (label) => {
-    if (label.includes('해설')) return '해설';
-    if (label.includes('성경') || label.includes('읽기')) return '성경읽기';
-    if (label.includes('기도')) return '기도';
-    return null;
-};
-
-const parseAndMapChapters = (desc) => {
-    const parsed = parseChapters(desc);
-    const mapped = [];
-    parsed.forEach(({ label, sec }) => {
-        const std = mapToStandardLabel(label);
-        if (std && !mapped.find(m => m.label === std)) {
-            mapped.push({ label: std, sec });
-        }
-    });
-    return mapped;
-};
 
 const PlatformAdminView = ({
     handleLogout,
@@ -95,6 +62,85 @@ const PlatformAdminView = ({
     const [videoList, setVideoList] = React.useState([]);
     const [loadingVideoList, setLoadingVideoList] = React.useState(false);
 
+    // 매일 영상 자동화 설정 (settings/videoAutoConfig)
+    const [autoApiKey, setAutoApiKey] = React.useState('');
+    const [autoAdultPlaylist, setAutoAdultPlaylist] = React.useState('');
+    const [autoKidsPlaylist, setAutoKidsPlaylist] = React.useState('');
+    const [autoEnabled, setAutoEnabled] = React.useState(false);
+    const [loadingAutoConfig, setLoadingAutoConfig] = React.useState(false);
+    const [savingAutoConfig, setSavingAutoConfig] = React.useState(false);
+    const [testingConnection, setTestingConnection] = React.useState(false);
+    const [connectionTestResult, setConnectionTestResult] = React.useState(null); // { ok: bool, message: string }
+
+    React.useEffect(() => {
+        if (tab !== 'dailyVideo' || !db) return;
+        setLoadingAutoConfig(true);
+        db.collection('settings').doc('videoAutoConfig').get()
+            .then(doc => {
+                if (!doc.exists) return;
+                const d = doc.data();
+                setAutoApiKey(d.apiKey || '');
+                setAutoAdultPlaylist(d.adultPlaylistId || '');
+                setAutoKidsPlaylist(d.kidsPlaylistId || '');
+                setAutoEnabled(!!d.enabled);
+            })
+            .catch(e => console.error('videoAutoConfig 로드 실패:', e))
+            .finally(() => setLoadingAutoConfig(false));
+    }, [tab, db]);
+
+    const saveAutoConfig = async () => {
+        if (!db) return;
+        setSavingAutoConfig(true);
+        try {
+            await db.collection('settings').doc('videoAutoConfig').set({
+                apiKey: autoApiKey.trim(),
+                adultPlaylistId: extractYouTubePlaylistId(autoAdultPlaylist) || '',
+                kidsPlaylistId: autoKidsPlaylist.trim() ? extractYouTubePlaylistId(autoKidsPlaylist) : null,
+                enabled: autoEnabled,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true });
+            // 입력창에도 추출된 순수 ID를 반영
+            setAutoAdultPlaylist(extractYouTubePlaylistId(autoAdultPlaylist) || '');
+            if (autoKidsPlaylist.trim()) setAutoKidsPlaylist(extractYouTubePlaylistId(autoKidsPlaylist) || '');
+            alert('자동화 설정이 저장되었습니다.');
+        } catch (e) {
+            alert('저장 실패: ' + e.message);
+        } finally {
+            setSavingAutoConfig(false);
+        }
+    };
+
+    const testAutoConnection = async () => {
+        setTestingConnection(true);
+        setConnectionTestResult(null);
+        try {
+            const playlistId = extractYouTubePlaylistId(autoAdultPlaylist);
+            if (!autoApiKey.trim() || !playlistId) {
+                setConnectionTestResult({ ok: false, message: 'API 키와 성인용 재생목록을 먼저 입력해주세요.' });
+                return;
+            }
+            const url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${encodeURIComponent(playlistId)}&maxResults=10&key=${encodeURIComponent(autoApiKey.trim())}`;
+            const res = await fetch(url);
+            const json = await res.json();
+            if (!res.ok) {
+                setConnectionTestResult({ ok: false, message: json?.error?.message || `HTTP ${res.status}` });
+                return;
+            }
+            const items = (json.items || []).slice().sort((a, b) =>
+                new Date(b.snippet?.publishedAt || 0) - new Date(a.snippet?.publishedAt || 0));
+            const newest = items[0];
+            if (!newest) {
+                setConnectionTestResult({ ok: false, message: '재생목록에서 영상을 찾을 수 없습니다.' });
+                return;
+            }
+            setConnectionTestResult({ ok: true, message: `최신 영상: ${newest.snippet?.title || '(제목 없음)'}` });
+        } catch (e) {
+            setConnectionTestResult({ ok: false, message: e.message });
+        } finally {
+            setTestingConnection(false);
+        }
+    };
+
     const loadVideoList = React.useCallback(async () => {
         if (!db) return;
         setLoadingVideoList(true);
@@ -147,6 +193,7 @@ const PlatformAdminView = ({
                 adult: adultUrl ? { url: adultUrl, chapters: adultChapters } : null,
                 kids: kidsUrl ? { url: kidsUrl, chapters: kidsChapters } : null,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                autoFilled: false, // 수동 등록/수정 = 자동 채움 캐시에 대한 오버라이드
             };
             await db.collection('dailyVideos').doc(videoDate).set(payload, { merge: true });
             alert(`${videoDate} 영상이 저장되었습니다.`);
@@ -912,6 +959,64 @@ const PlatformAdminView = ({
                 {tab === 'dailyVideo' && (
                     <div className="space-y-5">
                         <div className="bg-white rounded-xl shadow-sm p-6">
+                            <h2 className="text-base font-bold text-slate-800 mb-1">🤖 자동화 설정</h2>
+                            <p className="text-xs text-slate-400 mb-4">
+                                YouTube 재생목록에서 매일 최신 영상을 자동으로 가져옵니다. 아래에서 수동 등록한 날짜가 있으면 그 등록이 항상 우선합니다.
+                            </p>
+                            {loadingAutoConfig ? (
+                                <p className="text-sm text-slate-400 py-4">불러오는 중...</p>
+                            ) : (
+                                <>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">YouTube Data API 키</label>
+                                            <input type="text" value={autoApiKey} onChange={e => setAutoApiKey(e.target.value)}
+                                                placeholder="AIza..."
+                                                className="w-full p-2.5 border rounded-lg text-sm bg-white" />
+                                        </div>
+                                        <div className="flex items-end">
+                                            <label className="flex items-center gap-2 text-sm font-bold text-slate-600 pb-2.5">
+                                                <input type="checkbox" checked={autoEnabled} onChange={e => setAutoEnabled(e.target.checked)}
+                                                    className="w-4 h-4" />
+                                                자동화 사용
+                                            </label>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">성인용 재생목록 (ID 또는 URL)</label>
+                                            <input type="text" value={autoAdultPlaylist} onChange={e => setAutoAdultPlaylist(e.target.value)}
+                                                placeholder="PLxxxx... 또는 https://www.youtube.com/playlist?list=..."
+                                                className="w-full p-2.5 border rounded-lg text-sm bg-white" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">어린이용 재생목록 (ID 또는 URL, 선택)</label>
+                                            <input type="text" value={autoKidsPlaylist} onChange={e => setAutoKidsPlaylist(e.target.value)}
+                                                placeholder="PLxxxx... 또는 https://www.youtube.com/playlist?list=..."
+                                                className="w-full p-2.5 border rounded-lg text-sm bg-white" />
+                                        </div>
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 mb-4">
+                                        채널 업로드 전체 목록은 채널 ID의 <code className="bg-slate-100 px-1 rounded">UC</code>를 <code className="bg-slate-100 px-1 rounded">UU</code>로 바꾼 값을 사용하세요. 재생목록 URL을 그대로 붙여넣어도 <code className="bg-slate-100 px-1 rounded">list=</code> 값이 자동으로 추출됩니다.
+                                    </p>
+                                    <div className="flex items-center gap-3 flex-wrap">
+                                        <button onClick={saveAutoConfig} disabled={savingAutoConfig}
+                                            className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-700 shadow-sm disabled:opacity-50">
+                                            {savingAutoConfig ? '저장 중...' : '설정 저장'}
+                                        </button>
+                                        <button onClick={testAutoConnection} disabled={testingConnection}
+                                            className="bg-slate-100 text-slate-700 px-6 py-2.5 rounded-xl font-bold hover:bg-slate-200 disabled:opacity-50">
+                                            {testingConnection ? '확인 중...' : '🔌 연결 테스트'}
+                                        </button>
+                                        {connectionTestResult && (
+                                            <span className={`text-xs font-bold ${connectionTestResult.ok ? 'text-green-600' : 'text-red-500'}`}>
+                                                {connectionTestResult.ok ? '✓ ' : '✕ '}{connectionTestResult.message}
+                                            </span>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        <div className="bg-white rounded-xl shadow-sm p-6">
                             <h2 className="text-base font-bold text-slate-800 mb-1">🎬 매일 영상 등록</h2>
                             <p className="text-xs text-slate-400 mb-4">플랫폼 전체 교회에 공통으로 노출되는 매일 유튜브 영상입니다. 새벽 3시(KST)를 기준으로 날짜가 바뀝니다.</p>
 
@@ -1006,6 +1111,11 @@ const PlatformAdminView = ({
                                                 <span className={`text-xs px-2 py-1 rounded-full font-bold ${data?.kids?.url ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-400'}`}>
                                                     어린이용 {data?.kids?.url ? '✓' : '✕'}
                                                 </span>
+                                                {data && (
+                                                    <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${data.autoFilled ? 'bg-purple-100 text-purple-600' : 'bg-amber-100 text-amber-600'}`}>
+                                                        {data.autoFilled ? '🤖 자동' : '✍️ 수동'}
+                                                    </span>
+                                                )}
                                                 <div className="flex-1" />
                                                 {data && (
                                                     <button onClick={() => deleteDailyVideo(date)}
