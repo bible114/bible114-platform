@@ -679,6 +679,7 @@ const App = () => {
         pageContent = (
             <DashboardView
                 currentUser={currentUser}
+                setCurrentUser={setCurrentUser}
                 departmentMembers={departmentMembers}
                 allMembersForRace={allMembersForRace}
                 memos={memos}

@@ -2,6 +2,40 @@ import React from 'react';
 import Icon from './Icon';
 import { firebase } from '../utils/firebase';
 import ChurchAdminView from './ChurchAdminView';
+import { getVideoDateKST } from '../utils/helpers';
+
+// "매일성경 해설 0:00" / "0:00 매일성경 해설" 양쪽 지원
+const parseChapters = (desc) => {
+    const out = [];
+    for (const line of (desc || '').split('\n')) {
+        const m = line.match(/(\d{1,2}:)?(\d{1,2}):(\d{2})/);
+        if (!m) continue;
+        const sec = (m[1] ? parseInt(m[1]) * 3600 : 0) + parseInt(m[2]) * 60 + parseInt(m[3]);
+        const label = line.replace(m[0], '').trim().replace(/^[-–|·:]+|[-–|·:]+$/g, '').trim();
+        if (label) out.push({ label, sec });
+    }
+    return out;
+};
+
+// 파싱된 자유 라벨을 표준 라벨(해설/성경읽기/기도)로 매핑. 매핑 안 되면 null.
+const mapToStandardLabel = (label) => {
+    if (label.includes('해설')) return '해설';
+    if (label.includes('성경') || label.includes('읽기')) return '성경읽기';
+    if (label.includes('기도')) return '기도';
+    return null;
+};
+
+const parseAndMapChapters = (desc) => {
+    const parsed = parseChapters(desc);
+    const mapped = [];
+    parsed.forEach(({ label, sec }) => {
+        const std = mapToStandardLabel(label);
+        if (std && !mapped.find(m => m.label === std)) {
+            mapped.push({ label: std, sec });
+        }
+    });
+    return mapped;
+};
 
 const PlatformAdminView = ({
     handleLogout,
@@ -41,6 +75,99 @@ const PlatformAdminView = ({
     const [viewingChurchAsAdmin, setViewingChurchAsAdmin] = React.useState(false);
     const [platformKakaoInput, setPlatformKakaoInput] = React.useState('');
     const [savingPlatformKakao, setSavingPlatformKakao] = React.useState(false);
+
+    // 매일 영상 관리
+    const nextVideoDate = React.useMemo(() => {
+        const d = new Date(getVideoDateKST() + 'T00:00:00Z');
+        d.setUTCDate(d.getUTCDate() + 1);
+        return d.toISOString().slice(0, 10);
+    }, []);
+    const [videoDate, setVideoDate] = React.useState(nextVideoDate);
+    const [adultUrl, setAdultUrl] = React.useState('');
+    const [adultDesc, setAdultDesc] = React.useState('');
+    const [adultChapters, setAdultChapters] = React.useState([]);
+    const [kidsUrl, setKidsUrl] = React.useState('');
+    const [kidsDesc, setKidsDesc] = React.useState('');
+    const [kidsChapters, setKidsChapters] = React.useState([]);
+    const [savingVideo, setSavingVideo] = React.useState(false);
+    const [videoList, setVideoList] = React.useState([]);
+    const [loadingVideoList, setLoadingVideoList] = React.useState(false);
+
+    const loadVideoList = React.useCallback(async () => {
+        if (!db) return;
+        setLoadingVideoList(true);
+        try {
+            const today = new Date(getVideoDateKST() + 'T00:00:00Z');
+            const dates = [];
+            for (let i = -7; i <= 7; i++) {
+                const d = new Date(today);
+                d.setUTCDate(d.getUTCDate() + i);
+                dates.push(d.toISOString().slice(0, 10));
+            }
+            const docs = await Promise.all(dates.map(id => db.collection('dailyVideos').doc(id).get()));
+            setVideoList(docs.map((doc, idx) => ({ date: dates[idx], data: doc.exists ? doc.data() : null })));
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoadingVideoList(false);
+        }
+    }, [db]);
+
+    React.useEffect(() => {
+        if (tab === 'dailyVideo') loadVideoList();
+    }, [tab, loadVideoList]);
+
+    const handleAdultDescChange = (val) => {
+        setAdultDesc(val);
+        setAdultChapters(parseAndMapChapters(val));
+    };
+    const handleKidsDescChange = (val) => {
+        setKidsDesc(val);
+        setKidsChapters(parseAndMapChapters(val));
+    };
+
+    const updateChapterField = (which, idx, field, value) => {
+        const setter = which === 'adult' ? setAdultChapters : setKidsChapters;
+        setter(prev => prev.map((c, i) => i === idx ? { ...c, [field]: field === 'sec' ? (parseInt(value) || 0) : value } : c));
+    };
+    const removeChapter = (which, idx) => {
+        const setter = which === 'adult' ? setAdultChapters : setKidsChapters;
+        setter(prev => prev.filter((_, i) => i !== idx));
+    };
+
+    const saveDailyVideo = async () => {
+        if (!db) return;
+        if (!videoDate) { alert('날짜를 선택해주세요.'); return; }
+        if (!adultUrl && !kidsUrl) { alert('성인용 또는 어린이용 URL 중 하나는 입력해주세요.'); return; }
+        setSavingVideo(true);
+        try {
+            const payload = {
+                adult: adultUrl ? { url: adultUrl, chapters: adultChapters } : null,
+                kids: kidsUrl ? { url: kidsUrl, chapters: kidsChapters } : null,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            };
+            await db.collection('dailyVideos').doc(videoDate).set(payload, { merge: true });
+            alert(`${videoDate} 영상이 저장되었습니다.`);
+            setAdultUrl(''); setAdultDesc(''); setAdultChapters([]);
+            setKidsUrl(''); setKidsDesc(''); setKidsChapters([]);
+            loadVideoList();
+        } catch (e) {
+            alert('저장 실패: ' + e.message);
+        } finally {
+            setSavingVideo(false);
+        }
+    };
+
+    const deleteDailyVideo = async (date) => {
+        if (!db) return;
+        if (!confirm(`${date} 영상 등록을 삭제하시겠습니까?`)) return;
+        try {
+            await db.collection('dailyVideos').doc(date).delete();
+            loadVideoList();
+        } catch (e) {
+            alert('삭제 실패: ' + e.message);
+        }
+    };
 
     React.useEffect(() => {
         if (!db) return;
@@ -239,6 +366,7 @@ const PlatformAdminView = ({
         ['churches', '🏛️ 교회 목록'],
         ['members', '👥 회원 목록'],
         ['announcement', '📢 공지 관리'],
+        ['dailyVideo', '🎬 매일 영상'],
         ['sync', '🔄 동기화'],
     ];
 
@@ -761,6 +889,120 @@ const PlatformAdminView = ({
                                 </div>
                             </>
                         )}
+                    </div>
+                )}
+
+                {/* ── 매일 영상 ── */}
+                {tab === 'dailyVideo' && (
+                    <div className="space-y-5">
+                        <div className="bg-white rounded-xl shadow-sm p-6">
+                            <h2 className="text-base font-bold text-slate-800 mb-1">🎬 매일 영상 등록</h2>
+                            <p className="text-xs text-slate-400 mb-4">플랫폼 전체 교회에 공통으로 노출되는 매일 유튜브 영상입니다. 새벽 3시(KST)를 기준으로 날짜가 바뀝니다.</p>
+
+                            <label className="block text-sm font-bold text-slate-600 mb-2">등록 날짜</label>
+                            <input type="date" value={videoDate} onChange={e => setVideoDate(e.target.value)}
+                                className="border border-slate-300 rounded-lg p-2.5 text-sm mb-6" />
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                {/* 성인용 */}
+                                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                                    <h3 className="font-bold text-slate-700 mb-3">👤 성인용</h3>
+                                    <input type="url" value={adultUrl} onChange={e => setAdultUrl(e.target.value)}
+                                        placeholder="https://youtu.be/..."
+                                        className="w-full p-2.5 border rounded-lg text-sm bg-white mb-3" />
+                                    <label className="block text-xs font-bold text-slate-500 mb-1">유튜브 설명문 붙여넣기 (타임스탬프 자동 인식)</label>
+                                    <textarea value={adultDesc} onChange={e => handleAdultDescChange(e.target.value)}
+                                        rows={5} placeholder={"예)\n0:00 매일성경 해설\n3:20 성경읽기\n15:40 기도"}
+                                        className="w-full p-2.5 border rounded-lg text-xs font-mono bg-white resize-none mb-3" />
+                                    {adultChapters.length > 0 && (
+                                        <div className="space-y-1.5">
+                                            <p className="text-xs font-bold text-slate-500">파싱된 챕터 (수정 가능)</p>
+                                            {adultChapters.map((c, idx) => (
+                                                <div key={idx} className="flex items-center gap-1.5">
+                                                    <input type="text" value={c.label}
+                                                        onChange={e => updateChapterField('adult', idx, 'label', e.target.value)}
+                                                        className="flex-1 p-1.5 border rounded text-xs bg-white" />
+                                                    <input type="number" value={c.sec}
+                                                        onChange={e => updateChapterField('adult', idx, 'sec', e.target.value)}
+                                                        className="w-20 p-1.5 border rounded text-xs bg-white" />
+                                                    <span className="text-[10px] text-slate-400">초</span>
+                                                    <button onClick={() => removeChapter('adult', idx)} className="text-red-400 p-1"><Icon name="trash" size={12} /></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* 어린이용 */}
+                                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                                    <h3 className="font-bold text-slate-700 mb-3">🧒 어린이용</h3>
+                                    <input type="url" value={kidsUrl} onChange={e => setKidsUrl(e.target.value)}
+                                        placeholder="https://youtu.be/..."
+                                        className="w-full p-2.5 border rounded-lg text-sm bg-white mb-3" />
+                                    <label className="block text-xs font-bold text-slate-500 mb-1">유튜브 설명문 붙여넣기 (타임스탬프 자동 인식)</label>
+                                    <textarea value={kidsDesc} onChange={e => handleKidsDescChange(e.target.value)}
+                                        rows={5} placeholder={"예)\n0:00 매일성경 해설\n3:20 성경읽기\n15:40 기도"}
+                                        className="w-full p-2.5 border rounded-lg text-xs font-mono bg-white resize-none mb-3" />
+                                    {kidsChapters.length > 0 && (
+                                        <div className="space-y-1.5">
+                                            <p className="text-xs font-bold text-slate-500">파싱된 챕터 (수정 가능)</p>
+                                            {kidsChapters.map((c, idx) => (
+                                                <div key={idx} className="flex items-center gap-1.5">
+                                                    <input type="text" value={c.label}
+                                                        onChange={e => updateChapterField('kids', idx, 'label', e.target.value)}
+                                                        className="flex-1 p-1.5 border rounded text-xs bg-white" />
+                                                    <input type="number" value={c.sec}
+                                                        onChange={e => updateChapterField('kids', idx, 'sec', e.target.value)}
+                                                        className="w-20 p-1.5 border rounded text-xs bg-white" />
+                                                    <span className="text-[10px] text-slate-400">초</span>
+                                                    <button onClick={() => removeChapter('kids', idx)} className="text-red-400 p-1"><Icon name="trash" size={12} /></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end mt-5">
+                                <button onClick={saveDailyVideo} disabled={savingVideo}
+                                    className="bg-indigo-600 text-white px-8 py-2.5 rounded-xl font-bold hover:bg-indigo-700 shadow-sm disabled:opacity-50">
+                                    {savingVideo ? '저장 중...' : `${videoDate} 저장하기`}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-xl shadow-sm p-6">
+                            <h3 className="font-bold text-slate-700 mb-4">📅 등록 현황 (오늘 ±7일)</h3>
+                            {loadingVideoList ? (
+                                <p className="text-sm text-slate-400 text-center py-6">불러오는 중...</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {videoList.map(({ date, data }) => {
+                                        const isToday = date === getVideoDateKST();
+                                        return (
+                                            <div key={date} className={`flex items-center gap-3 p-3 rounded-xl ${isToday ? 'bg-indigo-50 border border-indigo-200' : 'bg-slate-50'}`}>
+                                                <div className="w-28 text-sm font-bold text-slate-700">
+                                                    {date} {isToday && <span className="text-[10px] text-indigo-500">(오늘)</span>}
+                                                </div>
+                                                <span className={`text-xs px-2 py-1 rounded-full font-bold ${data?.adult?.url ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-400'}`}>
+                                                    성인용 {data?.adult?.url ? '✓' : '✕'}
+                                                </span>
+                                                <span className={`text-xs px-2 py-1 rounded-full font-bold ${data?.kids?.url ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-400'}`}>
+                                                    어린이용 {data?.kids?.url ? '✓' : '✕'}
+                                                </span>
+                                                <div className="flex-1" />
+                                                {data && (
+                                                    <button onClick={() => deleteDailyVideo(date)}
+                                                        className="text-red-500 p-1.5 bg-red-50 rounded-lg hover:bg-red-100" title="삭제">
+                                                        <Icon name="trash" size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
 

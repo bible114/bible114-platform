@@ -72,5 +72,11 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isPlatformAdmin();
     }
+
+    // 매일 유튜브 영상 (플랫폼 관리자가 전체 교회 공용으로 등록)
+    match /dailyVideos/{dateId} {
+      allow read: if isSignedIn();
+      allow write: if isPlatformAdmin();
+    }
   }
 }

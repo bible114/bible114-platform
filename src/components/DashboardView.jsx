@@ -23,6 +23,7 @@ import {
     DashboardHeader,
     RaceMap,
     AnnouncementBanner,
+    DailyVideoCard,
     BibleReader,
     MemoSection,
     SubgroupRankingCard,
@@ -33,6 +34,7 @@ import TutorialOverlay from './TutorialOverlay';
 
 const DashboardView = ({
     currentUser,
+    setCurrentUser,
     departmentMembers,
     allMembersForRace,
     memos,
@@ -325,6 +327,8 @@ const DashboardView = ({
 
                 <main className="px-4 space-y-6">
                     <AnnouncementBanner announcement={announcement} />
+
+                    <DailyVideoCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
 
                     <BibleReader
                         verseData={verseData}

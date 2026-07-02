@@ -74,7 +74,34 @@ export const userDocToState = (doc) => {
         isDeleted: d.isDeleted ?? false,
         deletedAt: d.deletedAt ?? null,
         deletedBy: d.deletedBy ?? null,
+        videoMode: d.videoMode === 'kids' ? 'kids' : 'adult',
     };
+};
+
+// 영상 날짜 = 한국시간 현재시각에서 3시간을 뺀 날짜.
+// 7/1 02:59(KST) → "2026-06-30", 7/1 03:00 → "2026-07-01".
+// UTC 연산이므로 해외 접속자도 동일하게 동작한다.
+export const getVideoDateKST = () => {
+    const shifted = new Date(Date.now() + 9 * 3600e3 - 3 * 3600e3);
+    return shifted.toISOString().slice(0, 10);
+};
+
+// 유튜브 URL에서 videoId 추출.
+// 지원 형식: youtu.be/{id}, watch?v={id}, /live/{id}, /shorts/{id}, /embed/{id}
+export const extractYouTubeId = (url) => {
+    if (!url || typeof url !== 'string') return null;
+    const patterns = [
+        /youtu\.be\/([A-Za-z0-9_-]{11})/,
+        /[?&]v=([A-Za-z0-9_-]{11})/,
+        /\/live\/([A-Za-z0-9_-]{11})/,
+        /\/shorts\/([A-Za-z0-9_-]{11})/,
+        /\/embed\/([A-Za-z0-9_-]{11})/,
+    ];
+    for (const re of patterns) {
+        const m = url.match(re);
+        if (m) return m[1];
+    }
+    return null;
 };
 
 // 숫자를 한자어 수사(일, 이, 삼...)로 변환 (안드로이드 '세 장' 방지용)
