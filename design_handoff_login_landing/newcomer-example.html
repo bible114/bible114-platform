@@ -1,0 +1,749 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>성경통독114 - 함께 읽는 첫 방문자 예시 화면</title>
+  <style>
+    :root {
+      --cream: #f4ede0;
+      --cream-2: #fbf7ee;
+      --ink: #293829;
+      --muted: rgba(41, 56, 41, 0.64);
+      --soft: rgba(41, 56, 41, 0.1);
+      --line: rgba(41, 56, 41, 0.17);
+      --accent: #b8702a;
+      --accent-2: #d8a15d;
+      --green: #3b6848;
+      --white: #fffaf1;
+      --shadow: 0 28px 58px -36px rgba(41, 56, 41, 0.42);
+      font-family: Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--cream);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(120deg, rgba(184, 112, 42, 0.08), transparent 35%),
+        linear-gradient(315deg, rgba(59, 104, 72, 0.08), transparent 34%),
+        var(--cream);
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .page {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: 72px 1fr;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 56px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: "Noto Serif KR", "Nanum Myeongjo", Georgia, serif;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .mark {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      background: var(--ink);
+      color: var(--cream-2);
+      font-size: 14px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .nav-links a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .church-link {
+      border: 1px solid rgba(184, 112, 42, 0.38);
+      border-radius: 999px;
+      padding: 9px 15px;
+      color: var(--accent);
+      background: rgba(184, 112, 42, 0.07);
+      font-weight: 700;
+    }
+
+    .main {
+      display: grid;
+      grid-template-columns: minmax(0, 1.08fr) minmax(420px, 0.92fr);
+      gap: 48px;
+      align-items: center;
+      padding: 34px 56px 48px;
+    }
+
+    .hero {
+      max-width: 680px;
+    }
+
+    h1 {
+      margin: 0;
+      font-family: "Noto Serif KR", "Nanum Myeongjo", Georgia, serif;
+      font-size: clamp(42px, 4.2vw, 64px);
+      line-height: 1.14;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .accent {
+      color: var(--accent);
+    }
+
+    .lead {
+      max-width: 540px;
+      margin: 20px 0 0;
+      color: rgba(41, 56, 41, 0.76);
+      font-size: 16px;
+      line-height: 1.75;
+      word-break: keep-all;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 26px;
+      flex-wrap: wrap;
+    }
+
+    .primary,
+    .secondary {
+      min-height: 46px;
+      border-radius: 999px;
+      padding: 0 20px;
+      border: 1px solid transparent;
+      font-weight: 800;
+      font-size: 14px;
+    }
+
+    .primary {
+      background: var(--ink);
+      color: var(--cream-2);
+    }
+
+    .secondary {
+      background: rgba(255, 250, 241, 0.52);
+      color: var(--ink);
+      border-color: var(--line);
+    }
+
+    .race-board {
+      margin-top: 34px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      padding: 22px 0;
+    }
+
+    .race-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .race-header h2 {
+      margin: 0;
+      font-family: "Noto Serif KR", "Nanum Myeongjo", Georgia, serif;
+      font-size: 24px;
+      line-height: 1.25;
+    }
+
+    .race-header p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+      word-break: keep-all;
+    }
+
+    .race-live {
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .leaderboard {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .rank-list,
+    .plan-choice {
+      border: 1px solid var(--line);
+      background: rgba(255, 250, 241, 0.42);
+      border-radius: 8px;
+      padding: 14px 15px;
+    }
+
+    .rank-list h3,
+    .plan-choice h3 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      color: rgba(41, 56, 41, 0.58);
+    }
+
+    .rank-row {
+      display: grid;
+      grid-template-columns: 28px 1fr auto;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 0;
+      border-top: 1px solid rgba(41, 56, 41, 0.09);
+    }
+
+    .rank-row:first-of-type,
+    .choice:first-of-type {
+      border-top: 0;
+    }
+
+    .rank-no {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--ink);
+      color: var(--cream-2);
+      font-family: Georgia, serif;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .rank-name {
+      display: block;
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    .rank-meta {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    .rank-score {
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .choice {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 0;
+      border-top: 1px solid rgba(41, 56, 41, 0.09);
+    }
+
+    .choice b {
+      display: block;
+      font-size: 14px;
+    }
+
+    .choice span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 4px;
+      word-break: keep-all;
+    }
+
+    .choice small {
+      border: 1px solid rgba(184, 112, 42, 0.28);
+      color: var(--accent);
+      background: rgba(184, 112, 42, 0.08);
+      border-radius: 999px;
+      padding: 5px 8px;
+      font-size: 11px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .auth-wrap {
+      display: flex;
+      justify-content: center;
+      align-self: start;
+      padding-top: 24px;
+    }
+
+    .auth-card {
+      width: min(100%, 456px);
+      border: 1px solid var(--line);
+      background: rgba(251, 247, 238, 0.92);
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.72);
+    }
+
+    .auth-title {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 12px;
+    }
+
+    .auth-title h2 {
+      margin: 0;
+      font-family: "Noto Serif KR", "Nanum Myeongjo", Georgia, serif;
+      font-size: 24px;
+      line-height: 1.2;
+    }
+
+    .auth-title p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .small-guide {
+      border: 1px solid rgba(184, 112, 42, 0.28);
+      color: var(--accent);
+      background: rgba(184, 112, 42, 0.08);
+      border-radius: 999px;
+      padding: 7px 10px;
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      padding: 4px;
+      background: rgba(41, 56, 41, 0.06);
+      border-radius: 8px;
+      margin-bottom: 14px;
+    }
+
+    .tab {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 9px 10px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .tab.active {
+      color: var(--ink);
+      background: var(--white);
+      box-shadow: 0 1px 7px rgba(41, 56, 41, 0.1);
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .step {
+      border-bottom: 2px solid rgba(41, 56, 41, 0.12);
+      padding-bottom: 7px;
+      color: rgba(41, 56, 41, 0.48);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .step.active {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .checklist {
+      border: 1px solid rgba(59, 104, 72, 0.18);
+      background: rgba(59, 104, 72, 0.07);
+      border-radius: 8px;
+      padding: 10px 11px;
+      margin-bottom: 10px;
+    }
+
+    .checklist-title {
+      margin: 0 0 9px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .check-items {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+
+    .check-items span {
+      border: 1px solid rgba(59, 104, 72, 0.18);
+      border-radius: 999px;
+      padding: 6px 9px;
+      background: rgba(255, 250, 241, 0.58);
+      font-size: 12px;
+      color: var(--green);
+      font-weight: 800;
+    }
+
+    .form {
+      display: grid;
+      gap: 9px;
+    }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    label {
+      display: grid;
+      gap: 5px;
+      color: rgba(41, 56, 41, 0.58);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    input,
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: rgba(255, 250, 241, 0.72);
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 10px 12px;
+      outline: none;
+      font-size: 14px;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: rgba(184, 112, 42, 0.68);
+      box-shadow: 0 0 0 3px rgba(184, 112, 42, 0.12);
+    }
+
+    .help {
+      color: rgba(41, 56, 41, 0.54);
+      font-size: 12px;
+      line-height: 1.55;
+      word-break: keep-all;
+    }
+
+    .submit {
+      height: 42px;
+      border: 0;
+      border-radius: 999px;
+      color: var(--cream-2);
+      background: var(--ink);
+      font-size: 14px;
+      font-weight: 900;
+      margin-top: 4px;
+    }
+
+    .login-fields {
+      display: none;
+    }
+
+    .auth-card[data-mode="login"] .signup-fields {
+      display: none;
+    }
+
+    .auth-card[data-mode="login"] .login-fields {
+      display: grid;
+    }
+
+    .auth-card[data-mode="login"] .steps,
+    .auth-card[data-mode="login"] .checklist {
+      display: none;
+    }
+
+    @media (max-width: 960px) {
+      .page {
+        grid-template-rows: auto 1fr;
+      }
+
+      .nav {
+        padding: 18px 22px;
+      }
+
+      .nav-links {
+        display: none;
+      }
+
+      .main {
+        grid-template-columns: 1fr;
+        gap: 28px;
+        padding: 18px 22px 38px;
+      }
+
+      .hero {
+        max-width: none;
+      }
+
+      .leaderboard {
+        grid-template-columns: 1fr;
+      }
+
+      .field-row {
+        grid-template-columns: 1fr;
+      }
+
+      .race-header {
+        display: block;
+      }
+
+      .race-live {
+        margin-top: 10px;
+      }
+
+      .auth-card {
+        padding: 24px;
+      }
+
+      .auth-title {
+        display: block;
+      }
+
+      .small-guide {
+        display: inline-flex;
+        margin-top: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="nav">
+      <div class="brand">
+        <div class="mark">114</div>
+        <span>성경통독114</span>
+      </div>
+      <nav class="nav-links" aria-label="주요 메뉴">
+        <a href="#about">함께 읽기</a>
+        <a href="#race">순위</a>
+        <a href="#plans">읽기표</a>
+        <a class="church-link" href="#church">교회 등록</a>
+      </nav>
+    </header>
+
+    <main class="main">
+      <section class="hero" id="about">
+        <h1>혼자 읽지 않고,<br><span class="accent">함께 달리는</span> 성경통독</h1>
+        <p class="lead">
+          성경통독114는 교회와 소그룹이 같은 목표를 향해 읽고, 서로의 진행률과 순위를 보며 격려하는 통독 플랫폼입니다.
+          읽기표는 성경통독114 방식도, 창세기부터 순서대로 읽는 방식도 선택할 수 있습니다.
+        </p>
+        <div class="hero-actions">
+          <button class="primary" type="button" data-jump-signup>처음 시작하기</button>
+          <button class="secondary" type="button" data-jump-login>이미 가입했어요</button>
+          <button class="secondary" type="button">읽기표 비교하기</button>
+        </div>
+
+        <div class="race-board" id="race">
+          <div class="race-header">
+            <div>
+              <h2>오늘도 우리 교회가 읽고 있습니다</h2>
+              <p>개인 완주뿐 아니라 부서, 소그룹, 교회별 순위로 함께 읽는 힘을 만듭니다.</p>
+            </div>
+            <div class="race-live">실시간 진행 중</div>
+          </div>
+          <div class="leaderboard">
+            <div class="rank-list">
+              <h3>소그룹 순위</h3>
+              <div class="rank-row">
+                <div class="rank-no">1</div>
+                <div>
+                  <span class="rank-name">청년부 2팀</span>
+                  <span class="rank-meta">7명 참여 · 평균 82%</span>
+                </div>
+                <div class="rank-score">2,840점</div>
+              </div>
+              <div class="rank-row">
+                <div class="rank-no">2</div>
+                <div>
+                  <span class="rank-name">장년부 4구역</span>
+                  <span class="rank-meta">11명 참여 · 평균 76%</span>
+                </div>
+                <div class="rank-score">2,510점</div>
+              </div>
+              <div class="rank-row">
+                <div class="rank-no">3</div>
+                <div>
+                  <span class="rank-name">중고등부</span>
+                  <span class="rank-meta">14명 참여 · 평균 69%</span>
+                </div>
+                <div class="rank-score">2,120점</div>
+              </div>
+            </div>
+
+            <div class="plan-choice" id="plans">
+              <h3>읽기표 선택</h3>
+              <div class="choice">
+                <div>
+                  <b>성경통독114</b>
+                  <span>분기마다 큰 흐름을 다시 보며 지루함을 줄이는 추천 읽기표</span>
+                </div>
+                <small>추천</small>
+              </div>
+              <div class="choice">
+                <div>
+                  <b>순서대로 읽기</b>
+                  <span>창세기부터 요한계시록까지 익숙한 순서로 차근차근 읽기</span>
+                </div>
+                <small>기본</small>
+              </div>
+              <div class="choice">
+                <div>
+                  <b>신약 일독</b>
+                  <span>처음 시작하거나 회복이 필요한 성도를 위한 가벼운 출발</span>
+                </div>
+                <small>선택</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="auth-wrap" aria-label="가입 및 로그인">
+        <div class="auth-card" data-mode="signup">
+          <div class="auth-title">
+            <div>
+              <h2>우리 교회 통독에 합류하기</h2>
+              <p>가입 후 읽기표를 고르고, 내 소그룹 순위와 오늘의 본문을 바로 확인합니다.</p>
+            </div>
+            <button class="small-guide" type="button">읽기표 비교</button>
+          </div>
+
+          <div class="tabs" role="tablist" aria-label="인증 방식">
+            <button class="tab active" type="button" data-mode="signup">처음 시작</button>
+            <button class="tab" type="button" data-mode="login">로그인</button>
+          </div>
+
+          <div class="steps" aria-label="회원가입 단계">
+            <div class="step active">1 교회</div>
+            <div class="step">2 내 정보</div>
+            <div class="step">3 시작</div>
+          </div>
+
+          <div class="checklist">
+            <p class="checklist-title">가입 전에 준비할 것</p>
+            <div class="check-items">
+              <span>출석 교회</span>
+              <span>생년월일</span>
+              <span>교회 입장코드</span>
+            </div>
+          </div>
+
+          <form class="form signup-fields">
+            <label>
+              출석 교회
+              <select>
+                <option>교회를 선택하세요</option>
+                <option>성경읽는 사람들</option>
+                <option>새한글교회</option>
+              </select>
+            </label>
+            <div class="field-row">
+              <label>
+                이름
+                <input type="text" placeholder="예: 홍길동" />
+              </label>
+              <label>
+                생년월일
+                <input type="text" inputmode="numeric" maxlength="8" placeholder="19900101" />
+              </label>
+            </div>
+            <label>
+              교회 입장코드
+              <input type="password" placeholder="관리자에게 받은 코드를 입력" />
+            </label>
+            <div class="help">입장코드는 교회 관리자 또는 소그룹 리더에게 문의해 주세요.</div>
+            <button class="submit" type="button">우리 교회 순위에 합류하기</button>
+          </form>
+
+          <form class="form login-fields">
+            <label>
+              출석 교회
+              <select>
+                <option>교회를 선택하세요</option>
+                <option>성경읽는 사람들</option>
+                <option>새한글교회</option>
+              </select>
+            </label>
+            <div class="field-row">
+              <label>
+                이름
+                <input type="text" placeholder="예: 홍길동" />
+              </label>
+              <label>
+                생년월일
+                <input type="text" inputmode="numeric" maxlength="8" placeholder="19900101" />
+              </label>
+            </div>
+            <label>
+              비밀번호
+              <input type="password" placeholder="비밀번호" />
+            </label>
+            <button class="submit" type="button">오늘의 본문 펼치기</button>
+          </form>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const card = document.querySelector('.auth-card');
+    const tabs = Array.from(document.querySelectorAll('.tab'));
+    const setMode = (mode) => {
+      card.dataset.mode = mode;
+      tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.mode === mode));
+      document.querySelector('.auth-title h2').textContent = mode === 'signup' ? '우리 교회 통독에 합류하기' : '다시 오셨네요';
+      document.querySelector('.auth-title p').textContent = mode === 'signup'
+        ? '가입 후 읽기표를 고르고, 내 소그룹 순위와 오늘의 본문을 바로 확인합니다.'
+        : '출석 교회와 이름, 생년월일로 내 읽기표와 순위를 이어갑니다.';
+    };
+
+    tabs.forEach((tab) => tab.addEventListener('click', () => setMode(tab.dataset.mode)));
+    document.querySelector('[data-jump-signup]').addEventListener('click', () => setMode('signup'));
+    document.querySelector('[data-jump-login]').addEventListener('click', () => setMode('login'));
+  </script>
+</body>
+</html>
