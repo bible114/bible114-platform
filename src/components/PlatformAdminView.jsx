@@ -249,7 +249,7 @@ const PlatformAdminView = ({
                 db.collection('churches').get(),
                 db.collection('users').where('role', '!=', 'churchAdmin').get(),
             ]);
-            const users = userSnap.docs.map(d => d.data());
+            const users = userSnap.docs.map(d => d.data()).filter(u => !u.isDeleted);
             await db.collection('settings').doc('platformStats').set({
                 total_churches: churchSnap.size,
                 total_readers: users.length,

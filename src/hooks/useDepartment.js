@@ -16,7 +16,7 @@ export const useDepartment = (currentUser, setCurrentUser) => {
             const snapshot = await db.collection('users')
                 .where('churchId', '==', currentUser.churchId)
                 .get();
-            return snapshot.docs.map(doc => userDocToState(doc));
+            return snapshot.docs.map(doc => userDocToState(doc)).filter(u => !u.isDeleted);
         } catch (e) {
             console.error("멤버 로딩 실패:", e);
             return [];
