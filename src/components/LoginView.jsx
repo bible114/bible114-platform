@@ -3,6 +3,8 @@ import { db } from '../utils/firebase';
 import OrgEditor from './OrgEditor';
 import DemoTour from './DemoTour';
 import ReadingGuideModal from './modals/ReadingGuideModal';
+import ChurchPicker from './ChurchPicker';
+import { getChurchDirectory, getLastChurch } from '../utils/churchDirectory';
 
 // ─── Daily verse data ─────────────────────────────────────────────────────────
 const DAILY_VERSES = [
@@ -94,7 +96,7 @@ const AdminContactModal = ({ onClose }) => {
 const inputCls = "w-full bg-cream border border-hairline rounded-lg px-3.5 py-3 text-sm text-ink placeholder-ink/40 focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent/60 transition-all font-sans";
 
 // ─── Main LoginView ────────────────────────────────────────────────────────────
-const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurchAdminSignup, errorMsg, setErrorMsg }) => {
+const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurchAdminSignup, errorMsg, setErrorMsg, presetChurchId }) => {
     // Tab: 'member' | 'admin' | 'memberSignup' | 'adminSignup'
     const [activeTab, setActiveTab] = useState('member');
     const [signupStep, setSignupStep] = useState(1);
@@ -125,17 +127,14 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                         chapters_read_today: d.today_date === today ? (d.readers_today || 0) : 0,
                     });
                 } else {
-                    // platformStats 없으면 교회 수만 직접 조회
-                    db.collection('churches').get()
-                        .then(snap => setStats(prev => ({ ...prev, total_churches: snap.size })))
-                        .catch(() => {});
+                    // platformStats 없으면 공개 디렉토리로 교회 수만 추정
+                    // (churches 컬렉션은 Phase 3부터 미인증 read 불가)
+                    getChurchDirectory().then(list => setStats(prev => ({ ...prev, total_churches: list.length })));
                 }
             })
             .catch(() => {
-                // 실패 시 교회 수만 시도
-                db.collection('churches').get()
-                    .then(snap => setStats(prev => ({ ...prev, total_churches: snap.size })))
-                    .catch(() => {});
+                // 실패 시 디렉토리로 교회 수만 추정
+                getChurchDirectory().then(list => setStats(prev => ({ ...prev, total_churches: list.length })));
             });
     }, []);
 
@@ -165,20 +164,32 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
     const [aChurchCode, setAChurchCode] = useState('');
     const [orgComms, setOrgComms] = useState([{ id: 'comm_0', name: '', subgroups: [{ id: 'sub_0', name: '' }] }]);
 
-    const [churches, setChurches] = useState([]);
     const [loading, setLoading] = useState(false);
 
     const verse = todayVerse();
 
+    // [Phase 3] 교회 선택 우선순위: URL 파라미터(?church=ID) > localStorage 최근 교회 > 빈 검색창.
+    // 디렉토리 문서에서 유효성(존재 여부)을 확인한 뒤에만 preselect 한다.
     useEffect(() => {
-        if (activeTab === 'member' || activeTab === 'memberSignup') {
-            db.collection('churches').get().then(snap => {
-                setChurches(snap.docs.map(d => ({ id: d.id, ...d.data() }))
-                    .filter(c => !c.isDeleted)
-                    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR')));
-            }).catch(() => {});
-        }
-    }, [activeTab]);
+        let alive = true;
+        getChurchDirectory().then(directory => {
+            if (!alive) return;
+            let preset = null;
+            if (presetChurchId) {
+                preset = directory.find(c => c.id === presetChurchId) || null;
+            }
+            if (!preset) {
+                const last = getLastChurch();
+                if (last?.id) preset = directory.find(c => c.id === last.id) || null;
+            }
+            if (preset) {
+                setLoginChurchId(preset.id);
+                setMChurchId(preset.id);
+            }
+        });
+        return () => { alive = false; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [presetChurchId]);
 
     const clearError = () => setErrorMsg('');
 
@@ -234,32 +245,13 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
 
     const resetAdminSignup = () => { setSignupStep(1); setOrgComms([{ id: 'comm_0', name: '', subgroups: [{ id: 'sub_0', name: '' }] }]); clearError(); };
 
-    // Selected church display name
-    const selectedChurchName = churches.find(c => c.id === loginChurchId)?.name || null;
-
     // ── Render login card content ────────────────────────────────────────────
     const renderCard = () => {
         // ── Member Login ──
         if (activeTab === 'member') return (
             <form onSubmit={handleMemberLogin} className="space-y-3.5">
                 {/* Church selector */}
-                <div>
-                    <label className="block text-[11px] font-semibold text-ink/55 mb-1.5 uppercase tracking-wide">출석 교회</label>
-                    {selectedChurchName ? (
-                        <div className="flex items-center gap-2.5 bg-cream border border-hairline rounded-lg px-3.5 py-2.5">
-                            <div className="w-7 h-7 rounded-md bg-ink text-cream flex items-center justify-center font-serif text-[11px] font-bold shrink-0">
-                                {selectedChurchName[0]}
-                            </div>
-                            <span className="flex-1 text-sm font-semibold text-ink">{selectedChurchName}</span>
-                            <button type="button" onClick={() => setLoginChurchId('')} className="text-[11px] text-ink/40 hover:text-ink/70 transition-colors">변경 ↓</button>
-                        </div>
-                    ) : (
-                        <select value={loginChurchId} onChange={e => setLoginChurchId(e.target.value)} className={inputCls}>
-                            <option value="">교회를 선택하세요</option>
-                            {churches.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                    )}
-                </div>
+                <ChurchPicker value={loginChurchId} onChange={setLoginChurchId} label="출석 교회" />
                 <div>
                     <label className="block text-[11px] font-semibold text-ink/55 mb-1.5 uppercase tracking-wide">이름</label>
                     <input type="text" value={loginName} onChange={e => setLoginName(e.target.value)} placeholder="홍길동" className={inputCls} />
@@ -332,10 +324,7 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                 <input type="password" value={mPw} onChange={e => setMPw(e.target.value)} placeholder="비밀번호 (6자리 이상)" className={inputCls} />
                 <input type="password" value={mPwConfirm} onChange={e => setMPwConfirm(e.target.value)} placeholder="비밀번호 확인"
                     className={`w-full bg-cream border rounded-lg px-3.5 py-3 text-sm placeholder-ink/40 focus:outline-none focus:ring-2 transition-all font-sans ${mPwConfirm && mPw !== mPwConfirm ? 'border-red-400 focus:ring-red-400/40' : 'border-hairline focus:ring-accent/40 focus:border-accent/60'}`} />
-                <select value={mChurchId} onChange={e => setMChurchId(e.target.value)} className={inputCls}>
-                    <option value="">교회를 선택하세요</option>
-                    {churches.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <ChurchPicker value={mChurchId} onChange={setMChurchId} label="교회 선택" />
                 <input type="password" value={mChurchCode} onChange={e => setMChurchCode(e.target.value)}
                     placeholder="교회 입장코드 (관리자에게 문의)" className={inputCls} />
                 {errorMsg && <p className="text-red-500 text-xs text-center py-1 bg-red-50 rounded-lg px-3">{errorMsg}</p>}

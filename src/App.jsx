@@ -31,6 +31,8 @@ const App = () => {
     // --- [A] 화면 및 인증 상태 ---
     const [view, setView] = useState('login');
     const [tempUser, setTempUser] = useState(null);
+    // [Phase 3] 교회 전용 링크(?church=ID) — 로그인 화면 교회 preselect용. 최초 마운트 시 1회만 읽는다.
+    const [presetChurchId] = useState(() => new URLSearchParams(window.location.search).get('church') || null);
     const { currentUser, setCurrentUser, authLoading, authError, retryAuthCheck } = useUserAuth();
     const handleReadComplete = useCallback(() => {
         if (typeof window !== 'undefined' && window.refreshKakaoAdBanner) {
@@ -658,6 +660,7 @@ const App = () => {
                 onChurchAdminSignup={handleChurchAdminSignup}
                 errorMsg={errorMsg}
                 setErrorMsg={setErrorMsg}
+                presetChurchId={presetChurchId}
             />
         );
     } else if (['plan_type_select', 'bible_version_select', 'community_select', 'subgroup_select'].includes(view)) {

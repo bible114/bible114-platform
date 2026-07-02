@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { db, firebase } from '../utils/firebase';
 import OrgEditor from './OrgEditor';
 import ChurchAdminTutorial from './ChurchAdminTutorial';
+import { sha256 } from '../utils/crypto';
+import { syncChurchDirectoryEntry } from '../utils/churchDirectory';
 
 const SORT_OPTIONS = [
     { key: 'name',     label: '이름순' },
@@ -55,6 +57,9 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     // 조직 관리
     const [orgComms, setOrgComms] = useState([]);
     const [savingOrg, setSavingOrg] = useState(false);
+
+    // 교회 전용 로그인 링크
+    const [linkCopied, setLinkCopied] = useState(false);
 
     useEffect(() => {
         if (!currentUser?.churchId) return;
@@ -215,10 +220,15 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         if (!newChurchCode || newChurchCode.length < 4) { alert('입장코드는 4자리 이상이어야 합니다.'); return; }
         setSavingCode(true);
         try {
+            // [Phase 3] 회원가입 검증은 churchCodeHash(디렉토리 codeHash)만 사용하므로
+            // 해시도 함께 갱신하고, 공개 디렉토리의 codeHash도 동기화한다.
+            const churchCodeHash = await sha256(newChurchCode);
             await db.collection('churches').doc(currentUser.churchId).set(
-                { churchCode: newChurchCode, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
+                { churchCode: newChurchCode, churchCodeHash, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
                 { merge: true }
             );
+            await syncChurchDirectoryEntry({ id: currentUser.churchId, name: churchInfo?.name || currentUser.churchName, codeHash: churchCodeHash })
+                .catch(err => console.error('디렉토리 동기화 실패:', err));
             alert('입장코드가 변경되었습니다!');
         } catch (e) {
             alert('변경 실패');
@@ -708,6 +718,26 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                         {/* ── 설정 ── */}
                         {tab === 'settings' && (
                             <div id="admin-tut-settings-section" className="space-y-4 max-w-2xl">
+                                <div className="bg-white rounded-2xl p-4 border border-slate-100">
+                                    <p className="font-bold text-slate-700 mb-1">🔗 우리 교회 로그인 링크</p>
+                                    <p className="text-xs text-slate-400 mb-3">이 링크로 접속하면 교인이 교회를 직접 검색하지 않아도 자동으로 선택됩니다. 성도들에게 공유해주세요.</p>
+                                    <div className="flex gap-2">
+                                        <input type="text" readOnly value={`${window.location.origin}${window.location.pathname}?church=${currentUser.churchId}`}
+                                            onFocus={e => e.target.select()}
+                                            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-600 font-mono truncate" />
+                                        <button
+                                            onClick={() => {
+                                                const link = `${window.location.origin}${window.location.pathname}?church=${currentUser.churchId}`;
+                                                navigator.clipboard.writeText(link).then(() => {
+                                                    setLinkCopied(true);
+                                                    setTimeout(() => setLinkCopied(false), 2000);
+                                                }).catch(() => alert('복사에 실패했습니다. 직접 선택해 복사해주세요.'));
+                                            }}
+                                            className="bg-indigo-600 text-white font-bold px-4 rounded-xl text-sm hover:bg-indigo-700 whitespace-nowrap">
+                                            {linkCopied ? '복사됨!' : '복사'}
+                                        </button>
+                                    </div>
+                                </div>
                                 <div className="bg-white rounded-2xl p-4 border border-slate-100">
                                     <p className="font-bold text-slate-700 mb-1">교회 입장코드 변경</p>
                                     <p className="text-xs text-slate-400 mb-3">교인들이 가입할 때 사용하는 코드입니다.</p>

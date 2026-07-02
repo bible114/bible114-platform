@@ -42,9 +42,9 @@ service cloud.firestore {
       }
     }
 
-    // 교회 문서 (가입 전 교회 목록 조회 필요 → 미인증 read 허용)
+    // 교회 문서 (Phase 3: 가입 전 조회는 settings/churchDirectory 공개 문서로 대체 → 인증 필수로 축소)
     match /churches/{churchId} {
-      allow read: if true;
+      allow read: if isSignedIn();
       allow create: if isSignedIn();
       allow update: if isChurchAdmin(churchId) || isPlatformAdmin();
       allow delete: if false;
@@ -61,10 +61,25 @@ service cloud.firestore {
       allow write: if isPlatformAdmin();
     }
 
+    // 공개 교회 디렉토리 — 로그인 화면(미인증)에서 교회 검색/입장코드 검증에 사용.
+    // {id, name, codeHash}만 담아 관리자 이메일 등 민감 정보 노출을 막는다.
+    // 이 특정 경로 매치는 아래의 포괄적 settings/{settingId} 규칙보다 먼저 평가되며,
+    // Firestore 규칙은 매치되는 규칙 중 하나라도 허용하면 허용되므로 항상 우선 적용된다.
+    match /settings/churchDirectory {
+      allow read: if true;
+      allow write: if isSignedIn(); // 가입 직후 arrayUnion 필요 (검증 강화는 추후 과제)
+    }
+
     // 플랫폼 집계 통계 — 미인증 공개 읽기 (로그인 페이지에서 사용)
+    // Phase 3-4: 완전 차단은 Cloud Functions 없이는 불가하므로 필드 화이트리스트 + 생성 제한으로 완화.
+    // (필드 안의 "값" 자체 조작은 여전히 가능 — 알려진 한계. 근본 해결은 추후 Cloud Functions 과제.)
     match /settings/platformStats {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow update: if isSignedIn()
+        && request.resource.data.keys().hasOnly(
+          ['total_churches', 'total_readers', 'finished_total', 'readers_today',
+           'chapters_read_today', 'today_date', 'updatedAt']);
+      allow create: if isPlatformAdmin();
     }
 
     // 그 외 설정 문서

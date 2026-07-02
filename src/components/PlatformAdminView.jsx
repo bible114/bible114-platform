@@ -3,6 +3,7 @@ import Icon from './Icon';
 import { firebase } from '../utils/firebase';
 import ChurchAdminView from './ChurchAdminView';
 import { getVideoDateKST } from '../utils/helpers';
+import { rebuildChurchDirectory, removeChurchFromDirectory } from '../utils/churchDirectory';
 
 // "매일성경 해설 0:00" / "0:00 매일성경 해설" 양쪽 지원
 const parseChapters = (desc) => {
@@ -75,6 +76,7 @@ const PlatformAdminView = ({
     const [viewingChurchAsAdmin, setViewingChurchAsAdmin] = React.useState(false);
     const [platformKakaoInput, setPlatformKakaoInput] = React.useState('');
     const [savingPlatformKakao, setSavingPlatformKakao] = React.useState(false);
+    const [directoryRebuilding, setDirectoryRebuilding] = React.useState(false);
 
     // 매일 영상 관리
     const nextVideoDate = React.useMemo(() => {
@@ -217,6 +219,19 @@ const PlatformAdminView = ({
         }
     };
 
+    const handleRebuildDirectory = async () => {
+        if (!db) return;
+        setDirectoryRebuilding(true);
+        try {
+            const count = await rebuildChurchDirectory();
+            alert(`✅ 교회 디렉토리 재생성 완료! (${count}개 교회)`);
+        } catch (e) {
+            alert('디렉토리 재생성 실패: ' + e.message);
+        } finally {
+            setDirectoryRebuilding(false);
+        }
+    };
+
     const LASTNAMES = ['김', '이', '박', '최', '정', '강', '조', '윤', '장', '임', '한', '오', '서', '신', '권', '황', '안', '송', '류', '전'];
     const FIRSTNAMES_M = ['민준', '서준', '도윤', '예준', '시우', '하준', '주원', '지호', '준서', '준혁', '도현', '건우', '현우', '우진', '성민', '재원', '태양', '승현', '찬호', '정우'];
     const FIRSTNAMES_F = ['서연', '서윤', '지우', '서현', '민서', '하은', '하윤', '윤서', '지유', '채원', '수아', '지아', '지민', '예원', '수빈', '나연', '예진', '혜원', '다인', '지현'];
@@ -327,6 +342,7 @@ const PlatformAdminView = ({
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             }, { merge: true });
             await churchBatch.commit();
+            await removeChurchFromDirectory(church.id).catch(err => console.error('디렉토리 제거 실패:', err));
             setSeedingData(false);
             setSelectedChurchId(null);
             alert(`✅ "${church.name}" 교회와 계정 ${membersSnap.size}개가 삭제 처리되었습니다.\n페이지를 새로고침합니다.`);
@@ -1034,6 +1050,22 @@ const PlatformAdminView = ({
                                 className="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
                             >
                                 {statsRefreshing ? '갱신 중...' : '통계 지금 갱신'}
+                            </button>
+                        </div>
+
+                        {/* 교회 디렉토리 재생성 */}
+                        <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 mb-6">
+                            <h3 className="text-sm font-bold text-sky-800 mb-1">🏠 교회 디렉토리 재생성</h3>
+                            <p className="text-xs text-sky-700 mb-3">
+                                로그인 화면의 교회 검색은 <code className="bg-sky-100 px-1 rounded">settings/churchDirectory</code> 공개 문서를 사용합니다.
+                                교회 정보가 디렉토리와 어긋나거나(예: 기존 교회 백필) 최신화가 필요할 때 눌러주세요. churches 컬렉션 전체를 스캔해 다시 작성합니다.
+                            </p>
+                            <button
+                                onClick={handleRebuildDirectory}
+                                disabled={directoryRebuilding}
+                                className="bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+                            >
+                                {directoryRebuilding ? '재생성 중...' : '디렉토리 재생성'}
                             </button>
                         </div>
 

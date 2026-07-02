@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { auth, authReady, db, firebase } from '../utils/firebase';
 import { makePseudoEmail, userDocToState, migrateTalentIfNeeded } from '../utils/helpers';
 import { sha256 } from '../utils/crypto';
+import { getChurchDirectory, addChurchToDirectory, saveLastChurch } from '../utils/churchDirectory';
 
 export const useAuth = ({
     setCurrentUser,
@@ -81,6 +82,10 @@ export const useAuth = ({
             setCurrentUser(user);
             setHasReadToday(user.lastReadDate === new Date().toDateString());
             if (user.churchId) await loadChurchCommunities(user.churchId);
+            // [Phase 3] 로그인 성공 → 다음 방문에서 교회 자동 선택되도록 최근 교회 기억
+            if (user.churchId && user.churchName) {
+                saveLastChurch({ id: user.churchId, name: user.churchName });
+            }
             if (!user.departmentId || !user.subgroupId) { setTempUser(user); setView('plan_type_select'); }
             else setView('dashboard');
         } catch (err) {
@@ -133,23 +138,23 @@ export const useAuth = ({
     };
 
     // ── 교인 가입 ──
+    // [Phase 3] churches/{churchId} 문서는 비로그인 상태에서 더 이상 읽지 않는다
+    // (firestore.rules: churches read는 isSignedIn() 필요). 대신 공개된
+    // settings/churchDirectory 의 codeHash로 입장코드를 클라이언트에서 검증한다.
+    // → Firebase Auth 계정 생성 전에 실패시키므로 가입 실패 시 롤백이 불필요하다.
     const handleMemberSignup = async ({ name, birthdate, password, churchId, churchCode }) => {
         setErrorMsg('');
         try {
             await authReady;
-            // 교회 입장코드 확인
-            const churchDoc = await db.collection('churches').doc(churchId).get();
-            if (!churchDoc.exists) { setErrorMsg('교회를 찾을 수 없습니다.'); return; }
-            if (churchDoc.data().isDeleted) { setErrorMsg('삭제 처리된 교회입니다. 관리자에게 문의해주세요.'); return; }
-            const storedHash = churchDoc.data().churchCodeHash;
-            if (storedHash) {
-                const inputHash = await sha256(churchCode);
-                if (storedHash !== inputHash) { setErrorMsg('교회 입장코드가 틀렸습니다.'); return; }
-            } else {
-                if (churchDoc.data().churchCode !== churchCode) { setErrorMsg('교회 입장코드가 틀렸습니다.'); return; }
-            }
+            // 교회 입장코드 확인 (디렉토리 문서 — 미인증 공개 read)
+            const directory = await getChurchDirectory();
+            const churchEntry = directory.find(c => c.id === churchId);
+            if (!churchEntry) { setErrorMsg('교회를 찾을 수 없습니다.'); return; }
+            if (!churchEntry.codeHash) { setErrorMsg('교회 입장코드 정보를 확인할 수 없습니다. 교회 관리자에게 문의해주세요.'); return; }
+            const inputHash = await sha256(churchCode);
+            if (churchEntry.codeHash !== inputHash) { setErrorMsg('교회 입장코드가 틀렸습니다.'); return; }
 
-            const churchName = churchDoc.data().name;
+            const churchName = churchEntry.name;
             const email = makePseudoEmail(name, birthdate, churchId);
             let signupErrorCode = null;
             let cred = await auth.createUserWithEmailAndPassword(email, password).catch(err => {
@@ -216,6 +221,10 @@ export const useAuth = ({
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             });
             setChurchCommunities(departments || []);
+            // [Phase 3] 공개 교회 디렉토리에 신규 교회 등록 (로그인 화면 검색용)
+            await addChurchToDirectory({ id: churchRef.id, name: churchName, codeHash: churchCodeHash }).catch(err => {
+                console.error('교회 디렉토리 등록 실패:', err);
+            });
 
             const newUser = {
                 name, email, password, birthdate: null,
