@@ -20,14 +20,26 @@ service cloud.firestore {
     function sameChurch(churchId) {
       return isSignedIn() && myData().churchId == churchId;
     }
+    // dailyVideos의 adult/kids 항목 검증: 없거나(null), url 필드가 없거나, url이 빈 문자열이면
+    // 통과(자동 채움 실패 시 그런 형태로 기록됨). url이 있으면 반드시 유튜브 도메인이어야 한다.
+    // RE2 정규식이라 리터럴 마침표는 [.]로 이스케이프한다.
+    function validVideoEntry(e) {
+      return e == null || !('url' in e) || e.url == '' ||
+        e.url.matches('^https://(www[.])?(youtube[.]com|youtu[.]be)/.*');
+    }
 
     // 사용자 문서
     match /users/{uid} {
       allow read: if request.auth.uid == uid ||
         (isSignedIn() && isChurchAdmin(resource.data.churchId)) ||
         isPlatformAdmin();
-      allow create: if isSignedIn() && request.auth.uid == uid;
-      allow update: if request.auth.uid == uid ||
+      allow create: if isSignedIn() && request.auth.uid == uid &&
+        request.resource.data.role in ['member', 'churchAdmin'];
+      // 본인 수정은 role/churchId "값"을 바꿀 수 없다 (권한 상승 차단).
+      // affectedKeys()는 값이 실제로 바뀐 필드만 보고하므로, 기존 값과 동일한 role/churchId를
+      // 포함해 문서 전체를 다시 쓰는 정상 흐름(App.jsx의 setCurrentUser 반영 저장 등)은 영향 없다.
+      allow update: if (request.auth.uid == uid &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'churchId'])) ||
         (isSignedIn() && isChurchAdmin(resource.data.churchId)) ||
         isPlatformAdmin();
       // 무료 플랜에서는 실제 삭제 대신 isDeleted로 숨긴다.
@@ -67,7 +79,13 @@ service cloud.firestore {
     // Firestore 규칙은 매치되는 규칙 중 하나라도 허용하면 허용되므로 항상 우선 적용된다.
     match /settings/churchDirectory {
       allow read: if true;
-      allow write: if isSignedIn(); // 가입 직후 arrayUnion 필요 (검증 강화는 추후 과제)
+      // 가입 직후 arrayUnion 필요 → 완전 차단 불가. 필드 화이트리스트로 최소한의 형태만 제한.
+      // TODO(security): 이 화이트리스트는 churches 배열 "전체"를 임의 값으로 덮어쓰는 것까지는
+      // 막지 못한다 (로그인한 사용자라면 누구나 배열 내용을 조작해 다른 교회 항목을 지우거나
+      // 위조된 codeHash로 바꿔치기할 수 있음). 완전한 해결은 Cloud Functions로 서버에서만
+      // 쓰게 하거나, churches를 배열이 아닌 churchId를 키로 하는 map으로 재구성해 문서별
+      // 최소 권한을 부여하는 구조 변경이 필요하다 (현재는 가입 흐름 리스크 때문에 보류).
+      allow write: if isSignedIn() && request.resource.data.keys().hasOnly(['churches', 'updatedAt']);
     }
 
     // 플랫폼 집계 통계 — 미인증 공개 읽기 (로그인 페이지에서 사용)
@@ -101,8 +119,20 @@ service cloud.firestore {
     // 덮어쓰는 수정/삭제(수동 등록 오버라이드 포함)는 플랫폼 관리자만 가능.
     match /dailyVideos/{dateId} {
       allow read: if isSignedIn();
+      // adult/kids가 존재하면 유튜브 URL 형식이어야 임의 콘텐츠(피싱 링크 등) 주입을 막는다.
+      // 단, 플랫폼 관리자는 이 URL 형식 검증에서 제외한다 — 관리자가 아직 문서가 없는
+      // "미래 날짜"에 처음으로 수동 등록(saveDailyVideo)하면 Firestore 관점에서는 update가
+      // 아니라 create로 평가되는데, 관리자 입력 폼은 유튜브가 아닌 URL(예: 자체 호스팅 영상)도
+      // 허용하므로 여기서 막으면 정상적인 관리자 흐름이 깨진다. 화이트리스트(필드 제한)는
+      // 관리자에게도 그대로 적용된다.
+      // TODO(security): 미래 날짜의 dateId를 미리 선점(스쿼팅)해 유효한 유튜브 URL로 채우는
+      // 것 자체는 규칙만으로 막을 수 없다 (dateId 문자열과 "오늘 날짜"의 일치 여부를 rules에서
+      // 검증할 방법이 없음). 완전한 차단은 Cloud Functions(서버 시간 기준 검증)가 필요.
       allow create: if isSignedIn()
-        && request.resource.data.keys().hasOnly(['adult', 'kids', 'updatedAt', 'autoFilled']);
+        && request.resource.data.keys().hasOnly(['adult', 'kids', 'updatedAt', 'autoFilled'])
+        && (isPlatformAdmin() ||
+            (validVideoEntry(request.resource.data.get('adult', null)) &&
+             validVideoEntry(request.resource.data.get('kids', null))));
       allow update, delete: if isPlatformAdmin();
     }
   }
