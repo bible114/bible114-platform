@@ -212,13 +212,16 @@ export const useMiniRoom = (currentUser, setCurrentUser) => {
         if (roomData.unlockedRooms >= 5) return;
         if (!currentUser || currentUser.talent === undefined) return;
 
-        const cost = 800 + (roomData.unlockedRooms - 1) * 400;
-        if ((currentUser.talent || 0) < cost) {
-            alert(`달란트가 부족합니다! (필요: ${cost})`);
+        // 확인창에 보여줄 추정 비용 (로컬 상태 기준). 실제 차감은 항상 트랜잭션 내부에서
+        // 최신 unlockedRooms로 다시 계산한 비용을 쓴다 — 로컬 상태가 낡아 있어도(다른 탭/기기
+        // 에서 이미 확장한 경우 등) 표시값과 실제 차감액이 어긋나지 않게 한다.
+        const estimatedCost = 800 + (roomData.unlockedRooms - 1) * 400;
+        if ((currentUser.talent || 0) < estimatedCost) {
+            alert(`달란트가 부족합니다! (필요: ${estimatedCost})`);
             return;
         }
 
-        if (confirm(`방을 확장하시겠습니까? (${cost} 달란트 소요)`)) {
+        if (confirm(`방을 확장하시겠습니까? (${estimatedCost} 달란트 소요)`)) {
             const uid = currentUser.uid;
             const userRef = db.collection('users').doc(uid);
 
@@ -232,19 +235,23 @@ export const useMiniRoom = (currentUser, setCurrentUser) => {
                     const data = snap.data();
                     const freshTalent = data.talent || 0;
 
-                    if (freshTalent < cost) {
-                        throw new Error('INSUFFICIENT_TALENT');
-                    }
-
                     const freshRoomData = data.miniroom || roomData;
-                    if ((freshRoomData.unlockedRooms || 1) >= 5) {
+                    const freshUnlockedRooms = freshRoomData.unlockedRooms || 1;
+                    if (freshUnlockedRooms >= 5) {
                         throw new Error('MAX_ROOMS');
                     }
 
-                    newTalent = freshTalent - cost;
+                    // 비용은 반드시 최신 unlockedRooms로 트랜잭션 내부에서 계산 — 차감액과
+                    // 실제 해금 결과가 항상 일치하도록 한다 (표시값과 다를 수 있음).
+                    const freshCost = 800 + (freshUnlockedRooms - 1) * 400;
+                    if (freshTalent < freshCost) {
+                        throw new Error('INSUFFICIENT_TALENT');
+                    }
+
+                    newTalent = freshTalent - freshCost;
                     newRoomData = {
                         ...freshRoomData,
-                        unlockedRooms: (freshRoomData.unlockedRooms || 1) + 1,
+                        unlockedRooms: freshUnlockedRooms + 1,
                         rooms: [...freshRoomData.rooms, {
                             wallpaper: 'wall_plain_white',
                             floor: 'floor_plain_white',
@@ -264,8 +271,10 @@ export const useMiniRoom = (currentUser, setCurrentUser) => {
                 setRoomData(newRoomData);
             } catch (e) {
                 if (e.message === 'INSUFFICIENT_TALENT') {
-                    alert(`달란트가 부족합니다! (필요: ${cost})`);
-                } else if (e.message !== 'MAX_ROOMS') {
+                    alert(`달란트가 부족합니다!`);
+                } else if (e.message === 'MAX_ROOMS') {
+                    alert('방은 최대 5개까지 확장할 수 있습니다.');
+                } else {
                     console.error("방 확장 실패:", e);
                     alert("방 확장 실패");
                 }

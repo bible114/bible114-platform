@@ -9,19 +9,43 @@ const CHAPTER_ORDER = [
 ];
 
 // 재생목록에서 지금 시점 기준 가장 최신 영상을 하나 골라 { url, chapters }를 만든다.
-// UU(채널 업로드) 재생목록은 이미 최신순이지만, 일반 재생목록도 안전하게 처리하려고
-// snippet.publishedAt 기준 내림차순 정렬 후 publishedAt <= now인 것 중 첫 항목을 택한다.
-// 실패(쿼터 초과, 잘못된 키/ID, 후보 없음)하면 null을 반환하고 호출부에서 console.warn만 남긴다.
+// UU(채널 업로드) 재생목록은 이미 최신순이라 페이지 1개만으로도 충분하고 쿼터 비용도 가장
+// 저렴하지만, 큐레이션된(수동으로 순서를 구성한) 일반 재생목록은 "추가된 순서"가 "영상이
+// 실제로 게시된 순서"와 다를 수 있어 최신 영상이 뒤쪽 페이지에 있을 수 있다. 그래서
+// (1) 정렬 기준은 재생목록에 추가된 시각(snippet.publishedAt)이 아니라 영상이 실제로
+//     게시된 시각(contentDetails.videoPublishedAt)을 우선 사용하고 (contentDetails가
+//     없는 경우에만 snippet.publishedAt으로 폴백),
+// (2) 최대 5페이지(최대 250개)까지 페이지네이션해 후보를 모은 뒤 그중 이미 게시된
+//     (<= now) 영상 중 가장 최신을 택한다.
+// 실패(쿼터 초과, 잘못된 키/ID, 후보 없음)하면 예외를 던지고 호출부에서 console.warn만 남긴다.
+const MAX_PLAYLIST_PAGES = 5;
+
+const fetchPlaylistCandidates = async (playlistId, apiKey) => {
+    const candidates = [];
+    let pageToken = '';
+    for (let page = 0; page < MAX_PLAYLIST_PAGES; page++) {
+        const itemsUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${encodeURIComponent(playlistId)}&maxResults=50&key=${encodeURIComponent(apiKey)}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+        const itemsRes = await fetch(itemsUrl);
+        if (!itemsRes.ok) throw new Error(`playlistItems HTTP ${itemsRes.status}`);
+        const itemsJson = await itemsRes.json();
+        candidates.push(...(itemsJson.items || []));
+        pageToken = itemsJson.nextPageToken;
+        if (!pageToken) break;
+    }
+    return candidates;
+};
+
 const fetchLatestFromPlaylist = async (playlistId, apiKey) => {
-    const itemsUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${encodeURIComponent(playlistId)}&maxResults=10&key=${encodeURIComponent(apiKey)}`;
-    const itemsRes = await fetch(itemsUrl);
-    if (!itemsRes.ok) throw new Error(`playlistItems HTTP ${itemsRes.status}`);
-    const itemsJson = await itemsRes.json();
+    const items = await fetchPlaylistCandidates(playlistId, apiKey);
     const now = Date.now();
-    const candidates = (itemsJson.items || [])
-        .filter(it => it?.snippet?.publishedAt && new Date(it.snippet.publishedAt).getTime() <= now)
-        .sort((a, b) => new Date(b.snippet.publishedAt) - new Date(a.snippet.publishedAt));
-    const chosen = candidates[0];
+    const candidates = items
+        .map(it => ({
+            it,
+            publishedAt: it?.contentDetails?.videoPublishedAt || it?.snippet?.publishedAt || null,
+        }))
+        .filter(({ publishedAt }) => publishedAt && new Date(publishedAt).getTime() <= now)
+        .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+    const chosen = candidates[0]?.it;
     const videoId = chosen?.contentDetails?.videoId || chosen?.snippet?.resourceId?.videoId;
     if (!videoId) throw new Error('재생목록에 사용 가능한 영상이 없음');
 
@@ -41,14 +65,42 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
     const [video, setVideo] = useState(undefined); // undefined: 로딩중, null: 문서 없음(또는 자동 채움 실패)
     const [mode, setMode] = useState(currentUser?.videoMode === 'kids' ? 'kids' : 'adult');
     const [playing, setPlaying] = useState(false);
+    const [startSec, setStartSec] = useState(0);
+    // Fix F: 날짜 키를 state로 들고 있다가, 화면이 다시 보이거나 주기적으로 재계산해
+    // 3시(KST) 경계를 넘겨도 새로고침 없이 다음날 영상으로 갱신되게 한다.
+    const [dateKey, setDateKey] = useState(getVideoDateKST());
     const iframeRef = useRef(null);
+
+    // 문서에서 읽어온 데이터든 자동 채움으로 만든 payload든 동일한 형태({adult, kids, ...})이므로
+    // 같은 경로로 렌더링되도록 하나의 setter를 통해서만 반영한다.
+    const applyVideoDoc = (data) => setVideo(data);
+
+    useEffect(() => {
+        const recomputeDateKey = () => {
+            const next = getVideoDateKST();
+            setDateKey(prev => (prev === next ? prev : next));
+        };
+        const onVisibility = () => {
+            if (document.visibilityState === 'visible') recomputeDateKey();
+        };
+        document.addEventListener('visibilitychange', onVisibility);
+        // 탭을 계속 열어둔 채로 자정/3시를 넘기는 경우를 위한 저빈도 폴백(5분 간격)
+        const interval = setInterval(recomputeDateKey, 5 * 60 * 1000);
+        return () => {
+            document.removeEventListener('visibilitychange', onVisibility);
+            clearInterval(interval);
+        };
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
         if (!db) { setVideo(null); return; }
 
-        const videoDate = getVideoDateKST();
-        const docRef = db.collection('dailyVideos').doc(videoDate);
+        setVideo(undefined);
+        setPlaying(false);
+        setStartSec(0);
+
+        const docRef = db.collection('dailyVideos').doc(dateKey);
 
         const tryAutoFill = async () => {
             try {
@@ -92,12 +144,29 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
                 const recheck = await docRef.get();
                 if (cancelled) return;
                 if (recheck.exists) {
-                    setVideo(recheck.data());
+                    applyVideoDoc(recheck.data());
                     return;
                 }
-                await docRef.set(payload);
-                if (cancelled) return;
-                setVideo(payload);
+                try {
+                    await docRef.set(payload);
+                    if (cancelled) return;
+                    applyVideoDoc(payload);
+                } catch (writeErr) {
+                    // Fix E: 동시 접속한 다른 사용자가 먼저 create에 성공하면 이 문서는 이미
+                    // 존재하는 상태가 되어, 화이트리스트 create 규칙상 이 클라이언트의 set()은
+                    // "생성"이 아니라 "수정"으로 취급되어 permission-denied로 거부된다(수정은
+                    // 플랫폼 관리자만 허용). 그 경쟁에서 진 쪽은 카드를 숨기지 말고 방금 생성된
+                    // 문서를 다시 읽어와 그대로 보여준다.
+                    if (cancelled) return;
+                    const after = await docRef.get().catch(() => null);
+                    if (cancelled) return;
+                    if (after?.exists) {
+                        applyVideoDoc(after.data());
+                    } else {
+                        console.warn('매일 영상 자동 채움 실패(쓰기 거부, 재조회 실패):', writeErr);
+                        setVideo(null);
+                    }
+                }
             } catch (e) {
                 console.warn('매일 영상 자동 채움 실패:', e);
                 if (!cancelled) setVideo(null);
@@ -108,7 +177,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
             .then(doc => {
                 if (cancelled) return;
                 if (doc.exists) {
-                    setVideo(doc.data());
+                    applyVideoDoc(doc.data());
                     return;
                 }
                 return tryAutoFill();
@@ -117,7 +186,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
                 if (!cancelled) setVideo(null);
             });
         return () => { cancelled = true; };
-    }, []);
+    }, [dateKey, currentUser?.uid]);
 
     useEffect(() => {
         setMode(currentUser?.videoMode === 'kids' ? 'kids' : 'adult');
@@ -155,24 +224,23 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
         }
     };
 
-    const embedSrc = (startSec) => {
+    // Fix J: 콜드스타트(아직 iframe이 없는 상태)에서는 embedSrc에 start 파라미터를 심어
+    // 처음부터 해당 시각으로 재생을 시작한다. rAF로 iframeRef.current.src를 나중에 직접
+    // 대입하던 방식은 렌더와 실제 DOM 상태가 어긋날 수 있어 state 기반으로 통일한다.
+    const embedSrc = (sec) => {
         const base = `https://www.youtube.com/embed/${videoId}?enablejsapi=1&autoplay=1&playsinline=1`;
-        return startSec ? `${base}&start=${startSec}` : base;
+        return sec ? `${base}&start=${sec}` : base;
     };
 
     const handlePlayClick = () => {
+        setStartSec(0);
         setPlaying(true);
     };
 
     const handleChapterClick = (sec) => {
         if (!playing) {
+            setStartSec(sec);
             setPlaying(true);
-            // iframe이 아직 없으므로 start 파라미터로 바로 해당 시각부터 재생
-            requestAnimationFrame(() => {
-                if (iframeRef.current) {
-                    iframeRef.current.src = embedSrc(sec);
-                }
-            });
             return;
         }
         if (iframeRef.current && iframeRef.current.contentWindow) {
@@ -222,7 +290,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
                         <iframe
                             ref={iframeRef}
                             className="absolute inset-0 w-full h-full"
-                            src={embedSrc()}
+                            src={embedSrc(startSec)}
                             title="오늘의 영상"
                             frameBorder="0"
                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"

@@ -13,28 +13,45 @@ const FREE_DEFAULTS = ['wall_plain_white', 'floor_plain_white', 'base_man', 'eye
 // talentMigrated가 없으면 과거 구매 총액(아이템+방 해금)을 역산해
 // talent = 기존 score, score = 기존 score + 구매총액 으로 갱신한다.
 // 반환값: 마이그레이션 후 반영해야 할 { talent, score } 또는 null(마이그레이션 불필요)
+//
+// Fix D: 동시 호출(예: 로그인 화면과 세션 복구가 겹치는 경우) 시 이중 실행으로 보상이
+// 두 번 반영되거나, 마이그레이션 계산 중간에 handleRead 등 다른 트랜잭션이 score/talent를
+// 바꿔써서 그 결과가 유실되는 것을 막기 위해 read+compute+write 전체를 트랜잭션으로 묶는다.
+// 트랜잭션 내부에서 "최신" 스냅샷 기준으로 talentMigrated를 재확인하고 spent를 재계산하므로,
+// 두 번째 호출은 항상 조기 종료하고(null), 인터리빙된 handleRead 커밋도 손실 없이 반영된다.
 export const migrateTalentIfNeeded = async (uid, data) => {
     if (data.talentMigrated) return null;
 
-    const spentItems = (data.inventory || [])
-        .filter(id => !FREE_DEFAULTS.includes(id))
-        .reduce((sum, id) => sum + (SHOP_ITEMS.find(i => i.id === id)?.price || 0), 0);
+    const userRef = db.collection('users').doc(uid);
 
-    const unlocked = data.miniroom?.unlockedRooms || 1;
-    let spentRooms = 0;
-    for (let i = 1; i < unlocked; i++) spentRooms += 800 + (i - 1) * 400;
+    return db.runTransaction(async (transaction) => {
+        const snap = await transaction.get(userRef);
+        if (!snap.exists) return null;
+        const fresh = snap.data();
 
-    const spent = spentItems + spentRooms;
-    const talent = data.score || 0;
-    const score = (data.score || 0) + spent;
+        // 트랜잭션 내부에서 최신 값 기준으로 재확인 — 동시 호출 시 두 번째 실행은 여기서 멈춘다.
+        if (fresh.talentMigrated) return null;
 
-    await db.collection('users').doc(uid).update({
-        talent,
-        score,
-        talentMigrated: true,
+        const spentItems = (fresh.inventory || [])
+            .filter(id => !FREE_DEFAULTS.includes(id))
+            .reduce((sum, id) => sum + (SHOP_ITEMS.find(i => i.id === id)?.price || 0), 0);
+
+        const unlocked = fresh.miniroom?.unlockedRooms || 1;
+        let spentRooms = 0;
+        for (let i = 1; i < unlocked; i++) spentRooms += 800 + (i - 1) * 400;
+
+        const spent = spentItems + spentRooms;
+        const talent = fresh.score || 0;
+        const score = (fresh.score || 0) + spent;
+
+        transaction.update(userRef, {
+            talent,
+            score,
+            talentMigrated: true,
+        });
+
+        return { talent, score };
     });
-
-    return { talent, score };
 };
 
 // Firestore 문서 → 사용자 상태 객체 변환
@@ -116,14 +133,41 @@ export const extractYouTubePlaylistId = (input) => {
 
 // "매일성경 해설 0:00" / "0:00 매일성경 해설" 양쪽 지원.
 // 유튜브 설명문에서 타임스탬프(0:00, 3:20, 1:02:15)를 찾아 같은 줄의 텍스트를 라벨로 추출한다.
+//
+// 주의(Fix H): 줄 중간의 성경 구절 표기(예: "마태복음 5:12", "성경읽기: 마태복음 5:12")가
+// 타임스탬프로 오인되는 것을 막기 위해, 먼저 줄 "시작"에 타임스탬프가 오는 표준 형식
+// (예: "0:00 해설", "1:02:15 기도")만 우선 매칭한다. 실제 유튜브 챕터 표기 관례가 대부분
+// 이 형식이라 라벨당 정상 동작한다. 다만 "해설 0:00"처럼 라벨이 타임스탬프보다 앞에 오는
+// 줄도 지원해야 하므로, 줄 시작 매칭이 하나도 없는 설명문에 한해서만 줄 중간(라벨-먼저)
+// 매칭으로 폴백한다 — 이러면 줄 시작 매칭이 존재하는 설명문에서는 절대 구절 표기가
+// 타임스탬프로 오인되지 않는다.
+const LEADING_TIMESTAMP_RE = /^\s*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\b/;
+const ANY_TIMESTAMP_RE = /(\d{1,2}:)?(\d{1,2}):(\d{2})/;
+
+const toSec = (m) => (m[1] ? parseInt(m[1]) * 3600 : 0) + parseInt(m[2]) * 60 + parseInt(m[3]);
+const cleanLabel = (line, matchText) =>
+    line.replace(matchText, '').trim().replace(/^[-–|·:]+|[-–|·:]+$/g, '').trim();
+
 export const parseChapters = (desc) => {
-    const out = [];
-    for (const line of (desc || '').split('\n')) {
-        const m = line.match(/(\d{1,2}:)?(\d{1,2}):(\d{2})/);
+    const lines = (desc || '').split('\n');
+
+    const leading = [];
+    for (const line of lines) {
+        const m = line.match(LEADING_TIMESTAMP_RE);
         if (!m) continue;
-        const sec = (m[1] ? parseInt(m[1]) * 3600 : 0) + parseInt(m[2]) * 60 + parseInt(m[3]);
-        const label = line.replace(m[0], '').trim().replace(/^[-–|·:]+|[-–|·:]+$/g, '').trim();
-        if (label) out.push({ label, sec });
+        const label = cleanLabel(line, m[0]);
+        if (label) leading.push({ label, sec: toSec(m) });
+    }
+    if (leading.length > 0) return leading;
+
+    // 줄 시작 매칭이 하나도 없을 때만 "라벨 먼저" 형식(예: "해설 0:00")을 위해
+    // 줄 중간 매칭으로 폴백한다.
+    const out = [];
+    for (const line of lines) {
+        const m = line.match(ANY_TIMESTAMP_RE);
+        if (!m) continue;
+        const label = cleanLabel(line, m[0]);
+        if (label) out.push({ label, sec: toSec(m) });
     }
     return out;
 };
