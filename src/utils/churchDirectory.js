@@ -1,4 +1,5 @@
 import { db, firebase } from './firebase';
+import { sha256 } from './crypto';
 
 // ── 최근 교회 기억 (localStorage) ──────────────────────────────────────────
 // 멤버 로그인 성공 시 저장, 다음 방문 시 URL 파라미터가 없으면 preselect에 사용.
@@ -85,14 +86,21 @@ export const removeChurchFromDirectory = async (id) => {
     invalidateChurchDirectoryCache();
 };
 
-// 전체 churches 컬렉션을 스캔해 디렉토리를 재작성 (백필/복구용)
+// 전체 churches 컬렉션을 스캔해 디렉토리를 재작성 (백필/복구용).
+// 해싱 도입 이전에 생성된 교회는 churchCodeHash가 없고 평문 churchCode만 있을 수 있어,
+// 그런 경우 여기서 즉시 해시를 계산해 채워준다 (레거시 교회 가입 불가 방지).
 export const rebuildChurchDirectory = async () => {
     const snap = await db.collection('churches').get();
-    const churches = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(c => !c.isDeleted)
-        .map(c => ({ id: c.id, name: c.name || '', codeHash: c.churchCodeHash || null }))
-        .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR'));
+    const churches = (await Promise.all(
+        snap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .filter(c => !c.isDeleted)
+            .map(async c => ({
+                id: c.id,
+                name: c.name || '',
+                codeHash: c.churchCodeHash || (c.churchCode ? await sha256(c.churchCode) : null),
+            }))
+    )).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR'));
 
     await DIRECTORY_DOC().set({
         churches,
