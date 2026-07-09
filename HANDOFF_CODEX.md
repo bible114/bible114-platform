@@ -281,16 +281,19 @@ Phase C(플랫폼 관리자)·D·E는 별도 라운드로 — 이번에 손대�
   - 진행 상태는 users 문서 필드: `quizDate`(toDateString), `quizAttempts`, `quizSolved`. 날짜가 바뀌면 리셋으로 간주.
   - 보상: 1번째 시도 정답 **+10 달란트**, 2번째 시도 정답 **+5**, 2번 틀리면 정답·근거 구절 공개(+0). 적립은 트랜잭션으로 (talent 증가 + quiz 필드 갱신 원자 처리, 본인 문서 update라 규칙 통과).
   - 이미 오늘 푼 상태로 재방문하면 결과(정답 여부·획득 달란트)만 표시.
-- [ ] **T19. 비밀 달란트 상점 — 교인용** (신규 `src/components/dashboard/TalentShop.jsx` 등)
-  - 해금 UX: `secretShopJustUnlocked`이면 축하 모달 "🎉 7일 연속 달성! 숨겨진 달란트 상점을 발견했어요". 이후 `currentUser.secretShopUnlocked`가 true면 대시보드에 "🎁 비밀 달란트 상점" 진입 카드 상시 표시 (해금 전에는 어떤 힌트도 표시하지 않음 — 비밀이니까). **한번 해금되면 연속이 끊겨도 영구 유지** (사용자 확정).
-  - 상점 데이터: `churches/{churchId}/settings/talentShop` 문서 `{ items: [{id, name, price, description, active}] }` read (sameChurch 규칙 이미 허용). 문서가 없거나 active 상품이 없으면 "아직 준비된 상품이 없어요. 교회 관리자에게 문의해보세요" 표시.
-  - 구매: 확인창 → 트랜잭션: users 문서에서 talent 잔액 확인·차감 + 같은 트랜잭션에서 `churches/{churchId}/talentPurchases` 신규 문서 set — 필드는 **정확히** `{uid, memberName(currentUser.name), itemId, itemName, price, status: 'pending', createdAt: serverTimestamp}`. 성공 시 "구매 완료! 교회에서 상품을 받아가세요" 토스트.
-  - 내 구매 내역: `talentPurchases.where('uid','==',내uid)` 쿼리로 목록 표시 (규칙상 본인 것 read 허용, uid 등호 필터라 목록 증명 통과). 대기/수령 상태 뱃지.
-  - 무소속(unaffiliated_v1) 성도: 상점 카드는 표시하되 상품 없음 안내가 뜨는 상태가 기본 — 별도 분기 불필요.
+- [ ] **T19. 비밀 달란트 상점 — 교인용** (신규 `src/components/dashboard/TalentShop.jsx` 등. 시각 디자인은 Claude 목업 확정본을 따를 것 — 아래 "디자인 지시" 참고)
+  - 상점 데이터: `churches/{churchId}/settings/talentShop` 문서 `{ enabled: boolean, items: [{id, emoji, name, price, description, active}] }` read (sameChurch 규칙 이미 허용).
+  - **철저한 opt-in 게이트**: 문서가 없거나 `enabled !== true`면 — 해금 여부와 무관하게 — 진입 카드·축하 모달·힌트를 **일절 렌더링하지 않는다**. `secretShopUnlocked` 플래그 저장(T17)은 상점 상태와 무관하게 항상 수행 (나중에 교회가 켜면 그때부터 보임).
+  - 해금 UX (enabled인 교회만): `secretShopJustUnlocked`이면 축하 모달 "🎉 7일 연속 달성! 숨겨진 달란트 상점을 발견했어요". 이후 `currentUser.secretShopUnlocked`면 대시보드 하단에 진입 카드 상시 표시. **한번 해금되면 연속이 끊겨도 영구 유지** (사용자 확정).
+  - 상점 화면: 헤더에 잔액(⭐ N), active 상품만 2열 그리드(이모지+이름+가격+구매 버튼, 잔액 부족 시 "달란트 부족" 비활성), 안내 배너 "구매한 상품은 교회에서 직접 받아요", 하단에 내 구매 내역(`talentPurchases.where('uid','==',내uid)`, 대기/수령/취소 뱃지). active 상품이 0개면 "아직 준비된 상품이 없어요".
+  - 구매: 확인창 → 트랜잭션: users 문서 talent 잔액 확인·차감 + 같은 트랜잭션에서 `talentPurchases` 신규 문서 set — 필드는 **정확히** `{uid, memberName(currentUser.name), itemId, itemName, price, status: 'pending', createdAt: serverTimestamp}` (화이트리스트 초과 시 거부됨). 성공 토스트 "구매 완료! 교회에서 상품을 받아가세요".
+  - **디자인 지시**: 진입 카드·상점 헤더는 딥 바이올렛 그라데이션(`from-violet-950 via-violet-800 to-violet-600` 계열) + 금색(amber-300) 달란트 강조 — "비밀" 무드. 상품 카드는 흰색 rounded-2xl. 나머지는 기존 대시보드 언어(slate, rounded-3xl) 유지.
 - [ ] **T20. 교회 관리자 달란트 상점 탭** (`src/components/ChurchAdminView.jsx`)
-  - 탭 추가: `대시보드/교인 관리/달란트 상점/조직/공지/설정`.
-  - (a) 상품 관리: `settings/talentShop` items CRUD — 이름/가격/설명/판매중 토글, 추가·수정·삭제. 저장은 문서 전체 set(merge). Toast/ConfirmDialog 재사용.
-  - (b) 구매 내역: `talentPurchases` orderBy('createdAt','desc') limit(200) — **where+orderBy 조합 금지**(복합 인덱스 없음), 상태 필터는 클라이언트에서. 행: 교인 이름, 상품, 가격, 구매일, **구매자 잔여 달란트**(이미 로드된 members에서 조회 — 무결제 구매 검증용), "수령 완료" 버튼 → ConfirmDialog → update `{status:'delivered', deliveredAt: serverTimestamp, deliveredBy: 관리자uid}` (규칙상 이 3개 필드만 변경 가능). 대기 건수 뱃지를 탭에 표시.
+  - 탭 추가: `대시보드/교인 관리/달란트 상점/조직/공지/설정`. 탭 라벨에 수령 대기 건수 뱃지.
+  - (a) **상점 사용 토글** (탭 최상단 패널): `settings/talentShop.enabled` on/off 스위치 + 설명 "끄면 교인에게 상점이 전혀 보이지 않아요. 언제든 다시 켤 수 있습니다." 기본 꺼짐 — 문서가 없으면 꺼진 것으로 간주.
+  - (b) 상품 관리: items CRUD — **이모지(프리셋 목록에서 선택)**/이름/가격/설명/판매중 토글, 추가·수정·삭제. 저장은 문서 set(merge). Toast/ConfirmDialog 재사용. 재고 수량 관리는 만들지 말 것(소진 시 판매중지 토글로 대응 — 확정).
+  - (c) 구매 내역: `talentPurchases` orderBy('createdAt','desc') limit(200) — **where+orderBy 조합 금지**(복합 인덱스 없음), 상태 필터는 클라이언트에서. 행: 교인 이름, 상품, 가격, 구매일, **구매자 잔여 달란트**(로드된 members에서 — 무결제 구매 검증용), "수령 완료" 버튼 → ConfirmDialog → update `{status:'delivered', deliveredAt: serverTimestamp, deliveredBy: 관리자uid}`.
+  - (d) **취소·환불**: 대기 건에 "취소·환불" 액션 — ConfirmDialog 후 batch로 ① purchase update `{status:'cancelled', deliveredAt: serverTimestamp, deliveredBy: 관리자uid}` ② 해당 교인 users 문서 `talent: increment(price)` (관리자는 교인 문서 update 가능). 어르신 오터치 대비 필수.
   - 완료 기준: 빌드 통과 + 로컬 dev에서 탭 렌더링 확인 (실데이터 구매/수령은 미검증 허용).
 
 **라운드 3 보류 항목 (Codex 손대지 말 것):** 기존 talent 잔액 리셋 여부(실물 상품 도입으로 구 잔액 처리 필요 — 사용자 결정 대기), 퀴즈 문항의 신학적 검수(사용자 몫).
