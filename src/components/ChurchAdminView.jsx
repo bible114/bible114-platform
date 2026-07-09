@@ -4,6 +4,8 @@ import OrgEditor from './OrgEditor';
 import ChurchAdminTutorial from './ChurchAdminTutorial';
 import { sha256 } from '../utils/crypto';
 import { syncChurchDirectoryEntry } from '../utils/churchDirectory';
+import { calculateSubgroupStats, computeAtRisk } from '../utils/statsUtils';
+import { StatCard, ProgressBar, DonutStat } from './admin';
 
 const SORT_OPTIONS = [
     { key: 'name',     label: '이름순' },
@@ -28,7 +30,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [members, setMembers] = useState([]);
     const [deletedMembers, setDeletedMembers] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [tab, setTab] = useState('members');
+    const [tab, setTab] = useState('dashboard');
     const [showTutorial, setShowTutorial] = useState(false);
 
     // 교인 관리
@@ -265,6 +267,72 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     };
 
     const todayStr = new Date().toDateString();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toDateString();
+
+    const getTotalProgressDay = (member) => ((member.readCount || 1) - 1) * 365 + (member.currentDay || 1);
+    const daysSinceRead = (dateStr) => {
+        if (!dateStr) return null;
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return null;
+        d.setHours(0, 0, 0, 0);
+        const today = new Date(todayStr);
+        today.setHours(0, 0, 0, 0);
+        return Math.floor((today - d) / 86400000);
+    };
+
+    const dashboardStats = (() => {
+        const total = members.length;
+        const readToday = members.filter(m => m.lastReadDate === todayStr).length;
+        const readYesterday = members.filter(m => m.lastReadDate === yesterdayStr).length;
+        const recent7 = members.filter(m => {
+            const days = daysSinceRead(m.lastReadDate);
+            return days !== null && days >= 0 && days <= 6;
+        }).length;
+        const avgDay = total > 0
+            ? Math.round(members.reduce((sum, m) => sum + getTotalProgressDay(m), 0) / total)
+            : 0;
+        return {
+            total,
+            readToday,
+            readYesterday,
+            readDelta: readToday - readYesterday,
+            recent7Rate: total > 0 ? Math.round((recent7 / total) * 100) : 0,
+            avgDay,
+        };
+    })();
+
+    const subgroupStatsMap = calculateSubgroupStats(members, orgComms);
+    const departmentStats = Object.values(subgroupStatsMap).reduce((acc, stat) => {
+        const key = stat.departmentId || stat.departmentName || 'unknown';
+        if (!acc[key]) {
+            acc[key] = {
+                departmentId: stat.departmentId,
+                departmentName: stat.departmentName || '미배정',
+                totalCount: 0,
+                readCount: 0,
+                avgDaySum: 0,
+                subgroups: [],
+            };
+        }
+        acc[key].totalCount += stat.totalCount || 0;
+        acc[key].readCount += stat.readCount || 0;
+        acc[key].avgDaySum += (stat.avgDay || 0) * (stat.totalCount || 0);
+        acc[key].subgroups.push(stat);
+        return acc;
+    }, {});
+    const departmentCards = Object.values(departmentStats).map(dept => ({
+        ...dept,
+        rate: dept.totalCount > 0 ? Math.round((dept.readCount / dept.totalCount) * 100) : 0,
+        avgDay: dept.totalCount > 0 ? Math.round(dept.avgDaySum / dept.totalCount) : 0,
+    }));
+
+    const atRisk = computeAtRisk(members, todayStr);
+    const streakTop = [...members]
+        .filter(m => (m.streak || 0) > 0)
+        .sort((a, b) => (b.streak || 0) - (a.streak || 0))
+        .slice(0, 5);
 
     // 소그룹순: orgComms 순서 기준 그룹핑, 내부 가나다순
     const subgroupGroups = (() => {
@@ -304,9 +372,10 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     });
 
     const TABS = [
+        ['dashboard', '📊 대시보드'],
         ['members', '👥 교인 관리'],
-        ['org', '📋 조직 관리'],
-        ['announcement', '📢 공지사항'],
+        ['org', '📋 조직'],
+        ['announcement', '📢 공지'],
         ['settings', '⚙️ 설정'],
     ];
 
@@ -458,6 +527,28 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         );
     };
 
+    const renderRiskList = (title, items, emptyText, getMeta) => (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                <h3 className="text-sm font-black text-slate-800">{title}</h3>
+                <span className="text-xs font-bold text-slate-400">{items.length}명</span>
+            </div>
+            <div className="divide-y divide-slate-100">
+                {items.length === 0 ? (
+                    <p className="px-4 py-6 text-center text-xs font-bold text-slate-300">{emptyText}</p>
+                ) : items.slice(0, 5).map(member => (
+                    <div key={member.uid} className="px-4 py-3 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                            <p className="text-sm font-bold text-slate-800 truncate">{member.name}</p>
+                            <p className="text-xs text-slate-400 truncate">{member.departmentName || '미배정'} · {member.subgroupName || member.subgroupId || '미배정'}</p>
+                        </div>
+                        <span className="shrink-0 text-xs font-black text-slate-500">{getMeta(member)}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+
     return (
         <div className="min-h-screen bg-slate-50">
             {/* 상단 헤더 */}
@@ -503,6 +594,113 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     <div className="text-center py-20 text-slate-400">불러오는 중...</div>
                 ) : (
                     <>
+                        {/* ── 대시보드 ── */}
+                        {tab === 'dashboard' && (
+                            <div className="space-y-6">
+                                <div>
+                                    <h2 className="font-black text-slate-800 text-lg">목양 대시보드</h2>
+                                    <p className="text-xs text-slate-400 mt-1">
+                                        오늘 읽기 비교는 현재 권한에서 접근 가능한 회원 문서 기준입니다. history 시간값은 앞으로 쌓이는 기록부터 적용됩니다.
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <StatCard label="전체 교인" value={`${dashboardStats.total}명`} subvalue={`${deletedMembers.length}명 삭제 보관`} icon="👥" accent />
+                                    <StatCard
+                                        label="오늘 진도"
+                                        value={`${dashboardStats.readToday}명`}
+                                        subvalue={`어제 최종 ${dashboardStats.readYesterday}명 · ${dashboardStats.readDelta >= 0 ? '+' : ''}${dashboardStats.readDelta}명`}
+                                        icon="📖"
+                                    />
+                                    <StatCard label="최근 7일 읽기율" value={`${dashboardStats.recent7Rate}%`} subvalue="최근 7일 내 1회 이상 읽음" icon="🗓️" />
+                                    <StatCard label="평균 진행 DAY" value={dashboardStats.avgDay || '-'} subvalue="독수 포함 총 진행일 기준" icon="🏁" />
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-[1.35fr_0.65fr] gap-4">
+                                    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                                        <div className="flex items-center justify-between gap-3 mb-4">
+                                            <h3 className="text-sm font-black text-slate-800">부서별 현황</h3>
+                                            <span className="text-xs font-bold text-slate-400">{departmentCards.length}개 부서</span>
+                                        </div>
+                                        {departmentCards.length === 0 ? (
+                                            <p className="py-10 text-center text-xs font-bold text-slate-300">부서 데이터가 없습니다.</p>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                {departmentCards.map(dept => (
+                                                    <div key={dept.departmentId || dept.departmentName} className="rounded-2xl border border-slate-100 p-4">
+                                                        <div className="flex items-start justify-between gap-3 mb-3">
+                                                            <div>
+                                                                <p className="font-black text-slate-800">{dept.departmentName}</p>
+                                                                <p className="text-xs text-slate-400">{dept.readCount}/{dept.totalCount}명 읽음 · 평균 DAY {dept.avgDay || '-'}</p>
+                                                            </div>
+                                                            <DonutStat value={dept.rate} size={58} stroke={7} center={`${dept.rate}%`} />
+                                                        </div>
+                                                        <ProgressBar value={dept.rate} label="오늘 읽기율" tone="indigo" />
+                                                        {dept.subgroups.length > 0 && (
+                                                            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                                {dept.subgroups.map(sub => (
+                                                                    <div key={`${sub.departmentId}_${sub.subgroupId}`} className="rounded-xl bg-slate-50 px-3 py-2">
+                                                                        <div className="flex justify-between gap-2">
+                                                                            <span className="text-xs font-bold text-slate-600 truncate">{sub.subgroupName}</span>
+                                                                            <span className="text-xs font-black text-slate-500">{sub.rate}%</span>
+                                                                        </div>
+                                                                        <ProgressBar value={sub.rate} showValue={false} className="mt-1.5" />
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                                        <h3 className="text-sm font-black text-slate-800 mb-4">이번 주 스트릭 리더 Top 5</h3>
+                                        {streakTop.length === 0 ? (
+                                            <p className="py-10 text-center text-xs font-bold text-slate-300">아직 스트릭 기록이 없습니다.</p>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {streakTop.map((member, index) => (
+                                                    <div key={member.uid} className="flex items-center justify-between gap-3 rounded-xl bg-orange-50 px-3 py-2">
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-black text-slate-800 truncate">{index + 1}. {member.name}</p>
+                                                            <p className="text-xs text-slate-400 truncate">{member.departmentName || '미배정'} · {member.subgroupName || member.subgroupId || '미배정'}</p>
+                                                        </div>
+                                                        <span className="shrink-0 text-sm font-black text-orange-600">{member.streak}일</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                    {renderRiskList(
+                                        '7일 이상 미독',
+                                        atRisk.noRead7Days,
+                                        '7일 이상 미독 교인이 없습니다.',
+                                        member => {
+                                            const days = daysSinceRead(member.lastReadDate);
+                                            return days === null ? '기록 없음' : `${days}일`;
+                                        }
+                                    )}
+                                    {renderRiskList(
+                                        '진행 하위 10%',
+                                        atRisk.bottomProgress,
+                                        '진행 하위 대상이 없습니다.',
+                                        member => `DAY ${getTotalProgressDay(member)}`
+                                    )}
+                                    {renderRiskList(
+                                        '최근 7일 신규 가입',
+                                        atRisk.recentNewMembers,
+                                        '최근 신규 가입자가 없습니다.',
+                                        member => formatReadDate(member.createdAt?.toDate ? member.createdAt.toDate().toDateString() : member.createdAt)
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         {/* ── 교인 관리 ── */}
                         {tab === 'members' && (
                             <div>

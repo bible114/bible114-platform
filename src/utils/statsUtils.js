@@ -168,6 +168,59 @@ export const formatProgressRanking = (subgroupStats) => {
         .sort(function (a, b) { return b.progressRate - a.progressRate; });
 };
 
+const totalProgressDay = (member) => ((member.readCount || 1) - 1) * TOTAL_DAYS + (member.currentDay || 1);
+
+const toDate = (value) => {
+    if (!value) return null;
+    if (typeof value.toDate === 'function') return value.toDate();
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+};
+
+const diffDays = (fromDate, toDateValue) => {
+    const from = toDate(fromDate);
+    const to = toDate(toDateValue);
+    if (!from || !to) return null;
+    from.setHours(0, 0, 0, 0);
+    to.setHours(0, 0, 0, 0);
+    return Math.floor((to - from) / 86400000);
+};
+
+export const computeAtRisk = (members, todayStr) => {
+    const activeMembers = (members || []).filter(m => !m.isDeleted && m.role !== 'churchAdmin');
+    const noRead7Days = activeMembers
+        .filter(m => {
+            if (!m.lastReadDate) return true;
+            const days = diffDays(m.lastReadDate, todayStr);
+            return days === null || days >= 7;
+        })
+        .sort((a, b) => {
+            const aDays = a.lastReadDate ? diffDays(a.lastReadDate, todayStr) : 9999;
+            const bDays = b.lastReadDate ? diffDays(b.lastReadDate, todayStr) : 9999;
+            return bDays - aDays;
+        });
+
+    const progressCount = Math.max(1, Math.ceil(activeMembers.length * 0.1));
+    const bottomProgress = [...activeMembers]
+        .sort((a, b) => totalProgressDay(a) - totalProgressDay(b))
+        .slice(0, progressCount);
+
+    const recentNewMembers = activeMembers
+        .filter(m => {
+            const created = toDate(m.createdAt);
+            if (!created) return false;
+            const days = diffDays(created, todayStr);
+            return days !== null && days >= 0 && days <= 7;
+        })
+        .sort((a, b) => {
+            const ad = toDate(a.createdAt)?.getTime() || 0;
+            const bd = toDate(b.createdAt)?.getTime() || 0;
+            return bd - ad;
+        });
+
+    return { noRead7Days, bottomProgress, recentNewMembers };
+};
+
 export const getAdminStats = (allUsers) => {
     const todayStr = new Date().toDateString();
     const totalUsers = allUsers.length;
