@@ -91,6 +91,26 @@ service cloud.firestore {
         allow read: if sameChurch(churchId) || isPlatformAdmin();
         allow write: if isChurchAdmin(churchId) || isPlatformAdmin();
       }
+
+      // 달란트 상점 구매 내역 — 교인이 자기 구매만 생성(필드 화이트리스트),
+      // 조회는 본인 것 + 교회 관리자 전체, 수령 처리(update)는 관리자만.
+      // 알려진 한계: 구매 생성과 talent 차감이 별개 문서라 규칙만으로 원자성을
+      // 강제할 수 없다(악의적 무결제 구매 생성 가능). 교회 공동체 맥락에서 수용 —
+      // 관리자 화면에 구매자 잔여 달란트를 함께 표시해 수령 시 확인하게 한다.
+      match /talentPurchases/{purchaseId} {
+        allow read: if isChurchAdmin(churchId) || isPlatformAdmin() ||
+          (isSignedIn() && resource.data.uid == request.auth.uid);
+        allow create: if isRealUser() &&
+          sameChurch(churchId) &&
+          request.resource.data.uid == request.auth.uid &&
+          request.resource.data.status == 'pending' &&
+          request.resource.data.keys().hasOnly(
+            ['uid', 'memberName', 'itemId', 'itemName', 'price', 'status', 'createdAt']);
+        allow update: if (isChurchAdmin(churchId) || isPlatformAdmin()) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+            ['status', 'deliveredAt', 'deliveredBy']);
+        allow delete: if isPlatformAdmin();
+      }
     }
 
     // 말씀 (verses) — 읽기 전용

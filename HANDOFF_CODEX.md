@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: "🔁 라운드 2" 섹션의 체크리스트 (T12~T16).** 라운드 1(T1~T11)은 완료·리뷰 통과됨.
+> **현재 활성 작업: "🔁 라운드 3" 섹션의 체크리스트 (T17~T20).** 라운드 1(T1~T11)·라운드 2(T12~T16)는 완료·리뷰 통과됨.
 > 라운드 1의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -248,7 +248,52 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
   - 편집 UI의 비밀번호 평문 표시 제거(재설정만). 모든 저장/삭제에 Toast.
   - 완료 기준: 플랜 하단 "검수 기준" 중 교회 관리자 항목 4개가 로컬 dev에서 눈으로 확인됨 (실데이터 변경 없는 범위에서, 불가하면 로그에 미검증 명시).
 
-Phase C(플랫폼 관리자)·D·E는 라운드 3에서 — 이번에 손대지 말 것.
+Phase C(플랫폼 관리자)·D·E는 별도 라운드로 — 이번에 손대지 말 것.
+
+---
+
+## 🔁 라운드 3 — 달란트 개편 + 성경퀴즈 + 비밀 달란트 상점 (2026-07-09 위임)
+
+> 설계 확정: Claude Fable 5, 사용자 승인 완료. 작업 프로토콜은 상단과 동일.
+> 배경: 미니룸 꾸미기는 완전 삭제됨(054d1e5). talent는 이제 "꾸준함 화폐"로 재정의 —
+> **하루 1회만 적립**되어 다독자와 1독자의 격차를 없애고, 연속 출석에만 보상한다.
+> 실물 상품 교환(오프라인 수령)이 최종 용도다.
+
+### 라운드 3 제약 (기존 금지사항에 더해)
+
+- **firestore.rules 수정 금지** — `talentPurchases` 규칙은 Claude가 이미 추가·배포했다(필드 화이트리스트: `uid, memberName, itemId, itemName, price, status, createdAt` / create는 status='pending'만 / update는 관리자가 status·deliveredAt·deliveredBy만). 구매 문서 필드는 이 화이트리스트와 **정확히 일치**해야 한다 — 필드 하나라도 다르면 permission-denied.
+- `score` 적립 로직은 한 줄도 바꾸지 말 것 (랭킹·레벨은 기존 그대로).
+- 퀴즈·상점의 클라이언트 조작 가능성(콘솔로 정답 보기, 무결제 구매 생성)은 **알려진 수용 리스크**다. 교회 공동체 맥락이므로 서버 검증을 새로 만들지 말 것 — 대응은 T20의 "잔여 달란트 표시"뿐.
+
+### 라운드 3 체크리스트
+
+- [ ] **T17. talent 적립 개편 + 비밀 상점 해금 플래그** (`src/hooks/useUserBibleActions.js` handleRead 트랜잭션)
+  - `isFirstReadToday = data.lastReadDate !== todayStr`일 때만 talent 적립: `talentEarned = 10 + Math.min(newStreak, 7)` (하루 최대 17). 같은 날 추가 읽기("한 장 더 읽기")는 talent 0.
+  - `newTalent = (data.talent || 0) + talentEarned`. **score 계산은 기존 그대로.**
+  - `!data.secretShopUnlocked && newStreak >= 7`이면 updateData에 `secretShopUnlocked: true` 추가. resultData에 `secretShopJustUnlocked` 플래그를 실어 훅 밖으로 노출 (T19의 축하 모달 트리거).
+  - historyItem에 `talent: talentEarned` 필드 추가 (기존 date/day/score/ts 유지).
+  - 적립 시 기존 보너스 토스트에 `⭐ +N달란트`를 함께 표시.
+  - `src/utils/helpers.js` `userDocToState`에 `secretShopUnlocked: d.secretShopUnlocked ?? false` 매핑 추가.
+- [ ] **T18. 매일 성경퀴즈** (신규 `src/data/bibleQuiz.js` + `src/components/dashboard/BibleQuizCard.jsx`)
+  - 퀴즈 은행: 4지선다 한국어 성경 상식·인물·사건 퀴즈 **100문항 이상** 생성 — `{ q, choices: [4개], answerIndex, ref }` (ref = 근거 구절, 예: '창세기 1:1'). 개역개정 기준, 난이도 쉬움~중간, 어르신 친화적 문장. **작업 로그에 "퀴즈 내용은 사용자 검수 필요" 명시할 것.**
+  - 오늘의 문제 선택: KST 기준 dayOfYear로 `QUIZ_BANK[dayOfYear % QUIZ_BANK.length]`.
+  - 카드 위치: DashboardView 하단(기존 콘텐츠 아래). 게스트(role 'guest')와 미로그인에는 렌더링하지 않음.
+  - 진행 상태는 users 문서 필드: `quizDate`(toDateString), `quizAttempts`, `quizSolved`. 날짜가 바뀌면 리셋으로 간주.
+  - 보상: 1번째 시도 정답 **+10 달란트**, 2번째 시도 정답 **+5**, 2번 틀리면 정답·근거 구절 공개(+0). 적립은 트랜잭션으로 (talent 증가 + quiz 필드 갱신 원자 처리, 본인 문서 update라 규칙 통과).
+  - 이미 오늘 푼 상태로 재방문하면 결과(정답 여부·획득 달란트)만 표시.
+- [ ] **T19. 비밀 달란트 상점 — 교인용** (신규 `src/components/dashboard/TalentShop.jsx` 등)
+  - 해금 UX: `secretShopJustUnlocked`이면 축하 모달 "🎉 7일 연속 달성! 숨겨진 달란트 상점을 발견했어요". 이후 `currentUser.secretShopUnlocked`가 true면 대시보드에 "🎁 비밀 달란트 상점" 진입 카드 상시 표시 (해금 전에는 어떤 힌트도 표시하지 않음 — 비밀이니까). **한번 해금되면 연속이 끊겨도 영구 유지** (사용자 확정).
+  - 상점 데이터: `churches/{churchId}/settings/talentShop` 문서 `{ items: [{id, name, price, description, active}] }` read (sameChurch 규칙 이미 허용). 문서가 없거나 active 상품이 없으면 "아직 준비된 상품이 없어요. 교회 관리자에게 문의해보세요" 표시.
+  - 구매: 확인창 → 트랜잭션: users 문서에서 talent 잔액 확인·차감 + 같은 트랜잭션에서 `churches/{churchId}/talentPurchases` 신규 문서 set — 필드는 **정확히** `{uid, memberName(currentUser.name), itemId, itemName, price, status: 'pending', createdAt: serverTimestamp}`. 성공 시 "구매 완료! 교회에서 상품을 받아가세요" 토스트.
+  - 내 구매 내역: `talentPurchases.where('uid','==',내uid)` 쿼리로 목록 표시 (규칙상 본인 것 read 허용, uid 등호 필터라 목록 증명 통과). 대기/수령 상태 뱃지.
+  - 무소속(unaffiliated_v1) 성도: 상점 카드는 표시하되 상품 없음 안내가 뜨는 상태가 기본 — 별도 분기 불필요.
+- [ ] **T20. 교회 관리자 달란트 상점 탭** (`src/components/ChurchAdminView.jsx`)
+  - 탭 추가: `대시보드/교인 관리/달란트 상점/조직/공지/설정`.
+  - (a) 상품 관리: `settings/talentShop` items CRUD — 이름/가격/설명/판매중 토글, 추가·수정·삭제. 저장은 문서 전체 set(merge). Toast/ConfirmDialog 재사용.
+  - (b) 구매 내역: `talentPurchases` orderBy('createdAt','desc') limit(200) — **where+orderBy 조합 금지**(복합 인덱스 없음), 상태 필터는 클라이언트에서. 행: 교인 이름, 상품, 가격, 구매일, **구매자 잔여 달란트**(이미 로드된 members에서 조회 — 무결제 구매 검증용), "수령 완료" 버튼 → ConfirmDialog → update `{status:'delivered', deliveredAt: serverTimestamp, deliveredBy: 관리자uid}` (규칙상 이 3개 필드만 변경 가능). 대기 건수 뱃지를 탭에 표시.
+  - 완료 기준: 빌드 통과 + 로컬 dev에서 탭 렌더링 확인 (실데이터 구매/수령은 미검증 허용).
+
+**라운드 3 보류 항목 (Codex 손대지 말 것):** 기존 talent 잔액 리셋 여부(실물 상품 도입으로 구 잔액 처리 필요 — 사용자 결정 대기), 퀴즈 문항의 신학적 검수(사용자 몫).
 
 ---
 
