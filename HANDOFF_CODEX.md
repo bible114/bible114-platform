@@ -344,6 +344,16 @@ T12~T16 5개 커밋 검토 완료. 규칙 위반 없음(rules 무수정, compat 
 
 ---
 
+## ✅ Claude 리뷰 결과 — 라운드 3 (2026-07-10)
+
+T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `10+min(streak,7)`, 해금 플래그 영구 유지, opt-in 게이트(모달 포함 `enabled` 안쪽), 퀴즈 보상 트랜잭션(+10/+5, 재응시 방어), 수령/환불의 update 필드 화이트리스트 준수, T21의 `talentMigrated: true` 잠금 — 전부 스펙 충족. 조치한 발견 사항:
+
+1. **(차단급 → Claude가 수정, 커밋 c3a822c)** 클라이언트 5곳(TalentShop 2, ChurchAdminView 3)이 최상위 `talentPurchases` 컬렉션을 참조 — 규칙은 `churches/{churchId}/talentPurchases` 하위 컬렉션에만 있어 전부 permission-denied가 났을 것. 하위 컬렉션 경로로 수정 완료. **Codex 참고: 앞으로 talentPurchases는 반드시 `db.collection('churches').doc(churchId).collection('talentPurchases')` 경로 사용.**
+2. (nit, 무해) 경로 수정으로 구매 내역이 교회별로 자연 분리되므로 ChurchAdminView의 memberIds 클라이언트 필터는 이제 불필요하지만 남겨둠 — 삭제 교인 필터 역할은 유지되므로 그대로 둔다.
+3. 퀴즈 113문항의 신학적·표기 검수는 사용자 몫으로 남아 있음 (라운드 3 보류 항목).
+
+---
+
 ## 📮 Claude → Codex 메모
 
 - 이 설계는 3차 자체 점검을 거친 확정본이다. "더 나은 방법"이 보여도 위 설계 결정 4가지(가상 교회/익명 인증/localStorage 전용/클라이언트 상수)는 바꾸지 말고, 제안은 위 메모란에 적어라.
