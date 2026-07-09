@@ -3,7 +3,7 @@ import { auth, authReady, db, firebase } from '../utils/firebase';
 import { makePseudoEmail, makeUnaffiliatedIdentity, userDocToState, migrateTalentIfNeeded } from '../utils/helpers';
 import { sha256 } from '../utils/crypto';
 import { getChurchDirectory, addChurchToDirectory, saveLastChurch } from '../utils/churchDirectory';
-import { UNAFFILIATED_CHURCH_ID } from '../data/constants';
+import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
 
 export const useAuth = ({
     setCurrentUser,
@@ -16,7 +16,7 @@ export const useAuth = ({
 }) => {
     const [errorMsg, setErrorMsg] = useState('');
 
-    const buildNewMember = ({ name, birthdate, password, email, churchId, churchName }) => ({
+    const buildNewMember = ({ name, birthdate, password, email, churchId, churchName, phone4 }) => ({
         name, birthdate, password, email,
         role: 'member', churchId, churchName,
         startDate: new Date().toDateString(),
@@ -26,6 +26,7 @@ export const useAuth = ({
         isDeleted: false, deletedAt: null, deletedBy: null,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        ...(phone4 ? { phone4 } : {}),
     });
 
     const finishMemberSignup = async ({ user, newUser, churchId }) => {
@@ -53,10 +54,31 @@ export const useAuth = ({
         setErrorMsg('');
         try {
             await authReady;
-            // 신 포맷(이름+생년월일+교회ID) 시도 → 실패 시 구 포맷으로 마이그레이션
+            const isUnaffiliated = churchId === UNAFFILIATED_CHURCH_ID;
+            if (isUnaffiliated && !/^\d{4}$/.test(String(phone4 || '').trim())) {
+                setErrorMsg('전화번호 뒤 4자리를 입력해주세요.');
+                return;
+            }
+            // 일반 교회는 신 포맷(이름+생년월일+교회ID) 실패 시 구 포맷으로 마이그레이션한다.
+            // 무소속은 신규 기능이라 phone4 포함 포맷만 사용한다.
             const newEmail = makeMemberEmail(name, birthdate, churchId, phone4);
             const oldEmail = makePseudoEmail(name, birthdate);
-            let cred = await auth.signInWithEmailAndPassword(newEmail, pw).catch(() => null);
+            let newFormatError = null;
+            let cred = await auth.signInWithEmailAndPassword(newEmail, pw).catch(err => {
+                newFormatError = err;
+                return null;
+            });
+
+            if (!cred && isUnaffiliated) {
+                if (['auth/user-not-found', 'auth/invalid-login-credentials', 'auth/invalid-credential'].includes(newFormatError?.code)) {
+                    setErrorMsg('등록되지 않은 사용자입니다. 회원가입 후 이용해주세요.');
+                } else if (newFormatError?.code === 'auth/wrong-password') {
+                    setErrorMsg('비밀번호가 틀렸습니다.');
+                } else {
+                    setErrorMsg('로그인 실패. 잠시 후 다시 시도해주세요.');
+                }
+                return;
+            }
 
             if (!cred) {
                 // 구 포맷으로 재시도 (기존 계정 마이그레이션)
@@ -154,15 +176,26 @@ export const useAuth = ({
         setErrorMsg('');
         try {
             await authReady;
-            // 교회 입장코드 확인 (디렉토리 문서 — 미인증 공개 read)
-            const directory = await getChurchDirectory();
-            const churchEntry = directory.find(c => c.id === churchId);
-            if (!churchEntry) { setErrorMsg('교회를 찾을 수 없습니다.'); return; }
-            if (!churchEntry.codeHash) { setErrorMsg('교회 입장코드 정보를 확인할 수 없습니다. 교회 관리자에게 문의해주세요.'); return; }
-            const inputHash = await sha256(churchCode);
-            if (churchEntry.codeHash !== inputHash) { setErrorMsg('교회 입장코드가 틀렸습니다.'); return; }
+            const isUnaffiliated = churchId === UNAFFILIATED_CHURCH_ID;
+            const normalizedPhone4 = String(phone4 || '').trim();
+            let churchName = UNAFFILIATED_CHURCH_NAME;
 
-            const churchName = churchEntry.name;
+            if (isUnaffiliated) {
+                if (!/^\d{4}$/.test(normalizedPhone4)) {
+                    setErrorMsg('전화번호 뒤 4자리를 입력해주세요.');
+                    return;
+                }
+            } else {
+                // 교회 입장코드 확인 (디렉토리 문서 — 미인증 공개 read)
+                const directory = await getChurchDirectory();
+                const churchEntry = directory.find(c => c.id === churchId);
+                if (!churchEntry) { setErrorMsg('교회를 찾을 수 없습니다.'); return; }
+                if (!churchEntry.codeHash) { setErrorMsg('교회 입장코드 정보를 확인할 수 없습니다. 교회 관리자에게 문의해주세요.'); return; }
+                const inputHash = await sha256(churchCode);
+                if (churchEntry.codeHash !== inputHash) { setErrorMsg('교회 입장코드가 틀렸습니다.'); return; }
+                churchName = churchEntry.name;
+            }
+
             const email = makeMemberEmail(name, birthdate, churchId, phone4);
             let signupErrorCode = null;
             let cred = await auth.createUserWithEmailAndPassword(email, password).catch(err => {
@@ -172,7 +205,15 @@ export const useAuth = ({
                 else setErrorMsg('가입 실패. 잠시 후 다시 시도해주세요.');
                 return null;
             });
-            const newUser = buildNewMember({ name, birthdate, password, email, churchId, churchName });
+            const newUser = buildNewMember({
+                name,
+                birthdate,
+                password,
+                email,
+                churchId,
+                churchName,
+                phone4: isUnaffiliated ? normalizedPhone4 : null,
+            });
 
             if (cred) {
                 await finishMemberSignup({ user: cred.user, newUser, churchId });
