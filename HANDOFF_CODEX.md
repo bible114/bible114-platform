@@ -196,6 +196,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-09 | T14 AdminDataTable + SlideOverPanel | `src/components/admin/AdminDataTable.jsx`, `src/components/admin/SlideOverPanel.jsx`, `src/components/admin/index.js`, `HANDOFF_CODEX.md` | 검색/정렬/50개 페이지네이션/다중 선택/모바일 카드형 테이블과 우측 슬라이드 패널 신설. `npm run build` 통과. |
 | 2026-07-09 | T15 교회 관리자 대시보드 탭 | `src/components/ChurchAdminView.jsx`, `src/utils/statsUtils.js`, `HANDOFF_CODEX.md` | 기본 탭을 대시보드로 변경, StatCard/부서별 현황/관심 필요 명단/스트릭 Top 5 추가, `computeAtRisk` 신설. history 직접 시간대 집계는 현 rules상 churchAdmin history read가 없어 폴백 표기. `npm run build` 통과. |
 | 2026-07-09 | T16 교인 관리 탭 개편 | `src/components/ChurchAdminView.jsx`, `HANDOFF_CODEX.md` | AdminDataTable 적용, 부서/읽기상태 필터, CSV 내보내기, 일괄 소그룹 배정/비밀번호 초기화, SlideOver 상세, Toast/ConfirmDialog 연결, 비밀번호 평문 표시 제거. `npm run build` 통과. 실제 Firestore 쓰기 작업은 운영 데이터 변경 부작용 때문에 미검증. |
+| 2026-07-09 | T17 talent 적립 개편 + 비밀 상점 해금 플래그 | `src/hooks/useUserBibleActions.js`, `src/utils/helpers.js`, `HANDOFF_CODEX.md` | score 적립 로직은 유지하고 talent만 하루 첫 읽기 `10 + min(streak, 7)`로 분리. history `talent` 필드와 `secretShopUnlocked`/`secretShopJustUnlocked` 추가, 상태 매핑 추가. `npm run build` 통과. |
 
 ---
 
@@ -212,6 +213,9 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 2026-07-09 Codex 라운드2:
 - T12~T16 완료. T15의 "어제 이 시각" 직접 집계는 현재 `users/{uid}/history` read 규칙상 churchAdmin이 읽을 수 없어 구현하지 않고, `lastReadDate` 기반 "오늘 누적 vs 어제 최종" 폴백 표기로 대시보드에 반영함. T16의 SlideOver 최근 기록도 같은 권한 제약으로 실패 시 안내 토스트/빈 상태를 표시한다. firestore.rules 수정 금지 제약 때문에 규칙 변경은 하지 않음.
 - T16의 일괄 소그룹 배정/비밀번호 초기화/삭제/복원은 실제 운영 Firestore 문서를 바꾸는 작업이라 로컬에서 클릭 실행 검증하지 않았고, `npm run build`로 컴파일 검증만 완료.
+
+2026-07-09 Codex 라운드3:
+- T17 완료. `score` 계산은 기존 `addedScore = 10 + streakBonus` 흐름을 유지했고, `talent`만 하루 첫 읽기 기준으로 분리했다. 비밀 상점 UI는 T19 몫이라 아직 렌더링하지 않음.
 
 ---
 
@@ -267,7 +271,7 @@ Phase C(플랫폼 관리자)·D·E는 별도 라운드로 — 이번에 손대�
 
 ### 라운드 3 체크리스트
 
-- [ ] **T17. talent 적립 개편 + 비밀 상점 해금 플래그** (`src/hooks/useUserBibleActions.js` handleRead 트랜잭션)
+- [x] **T17. talent 적립 개편 + 비밀 상점 해금 플래그** (`src/hooks/useUserBibleActions.js` handleRead 트랜잭션)
   - `isFirstReadToday = data.lastReadDate !== todayStr`일 때만 talent 적립: `talentEarned = 10 + Math.min(newStreak, 7)` (하루 최대 17). 같은 날 추가 읽기("한 장 더 읽기")는 talent 0.
   - `newTalent = (data.talent || 0) + talentEarned`. **score 계산은 기존 그대로.**
   - `!data.secretShopUnlocked && newStreak >= 7`이면 updateData에 `secretShopUnlocked: true` 추가. resultData에 `secretShopJustUnlocked` 플래그를 실어 훅 밖으로 노출 (T19의 축하 모달 트리거).

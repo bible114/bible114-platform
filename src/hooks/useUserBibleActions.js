@@ -71,13 +71,13 @@ export const useUserBibleActions = (
                 const addedScore = 10 + streakBonus;
                 const newScore = oldScore + addedScore;
                 const newLevel = Math.floor(newScore / 100);
-                const newTalent = (data.talent || 0) + addedScore;
 
                 const nextViewingDay = vDay >= 365 ? 1 : vDay + 1;
                 completedRound = currentProgressDay >= 365;
                 const newProgressDay = completedRound ? 1 : currentProgressDay + 1;
                 const newReadCount = completedRound ? (data.readCount || 1) + 1 : (data.readCount || 1);
 
+                const isFirstReadToday = data.lastReadDate !== todayStr;
                 let newStreak = 1;
                 if (data.lastReadDate) {
                     const diffDays = Math.floor(
@@ -86,11 +86,15 @@ export const useUserBibleActions = (
                     if (diffDays === 1) newStreak = (data.streak || 0) + 1;
                     else if (diffDays === 0) newStreak = data.streak || 0;
                 }
+                const talentEarned = isFirstReadToday ? 10 + Math.min(newStreak, 7) : 0;
+                const newTalent = (data.talent || 0) + talentEarned;
+                const secretShopJustUnlocked = !data.secretShopUnlocked && newStreak >= 7;
 
                 const historyItem = {
                     date: todayStr,
                     day: vDay,
                     score: addedScore,
+                    talent: talentEarned,
                     ts: firebase.firestore.FieldValue.serverTimestamp()
                 };
                 const updateData = {
@@ -102,6 +106,9 @@ export const useUserBibleActions = (
                     lastReadDate: todayStr,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
+                if (secretShopJustUnlocked) {
+                    updateData.secretShopUnlocked = true;
+                }
 
                 transaction.update(userRef, updateData);
 
@@ -109,11 +116,11 @@ export const useUserBibleActions = (
                 const histRef = db.collection('users').doc(uid).collection('history').doc();
                 transaction.set(histRef, historyItem);
 
-                resultData = { updateData, newLevel, oldLevel, streakBonus, newStreak, newReadCount, nextViewingDay, historyItem, newProgressDay };
+                resultData = { updateData, newLevel, oldLevel, streakBonus, newStreak, newReadCount, nextViewingDay, historyItem, newProgressDay, talentEarned, secretShopJustUnlocked };
             });
 
             if (!resultData) return;
-            const { updateData, newLevel, oldLevel, streakBonus, newStreak, newReadCount, nextViewingDay, historyItem, newProgressDay } = resultData;
+            const { updateData, newLevel, oldLevel, streakBonus, newStreak, newReadCount, nextViewingDay, historyItem, newProgressDay, talentEarned } = resultData;
 
             // 플랫폼 통계 업데이트 (fire & forget) — 날짜가 바뀌면 readers_today 리셋
             db.collection('settings').doc('platformStats').get().then(snap => {
@@ -139,8 +146,10 @@ export const useUserBibleActions = (
                 setLevelUpToast(true);
                 setTimeout(() => setLevelUpToast(false), 5000);
             }
-            if (streakBonus > 0) {
-                setBonusToast(`${newStreak}일 연속 보너스 +${streakBonus}pt!`);
+            if (streakBonus > 0 || talentEarned > 0) {
+                const scoreText = streakBonus > 0 ? `${newStreak}일 연속 보너스 +${streakBonus}pt` : `${newStreak}일 연속`;
+                const talentText = talentEarned > 0 ? ` · ⭐ +${talentEarned}달란트` : '';
+                setBonusToast(`${scoreText}${talentText}!`);
                 setTimeout(() => setBonusToast(null), 3000);
             }
 
@@ -160,7 +169,7 @@ export const useUserBibleActions = (
             setShowConfetti(true);
             setTimeout(() => setShowConfetti(false), 3000);
             checkAchievements(updatedUser, {});
-            if (onReadComplete) onReadComplete();
+            if (onReadComplete) onReadComplete(resultData);
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (e) {
             if (e.message !== 'USER_NOT_FOUND') console.error("읽기 처리 실패:", e);

@@ -75,6 +75,7 @@ export const userDocToState = (doc) => {
         score: d.score ?? 0,
         talent: d.talent,
         talentMigrated: d.talentMigrated ?? false,
+        secretShopUnlocked: d.secretShopUnlocked ?? false,
         lastReadDate: d.lastReadDate ?? null,
         gender: d.gender ?? "male",
         departmentId: d.departmentId ?? d.communityId ?? null,
