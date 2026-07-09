@@ -88,7 +88,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
     - 그 외(일반 교회) 흐름은 한 줄도 바꾸지 않는다.
   - `handleMemberLogin`: 파라미터에 `phone4` 추가, `churchId === UNAFFILIATED_CHURCH_ID`이면 T2 방식 이메일로 로그인 시도. 구포맷 마이그레이션 재시도 로직은 무소속에는 불필요(신규 기능이므로).
 
-- [ ] **T4. 로그인 화면 (LoginView.jsx)**
+- [x] **T4. 로그인 화면 (LoginView.jsx)**
   - `src/components/LoginView.jsx` member/memberSignup 탭:
     - 교회 선택 영역에 **"소속 교회가 없어요"** 선택지 추가 (ChurchPicker 검색 결과와 별도의 고정 버튼/체크 형태 권장 — ChurchPicker 내부는 최소 수정).
     - 무소속 선택 시: 입장코드 입력란 숨김, **전화번호 뒤 4자리** 입력란 표시(로그인·가입 폼 둘 다), 안내 문구 "소속 교회가 없어도 개인 성도로 함께 읽을 수 있어요".
@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-09 | T1 상수 + 가상 교회 생성 버튼 | `src/data/constants.js`, `src/components/PlatformAdminView.jsx`, `src/utils/churchDirectory.js`, `HANDOFF_CODEX.md` | `npm run build` 통과. 수동 M1(플랫폼 관리자 버튼 클릭)은 미실행. |
 | 2026-07-09 | T2 가짜 이메일에 무소속 식별자 확장 | `src/utils/helpers.js`, `src/hooks/useAuth.js`, `HANDOFF_CODEX.md` | `makeUnaffiliatedIdentity(birthdate, phone4)` 추가 및 무소속 이메일 생성 호출부 연결. `npm run build` 통과. |
 | 2026-07-09 | T3 가입/로그인 로직 | `src/hooks/useAuth.js`, `HANDOFF_CODEX.md` | 무소속 가입 시 디렉토리/입장코드 검증 우회, 상수 교회명 사용, `phone4` 저장, 무소속 로그인 구포맷 재시도 제외. `npm run build` 통과. |
+| 2026-07-09 | T4 로그인 화면 | `src/components/LoginView.jsx`, `HANDOFF_CODEX.md` | 무소속 선택지/전화번호 뒤 4자리 입력 UI 연결. `npm run build` 통과. Browser에서 로그인/가입 탭 UI 확인. 실제 Firebase 가입→대시보드 진입은 테스트 데이터 생성 부작용 때문에 미검증. |
 
 ---
 

@@ -4,7 +4,8 @@ import OrgEditor from './OrgEditor';
 import DemoTour from './DemoTour';
 import ReadingGuideModal from './modals/ReadingGuideModal';
 import ChurchPicker from './ChurchPicker';
-import { getChurchDirectory, getLastChurch } from '../utils/churchDirectory';
+import { getChurchDirectory, getLastChurch, saveLastChurch } from '../utils/churchDirectory';
+import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
 
 // ─── Daily verse data ─────────────────────────────────────────────────────────
 const DAILY_VERSES = [
@@ -142,6 +143,7 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
     const [loginName, setLoginName] = useState('');
     const [loginBirthdate, setLoginBirthdate] = useState('');
     const [loginChurchId, setLoginChurchId] = useState('');
+    const [loginPhone4, setLoginPhone4] = useState('');
     const [loginEmail, setLoginEmail] = useState('');
     const [loginPw, setLoginPw] = useState('');
 
@@ -152,6 +154,7 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
     const [mPwConfirm, setMPwConfirm] = useState('');
     const [mChurchId, setMChurchId] = useState('');
     const [mChurchCode, setMChurchCode] = useState('');
+    const [mPhone4, setMPhone4] = useState('');
 
     // Admin signup state
     const [aName, setAName] = useState('');
@@ -180,7 +183,11 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
             }
             if (!preset) {
                 const last = getLastChurch();
-                if (last?.id) preset = directory.find(c => c.id === last.id) || null;
+                if (last?.id === UNAFFILIATED_CHURCH_ID) {
+                    preset = { id: UNAFFILIATED_CHURCH_ID, name: UNAFFILIATED_CHURCH_NAME };
+                } else if (last?.id) {
+                    preset = directory.find(c => c.id === last.id) || null;
+                }
             }
             if (preset) {
                 setLoginChurchId(preset.id);
@@ -193,11 +200,23 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
 
     const clearError = () => setErrorMsg('');
 
+    const selectUnaffiliatedChurch = () => {
+        const church = { id: UNAFFILIATED_CHURCH_ID, name: UNAFFILIATED_CHURCH_NAME };
+        setLoginChurchId(church.id);
+        setMChurchId(church.id);
+        saveLastChurch(church);
+        clearError();
+    };
+
+    const isLoginUnaffiliated = loginChurchId === UNAFFILIATED_CHURCH_ID;
+    const isSignupUnaffiliated = mChurchId === UNAFFILIATED_CHURCH_ID;
+
     const handleMemberLogin = async (e) => {
         e.preventDefault();
         if (!loginName.trim() || !loginBirthdate.trim() || !loginChurchId || !loginPw.trim()) { setErrorMsg('모든 항목을 입력해주세요.'); return; }
+        if (isLoginUnaffiliated && !/^\d{4}$/.test(loginPhone4.trim())) { setErrorMsg('전화번호 뒤 4자리를 입력해주세요.'); return; }
         setLoading(true);
-        await onMemberLogin(loginName.trim(), loginBirthdate.trim(), loginPw, loginChurchId);
+        await onMemberLogin(loginName.trim(), loginBirthdate.trim(), loginPw, loginChurchId, loginPhone4.trim());
         setLoading(false);
     };
 
@@ -211,11 +230,19 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
 
     const handleMemberSignup = async (e) => {
         e.preventDefault();
-        if (!mName.trim() || !mBirthdate.trim() || !mPw || !mChurchId || !mChurchCode.trim()) { setErrorMsg('모든 항목을 입력해주세요.'); return; }
+        if (!mName.trim() || !mBirthdate.trim() || !mPw || !mChurchId || (!isSignupUnaffiliated && !mChurchCode.trim())) { setErrorMsg('모든 항목을 입력해주세요.'); return; }
+        if (isSignupUnaffiliated && !/^\d{4}$/.test(mPhone4.trim())) { setErrorMsg('전화번호 뒤 4자리를 입력해주세요.'); return; }
         if (mPw !== mPwConfirm) { setErrorMsg('비밀번호가 일치하지 않습니다.'); return; }
         if (mPw.length < 6) { setErrorMsg('비밀번호는 6자리 이상이어야 합니다.'); return; }
         setLoading(true);
-        await onMemberSignup({ name: mName.trim(), birthdate: mBirthdate.trim(), password: mPw, churchId: mChurchId, churchCode: mChurchCode.trim() });
+        await onMemberSignup({
+            name: mName.trim(),
+            birthdate: mBirthdate.trim(),
+            password: mPw,
+            churchId: mChurchId,
+            churchCode: mChurchCode.trim(),
+            phone4: mPhone4.trim(),
+        });
         setLoading(false);
     };
 
@@ -251,7 +278,17 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
         if (activeTab === 'member') return (
             <form onSubmit={handleMemberLogin} className="space-y-3.5">
                 {/* Church selector */}
-                <ChurchPicker value={loginChurchId} onChange={setLoginChurchId} label="출석 교회" />
+                <div className="space-y-2">
+                    <ChurchPicker value={isLoginUnaffiliated ? '' : loginChurchId} onChange={setLoginChurchId} label="출석 교회" />
+                    <button
+                        type="button"
+                        onClick={selectUnaffiliatedChurch}
+                        className={`w-full border rounded-lg px-3.5 py-2.5 text-left transition-colors ${isLoginUnaffiliated ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-cream border-hairline text-ink/60 hover:text-ink hover:border-ink/25'}`}
+                    >
+                        <span className="block text-sm font-semibold">소속 교회가 없어요</span>
+                        <span className="block text-[11px] mt-0.5">소속 교회가 없어도 개인 성도로 함께 읽을 수 있어요.</span>
+                    </button>
+                </div>
                 <div>
                     <label className="block text-[11px] font-semibold text-ink/55 mb-1.5 uppercase tracking-wide">이름</label>
                     <input type="text" value={loginName} onChange={e => setLoginName(e.target.value)} placeholder="홍길동" className={inputCls} />
@@ -261,6 +298,13 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                     <input type="text" inputMode="numeric" value={loginBirthdate} onChange={e => setLoginBirthdate(e.target.value.replace(/\D/g, ''))}
                         placeholder="19900101" maxLength={8} className={inputCls} />
                 </div>
+                {isLoginUnaffiliated && (
+                    <div>
+                        <label className="block text-[11px] font-semibold text-ink/55 mb-1.5 uppercase tracking-wide">전화번호 뒤 4자리</label>
+                        <input type="text" inputMode="numeric" value={loginPhone4} onChange={e => setLoginPhone4(e.target.value.replace(/\D/g, ''))}
+                            placeholder="1234" maxLength={4} className={inputCls} />
+                    </div>
+                )}
                 <div>
                     <label className="block text-[11px] font-semibold text-ink/55 mb-1.5 uppercase tracking-wide">비밀번호</label>
                     <input type="password" value={loginPw} onChange={e => setLoginPw(e.target.value)} placeholder="••••••••" className={inputCls} />
@@ -324,9 +368,24 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                 <input type="password" value={mPw} onChange={e => setMPw(e.target.value)} placeholder="비밀번호 (6자리 이상)" className={inputCls} />
                 <input type="password" value={mPwConfirm} onChange={e => setMPwConfirm(e.target.value)} placeholder="비밀번호 확인"
                     className={`w-full bg-cream border rounded-lg px-3.5 py-3 text-sm placeholder-ink/40 focus:outline-none focus:ring-2 transition-all font-sans ${mPwConfirm && mPw !== mPwConfirm ? 'border-red-400 focus:ring-red-400/40' : 'border-hairline focus:ring-accent/40 focus:border-accent/60'}`} />
-                <ChurchPicker value={mChurchId} onChange={setMChurchId} label="교회 선택" />
-                <input type="password" value={mChurchCode} onChange={e => setMChurchCode(e.target.value)}
-                    placeholder="교회 입장코드 (관리자에게 문의)" className={inputCls} />
+                <div className="space-y-2">
+                    <ChurchPicker value={isSignupUnaffiliated ? '' : mChurchId} onChange={setMChurchId} label="교회 선택" />
+                    <button
+                        type="button"
+                        onClick={selectUnaffiliatedChurch}
+                        className={`w-full border rounded-lg px-3.5 py-2.5 text-left transition-colors ${isSignupUnaffiliated ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-cream border-hairline text-ink/60 hover:text-ink hover:border-ink/25'}`}
+                    >
+                        <span className="block text-sm font-semibold">소속 교회가 없어요</span>
+                        <span className="block text-[11px] mt-0.5">소속 교회가 없어도 개인 성도로 함께 읽을 수 있어요.</span>
+                    </button>
+                </div>
+                {isSignupUnaffiliated ? (
+                    <input type="text" inputMode="numeric" value={mPhone4} onChange={e => setMPhone4(e.target.value.replace(/\D/g, ''))}
+                        placeholder="전화번호 뒤 4자리" maxLength={4} className={inputCls} />
+                ) : (
+                    <input type="password" value={mChurchCode} onChange={e => setMChurchCode(e.target.value)}
+                        placeholder="교회 입장코드 (관리자에게 문의)" className={inputCls} />
+                )}
                 {errorMsg && <p className="text-red-500 text-xs text-center py-1 bg-red-50 rounded-lg px-3">{errorMsg}</p>}
                 <button type="submit" disabled={loading}
                     className="w-full bg-ink text-cream font-semibold py-3.5 rounded-full text-sm flex items-center justify-center gap-2 hover:bg-ink/90 transition-colors disabled:opacity-50">
