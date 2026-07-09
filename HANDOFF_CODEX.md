@@ -138,7 +138,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
     - 숨김: 랭킹·소그룹·미니룸·달란트·메모·공지 — 전부 없음. 읽기+TTS+영상+진도만.
   - `src/App.jsx`: 라우팅 effect(현재 154행 부근)에서 `currentUser.role === 'guest'`이면 `setView('guest')` 분기를 **plan/dashboard 분기보다 먼저** 추가. 렌더링부에 `view === 'guest'` → `<GuestReaderView ... />` 추가. `handleLogout`은 게스트에도 그대로 동작(익명 계정은 버려짐 — 정상, localStorage는 유지).
 
-- [ ] **T9. 로그인 화면에 게스트 진입 버튼**
+- [x] **T9. 로그인 화면에 게스트 진입 버튼**
   - `LoginView.jsx` member 탭 하단에 "로그인 없이 바로 읽기" 버튼 → `auth.signInAnonymously()` 호출 (에러 시 errorMsg 표시 — 특히 콘솔에서 익명 provider 미활성화면 `auth/operation-not-allowed`가 나므로 "잠시 후 다시 시도해주세요. 문제가 계속되면 관리자에게 알려주세요" 문구).
   - 버튼을 누르면 T7의 onAuthStateChanged 경로로 자동으로 게스트 뷰에 진입한다 — 별도 setView 호출 불필요함을 확인할 것.
 
@@ -185,6 +185,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-09 | T6 게스트 진도 저장소 유틸 | `src/utils/guestStorage.js`, `HANDOFF_CODEX.md` | `getGuestState`/`saveGuestState`/`recordGuestRead`/`clearGuestMigrated` 추가. readDates 400개 제한 및 365일 순환 처리. `npm run build` 통과. |
 | 2026-07-09 | T7 게스트 세션 복원 | `src/hooks/useUserAuth.js`, `HANDOFF_CODEX.md` | Firebase 익명 사용자일 때 Firestore users 조회 없이 localStorage 게스트 상태로 currentUser 구성. `npm run build` 통과. |
 | 2026-07-09 | T8 GuestReaderView 신설 + 라우팅 | `src/components/GuestReaderView.jsx`, `src/components/dashboard/DailyVideoCard.jsx`, `src/components/LoginView.jsx`, `src/App.jsx`, `HANDOFF_CODEX.md` | 게스트 전용 읽기 화면/라우팅 추가, DailyVideoCard 게스트 모드는 localStorage 저장으로 분기. `npm run build` 통과. 실제 버튼 진입 검증은 T9 후 진행 예정. |
+| 2026-07-09 | T9 로그인 화면에 게스트 진입 버튼 | `src/components/LoginView.jsx`, `HANDOFF_CODEX.md` | `auth.signInAnonymously()` 버튼 추가 및 provider 비활성화 오류 문구 처리. `npm run build` 통과. Browser에서 버튼 렌더링/콘솔 무오류 확인. 실제 클릭 진입은 익명 계정 생성 부작용 및 M3 전제 때문에 미검증. |
 
 ---
 

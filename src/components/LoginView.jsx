@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { db } from '../utils/firebase';
+import { auth, authReady, db } from '../utils/firebase';
 import OrgEditor from './OrgEditor';
 import DemoTour from './DemoTour';
 import ReadingGuideModal from './modals/ReadingGuideModal';
@@ -250,6 +250,24 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
         setLoading(false);
     };
 
+    const handleGuestLogin = async () => {
+        setLoading(true);
+        clearError();
+        try {
+            await authReady;
+            await auth.signInAnonymously();
+        } catch (err) {
+            console.error('게스트 로그인 실패:', err);
+            if (err?.code === 'auth/operation-not-allowed') {
+                setErrorMsg('잠시 후 다시 시도해주세요. 문제가 계속되면 관리자에게 알려주세요.');
+            } else {
+                setErrorMsg('게스트 모드로 들어가지 못했습니다. 잠시 후 다시 시도해주세요.');
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleAdminStep1 = (e) => {
         e.preventDefault();
         if (!aName.trim() || !aEmail.trim() || !aPw || !aChurchName.trim() || !aPastorName.trim() || !aChurchCode.trim()) { setErrorMsg('모든 항목을 입력해주세요.'); return; }
@@ -326,6 +344,16 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                     <button type="button" onClick={() => setShowAdminContact(true)}
                         className="text-[11px] text-ink/40 hover:text-ink/60 transition-colors underline underline-offset-2">
                         비밀번호 문의
+                    </button>
+                </div>
+                <div className="pt-2 border-t border-hairline">
+                    <button
+                        type="button"
+                        onClick={handleGuestLogin}
+                        disabled={loading}
+                        className="w-full bg-cream-card border border-hairline text-ink font-semibold py-3 rounded-full text-sm hover:border-ink/25 hover:bg-cream transition-colors disabled:opacity-50"
+                    >
+                        로그인 없이 바로 읽기
                     </button>
                 </div>
             </form>
