@@ -28,7 +28,8 @@ import {
     MemoSection,
     SubgroupRankingCard,
     ReadingChampionSection,
-    KakaoChannelButton
+    KakaoChannelButton,
+    BibleQuizCard
 } from './dashboard';
 import TutorialOverlay from './TutorialOverlay';
 
@@ -376,6 +377,8 @@ const DashboardView = ({
                     </div>
 
                     <ReadingChampionSection getWeeklyMVP={getWeeklyMVP} />
+
+                    <BibleQuizCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
                 </main>
             </div>
 
