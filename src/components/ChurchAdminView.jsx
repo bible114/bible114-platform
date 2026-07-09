@@ -5,7 +5,17 @@ import ChurchAdminTutorial from './ChurchAdminTutorial';
 import { sha256 } from '../utils/crypto';
 import { syncChurchDirectoryEntry } from '../utils/churchDirectory';
 import { calculateSubgroupStats, computeAtRisk } from '../utils/statsUtils';
-import { StatCard, ProgressBar, DonutStat } from './admin';
+import { downloadCSV } from '../utils/exportUtils';
+import {
+    StatCard,
+    ProgressBar,
+    DonutStat,
+    AdminDataTable,
+    SlideOverPanel,
+    ConfirmDialog,
+    ToastContainer,
+    useToast,
+} from './admin';
 
 const SORT_OPTIONS = [
     { key: 'name',     label: '이름순' },
@@ -21,6 +31,12 @@ const formatReadDate = (dateStr) => {
     return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}.`;
 };
 
+const formatAnyDate = (value) => {
+    if (!value) return '-';
+    const raw = value?.toDate ? value.toDate() : value;
+    return formatReadDate(raw instanceof Date ? raw.toDateString() : raw);
+};
+
 // subgroups는 레거시 string("1구역") 또는 신 포맷({id, name}) 둘 다 지원
 const getSubId = (s) => (typeof s === 'string' ? s : s.id);
 const getSubName = (s) => (typeof s === 'string' ? s : s.name);
@@ -32,6 +48,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [loading, setLoading] = useState(true);
     const [tab, setTab] = useState('dashboard');
     const [showTutorial, setShowTutorial] = useState(false);
+    const toast = useToast();
 
     // 교인 관리
     const [sortBy, setSortBy] = useState('name');
@@ -39,6 +56,14 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [newPw, setNewPw] = useState('');
     const [sgCommId, setSgCommId] = useState('');
     const [sgSubId, setSgSubId] = useState('');
+    const [memberDepartmentFilter, setMemberDepartmentFilter] = useState('all');
+    const [memberReadFilter, setMemberReadFilter] = useState('all');
+    const [bulkCommId, setBulkCommId] = useState('');
+    const [bulkSubId, setBulkSubId] = useState('');
+    const [selectedMember, setSelectedMember] = useState(null);
+    const [memberHistory, setMemberHistory] = useState([]);
+    const [detailLoading, setDetailLoading] = useState(false);
+    const [confirmAction, setConfirmAction] = useState(null);
 
     // 공지사항
     const [announcement, setAnnouncement] = useState({ text: '', links: [{ url: '', text: '' }], enabled: false });
@@ -110,8 +135,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     };
 
     const changePassword = async (member) => {
-        if (!newPw || newPw.length < 6) { alert('비밀번호는 6자리 이상이어야 합니다.'); return; }
-        if (!confirm(`${member.name}님의 비밀번호를 변경하시겠습니까?\n\n새 비밀번호: ${newPw}`)) return;
+        if (!newPw || newPw.length < 6) { toast.error('비밀번호는 6자리 이상이어야 합니다.'); return; }
+        if (!confirm(`${member.name}님의 비밀번호를 변경하시겠습니까?`)) return;
         try {
             await db.collection('users').doc(member.uid).set({
                 password: newPw,
@@ -119,15 +144,15 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
             setMembers(prev => prev.map(m => m.uid === member.uid ? { ...m, password: newPw } : m));
-            alert(`✅ ${member.name}님의 비밀번호가 변경되었습니다!\n새 비밀번호: ${newPw}\n\n교인에게 직접 알려주세요.`);
+            toast.success(`${member.name}님의 비밀번호가 재설정되었습니다.`);
             setEditing(null);
         } catch (e) {
-            alert('변경 실패');
+            toast.error('비밀번호 변경에 실패했습니다.');
         }
     };
 
     const changeSubgroup = async (member) => {
-        if (!sgCommId || !sgSubId) { alert('부서와 소그룹을 모두 선택해주세요.'); return; }
+        if (!sgCommId || !sgSubId) { toast.error('부서와 소그룹을 모두 선택해주세요.'); return; }
         const comm = orgComms.find(c => c.id === sgCommId);
         if (!comm) return;
         // sgSubId 는 신 포맷에서는 sub.id, 레거시에서는 sub 이름 자체
@@ -147,13 +172,23 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     : m
             ));
             setEditing(null);
+            toast.success(`${member.name}님의 소그룹을 변경했습니다.`);
         } catch (e) {
-            alert('변경 실패');
+            toast.error('소그룹 변경에 실패했습니다.');
         }
     };
 
     const deleteMember = async (member) => {
-        if (!confirm(`${member.name}님을 교인 목록에서 삭제 처리하시겠습니까?\n\n계정은 보관되며 필요하면 다시 복원할 수 있습니다.`)) return;
+        setConfirmAction({
+            type: 'deleteMember',
+            member,
+            title: `${member.name}님을 삭제 처리할까요?`,
+            message: '계정은 보관되며 필요하면 다시 복원할 수 있습니다.',
+            danger: true,
+        });
+    };
+
+    const executeDeleteMember = async (member) => {
         try {
             const deletedData = {
                 isDeleted: true,
@@ -165,14 +200,24 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             setMembers(prev => prev.filter(m => m.uid !== member.uid));
             setDeletedMembers(prev => [{ ...member, ...deletedData }, ...prev]);
             if (editing?.uid === member.uid) setEditing(null);
+            if (selectedMember?.uid === member.uid) setSelectedMember(null);
+            toast.success(`${member.name}님을 삭제 처리했습니다.`);
         } catch (e) {
             console.error(e);
-            alert('삭제 실패: ' + (e.message || '잠시 후 다시 시도해주세요.'));
+            toast.error('삭제 처리에 실패했습니다.');
         }
     };
 
     const restoreMember = async (member) => {
-        if (!confirm(`${member.name}님을 교인 목록에 다시 복원하시겠습니까?`)) return;
+        setConfirmAction({
+            type: 'restoreMember',
+            member,
+            title: `${member.name}님을 복원할까요?`,
+            message: '복원하면 다시 교인 목록에 표시됩니다.',
+        });
+    };
+
+    const executeRestoreMember = async (member) => {
         try {
             await db.collection('users').doc(member.uid).set({
                 isDeleted: false,
@@ -182,9 +227,98 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             }, { merge: true });
             setDeletedMembers(prev => prev.filter(m => m.uid !== member.uid));
             setMembers(prev => [{ ...member, isDeleted: false, deletedAt: null, deletedBy: null }, ...prev]);
+            toast.success(`${member.name}님을 복원했습니다.`);
         } catch (e) {
             console.error(e);
-            alert('복원 실패: ' + (e.message || '잠시 후 다시 시도해주세요.'));
+            toast.error('복원에 실패했습니다.');
+        }
+    };
+
+    const generatePassword = () => String(Math.floor(100000 + Math.random() * 900000));
+
+    const getMemberSubgroupLabel = (member) => {
+        if (!member.subgroupId) return '미배정';
+        if (member.subgroupName) return member.subgroupName;
+        for (const comm of orgComms) {
+            const found = (comm.subgroups || []).find(s => getSubId(s) === member.subgroupId);
+            if (found) return getSubName(found);
+        }
+        return member.subgroupId;
+    };
+
+    const applySubgroupToMembers = async (targetMembers, commId, subId) => {
+        const comm = orgComms.find(c => c.id === commId);
+        const subEntry = (comm?.subgroups || []).find(s => getSubId(s) === subId);
+        if (!comm || !subEntry) {
+            toast.error('부서와 소그룹을 선택해주세요.');
+            return;
+        }
+        const subgroupName = getSubName(subEntry);
+        await Promise.all(targetMembers.map(member => db.collection('users').doc(member.uid).set({
+            departmentId: comm.id,
+            departmentName: comm.name,
+            subgroupId: subId,
+            subgroupName,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true })));
+        const ids = new Set(targetMembers.map(m => m.uid));
+        setMembers(prev => prev.map(m => ids.has(m.uid)
+            ? { ...m, departmentId: comm.id, departmentName: comm.name, subgroupId: subId, subgroupName }
+            : m
+        ));
+        setSelectedMember(prev => prev && ids.has(prev.uid)
+            ? { ...prev, departmentId: comm.id, departmentName: comm.name, subgroupId: subId, subgroupName }
+            : prev
+        );
+        toast.success(`${targetMembers.length}명의 소그룹을 변경했습니다.`);
+    };
+
+    const resetPasswordsForMembers = async (targetMembers) => {
+        const updates = targetMembers.map(member => ({ member, password: generatePassword() }));
+        await Promise.all(updates.map(({ member, password }) => db.collection('users').doc(member.uid).set({
+            password,
+            passwordResetRequired: true,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true })));
+        setMembers(prev => prev.map(m => {
+            const found = updates.find(u => u.member.uid === m.uid);
+            return found ? { ...m, password: found.password, passwordResetRequired: true } : m;
+        }));
+        toast.success(`${targetMembers.length}명의 비밀번호를 초기화했습니다.`);
+    };
+
+    const openMemberDetail = async (member) => {
+        setSelectedMember(member);
+        setMemberHistory([]);
+        setDetailLoading(true);
+        setSgCommId(member.departmentId || orgComms[0]?.id || '');
+        setSgSubId(member.subgroupId || '');
+        try {
+            const snap = await db.collection('users').doc(member.uid).collection('history')
+                .orderBy('date', 'desc').limit(10).get();
+            setMemberHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        } catch (e) {
+            setMemberHistory([]);
+            toast.warning('읽기 기록을 불러오지 못했습니다. 권한 규칙이 아직 열려 있지 않을 수 있습니다.');
+        } finally {
+            setDetailLoading(false);
+        }
+    };
+
+    const handleConfirmAction = async () => {
+        const action = confirmAction;
+        if (!action) return;
+        setConfirmAction(null);
+        try {
+            if (action.type === 'deleteMember') await executeDeleteMember(action.member);
+            if (action.type === 'restoreMember') await executeRestoreMember(action.member);
+            if (action.type === 'bulkSubgroup') await applySubgroupToMembers(action.members, action.commId, action.subId);
+            if (action.type === 'bulkPassword') await resetPasswordsForMembers(action.members);
+            if (action.type === 'singlePassword') await resetPasswordsForMembers([action.member]);
+            action.after?.();
+        } catch (e) {
+            console.error(e);
+            toast.error('작업 처리 중 오류가 발생했습니다.');
         }
     };
 
@@ -371,6 +505,62 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         return 0;
     });
 
+    const filteredMembers = sortedMembers.filter(member => {
+        const departmentMatch = memberDepartmentFilter === 'all' || member.departmentId === memberDepartmentFilter;
+        const days = daysSinceRead(member.lastReadDate);
+        const readMatch =
+            memberReadFilter === 'all' ||
+            (memberReadFilter === 'today' && member.lastReadDate === todayStr) ||
+            (memberReadFilter === 'unread' && member.lastReadDate !== todayStr) ||
+            (memberReadFilter === 'risk7' && (days === null || days >= 7));
+        return departmentMatch && readMatch;
+    });
+
+    const memberColumns = [
+        {
+            key: 'name',
+            header: '이름',
+            render: m => (
+                <div>
+                    <p className="font-black text-slate-800">{m.name}</p>
+                    <p className="text-xs text-slate-400">{m.birthdate || '-'}</p>
+                </div>
+            ),
+            searchValue: m => `${m.name || ''} ${m.birthdate || ''}`,
+        },
+        {
+            key: 'departmentName',
+            header: '부서/소그룹',
+            render: m => (
+                <div>
+                    <p className="font-bold text-slate-700">{m.departmentName || '-'}</p>
+                    <p className="text-xs text-slate-400">{getMemberSubgroupLabel(m)}</p>
+                </div>
+            ),
+            searchValue: m => `${m.departmentName || ''} ${getMemberSubgroupLabel(m)}`,
+        },
+        {
+            key: 'progress',
+            header: '진행',
+            render: m => `DAY ${getTotalProgressDay(m)}`,
+            sortValue: getTotalProgressDay,
+        },
+        {
+            key: 'streak',
+            header: '연속',
+            render: m => `${m.streak || 0}일`,
+            sortValue: m => m.streak || 0,
+        },
+        {
+            key: 'lastReadDate',
+            header: '읽기상태',
+            render: m => m.lastReadDate === todayStr
+                ? <span className="text-green-600 font-black">오늘</span>
+                : <span className="text-slate-400">{formatReadDate(m.lastReadDate)}</span>,
+            sortValue: m => m.lastReadDate || '',
+        },
+    ];
+
     const TABS = [
         ['dashboard', '📊 대시보드'],
         ['members', '👥 교인 관리'],
@@ -425,7 +615,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                         <div className="space-y-2">
                             <p className="text-xs font-bold text-blue-600">비밀번호 변경 — {m.name}
                                 <span className="ml-2 font-normal text-slate-400">
-                                    현재: <span className="font-mono">{m.password || '알 수 없음'}</span>
+                                    새 비밀번호를 입력하면 다음 로그인 때 적용됩니다.
                                 </span>
                             </p>
                             <div className="flex flex-wrap gap-2">
@@ -703,21 +893,22 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
                         {/* ── 교인 관리 ── */}
                         {tab === 'members' && (
-                            <div>
-                                {/* 헤더 */}
-                                <div className="flex items-center justify-between mb-4">
-                                    <h2 className="font-bold text-slate-700 flex items-center gap-2 text-base">
-                                        👥 전체 회원 목록
-                                        <span className="text-sm font-normal text-slate-400">({members.length}명)</span>
-                                    </h2>
-                                    <div id="admin-tut-sort-options" className="flex gap-1">
-                                        {SORT_OPTIONS.map(({ key, label }) => (
-                                            <button key={key} onClick={() => setSortBy(key)}
-                                                className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all ${sortBy === key ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:border-blue-200'}`}>
-                                                {label}
-                                            </button>
-                                        ))}
+                            <div className="space-y-5">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                                    <div>
+                                        <h2 className="font-black text-slate-800 flex items-center gap-2 text-lg">
+                                            👥 교인 관리
+                                            <span className="text-sm font-bold text-slate-400">전체 {members.length}명</span>
+                                        </h2>
+                                        <p className="text-xs text-slate-400 mt-1">행을 누르면 최근 기록과 관리 작업을 한 번에 볼 수 있습니다.</p>
                                     </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => downloadCSV(filteredMembers)}
+                                        className="self-start sm:self-auto rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-black text-white hover:bg-emerald-700"
+                                    >
+                                        CSV 내보내기
+                                    </button>
                                 </div>
 
                                 {members.length === 0 ? (
@@ -726,41 +917,109 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                         <p>아직 가입한 교인이 없습니다</p>
                                     </div>
                                 ) : (
-                                    <div id="admin-tut-member-list" className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full">
-                                                <thead>
-                                                    <tr className="border-b border-slate-100 bg-slate-50/50">
-                                                        <th className="px-4 py-3 text-left text-xs text-slate-400 font-bold w-8">#</th>
-                                                        <th className="px-4 py-3 text-left text-xs text-slate-400 font-bold">이름</th>
-                                                        <th className="px-4 py-3 text-left text-xs text-slate-400 font-bold">부서/소그룹</th>
-                                                        <th className="px-4 py-3 text-center text-xs text-slate-400 font-bold">DAY</th>
-                                                        <th className="px-4 py-3 text-center text-xs text-slate-400 font-bold">점수</th>
-                                                        <th className="px-4 py-3 text-center text-xs text-slate-400 font-bold">마지막읽은날</th>
-                                                        <th id="admin-tut-manage-btns" className="px-4 py-3 text-center text-xs text-slate-400 font-bold">관리</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {sortBy === 'subgroup'
-                                                        ? subgroupGroups.map(group => (
-                                                            <React.Fragment key={group.key}>
-                                                                {/* 소그룹 구분 행 */}
-                                                                <tr className="bg-indigo-50 border-b border-indigo-100">
-                                                                    <td colSpan="7" className="px-4 py-2">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <span className="text-xs font-bold text-indigo-700">{group.label}</span>
-                                                                            <span className="text-[10px] bg-indigo-100 text-indigo-500 px-2 py-0.5 rounded-full font-bold">{group.members.length}명</span>
-                                                                        </div>
-                                                                    </td>
-                                                                </tr>
-                                                                {group.members.map((m, idx) => renderMemberRow(m, idx))}
-                                                            </React.Fragment>
-                                                        ))
-                                                        : sortedMembers.map((m, idx) => renderMemberRow(m, idx))
-                                                    }
-                                                </tbody>
-                                            </table>
+                                    <div id="admin-tut-member-list" className="space-y-3">
+                                        <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                                            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                                                <label className="text-xs font-black text-slate-500">
+                                                    부서
+                                                    <select
+                                                        value={memberDepartmentFilter}
+                                                        onChange={e => setMemberDepartmentFilter(e.target.value)}
+                                                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-700"
+                                                    >
+                                                        <option value="all">전체 부서</option>
+                                                        {orgComms.map(comm => <option key={comm.id} value={comm.id}>{comm.name}</option>)}
+                                                    </select>
+                                                </label>
+                                                <label className="text-xs font-black text-slate-500">
+                                                    읽기 상태
+                                                    <select
+                                                        value={memberReadFilter}
+                                                        onChange={e => setMemberReadFilter(e.target.value)}
+                                                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-700"
+                                                    >
+                                                        <option value="all">전체 상태</option>
+                                                        <option value="today">오늘 읽음</option>
+                                                        <option value="unread">오늘 미독</option>
+                                                        <option value="risk7">7일 이상 미독/기록 없음</option>
+                                                    </select>
+                                                </label>
+                                                <div className="rounded-xl bg-slate-50 px-4 py-3">
+                                                    <p className="text-xs font-black text-slate-400">현재 표시</p>
+                                                    <p className="mt-1 text-xl font-black text-slate-800">{filteredMembers.length}명</p>
+                                                </div>
+                                            </div>
                                         </div>
+
+                                        <AdminDataTable
+                                            columns={memberColumns}
+                                            rows={filteredMembers}
+                                            getRowId={row => row.uid}
+                                            searchPlaceholder="이름, 생년월일, 부서, 소그룹 검색"
+                                            selectable
+                                            initialSortKey="name"
+                                            emptyMessage="조건에 맞는 교인이 없습니다."
+                                            onRowClick={openMemberDetail}
+                                            renderSelectionActions={({ selectedRows, clearSelection }) => {
+                                                const bulkComm = orgComms.find(c => c.id === bulkCommId);
+                                                const canChangeSubgroup = Boolean(bulkCommId && bulkSubId);
+                                                return (
+                                                    <>
+                                                        <select
+                                                            value={bulkCommId}
+                                                            onChange={e => { setBulkCommId(e.target.value); setBulkSubId(''); }}
+                                                            className="rounded-lg border border-indigo-100 bg-white px-3 py-2 text-xs font-bold text-indigo-800"
+                                                        >
+                                                            <option value="">부서 선택</option>
+                                                            {orgComms.map(comm => <option key={comm.id} value={comm.id}>{comm.name}</option>)}
+                                                        </select>
+                                                        <select
+                                                            value={bulkSubId}
+                                                            onChange={e => setBulkSubId(e.target.value)}
+                                                            disabled={!bulkCommId}
+                                                            className="rounded-lg border border-indigo-100 bg-white px-3 py-2 text-xs font-bold text-indigo-800 disabled:opacity-50"
+                                                        >
+                                                            <option value="">소그룹 선택</option>
+                                                            {(bulkComm?.subgroups || []).map((sub, index) => {
+                                                                const subId = getSubId(sub);
+                                                                return <option key={subId || index} value={subId}>{getSubName(sub)}</option>;
+                                                            })}
+                                                        </select>
+                                                        <button
+                                                            type="button"
+                                                            disabled={!canChangeSubgroup}
+                                                            onClick={() => setConfirmAction({
+                                                                type: 'bulkSubgroup',
+                                                                members: selectedRows,
+                                                                commId: bulkCommId,
+                                                                subId: bulkSubId,
+                                                                title: `${selectedRows.length}명의 소그룹을 변경할까요?`,
+                                                                message: '선택한 교인의 부서/소그룹 배정을 한 번에 변경합니다.',
+                                                                after: clearSelection,
+                                                            })}
+                                                            className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-black text-white disabled:opacity-40"
+                                                        >
+                                                            일괄 배정
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setConfirmAction({
+                                                                type: 'bulkPassword',
+                                                                members: selectedRows,
+                                                                title: `${selectedRows.length}명의 비밀번호를 초기화할까요?`,
+                                                                message: '각 교인에게 6자리 임시 비밀번호가 새로 발급됩니다. 평문 비밀번호는 화면에 표시하지 않습니다.',
+                                                                danger: true,
+                                                                confirmLabel: '초기화',
+                                                                after: clearSelection,
+                                                            })}
+                                                            className="rounded-lg bg-red-600 px-3 py-2 text-xs font-black text-white"
+                                                        >
+                                                            비밀번호 초기화
+                                                        </button>
+                                                    </>
+                                                );
+                                            }}
+                                        />
                                     </div>
                                 )}
                                 {deletedMembers.length > 0 && (
@@ -959,6 +1218,146 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     </>
                 )}
             </div>
+
+            <SlideOverPanel
+                open={!!selectedMember}
+                title={selectedMember?.name}
+                subtitle={selectedMember ? `${selectedMember.departmentName || '미배정'} · ${getMemberSubgroupLabel(selectedMember)}` : ''}
+                onClose={() => setSelectedMember(null)}
+                footer={selectedMember && (
+                    <div className="flex flex-wrap justify-end gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setSelectedMember(null)}
+                            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-600"
+                        >
+                            닫기
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setConfirmAction({
+                                type: 'singlePassword',
+                                member: selectedMember,
+                                title: `${selectedMember.name}님의 비밀번호를 초기화할까요?`,
+                                message: '6자리 임시 비밀번호가 새로 발급됩니다. 평문 비밀번호는 화면에 표시하지 않습니다.',
+                                danger: true,
+                                confirmLabel: '초기화',
+                            })}
+                            className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white"
+                        >
+                            비밀번호 초기화
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => deleteMember(selectedMember)}
+                            className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-black text-white"
+                        >
+                            삭제 처리
+                        </button>
+                    </div>
+                )}
+            >
+                {selectedMember && (
+                    <div className="space-y-5">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="rounded-2xl bg-slate-50 p-4">
+                                <p className="text-xs font-black text-slate-400">진행</p>
+                                <p className="mt-1 text-2xl font-black text-slate-900">DAY {getTotalProgressDay(selectedMember)}</p>
+                                <p className="mt-1 text-xs font-bold text-slate-400">{selectedMember.readCount || 1}독째</p>
+                            </div>
+                            <div className="rounded-2xl bg-slate-50 p-4">
+                                <p className="text-xs font-black text-slate-400">점수/연속</p>
+                                <p className="mt-1 text-2xl font-black text-slate-900">{selectedMember.score || 0}점</p>
+                                <p className="mt-1 text-xs font-bold text-slate-400">{selectedMember.streak || 0}일 연속</p>
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-100 p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <p className="text-sm font-black text-slate-800">최근 읽기 상태</p>
+                                    <p className="text-xs font-bold text-slate-400">마지막 읽기: {formatReadDate(selectedMember.lastReadDate)}</p>
+                                </div>
+                                <span className={`rounded-full px-3 py-1 text-xs font-black ${selectedMember.lastReadDate === todayStr ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                                    {selectedMember.lastReadDate === todayStr ? '오늘 읽음' : '오늘 미독'}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-100 p-4">
+                            <p className="mb-3 text-sm font-black text-slate-800">소그룹 배정</p>
+                            {orgComms.length === 0 ? (
+                                <p className="text-xs font-bold text-slate-400">먼저 조직 탭에서 부서/소그룹을 만들어주세요.</p>
+                            ) : (
+                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                                    <select
+                                        value={sgCommId}
+                                        onChange={e => { setSgCommId(e.target.value); setSgSubId(''); }}
+                                        className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-700"
+                                    >
+                                        <option value="">부서 선택</option>
+                                        {orgComms.map(comm => <option key={comm.id} value={comm.id}>{comm.name}</option>)}
+                                    </select>
+                                    <select
+                                        value={sgSubId}
+                                        onChange={e => setSgSubId(e.target.value)}
+                                        disabled={!sgCommId}
+                                        className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-50"
+                                    >
+                                        <option value="">소그룹 선택</option>
+                                        {(sgComm?.subgroups || []).map((sub, index) => {
+                                            const subId = getSubId(sub);
+                                            return <option key={subId || index} value={subId}>{getSubName(sub)}</option>;
+                                        })}
+                                    </select>
+                                    <button
+                                        type="button"
+                                        onClick={() => applySubgroupToMembers([selectedMember], sgCommId, sgSubId)}
+                                        className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white"
+                                    >
+                                        저장
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-100 p-4">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                                <p className="text-sm font-black text-slate-800">최근 읽기 기록</p>
+                                <span className="text-xs font-bold text-slate-400">최대 10개</span>
+                            </div>
+                            {detailLoading ? (
+                                <p className="py-8 text-center text-xs font-bold text-slate-300">기록을 불러오는 중...</p>
+                            ) : memberHistory.length === 0 ? (
+                                <p className="py-8 text-center text-xs font-bold text-slate-300">표시할 기록이 없거나 권한 규칙이 아직 열려 있지 않습니다.</p>
+                            ) : (
+                                <div className="divide-y divide-slate-100">
+                                    {memberHistory.map(item => (
+                                        <div key={item.id} className="flex items-center justify-between gap-3 py-3">
+                                            <div>
+                                                <p className="text-sm font-black text-slate-700">DAY {item.day || item.currentDay || '-'}</p>
+                                                <p className="text-xs font-bold text-slate-400">{formatAnyDate(item.date || item.createdAt || item.ts)}</p>
+                                            </div>
+                                            <span className="text-xs font-black text-slate-500">{item.score ? `${item.score}점` : ''}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </SlideOverPanel>
+
+            <ConfirmDialog
+                open={!!confirmAction}
+                title={confirmAction?.title}
+                message={confirmAction?.message}
+                danger={confirmAction?.danger}
+                confirmLabel={confirmAction?.confirmLabel || '확인'}
+                onConfirm={handleConfirmAction}
+                onCancel={() => setConfirmAction(null)}
+            />
+            <ToastContainer toasts={toast.toasts} onClose={toast.removeToast} />
 
             {showTutorial && (
                 <ChurchAdminTutorial

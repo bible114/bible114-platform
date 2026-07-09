@@ -195,6 +195,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-09 | T13 단순 공통 관리자 컴포넌트 | `src/components/admin/StatCard.jsx`, `src/components/admin/ConfirmDialog.jsx`, `src/components/admin/Toast.jsx`, `src/components/admin/ProgressBar.jsx`, `src/components/admin/DonutStat.jsx`, `src/components/admin/index.js`, `HANDOFF_CODEX.md` | Phase A 기본 컴포넌트 신설. 화면 연결은 다음 작업에서 수행. `npm run build` 통과. |
 | 2026-07-09 | T14 AdminDataTable + SlideOverPanel | `src/components/admin/AdminDataTable.jsx`, `src/components/admin/SlideOverPanel.jsx`, `src/components/admin/index.js`, `HANDOFF_CODEX.md` | 검색/정렬/50개 페이지네이션/다중 선택/모바일 카드형 테이블과 우측 슬라이드 패널 신설. `npm run build` 통과. |
 | 2026-07-09 | T15 교회 관리자 대시보드 탭 | `src/components/ChurchAdminView.jsx`, `src/utils/statsUtils.js`, `HANDOFF_CODEX.md` | 기본 탭을 대시보드로 변경, StatCard/부서별 현황/관심 필요 명단/스트릭 Top 5 추가, `computeAtRisk` 신설. history 직접 시간대 집계는 현 rules상 churchAdmin history read가 없어 폴백 표기. `npm run build` 통과. |
+| 2026-07-09 | T16 교인 관리 탭 개편 | `src/components/ChurchAdminView.jsx`, `HANDOFF_CODEX.md` | AdminDataTable 적용, 부서/읽기상태 필터, CSV 내보내기, 일괄 소그룹 배정/비밀번호 초기화, SlideOver 상세, Toast/ConfirmDialog 연결, 비밀번호 평문 표시 제거. `npm run build` 통과. 실제 Firestore 쓰기 작업은 운영 데이터 변경 부작용 때문에 미검증. |
 
 ---
 
@@ -209,7 +210,8 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - 리뷰 포인트: `DailyVideoCard`는 게스트 모드에서 users 문서 쓰기를 하지 않도록 분기했음. `GuestReaderView`는 DashboardView를 재사용하지 않고 읽기/TTS/영상/진도만 포함. `firestore.rules`는 지정된 네 쓰기 규칙만 `isRealUser()`로 교체했고 `users` read와 `dailyVideos` create는 유지.
 
 2026-07-09 Codex 라운드2:
-- T12~T15 완료. T15의 "어제 이 시각" 직접 집계는 현재 `users/{uid}/history` read 규칙상 churchAdmin이 읽을 수 없어 구현하지 않고, `lastReadDate` 기반 "오늘 누적 vs 어제 최종" 폴백 표기로 대시보드에 반영함. firestore.rules 수정 금지 제약 때문에 규칙 변경은 하지 않음.
+- T12~T16 완료. T15의 "어제 이 시각" 직접 집계는 현재 `users/{uid}/history` read 규칙상 churchAdmin이 읽을 수 없어 구현하지 않고, `lastReadDate` 기반 "오늘 누적 vs 어제 최종" 폴백 표기로 대시보드에 반영함. T16의 SlideOver 최근 기록도 같은 권한 제약으로 실패 시 안내 토스트/빈 상태를 표시한다. firestore.rules 수정 금지 제약 때문에 규칙 변경은 하지 않음.
+- T16의 일괄 소그룹 배정/비밀번호 초기화/삭제/복원은 실제 운영 Firestore 문서를 바꾸는 작업이라 로컬에서 클릭 실행 검증하지 않았고, `npm run build`로 컴파일 검증만 완료.
 
 ---
 
@@ -239,7 +241,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - [x] **T15. Phase B-2 — 교회 관리자 대시보드 탭 (신규·기본 탭)**
   - `ChurchAdminView.jsx` 탭 구조를 `대시보드/교인 관리/조직/공지/설정`으로. 대시보드 구성은 플랜 B-2 절 그대로: StatCard 4개(오늘 진도는 "어제 이 시각 대비" — ts 데이터 없는 과거분은 "오늘 누적 vs 어제 최종" 대체 표기), 부서별 현황 카드(기존 `calculateSubgroupStats` 재사용), 관심 필요 명단 3종(`statsUtils.js`에 `computeAtRisk(members, todayStr)` 신설), 스트릭 Top 5.
   - 시간대 비교의 집계 문서 도입은 하지 말 것 — 1차는 직접 집계 (플랜에 명시).
-- [ ] **T16. Phase B-3/B-4 — 교인 관리 탭 개편**
+- [x] **T16. Phase B-3/B-4 — 교인 관리 탭 개편**
   - AdminDataTable 적용: 검색/부서 필터/읽기상태 필터/CSV 내보내기(기존 `downloadCSV` 재사용)/페이지네이션.
   - 다중 선택 → 일괄 소그룹 배정, 일괄 비밀번호 초기화(ConfirmDialog 필수).
   - 행 클릭 → SlideOver 상세(진행 요약 + history 최근 N건 + 소그룹 변경/비번 재설정/삭제).
