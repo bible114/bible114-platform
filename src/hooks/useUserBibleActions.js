@@ -87,7 +87,12 @@ export const useUserBibleActions = (
                     else if (diffDays === 0) newStreak = data.streak || 0;
                 }
 
-                const historyItem = { date: todayStr, day: vDay, score: addedScore };
+                const historyItem = {
+                    date: todayStr,
+                    day: vDay,
+                    score: addedScore,
+                    ts: firebase.firestore.FieldValue.serverTimestamp()
+                };
                 const updateData = {
                     currentDay: newProgressDay,
                     readCount: newReadCount,

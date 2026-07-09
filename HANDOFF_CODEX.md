@@ -7,7 +7,10 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-1. 아래 **작업 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
+> **현재 활성 작업: "🔁 라운드 2" 섹션의 체크리스트 (T12~T16).** 라운드 1(T1~T11)은 완료·리뷰 통과됨.
+> 라운드 1의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
+
+1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
 2. 작업 하나를 끝내면:
    - 체크박스를 `[x]`로 바꾸고,
    - **작업 로그** 표에 한 줄 추가하고 (날짜 / 작업번호 / 변경 파일 / 특이사항),
@@ -188,6 +191,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-09 | T9 로그인 화면에 게스트 진입 버튼 | `src/components/LoginView.jsx`, `HANDOFF_CODEX.md` | `auth.signInAnonymously()` 버튼 추가 및 provider 비활성화 오류 문구 처리. `npm run build` 통과. Browser에서 버튼 렌더링/콘솔 무오류 확인. 실제 클릭 진입은 익명 계정 생성 부작용 및 M3 전제 때문에 미검증. |
 | 2026-07-09 | T10 게스트 → 가입 시 진도 이관 | `src/hooks/useAuth.js`, `src/components/LoginView.jsx`, `HANDOFF_CODEX.md` | 게스트 readDates가 있고 migratedAt이 없으면 가입 문서의 currentDay/streak/lastReadDate만 시드, score/talent는 0 유지. 가입 화면 이관 예고 문구 추가. `npm run build` 통과. 실제 Firebase 가입 이관은 테스트 데이터 생성 부작용 때문에 미검증. |
 | 2026-07-09 | T11 관리자 교회 이동 기능 | `src/App.jsx`, `src/components/PlatformAdminView.jsx`, `HANDOFF_CODEX.md` | 플랫폼 관리자 회원 편집에 교회 선택 추가. 교회 변경 시 부서/소그룹 필드 null 리셋, 저장 시 churchId/churchName 포함. `npm run build` 통과. 실제 Firestore 회원 이동은 운영 데이터 변경 부작용 때문에 미검증. |
+| 2026-07-09 | T12 history ts 필드 추가 | `src/hooks/useUserBibleActions.js`, `HANDOFF_CODEX.md` | historyItem에 `ts: firebase.firestore.FieldValue.serverTimestamp()`만 추가. 기존 `date` 필드 유지. `npm run build` 통과. |
 
 ---
 
@@ -200,6 +204,49 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - 설계와 다르게 한 점: 실제 Firebase 가입/익명 로그인/회원 교회 이동은 운영 데이터 생성·변경 부작용이 있어 실행 검증하지 않고 미검증으로 로그에 남김. Browser 검증은 UI 렌더링 중심으로 수행.
 - 질문/막힌 것: 없음. 단, M1(무소속 가상 교회 생성 버튼 클릭), M2(firestore.rules 배포), M3(익명 인증 활성화), M4(gh-pages 배포)는 사용자 수동 작업으로 남아 있음.
 - 리뷰 포인트: `DailyVideoCard`는 게스트 모드에서 users 문서 쓰기를 하지 않도록 분기했음. `GuestReaderView`는 DashboardView를 재사용하지 않고 읽기/TTS/영상/진도만 포함. `firestore.rules`는 지정된 네 쓰기 규칙만 `isRealUser()`로 교체했고 `users` read와 `dailyVideos` create는 유지.
+
+---
+
+## 🔁 라운드 2 — 관리자 화면 개편 (2026-07-09 위임)
+
+> 라운드 1(무소속+게스트)은 전부 완료·리뷰 통과. 아래가 새 작업이다. 작업 프로토콜은 문서 상단과 동일 (순서대로, 작업당 커밋, 빌드 통과, 로그 기록).
+> **상세 설계는 저장소 루트 `ADMIN_IMPROVEMENT_PLAN.md`** — 각 작업의 세부 스펙은 그 문서의 해당 Phase 절을 읽고 따를 것. 이 체크리스트는 순서와 완료 기준만 정의한다.
+
+### 라운드 2 추가 제약 (라운드 1 금지사항에 더해)
+
+- **firestore.rules를 한 줄도 수정하지 말 것.** `users` read 규칙(랭킹 버그)은 Claude가 별도 세션에서 병행 작업 중이라 충돌 위험이 있다. 규칙 변경이 필요해 보이면 메모란에 적고 넘어가라. (참고: ADMIN_IMPROVEMENT_PLAN의 adminActions 규칙은 Phase C 몫이라 이번 라운드에 없음.)
+- 외부 차트 라이브러리 추가 금지 — 막대/도넛은 CSS/SVG 자작 (플랜 원칙).
+- `users.password` 평문 **필드**는 유지. 단 B-3의 "편집 화면에서 기존 비밀번호 값 노출 제거"는 UI 표시만 없애는 것이므로 수행할 것 (재설정 기능은 제공).
+- `src/utils/statsUtils.js`에 `computeAtRisk` 추가는 허용. 그 외 기존 통계 함수 시그니처는 바꾸지 말 것.
+
+### 라운드 2 체크리스트
+
+- [x] **T12. Phase 0 — history에 ts 필드 추가**
+  - `src/hooks/useUserBibleActions.js`의 handleRead 트랜잭션에서 historyItem에 `ts: firebase.firestore.FieldValue.serverTimestamp()` 한 필드 추가. 기존 `date` 필드는 그대로 유지 (하위호환).
+  - 완료 기준: 빌드 통과, 기존 읽기 흐름 코드 다른 변경 없음.
+- [ ] **T13. Phase A(1) — 단순 공통 컴포넌트**
+  - `src/components/admin/` 신설: `StatCard.jsx`, `ConfirmDialog.jsx`, `Toast.jsx`(+`useToast`), `ProgressBar.jsx`, `DonutStat.jsx`. 스펙은 플랜 Phase A 참고.
+  - 아직 어디에도 연결하지 않아도 됨 (다음 작업들이 소비).
+- [ ] **T14. Phase A(2) — AdminDataTable + SlideOverPanel**
+  - `AdminDataTable.jsx`: columns/rows props, 내장 검색, 헤더 클릭 정렬, 페이지네이션(50/page), 다중선택 checkbox + 선택 액션바 slot, 행 클릭 콜백, 모바일 카드형 전환.
+  - `SlideOverPanel.jsx`: 우측 슬라이드 패널, 모바일 전체화면 시트.
+- [ ] **T15. Phase B-2 — 교회 관리자 대시보드 탭 (신규·기본 탭)**
+  - `ChurchAdminView.jsx` 탭 구조를 `대시보드/교인 관리/조직/공지/설정`으로. 대시보드 구성은 플랜 B-2 절 그대로: StatCard 4개(오늘 진도는 "어제 이 시각 대비" — ts 데이터 없는 과거분은 "오늘 누적 vs 어제 최종" 대체 표기), 부서별 현황 카드(기존 `calculateSubgroupStats` 재사용), 관심 필요 명단 3종(`statsUtils.js`에 `computeAtRisk(members, todayStr)` 신설), 스트릭 Top 5.
+  - 시간대 비교의 집계 문서 도입은 하지 말 것 — 1차는 직접 집계 (플랜에 명시).
+- [ ] **T16. Phase B-3/B-4 — 교인 관리 탭 개편**
+  - AdminDataTable 적용: 검색/부서 필터/읽기상태 필터/CSV 내보내기(기존 `downloadCSV` 재사용)/페이지네이션.
+  - 다중 선택 → 일괄 소그룹 배정, 일괄 비밀번호 초기화(ConfirmDialog 필수).
+  - 행 클릭 → SlideOver 상세(진행 요약 + history 최근 N건 + 소그룹 변경/비번 재설정/삭제).
+  - 편집 UI의 비밀번호 평문 표시 제거(재설정만). 모든 저장/삭제에 Toast.
+  - 완료 기준: 플랜 하단 "검수 기준" 중 교회 관리자 항목 4개가 로컬 dev에서 눈으로 확인됨 (실데이터 변경 없는 범위에서, 불가하면 로그에 미검증 명시).
+
+Phase C(플랫폼 관리자)·D·E는 라운드 3에서 — 이번에 손대지 말 것.
+
+---
+
+## ✅ Claude 리뷰 결과 (2026-07-09)
+
+T1~T11 전체 diff 검토 완료 — 설계 결정 4가지(가상 교회/익명 인증/localStorage 전용/클라이언트 상수) 모두 준수, 규칙 교체 4곳 정확, 진도 이관에서 score/talent 0 유지 확인, `npm run build` 통과 재확인. 블로킹 이슈 없음. 남은 것은 수동 작업 M1~M4와 실환경 검증 체크리스트뿐.
 
 ---
 
