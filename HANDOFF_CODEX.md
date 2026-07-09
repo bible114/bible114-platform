@@ -193,6 +193,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-09 | T11 관리자 교회 이동 기능 | `src/App.jsx`, `src/components/PlatformAdminView.jsx`, `HANDOFF_CODEX.md` | 플랫폼 관리자 회원 편집에 교회 선택 추가. 교회 변경 시 부서/소그룹 필드 null 리셋, 저장 시 churchId/churchName 포함. `npm run build` 통과. 실제 Firestore 회원 이동은 운영 데이터 변경 부작용 때문에 미검증. |
 | 2026-07-09 | T12 history ts 필드 추가 | `src/hooks/useUserBibleActions.js`, `HANDOFF_CODEX.md` | historyItem에 `ts: firebase.firestore.FieldValue.serverTimestamp()`만 추가. 기존 `date` 필드 유지. `npm run build` 통과. |
 | 2026-07-09 | T13 단순 공통 관리자 컴포넌트 | `src/components/admin/StatCard.jsx`, `src/components/admin/ConfirmDialog.jsx`, `src/components/admin/Toast.jsx`, `src/components/admin/ProgressBar.jsx`, `src/components/admin/DonutStat.jsx`, `src/components/admin/index.js`, `HANDOFF_CODEX.md` | Phase A 기본 컴포넌트 신설. 화면 연결은 다음 작업에서 수행. `npm run build` 통과. |
+| 2026-07-09 | T14 AdminDataTable + SlideOverPanel | `src/components/admin/AdminDataTable.jsx`, `src/components/admin/SlideOverPanel.jsx`, `src/components/admin/index.js`, `HANDOFF_CODEX.md` | 검색/정렬/50개 페이지네이션/다중 선택/모바일 카드형 테이블과 우측 슬라이드 패널 신설. `npm run build` 통과. |
 
 ---
 
@@ -228,7 +229,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - [x] **T13. Phase A(1) — 단순 공통 컴포넌트**
   - `src/components/admin/` 신설: `StatCard.jsx`, `ConfirmDialog.jsx`, `Toast.jsx`(+`useToast`), `ProgressBar.jsx`, `DonutStat.jsx`. 스펙은 플랜 Phase A 참고.
   - 아직 어디에도 연결하지 않아도 됨 (다음 작업들이 소비).
-- [ ] **T14. Phase A(2) — AdminDataTable + SlideOverPanel**
+- [x] **T14. Phase A(2) — AdminDataTable + SlideOverPanel**
   - `AdminDataTable.jsx`: columns/rows props, 내장 검색, 헤더 클릭 정렬, 페이지네이션(50/page), 다중선택 checkbox + 선택 액션바 slot, 행 클릭 콜백, 모바일 카드형 전환.
   - `SlideOverPanel.jsx`: 우측 슬라이드 패널, 모바일 전체화면 시트.
 - [ ] **T15. Phase B-2 — 교회 관리자 대시보드 탭 (신규·기본 탭)**
