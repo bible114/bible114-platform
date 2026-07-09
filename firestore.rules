@@ -5,6 +5,10 @@ service cloud.firestore {
     function isSignedIn() {
       return request.auth != null;
     }
+    function isRealUser() {
+      return isSignedIn() &&
+        request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
     function myData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
@@ -33,7 +37,7 @@ service cloud.firestore {
       allow read: if request.auth.uid == uid ||
         (isSignedIn() && isChurchAdmin(resource.data.churchId)) ||
         isPlatformAdmin();
-      allow create: if isSignedIn() && request.auth.uid == uid &&
+      allow create: if isRealUser() && request.auth.uid == uid &&
         request.resource.data.role in ['member', 'churchAdmin'];
       // 본인 수정은 role/churchId "값"을 바꿀 수 없다 (권한 상승 차단).
       // affectedKeys()는 값이 실제로 바뀐 필드만 보고하므로, 기존 값과 동일한 role/churchId를
@@ -57,7 +61,7 @@ service cloud.firestore {
     // 교회 문서 (Phase 3: 가입 전 조회는 settings/churchDirectory 공개 문서로 대체 → 인증 필수로 축소)
     match /churches/{churchId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn();
+      allow create: if isRealUser();
       allow update: if isChurchAdmin(churchId) || isPlatformAdmin();
       allow delete: if false;
 
@@ -85,7 +89,7 @@ service cloud.firestore {
       // 위조된 codeHash로 바꿔치기할 수 있음). 완전한 해결은 Cloud Functions로 서버에서만
       // 쓰게 하거나, churches를 배열이 아닌 churchId를 키로 하는 map으로 재구성해 문서별
       // 최소 권한을 부여하는 구조 변경이 필요하다 (현재는 가입 흐름 리스크 때문에 보류).
-      allow write: if isSignedIn() && request.resource.data.keys().hasOnly(['churches', 'updatedAt']);
+      allow write: if isRealUser() && request.resource.data.keys().hasOnly(['churches', 'updatedAt']);
     }
 
     // 플랫폼 집계 통계 — 미인증 공개 읽기 (로그인 페이지에서 사용)
@@ -93,7 +97,7 @@ service cloud.firestore {
     // (필드 안의 "값" 자체 조작은 여전히 가능 — 알려진 한계. 근본 해결은 추후 Cloud Functions 과제.)
     match /settings/platformStats {
       allow read: if true;
-      allow update: if isSignedIn()
+      allow update: if isRealUser()
         && request.resource.data.keys().hasOnly(
           ['total_churches', 'total_readers', 'finished_total', 'readers_today',
            'chapters_read_today', 'today_date', 'updatedAt']);
