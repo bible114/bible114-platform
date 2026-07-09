@@ -6,6 +6,7 @@ import ReadingGuideModal from './modals/ReadingGuideModal';
 import ChurchPicker from './ChurchPicker';
 import { getChurchDirectory, getLastChurch, saveLastChurch } from '../utils/churchDirectory';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
+import { getGuestState } from '../utils/guestStorage';
 
 // ─── Daily verse data ─────────────────────────────────────────────────────────
 const DAILY_VERSES = [
@@ -168,12 +169,19 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
     const [orgComms, setOrgComms] = useState([{ id: 'comm_0', name: '', subgroups: [{ id: 'sub_0', name: '' }] }]);
 
     const [loading, setLoading] = useState(false);
+    const [guestMigrationPreview, setGuestMigrationPreview] = useState(null);
 
     const verse = todayVerse();
 
     useEffect(() => {
         setActiveTab(initialTab || 'member');
     }, [initialTab]);
+
+    useEffect(() => {
+        if (activeTab !== 'memberSignup') return;
+        const guest = getGuestState();
+        setGuestMigrationPreview(!guest.migratedAt && guest.readDates.length > 0 ? guest : null);
+    }, [activeTab]);
 
     // [Phase 3] 교회 선택 우선순위: URL 파라미터(?church=ID) > localStorage 최근 교회 > 빈 검색창.
     // 디렉토리 문서에서 유효성(존재 여부)을 확인한 뒤에만 preselect 한다.
@@ -400,6 +408,14 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                 <input type="password" value={mPw} onChange={e => setMPw(e.target.value)} placeholder="비밀번호 (6자리 이상)" className={inputCls} />
                 <input type="password" value={mPwConfirm} onChange={e => setMPwConfirm(e.target.value)} placeholder="비밀번호 확인"
                     className={`w-full bg-cream border rounded-lg px-3.5 py-3 text-sm placeholder-ink/40 focus:outline-none focus:ring-2 transition-all font-sans ${mPwConfirm && mPw !== mPwConfirm ? 'border-red-400 focus:ring-red-400/40' : 'border-hairline focus:ring-accent/40 focus:border-accent/60'}`} />
+                {guestMigrationPreview && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3.5 py-2.5">
+                        <p className="text-[12px] text-emerald-800 font-semibold">
+                            지금까지 읽은 {guestMigrationPreview.currentDay}일차 진도를 가져옵니다.
+                        </p>
+                        <p className="text-[11px] text-emerald-700 mt-0.5">점수는 가입 후부터 적립돼요.</p>
+                    </div>
+                )}
                 <div className="space-y-2">
                     <ChurchPicker value={isSignupUnaffiliated ? '' : mChurchId} onChange={setMChurchId} label="교회 선택" />
                     <button

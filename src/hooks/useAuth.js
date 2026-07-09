@@ -4,6 +4,7 @@ import { makePseudoEmail, makeUnaffiliatedIdentity, userDocToState, migrateTalen
 import { sha256 } from '../utils/crypto';
 import { getChurchDirectory, addChurchToDirectory, saveLastChurch } from '../utils/churchDirectory';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
+import { getGuestState, saveGuestState } from '../utils/guestStorage';
 
 export const useAuth = ({
     setCurrentUser,
@@ -16,18 +17,34 @@ export const useAuth = ({
 }) => {
     const [errorMsg, setErrorMsg] = useState('');
 
-    const buildNewMember = ({ name, birthdate, password, email, churchId, churchName, phone4 }) => ({
-        name, birthdate, password, email,
-        role: 'member', churchId, churchName,
-        startDate: new Date().toDateString(),
-        currentDay: 1, streak: 0, score: 0, talent: 0, talentMigrated: true, readCount: 1,
-        lastReadDate: null, gender: 'male', planId: '1year_revised',
-        departmentId: null, departmentName: null, subgroupId: null,
-        isDeleted: false, deletedAt: null, deletedBy: null,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        ...(phone4 ? { phone4 } : {}),
-    });
+    const shouldMigrateGuestState = () => {
+        const guest = getGuestState();
+        return !guest.migratedAt && guest.readDates.length > 0;
+    };
+
+    const buildNewMember = ({ name, birthdate, password, email, churchId, churchName, phone4 }) => {
+        const guest = getGuestState();
+        const migrateGuest = shouldMigrateGuestState();
+        return {
+            name, birthdate, password, email,
+            role: 'member', churchId, churchName,
+            startDate: new Date().toDateString(),
+            currentDay: migrateGuest ? guest.currentDay : 1,
+            streak: migrateGuest ? guest.streak : 0,
+            score: 0,
+            talent: 0,
+            talentMigrated: true,
+            readCount: 1,
+            lastReadDate: migrateGuest ? guest.lastReadDate : null,
+            gender: 'male',
+            planId: guest.planId || '1year_revised',
+            departmentId: null, departmentName: null, subgroupId: null,
+            isDeleted: false, deletedAt: null, deletedBy: null,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            ...(phone4 ? { phone4 } : {}),
+        };
+    };
 
     const finishMemberSignup = async ({ user, newUser, churchId }) => {
         setErrorMsg('');
@@ -39,6 +56,9 @@ export const useAuth = ({
         }, { merge: true }).catch(() => {});
         await loadChurchCommunities(churchId);
         setTempUser({ ...newUser, uid: user.uid });
+        if (shouldMigrateGuestState()) {
+            saveGuestState({ migratedAt: new Date().toISOString() });
+        }
         setView('plan_type_select');
     };
 
