@@ -16,6 +16,7 @@ import LoginView from './components/LoginView';
 import PlatformAdminView from './components/PlatformAdminView';
 import PlanSelectionView from './components/PlanSelectionView';
 import DashboardView from './components/DashboardView';
+import GuestReaderView from './components/GuestReaderView';
 import { SUPABASE_FUNCTION_URL } from './data/constants';
 import { useTTS } from './hooks/useTTS';
 
@@ -31,6 +32,7 @@ const App = () => {
     // --- [A] 화면 및 인증 상태 ---
     const [view, setView] = useState('login');
     const [tempUser, setTempUser] = useState(null);
+    const [loginInitialTab, setLoginInitialTab] = useState('member');
     // [Phase 3] 교회 전용 링크(?church=ID) — 로그인 화면 교회 preselect용. 최초 마운트 시 1회만 읽는다.
     const [presetChurchId] = useState(() => new URLSearchParams(window.location.search).get('church') || null);
     const { currentUser, setCurrentUser, authLoading, authError, retryAuthCheck } = useUserAuth();
@@ -155,6 +157,10 @@ const App = () => {
         if (authLoading) return;
 
         if (currentUser) {
+            if (currentUser.role === 'guest') {
+                if (view !== 'guest') setView('guest');
+                return;
+            }
             if (view === 'login') {
                 if (currentUser.role === 'superAdmin' || currentUser.role === 'platformAdmin') {
                     loadSuperAdminData();
@@ -554,6 +560,14 @@ const App = () => {
     const handleLogout = () => {
         if (auth) auth.signOut();
         setCurrentUser(null); setTempUser(null); setChurchCommunities([]);
+        setLoginInitialTab('member');
+        setErrorMsg(''); setView('login'); setHasReadToday(false); setEditingUser(null); setDepartmentMembers([]);
+    };
+
+    const handleGuestSignupStart = () => {
+        setLoginInitialTab('memberSignup');
+        if (auth) auth.signOut();
+        setCurrentUser(null); setTempUser(null); setChurchCommunities([]);
         setErrorMsg(''); setView('login'); setHasReadToday(false); setEditingUser(null); setDepartmentMembers([]);
     };
 
@@ -661,6 +675,7 @@ const App = () => {
                 errorMsg={errorMsg}
                 setErrorMsg={setErrorMsg}
                 presetChurchId={presetChurchId}
+                initialTab={loginInitialTab}
             />
         );
     } else if (['plan_type_select', 'bible_version_select', 'community_select', 'subgroup_select'].includes(view)) {
@@ -743,6 +758,15 @@ const App = () => {
                 setView={setView}
                 isChurchAdmin={currentUser?.role === 'churchAdmin'}
                 churchCommunities={churchCommunities}
+            />
+        );
+    } else if (view === 'guest' && currentUser?.role === 'guest') {
+        pageContent = (
+            <GuestReaderView
+                currentUser={currentUser}
+                setCurrentUser={setCurrentUser}
+                handleLogout={handleLogout}
+                onSignupClick={handleGuestSignupStart}
             />
         );
     } else if (view === 'church_admin' && currentUser?.role === 'churchAdmin') {

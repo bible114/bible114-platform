@@ -97,9 +97,9 @@ const AdminContactModal = ({ onClose }) => {
 const inputCls = "w-full bg-cream border border-hairline rounded-lg px-3.5 py-3 text-sm text-ink placeholder-ink/40 focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent/60 transition-all font-sans";
 
 // ─── Main LoginView ────────────────────────────────────────────────────────────
-const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurchAdminSignup, errorMsg, setErrorMsg, presetChurchId }) => {
+const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurchAdminSignup, errorMsg, setErrorMsg, presetChurchId, initialTab = 'member' }) => {
     // Tab: 'member' | 'admin' | 'memberSignup' | 'adminSignup'
-    const [activeTab, setActiveTab] = useState('member');
+    const [activeTab, setActiveTab] = useState(initialTab);
     const [signupStep, setSignupStep] = useState(1);
     const [showAdminContact, setShowAdminContact] = useState(false);
     const [showDemoTour, setShowDemoTour] = useState(false);
@@ -170,6 +170,10 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
     const [loading, setLoading] = useState(false);
 
     const verse = todayVerse();
+
+    useEffect(() => {
+        setActiveTab(initialTab || 'member');
+    }, [initialTab]);
 
     // [Phase 3] 교회 선택 우선순위: URL 파라미터(?church=ID) > localStorage 최근 교회 > 빈 검색창.
     // 디렉토리 문서에서 유효성(존재 여부)을 확인한 뒤에만 preselect 한다.

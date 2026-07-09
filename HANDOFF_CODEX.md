@@ -128,7 +128,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
     ```
   - 주의: 익명인데 users 문서가 있는 경우는 없다고 가정해도 된다(게스트는 서버에 안 씀).
 
-- [ ] **T8. GuestReaderView 신설 + 라우팅**
+- [x] **T8. GuestReaderView 신설 + 라우팅**
   - 신규 `src/components/GuestReaderView.jsx`. **DashboardView를 재사용하지 말 것** (props 60+, 전부 공동체 전제). 구성:
     - 상단: 간단 헤더 (로고 + "게스트 모드" 뱃지 + "가입하고 기록 지키기" 버튼 → 로그아웃 후 memberSignup 탭으로).
     - `DailyVideoCard` 재사용 (`currentUser`, `setCurrentUser` props 그대로 — videoType 토글이 setCurrentUser로 오면 localStorage에도 반영).
@@ -184,6 +184,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-09 | T5 firestore.rules isRealUser 도입 | `firestore.rules`, `HANDOFF_CODEX.md` | 익명 인증의 users/churches/churchDirectory/platformStats 쓰기 차단. read 규칙과 dailyVideos create는 유지. `npm run build` 통과. 수동 M2(규칙 배포)는 미실행. |
 | 2026-07-09 | T6 게스트 진도 저장소 유틸 | `src/utils/guestStorage.js`, `HANDOFF_CODEX.md` | `getGuestState`/`saveGuestState`/`recordGuestRead`/`clearGuestMigrated` 추가. readDates 400개 제한 및 365일 순환 처리. `npm run build` 통과. |
 | 2026-07-09 | T7 게스트 세션 복원 | `src/hooks/useUserAuth.js`, `HANDOFF_CODEX.md` | Firebase 익명 사용자일 때 Firestore users 조회 없이 localStorage 게스트 상태로 currentUser 구성. `npm run build` 통과. |
+| 2026-07-09 | T8 GuestReaderView 신설 + 라우팅 | `src/components/GuestReaderView.jsx`, `src/components/dashboard/DailyVideoCard.jsx`, `src/components/LoginView.jsx`, `src/App.jsx`, `HANDOFF_CODEX.md` | 게스트 전용 읽기 화면/라우팅 추가, DailyVideoCard 게스트 모드는 localStorage 저장으로 분기. `npm run build` 통과. 실제 버튼 진입 검증은 T9 후 진행 예정. |
 
 ---
 

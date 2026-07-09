@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { db, firebase } from '../../utils/firebase';
 import { getVideoDateKST, extractYouTubeId, parseAndMapChapters } from '../../utils/helpers';
+import { saveGuestState } from '../../utils/guestStorage';
 
 const CHAPTER_ORDER = [
     { key: '해설', emoji: '📖' },
@@ -63,7 +64,7 @@ const fetchLatestFromPlaylist = async (playlistId, apiKey) => {
 // dailyVideos/{getVideoDateKST()} 문서가 없거나 두 모드 모두 url이 없으면 렌더링하지 않는다.
 const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
     const [video, setVideo] = useState(undefined); // undefined: 로딩중, null: 문서 없음(또는 자동 채움 실패)
-    const [mode, setMode] = useState(currentUser?.videoMode === 'kids' ? 'kids' : 'adult');
+    const [mode, setMode] = useState((currentUser?.videoMode || currentUser?.videoType) === 'kids' ? 'kids' : 'adult');
     const [playing, setPlaying] = useState(false);
     const [startSec, setStartSec] = useState(0);
     // Fix F: 날짜 키를 state로 들고 있다가, 화면이 다시 보이거나 주기적으로 재계산해
@@ -189,8 +190,8 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
     }, [dateKey, currentUser?.uid]);
 
     useEffect(() => {
-        setMode(currentUser?.videoMode === 'kids' ? 'kids' : 'adult');
-    }, [currentUser?.videoMode]);
+        setMode((currentUser?.videoMode || currentUser?.videoType) === 'kids' ? 'kids' : 'adult');
+    }, [currentUser?.videoMode, currentUser?.videoType]);
 
     if (!video) return null;
 
@@ -211,6 +212,13 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
     const handleModeChange = async (newMode) => {
         setMode(newMode);
         setPlaying(false);
+        if (currentUser?.role === 'guest') {
+            saveGuestState({ videoType: newMode });
+            if (typeof setCurrentUser === 'function') {
+                setCurrentUser(prev => prev ? { ...prev, videoType: newMode } : prev);
+            }
+            return;
+        }
         if (currentUser?.uid && db) {
             if (typeof setCurrentUser === 'function') {
                 setCurrentUser(prev => prev ? { ...prev, videoMode: newMode } : prev);
