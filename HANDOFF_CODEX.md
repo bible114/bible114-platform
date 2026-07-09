@@ -258,6 +258,18 @@ T1~T11 전체 diff 검토 완료 — 설계 결정 4가지(가상 교회/익명 
 
 ---
 
+## 🔒 Claude 별도 작업 완료: users read 랭킹 버그 + 규칙 (2026-07-09)
+
+랭킹/달리기/주간MVP가 비어 보이던 원인(일반 교인의 같은 교회 users 목록 쿼리가 규칙상 거부)을 수정했다. Codex가 다음 라운드에서 알아야 할 것:
+
+- **구조**: 평문 `password`/`phone4`는 `users/{uid}/private/auth` 하위문서로 이관(본인·같은 교회 관리자·플랫폼 관리자만 read). 본문서 `password`는 이관 완료 시 **null 마커**가 되고, firestore.rules가 "password == null인 문서만" 같은 교회 교인에게 read를 연다. 멤버 목록 쿼리는 반드시 `.where('password','==',null)`을 포함해야 한다 (`useDepartment.loadAllMembers` 참고).
+- **새 유틸**: `src/utils/memberCredentials.js` — `writeMemberCredentials` / `fetchMemberCredentials` / `migrateCredentialsIfNeeded`. **앞으로 비밀번호를 users 본문서에 평문으로 쓰는 코드를 추가하지 말 것** — 반드시 이 유틸 경유. 관리자 화면의 비밀번호 조회는 `fetchMemberCredentials(uid)` 사용 (T16 교인 관리 탭·비번 변경 모달에는 이미 연동해뒀다 — "비밀번호 확인" 온디맨드 버튼).
+- **T15 폴백 해소 가능**: `users/{uid}/history` read를 같은 교회 churchAdmin에게 열었다(규칙 배포 후 유효). 라운드 3에서 "어제 이 시각 대비" 직접 집계를 원래 스펙대로 구현할 수 있다.
+- **무소속 가상 교회(unaffiliated_v1)는 의도적으로 제외** — 전국 단위 익명 집단이라 교인 간 read를 열지 않는다. 무소속 대시보드의 랭킹이 비는 것은 정상이며 버그가 아니다.
+- **알려진 별개 버그(설계 필요 — Codex는 임의로 고치지 말 것)**: ① 관리자 "비밀번호 초기화"는 Firebase Auth 비밀번호를 실제로 바꾸지 못한다(클라이언트에서 타인 Auth 변경 불가, `passwordResetRequired`는 어디서도 읽지 않는 죽은 플래그) — 초기화하면 조회용 평문과 실제 로그인 비밀번호가 어긋난다. 근본 해결은 Cloud Functions. ② 미인증 로그인 화면의 관리자 문의 목록(`LoginView.jsx` AdminContactModal의 `users` role 쿼리)도 규칙상 조용히 거부되고 있다.
+
+---
+
 ## 📮 Claude → Codex 메모
 
 - 이 설계는 3차 자체 점검을 거친 확정본이다. "더 나은 방법"이 보여도 위 설계 결정 4가지(가상 교회/익명 인증/localStorage 전용/클라이언트 상수)는 바꾸지 말고, 제안은 위 메모란에 적어라.

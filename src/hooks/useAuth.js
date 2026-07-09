@@ -5,6 +5,7 @@ import { sha256 } from '../utils/crypto';
 import { getChurchDirectory, addChurchToDirectory, saveLastChurch } from '../utils/churchDirectory';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
 import { getGuestState, saveGuestState } from '../utils/guestStorage';
+import { writeMemberCredentials, migrateCredentialsIfNeeded } from '../utils/memberCredentials';
 
 export const useAuth = ({
     setCurrentUser,
@@ -22,11 +23,13 @@ export const useAuth = ({
         return !guest.migratedAt && guest.readDates.length > 0;
     };
 
-    const buildNewMember = ({ name, birthdate, password, email, churchId, churchName, phone4 }) => {
+    const buildNewMember = ({ name, birthdate, email, churchId, churchName }) => {
         const guest = getGuestState();
         const migrateGuest = shouldMigrateGuestState();
         return {
-            name, birthdate, password, email,
+            // 평문 password/phone4는 본문서가 아닌 users/{uid}/private/auth 에 저장한다
+            // (finishMemberSignup). null 마커는 같은 교회 랭킹 read 허용 조건이다.
+            name, birthdate, password: null, email,
             role: 'member', churchId, churchName,
             startDate: new Date().toDateString(),
             currentDay: migrateGuest ? guest.currentDay : 1,
@@ -42,12 +45,21 @@ export const useAuth = ({
             isDeleted: false, deletedAt: null, deletedBy: null,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            ...(phone4 ? { phone4 } : {}),
         };
     };
 
-    const finishMemberSignup = async ({ user, newUser, churchId }) => {
+    const finishMemberSignup = async ({ user, newUser, churchId, credentials }) => {
         setErrorMsg('');
+        if (credentials) {
+            try {
+                await writeMemberCredentials(user.uid, credentials);
+            } catch {
+                // 규칙 미배포 등으로 private 쓰기가 거부되면 구 방식(본문서 평문)으로 남긴다.
+                // 이후 로그인/세션 복원/관리자 백필의 지연 이관이 다시 옮긴다.
+                newUser.password = credentials.password ?? null;
+                if (credentials.phone4) newUser.phone4 = credentials.phone4;
+            }
+        }
         await db.collection('users').doc(user.uid).set(newUser);
         // 신규 성도 → 통계 증가
         db.collection('settings').doc('platformStats').set({
@@ -122,6 +134,8 @@ export const useAuth = ({
             if (!doc.exists) { setErrorMsg('사용자 정보를 찾을 수 없습니다.'); return; }
             if (doc.data().isDeleted) { setErrorMsg('삭제 처리된 계정입니다. 교회 관리자에게 복원을 요청해주세요.'); return; }
             const user = userDocToState(doc);
+            // [랭킹] 자격증명 지연 이관 — 본문서에 평문이 남아 있으면 private로 옮긴다.
+            if (await migrateCredentialsIfNeeded(cred.user.uid, doc.data())) user.password = null;
             // [점수 이중화] talent 지갑 지연 마이그레이션 (1회성) — 대시보드 진입 전에 완료해 잔액 미표시 방지
             const migrated = await migrateTalentIfNeeded(cred.user.uid, doc.data());
             if (migrated) {
@@ -163,6 +177,8 @@ export const useAuth = ({
             const doc = await db.collection('users').doc(cred.user.uid).get();
             if (!doc.exists) { setErrorMsg('사용자 정보를 찾을 수 없습니다.'); return; }
             const user = userDocToState(doc);
+            // [랭킹] 자격증명 지연 이관 (관리자 계정 문서도 랭킹 쿼리에 걸린다)
+            if (await migrateCredentialsIfNeeded(cred.user.uid, doc.data())) user.password = null;
             // [점수 이중화] talent 지갑 지연 마이그레이션 (1회성)
             const migrated = await migrateTalentIfNeeded(cred.user.uid, doc.data());
             if (migrated) {
@@ -225,18 +241,14 @@ export const useAuth = ({
                 else setErrorMsg('가입 실패. 잠시 후 다시 시도해주세요.');
                 return null;
             });
-            const newUser = buildNewMember({
-                name,
-                birthdate,
+            const newUser = buildNewMember({ name, birthdate, email, churchId, churchName });
+            const credentials = {
                 password,
-                email,
-                churchId,
-                churchName,
-                phone4: isUnaffiliated ? normalizedPhone4 : null,
-            });
+                ...(isUnaffiliated ? { phone4: normalizedPhone4 } : {}),
+            };
 
             if (cred) {
-                await finishMemberSignup({ user: cred.user, newUser, churchId });
+                await finishMemberSignup({ user: cred.user, newUser, churchId, credentials });
                 return;
             }
 
@@ -253,7 +265,7 @@ export const useAuth = ({
             const existingDoc = await db.collection('users').doc(orphanCred.user.uid).get();
             if (existingDoc.exists) {
                 if (existingDoc.data().isDeleted) {
-                    await finishMemberSignup({ user: orphanCred.user, newUser, churchId });
+                    await finishMemberSignup({ user: orphanCred.user, newUser, churchId, credentials });
                     return;
                 }
                 setErrorMsg('이미 가입된 이름+생년월일입니다. 로그인해주세요.');

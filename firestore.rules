@@ -34,9 +34,18 @@ service cloud.firestore {
 
     // 사용자 문서
     match /users/{uid} {
+      // [랭킹] 마지막 분기: 같은 교회 교인의 목록 조회 허용(랭킹·달리기·주간MVP).
+      // 단 자격증명(password/phone4)이 private 하위문서로 이관 완료된 문서
+      // (password == null 마커)만 — 이관 전 평문 노출 창을 규칙 수준에서 차단한다.
+      // 클라이언트 목록 쿼리는 반드시 .where('password', '==', null)을 포함해야
+      // 규칙 증명을 통과한다 (useDepartment.loadAllMembers 참고).
+      // 무소속 가상 교회(unaffiliated_v1)는 전국 단위 익명 집단이라 서로 열지 않는다.
       allow read: if request.auth.uid == uid ||
         (isSignedIn() && isChurchAdmin(resource.data.churchId)) ||
-        isPlatformAdmin();
+        isPlatformAdmin() ||
+        (sameChurch(resource.data.churchId) &&
+          resource.data.churchId != 'unaffiliated_v1' &&
+          resource.data.password == null);
       allow create: if isRealUser() && request.auth.uid == uid &&
         request.resource.data.role in ['member', 'churchAdmin'];
       // 본인 수정은 role/churchId "값"을 바꿀 수 없다 (권한 상승 차단).
@@ -50,9 +59,22 @@ service cloud.firestore {
       // seed_ 테스트 문서만 플랫폼 관리자가 클라이언트에서 직접 지울 수 있다.
       allow delete: if isPlatformAdmin() && uid.matches('^seed_.*');
 
-      // 읽기 기록 서브컬렉션 — 본인만 읽기/쓰기, 관리자 읽기
+      // 자격증명 하위문서 (평문 비밀번호·phone4) — 본인, 같은 교회 관리자, 플랫폼 관리자만.
+      // users 본문서 read가 같은 교회 교인에게 열려도 이 문서는 절대 열리지 않는다.
+      match /private/{privateId} {
+        allow read, write: if isRealUser() && (
+          request.auth.uid == uid ||
+          isChurchAdmin(get(/databases/$(database)/documents/users/$(uid)).data.churchId) ||
+          isPlatformAdmin());
+      }
+
+      // 읽기 기록 서브컬렉션 — 본인 읽기/쓰기, 같은 교회 관리자·플랫폼 관리자 읽기.
+      // (같은 교회 churchAdmin read는 관리자 대시보드 "어제 이 시각 대비" 지표용 —
+      //  기록엔 date/day/score/ts만 있어 자격증명 노출 없음.)
       match /history/{historyId} {
-        allow read: if request.auth.uid == uid || isPlatformAdmin();
+        allow read: if request.auth.uid == uid ||
+          isChurchAdmin(get(/databases/$(database)/documents/users/$(uid)).data.churchId) ||
+          isPlatformAdmin();
         allow create: if request.auth.uid == uid;
         allow delete: if isPlatformAdmin() && uid.matches('^seed_.*');
       }

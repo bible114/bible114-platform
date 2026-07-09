@@ -3,6 +3,7 @@ import { db, firebase } from '../utils/firebase';
 import OrgEditor from './OrgEditor';
 import ChurchAdminTutorial from './ChurchAdminTutorial';
 import { sha256 } from '../utils/crypto';
+import { writeMemberCredentials, fetchMemberCredentials } from '../utils/memberCredentials';
 import { syncChurchDirectoryEntry } from '../utils/churchDirectory';
 import { calculateSubgroupStats, computeAtRisk } from '../utils/statsUtils';
 import { downloadCSV } from '../utils/exportUtils';
@@ -54,6 +55,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [sortBy, setSortBy] = useState('name');
     const [editing, setEditing] = useState(null); // { uid, mode: 'pw' | 'subgroup' }
     const [newPw, setNewPw] = useState('');
+    const [revealedPasswords, setRevealedPasswords] = useState({}); // uid -> '__loading__' | '__error__' | 실제 비밀번호
     const [sgCommId, setSgCommId] = useState('');
     const [sgSubId, setSgSubId] = useState('');
     const [memberDepartmentFilter, setMemberDepartmentFilter] = useState('all');
@@ -138,16 +140,39 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         if (!newPw || newPw.length < 6) { toast.error('비밀번호는 6자리 이상이어야 합니다.'); return; }
         if (!confirm(`${member.name}님의 비밀번호를 변경하시겠습니까?`)) return;
         try {
-            await db.collection('users').doc(member.uid).set({
-                password: newPw,
-                passwordResetRequired: true,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
+            // 평문 암호는 private 하위문서에 먼저 기록하고, 본문서에는 null 마커만 남긴다
+            // (같은 교회 교인 랭킹 조회를 열어주는 firestore.rules 조건 유지 — memberCredentials.js 참고)
+            try {
+                await writeMemberCredentials(member.uid, { password: newPw });
+                await db.collection('users').doc(member.uid).set({
+                    password: null,
+                    passwordResetRequired: true,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+            } catch (privateWriteError) {
+                console.error('private 자격증명 기록 실패, 기존 방식으로 대체:', privateWriteError);
+                await db.collection('users').doc(member.uid).set({
+                    password: newPw,
+                    passwordResetRequired: true,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+            }
             setMembers(prev => prev.map(m => m.uid === member.uid ? { ...m, password: newPw } : m));
             toast.success(`${member.name}님의 비밀번호가 재설정되었습니다.`);
             setEditing(null);
         } catch (e) {
             toast.error('비밀번호 변경에 실패했습니다.');
+        }
+    };
+
+    // 이관 완료된 회원은 본문서의 password가 null이므로, 필요할 때만 private 하위문서를 조회한다.
+    const revealPassword = async (uid) => {
+        setRevealedPasswords(prev => ({ ...prev, [uid]: '__loading__' }));
+        try {
+            const data = await fetchMemberCredentials(uid);
+            setRevealedPasswords(prev => ({ ...prev, [uid]: data?.password || '알 수 없음' }));
+        } catch (e) {
+            setRevealedPasswords(prev => ({ ...prev, [uid]: '__error__' }));
         }
     };
 
@@ -275,11 +300,28 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
     const resetPasswordsForMembers = async (targetMembers) => {
         const updates = targetMembers.map(member => ({ member, password: generatePassword() }));
-        await Promise.all(updates.map(({ member, password }) => db.collection('users').doc(member.uid).set({
-            password,
-            passwordResetRequired: true,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true })));
+        // 평문 암호는 private 하위문서에 먼저 기록하고, 본문서에는 null 마커만 남긴다
+        // (같은 교회 교인 랭킹 조회를 열어주는 firestore.rules 조건 유지 — memberCredentials.js 참고)
+        const resetOne = async ({ member, password }) => {
+            try {
+                await writeMemberCredentials(member.uid, { password });
+                await db.collection('users').doc(member.uid).set({
+                    password: null,
+                    passwordResetRequired: true,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                }, { merge: true });
+            } catch (privateWriteError) {
+                console.error('private 자격증명 기록 실패, 기존 방식으로 대체:', privateWriteError);
+                await db.collection('users').doc(member.uid).set({
+                    password,
+                    passwordResetRequired: true,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                }, { merge: true });
+            }
+        };
+        for (let i = 0; i < updates.length; i += 10) {
+            await Promise.all(updates.slice(i, i + 10).map(resetOne));
+        }
         setMembers(prev => prev.map(m => {
             const found = updates.find(u => u.member.uid === m.uid);
             return found ? { ...m, password: found.password, passwordResetRequired: true } : m;
@@ -618,6 +660,23 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                     새 비밀번호를 입력하면 다음 로그인 때 적용됩니다.
                                 </span>
                             </p>
+                            <div className="flex items-center gap-2 text-xs text-slate-500">
+                                <span>현재:</span>
+                                {typeof m.password === 'string' && m.password ? (
+                                    <span className="font-mono">{m.password}</span>
+                                ) : revealedPasswords[m.uid] === '__loading__' ? (
+                                    <span>확인 중...</span>
+                                ) : revealedPasswords[m.uid] === '__error__' ? (
+                                    <span>조회 실패</span>
+                                ) : revealedPasswords[m.uid] ? (
+                                    <span className="font-mono">{revealedPasswords[m.uid]}</span>
+                                ) : (
+                                    <button type="button" onClick={() => revealPassword(m.uid)}
+                                        className="bg-slate-100 hover:bg-slate-200 text-slate-500 text-[11px] px-2 py-0.5 rounded-lg font-bold">
+                                        비밀번호 확인
+                                    </button>
+                                )}
+                            </div>
                             <div className="flex flex-wrap gap-2">
                                 <input type="text" value={newPw} onChange={e => setNewPw(e.target.value)}
                                     placeholder="새 비밀번호 (6자리 이상)"

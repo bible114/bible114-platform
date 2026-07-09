@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { db, firebase } from '../utils/firebase';
 import { calculateSubgroupStats } from '../utils/statsUtils';
 import { userDocToState } from '../utils/helpers';
+import { UNAFFILIATED_CHURCH_ID } from '../data/constants';
 
 export const useDepartment = (currentUser, setCurrentUser) => {
     const [subgroupStats, setSubgroupStats] = useState({});
@@ -11,10 +12,15 @@ export const useDepartment = (currentUser, setCurrentUser) => {
     const [kakaoLink, setKakaoLink] = useState(null);
 
     const loadAllMembers = useCallback(async () => {
-        if (!currentUser?.churchId) return [];
+        // 무소속 가상 교회는 규칙상 교인 간 read를 열지 않는다 (전국 단위 익명 집단) —
+        // 쿼리해봐야 거부되므로 호출 자체를 건너뛴다.
+        if (!currentUser?.churchId || currentUser.churchId === UNAFFILIATED_CHURCH_ID) return [];
         try {
+            // password == null 필터는 firestore.rules의 같은 교회 read 허용 조건과 쌍이다 —
+            // 자격증명이 private로 이관 완료된 문서만 목록 조회가 규칙 증명을 통과한다.
             const snapshot = await db.collection('users')
                 .where('churchId', '==', currentUser.churchId)
+                .where('password', '==', null)
                 .get();
             return snapshot.docs.map(doc => userDocToState(doc)).filter(u => !u.isDeleted);
         } catch (e) {

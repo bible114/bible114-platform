@@ -5,6 +5,7 @@ import ChurchAdminView from './ChurchAdminView';
 import { getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
 import { rebuildChurchDirectory, removeChurchFromDirectory } from '../utils/churchDirectory';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
+import { migrateCredentialsIfNeeded, fetchMemberCredentials } from '../utils/memberCredentials';
 
 const PlatformAdminView = ({
     handleLogout,
@@ -46,6 +47,9 @@ const PlatformAdminView = ({
     const [savingPlatformKakao, setSavingPlatformKakao] = React.useState(false);
     const [directoryRebuilding, setDirectoryRebuilding] = React.useState(false);
     const [checkingUnaffiliatedChurch, setCheckingUnaffiliatedChurch] = React.useState(false);
+    const [fetchedCurrentPassword, setFetchedCurrentPassword] = React.useState(null); // changingPassword 모달에서 조회한 현재 암호
+    const [credentialMigrating, setCredentialMigrating] = React.useState(false);
+    const [credentialMigrationProgress, setCredentialMigrationProgress] = React.useState({ done: 0, total: 0 });
 
     // 매일 영상 관리
     const nextVideoDate = React.useMemo(() => {
@@ -227,6 +231,19 @@ const PlatformAdminView = ({
         });
     }, [db]);
 
+    // 암호 변경 모달을 열 때, 본문서 password가 이미 null 마커로 이관되었다면 private 하위문서에서 조회한다.
+    React.useEffect(() => {
+        if (!changingPassword?.uid) { setFetchedCurrentPassword(null); return; }
+        if (typeof changingPassword.password === 'string' && changingPassword.password) {
+            setFetchedCurrentPassword(null);
+            return;
+        }
+        setFetchedCurrentPassword('__loading__');
+        fetchMemberCredentials(changingPassword.uid)
+            .then(data => setFetchedCurrentPassword(data?.password || null))
+            .catch(() => setFetchedCurrentPassword('__error__'));
+    }, [changingPassword?.uid]);
+
     const savePlatformKakao = async () => {
         if (!db) return;
         setSavingPlatformKakao(true);
@@ -309,6 +326,34 @@ const PlatformAdminView = ({
         }
     };
 
+    // 전체 회원 문서의 평문 password/phone4를 private 하위문서로 이관하고 본문서에 null 마커를 남긴다.
+    // userDocToState는 phone4를 매핑하지 않으므로 allUsers 대신 최신 문서를 직접 조회한다.
+    const handleMigrateCredentials = async () => {
+        if (!db) return;
+        if (!confirm('전체 회원의 자격증명을 private 하위문서로 이관합니다. 계속하시겠습니까?')) return;
+        setCredentialMigrating(true);
+        try {
+            const snap = await db.collection('users').get();
+            const docs = snap.docs;
+            setCredentialMigrationProgress({ done: 0, total: docs.length });
+            let migrated = 0;
+            let skipped = 0;
+            for (let i = 0; i < docs.length; i += 10) {
+                const chunk = docs.slice(i, i + 10);
+                const results = await Promise.all(
+                    chunk.map(doc => migrateCredentialsIfNeeded(doc.id, doc.data()))
+                );
+                results.forEach(changed => { if (changed) migrated++; else skipped++; });
+                setCredentialMigrationProgress({ done: Math.min(i + 10, docs.length), total: docs.length });
+            }
+            alert(`이관 완료: ${migrated}명 이관, ${skipped}명은 이미 완료/대상 아님`);
+        } catch (e) {
+            alert('자격증명 이관 실패: ' + e.message);
+        } finally {
+            setCredentialMigrating(false);
+        }
+    };
+
     const LASTNAMES = ['김', '이', '박', '최', '정', '강', '조', '윤', '장', '임', '한', '오', '서', '신', '권', '황', '안', '송', '류', '전'];
     const FIRSTNAMES_M = ['민준', '서준', '도윤', '예준', '시우', '하준', '주원', '지호', '준서', '준혁', '도현', '건우', '현우', '우진', '성민', '재원', '태양', '승현', '찬호', '정우'];
     const FIRSTNAMES_F = ['서연', '서윤', '지우', '서현', '민서', '하은', '하윤', '윤서', '지유', '채원', '수아', '지아', '지민', '예원', '수빈', '나연', '예진', '혜원', '다인', '지현'];
@@ -353,7 +398,8 @@ const PlatformAdminView = ({
                 const score = currentDay * 8 + Math.floor(Math.random() * 400);
                 const streak = lastReadDate === todayStr ? Math.floor(Math.random() * 20) + 1 : 0;
                 batch.set(db.collection('users').doc(`seed_${ts}_${i}`), {
-                    name, birthdate, password: '123456',
+                    // 시드 계정은 실제 Auth 계정이 없다 — null 마커를 심어 교인 랭킹/달리기 지도에도 노출되게 한다.
+                    name, birthdate, password: null,
                     email: `${encodeURIComponent(name)}_${birthdate}@bible.local`,
                     role: 'member', churchId: church.id, churchName: church.name,
                     departmentId: comm.id, departmentName: comm.name, subgroupId: subgroup,
@@ -1225,6 +1271,23 @@ const PlatformAdminView = ({
                             </button>
                         </div>
 
+                        {/* 자격증명 보안 이관 */}
+                        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6">
+                            <h3 className="text-sm font-bold text-indigo-800 mb-1">🔐 자격증명 보안 이관 (랭킹 활성화)</h3>
+                            <p className="text-xs text-indigo-700 mb-3">
+                                회원 문서의 평문 비밀번호를 비공개 하위문서로 옮깁니다. 모든 회원이 이관되어야 교인 랭킹·달리기 지도가 정상 표시됩니다.
+                            </p>
+                            <button
+                                onClick={handleMigrateCredentials}
+                                disabled={credentialMigrating}
+                                className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+                            >
+                                {credentialMigrating
+                                    ? `이관 중... (${credentialMigrationProgress.done}/${credentialMigrationProgress.total})`
+                                    : '전체 회원 이관 실행'}
+                            </button>
+                        </div>
+
                         <h2 className="text-base font-bold text-slate-800 mb-4">🔄 노션 데이터 동기화</h2>
                         <div className="bg-blue-50 p-4 rounded-xl border border-blue-200 mb-4">
                             <p className="text-sm text-blue-700">
@@ -1400,7 +1463,15 @@ const PlatformAdminView = ({
                         <h3 className="text-xl font-bold text-slate-800 mb-4 border-b pb-2">🔑 암호 변경</h3>
                         <div className="bg-blue-50 p-3 rounded-lg mb-4">
                             <p className="text-sm text-blue-700"><strong>{changingPassword.name}</strong>님의 암호를 변경합니다.</p>
-                            <p className="text-xs text-blue-600 mt-1">현재 암호: {changingPassword.password}</p>
+                            <p className="text-xs text-blue-600 mt-1">현재 암호: {
+                                typeof changingPassword.password === 'string' && changingPassword.password
+                                    ? changingPassword.password
+                                    : fetchedCurrentPassword === '__loading__'
+                                        ? '확인 중...'
+                                        : fetchedCurrentPassword === '__error__'
+                                            ? '조회 실패'
+                                            : fetchedCurrentPassword || '알 수 없음(이관됨/미설정)'
+                            }</p>
                         </div>
                         <div className="mb-4">
                             <label className="block text-sm font-bold text-slate-600 mb-2">새 암호 (6자리 이상)</label>

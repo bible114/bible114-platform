@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { auth, authReady, db } from '../utils/firebase';
 import { userDocToState, migrateTalentIfNeeded } from '../utils/helpers';
 import { getGuestState } from '../utils/guestStorage';
+import { migrateCredentialsIfNeeded } from '../utils/memberCredentials';
 
 export const useUserAuth = () => {
     const [currentUser, setCurrentUser] = useState(null);
@@ -58,6 +59,12 @@ export const useUserAuth = () => {
                         if (userDoc.exists) {
                             const user = userDocToState(userDoc);
                             console.log('✅ 사용자 데이터 복원:', user.name);
+
+                            // [랭킹] 자격증명 지연 이관 — 재로그인 없이 세션 복원만 하는
+                            // 상시 사용자가 가장 많으므로 이 경로가 핵심 이관 지점이다.
+                            if (await migrateCredentialsIfNeeded(firebaseUser.uid, userDoc.data())) {
+                                user.password = null;
+                            }
 
                             // [점수 이중화] talent 지갑 지연 마이그레이션 (1회성)
                             // 마이그레이션이 끝나기 전에는 talent가 undefined이므로,
