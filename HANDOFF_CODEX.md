@@ -198,6 +198,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-09 | T16 교인 관리 탭 개편 | `src/components/ChurchAdminView.jsx`, `HANDOFF_CODEX.md` | AdminDataTable 적용, 부서/읽기상태 필터, CSV 내보내기, 일괄 소그룹 배정/비밀번호 초기화, SlideOver 상세, Toast/ConfirmDialog 연결, 비밀번호 평문 표시 제거. `npm run build` 통과. 실제 Firestore 쓰기 작업은 운영 데이터 변경 부작용 때문에 미검증. |
 | 2026-07-09 | T17 talent 적립 개편 + 비밀 상점 해금 플래그 | `src/hooks/useUserBibleActions.js`, `src/utils/helpers.js`, `HANDOFF_CODEX.md` | score 적립 로직은 유지하고 talent만 하루 첫 읽기 `10 + min(streak, 7)`로 분리. history `talent` 필드와 `secretShopUnlocked`/`secretShopJustUnlocked` 추가, 상태 매핑 추가. `npm run build` 통과. |
 | 2026-07-09 | T18 매일 성경퀴즈 | `src/data/bibleQuiz.js`, `src/components/dashboard/BibleQuizCard.jsx`, `src/components/dashboard/index.js`, `src/components/DashboardView.jsx`, `src/utils/helpers.js`, `HANDOFF_CODEX.md` | 113문항 퀴즈 은행과 KST 오늘 문제 선택, 대시보드 하단 퀴즈 카드, 트랜잭션 보상 처리 추가. `npm run build` 통과. 퀴즈 내용은 사용자 검수 필요. |
+| 2026-07-09 | T19 비밀 달란트 상점 — 교인용 | `src/components/dashboard/TalentShop.jsx`, `src/components/dashboard/index.js`, `src/components/DashboardView.jsx`, `src/App.jsx`, `HANDOFF_CODEX.md` | `settings/talentShop.enabled === true`일 때만 진입 카드/해금 모달/상점 렌더링. active 상품 구매 트랜잭션과 내 구매 내역 추가. `talentPurchases` create 필드는 규칙 화이트리스트와 일치. `npm run build` 통과. |
 
 ---
 
@@ -218,6 +219,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 2026-07-09 Codex 라운드3:
 - T17 완료. `score` 계산은 기존 `addedScore = 10 + streakBonus` 흐름을 유지했고, `talent`만 하루 첫 읽기 기준으로 분리했다. 비밀 상점 UI는 T19 몫이라 아직 렌더링하지 않음.
 - T18 완료. 성경퀴즈는 113문항으로 구성했고, 정답/근거 구절의 신학적·표기 검수는 사용자 몫으로 남김.
+- T19 완료. 교인용 비밀 상점은 교회 설정이 명시적으로 enabled일 때만 보이며, 구매 문서는 `uid, memberName, itemId, itemName, price, status, createdAt`만 기록한다. 실제 구매 클릭은 운영 데이터 변경이라 실행 검증하지 않음.
 
 ---
 
@@ -287,7 +289,7 @@ Phase C(플랫폼 관리자)·D·E는 별도 라운드로 — 이번에 손대�
   - 진행 상태는 users 문서 필드: `quizDate`(toDateString), `quizAttempts`, `quizSolved`. 날짜가 바뀌면 리셋으로 간주.
   - 보상: 1번째 시도 정답 **+10 달란트**, 2번째 시도 정답 **+5**, 2번 틀리면 정답·근거 구절 공개(+0). 적립은 트랜잭션으로 (talent 증가 + quiz 필드 갱신 원자 처리, 본인 문서 update라 규칙 통과).
   - 이미 오늘 푼 상태로 재방문하면 결과(정답 여부·획득 달란트)만 표시.
-- [ ] **T19. 비밀 달란트 상점 — 교인용** (신규 `src/components/dashboard/TalentShop.jsx` 등. 시각 디자인은 Claude 목업 확정본을 따를 것 — 아래 "디자인 지시" 참고)
+- [x] **T19. 비밀 달란트 상점 — 교인용** (신규 `src/components/dashboard/TalentShop.jsx` 등. 시각 디자인은 Claude 목업 확정본을 따를 것 — 아래 "디자인 지시" 참고)
   - 상점 데이터: `churches/{churchId}/settings/talentShop` 문서 `{ enabled: boolean, items: [{id, emoji, name, price, description, active}] }` read (sameChurch 규칙 이미 허용).
   - **철저한 opt-in 게이트**: 문서가 없거나 `enabled !== true`면 — 해금 여부와 무관하게 — 진입 카드·축하 모달·힌트를 **일절 렌더링하지 않는다**. `secretShopUnlocked` 플래그 저장(T17)은 상점 상태와 무관하게 항상 수행 (나중에 교회가 켜면 그때부터 보임).
   - 해금 UX (enabled인 교회만): `secretShopJustUnlocked`이면 축하 모달 "🎉 7일 연속 달성! 숨겨진 달란트 상점을 발견했어요". 이후 `currentUser.secretShopUnlocked`면 대시보드 하단에 진입 카드 상시 표시. **한번 해금되면 연속이 끊겨도 영구 유지** (사용자 확정).

@@ -8,3 +8,4 @@ export { default as SubgroupRankingCard } from './SubgroupRankingCard';
 export { default as ReadingChampionSection } from './ReadingChampionSection';
 export { default as KakaoChannelButton } from './KakaoChannelButton';
 export { default as BibleQuizCard } from './BibleQuizCard';
+export { default as TalentShop } from './TalentShop';

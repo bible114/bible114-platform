@@ -34,12 +34,16 @@ const App = () => {
     const [view, setView] = useState('login');
     const [tempUser, setTempUser] = useState(null);
     const [loginInitialTab, setLoginInitialTab] = useState('member');
+    const [showSecretShopUnlocked, setShowSecretShopUnlocked] = useState(false);
     // [Phase 3] 교회 전용 링크(?church=ID) — 로그인 화면 교회 preselect용. 최초 마운트 시 1회만 읽는다.
     const [presetChurchId] = useState(() => new URLSearchParams(window.location.search).get('church') || null);
     const { currentUser, setCurrentUser, authLoading, authError, retryAuthCheck } = useUserAuth();
-    const handleReadComplete = useCallback(() => {
+    const handleReadComplete = useCallback((resultData) => {
         if (typeof window !== 'undefined' && window.refreshKakaoAdBanner) {
             window.refreshKakaoAdBanner();
+        }
+        if (resultData?.secretShopJustUnlocked) {
+            setShowSecretShopUnlocked(true);
         }
     }, []);
 
@@ -774,6 +778,8 @@ const App = () => {
                 setView={setView}
                 isChurchAdmin={currentUser?.role === 'churchAdmin'}
                 churchCommunities={churchCommunities}
+                showSecretShopUnlocked={showSecretShopUnlocked}
+                setShowSecretShopUnlocked={setShowSecretShopUnlocked}
             />
         );
     } else if (view === 'guest' && currentUser?.role === 'guest') {

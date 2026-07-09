@@ -29,7 +29,8 @@ import {
     SubgroupRankingCard,
     ReadingChampionSection,
     KakaoChannelButton,
-    BibleQuizCard
+    BibleQuizCard,
+    TalentShop
 } from './dashboard';
 import TutorialOverlay from './TutorialOverlay';
 
@@ -98,6 +99,8 @@ const DashboardView = ({
     setView,
     isChurchAdmin,
     churchCommunities,
+    showSecretShopUnlocked,
+    setShowSecretShopUnlocked,
 }) => {
     const [showTutorial, setShowTutorial] = useState(false);
 
@@ -379,6 +382,13 @@ const DashboardView = ({
                     <ReadingChampionSection getWeeklyMVP={getWeeklyMVP} />
 
                     <BibleQuizCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
+
+                    <TalentShop
+                        currentUser={currentUser}
+                        setCurrentUser={setCurrentUser}
+                        showUnlockModal={showSecretShopUnlocked}
+                        onCloseUnlockModal={() => setShowSecretShopUnlocked(false)}
+                    />
                 </main>
             </div>
 
