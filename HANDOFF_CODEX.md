@@ -148,7 +148,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
   - `useAuth.js` `buildNewMember`: 게스트 상태(`getGuestState()`)가 있고 `readDates`가 1개 이상이면 `currentDay`/`streak`/`lastReadDate`를 시드. **score/talent는 절대 이관하지 않는다** (localStorage는 위조 가능 — 점수 소급은 랭킹 오염 경로).
   - 이관 후 `saveGuestState({ migratedAt: <now> })`로 마킹 (재가입 시 이중 이관 방지 — migratedAt 있으면 이관 스킵).
   - 가입 화면에 이관 예고 문구: 게스트 기록이 있으면 "지금까지 읽은 N일차 진도를 가져옵니다 (점수는 가입 후부터 적립돼요)".
-- [ ] **T11. 관리자 교회 이동 기능**
+- [x] **T11. 관리자 교회 이동 기능**
   - 현재 `App.jsx`의 `saveEditUser`는 churchId를 저장하지 않는다 → 무소속 성도가 나중에 교회가 생겨도 옮길 방법이 없다.
   - `PlatformAdminView.jsx` 사용자 편집에 교회 선택 드롭다운(allChurches) 추가, 교회 변경 시 `churchId`, `churchName` 갱신 + `departmentId/departmentName/subgroupId/subgroupName`은 null로 리셋(다음 로그인 때 기존 흐름이 부서/소그룹 선택 화면으로 보냄). 진도·점수·메모는 users/{uid} 아래라 자동 보존 — 추가 마이그레이션 불필요.
   - 규칙 확인: platformAdmin은 이미 users update 가능 — 규칙 변경 불필요.
@@ -187,6 +187,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-09 | T8 GuestReaderView 신설 + 라우팅 | `src/components/GuestReaderView.jsx`, `src/components/dashboard/DailyVideoCard.jsx`, `src/components/LoginView.jsx`, `src/App.jsx`, `HANDOFF_CODEX.md` | 게스트 전용 읽기 화면/라우팅 추가, DailyVideoCard 게스트 모드는 localStorage 저장으로 분기. `npm run build` 통과. 실제 버튼 진입 검증은 T9 후 진행 예정. |
 | 2026-07-09 | T9 로그인 화면에 게스트 진입 버튼 | `src/components/LoginView.jsx`, `HANDOFF_CODEX.md` | `auth.signInAnonymously()` 버튼 추가 및 provider 비활성화 오류 문구 처리. `npm run build` 통과. Browser에서 버튼 렌더링/콘솔 무오류 확인. 실제 클릭 진입은 익명 계정 생성 부작용 및 M3 전제 때문에 미검증. |
 | 2026-07-09 | T10 게스트 → 가입 시 진도 이관 | `src/hooks/useAuth.js`, `src/components/LoginView.jsx`, `HANDOFF_CODEX.md` | 게스트 readDates가 있고 migratedAt이 없으면 가입 문서의 currentDay/streak/lastReadDate만 시드, score/talent는 0 유지. 가입 화면 이관 예고 문구 추가. `npm run build` 통과. 실제 Firebase 가입 이관은 테스트 데이터 생성 부작용 때문에 미검증. |
+| 2026-07-09 | T11 관리자 교회 이동 기능 | `src/App.jsx`, `src/components/PlatformAdminView.jsx`, `HANDOFF_CODEX.md` | 플랫폼 관리자 회원 편집에 교회 선택 추가. 교회 변경 시 부서/소그룹 필드 null 리셋, 저장 시 churchId/churchName 포함. `npm run build` 통과. 실제 Firestore 회원 이동은 운영 데이터 변경 부작용 때문에 미검증. |
 
 ---
 
@@ -194,7 +195,11 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 > Codex: 작업을 마치거나 중단할 때 여기에 남겨라 — ① 완료/미완 상태 요약, ② 설계와 다르게 한 것과 이유, ③ 질문/막힌 것, ④ Claude가 리뷰할 때 봐야 할 지점.
 
-(아직 없음)
+2026-07-09 Codex:
+- 완료: T1~T11 체크리스트 전체 구현 및 각 작업 단위 커밋 완료. 모든 커밋 전 `npm run build` 통과.
+- 설계와 다르게 한 점: 실제 Firebase 가입/익명 로그인/회원 교회 이동은 운영 데이터 생성·변경 부작용이 있어 실행 검증하지 않고 미검증으로 로그에 남김. Browser 검증은 UI 렌더링 중심으로 수행.
+- 질문/막힌 것: 없음. 단, M1(무소속 가상 교회 생성 버튼 클릭), M2(firestore.rules 배포), M3(익명 인증 활성화), M4(gh-pages 배포)는 사용자 수동 작업으로 남아 있음.
+- 리뷰 포인트: `DailyVideoCard`는 게스트 모드에서 users 문서 쓰기를 하지 않도록 분기했음. `GuestReaderView`는 DashboardView를 재사용하지 않고 읽기/TTS/영상/진도만 포함. `firestore.rules`는 지정된 네 쓰기 규칙만 `isRealUser()`로 교체했고 `users` read와 `dailyVideos` create는 유지.
 
 ---
 

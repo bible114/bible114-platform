@@ -301,8 +301,11 @@ const App = () => {
         if (!editingUser) return;
         try {
             await db.collection('users').doc(editingUser.uid).set({
+                churchId: editingUser.churchId,
+                churchName: editingUser.churchName,
                 departmentId: editingUser.departmentId, departmentName: editingUser.departmentName,
-                subgroupId: editingUser.subgroupId, planId: editingUser.planId,
+                subgroupId: editingUser.subgroupId, subgroupName: editingUser.subgroupName || null,
+                planId: editingUser.planId,
                 currentDay: editingUser.currentDay, readCount: editingUser.readCount || 1,
                 score: editingUser.score, streak: editingUser.streak,
                 lastReadDate: editingUser.lastReadDate || null,

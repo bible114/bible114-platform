@@ -1331,6 +1331,29 @@ const PlatformAdminView = ({
                     <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
                         <h3 className="font-bold text-lg border-b pb-2">회원 정보 수정 ({editingUser.name})</h3>
                         <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1">소속 교회</label>
+                            <select value={editingUser.churchId || ''} onChange={e => {
+                                const church = allChurches.find(c => c.id === e.target.value);
+                                if (!church) return;
+                                setEditingUser({
+                                    ...editingUser,
+                                    churchId: church.id,
+                                    churchName: church.name,
+                                    departmentId: null,
+                                    departmentName: null,
+                                    subgroupId: null,
+                                    subgroupName: null,
+                                });
+                            }} className="w-full border rounded p-2 text-sm">
+                                <option value="">교회를 선택하세요</option>
+                                {allChurches
+                                    .filter(c => !c.isDeleted)
+                                    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR'))
+                                    .map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                            <p className="text-[11px] text-slate-400 mt-1">교회를 변경하면 부서와 소그룹은 다시 선택하도록 비워집니다.</p>
+                        </div>
+                        <div>
                             <label className="block text-xs font-bold text-slate-500 mb-1">소속 공동체</label>
                             <select value={editingUser.departmentId || ''} onChange={e => {
                                 const comm = DEFAULT_DEPARTMENTS.find(c => c.id === e.target.value);
