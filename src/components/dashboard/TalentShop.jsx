@@ -68,7 +68,8 @@ const TalentShop = ({
     useEffect(() => {
         if (!open || !currentUser?.uid) return undefined;
         let alive = true;
-        db.collection('talentPurchases').where('uid', '==', currentUser.uid).get()
+        db.collection('churches').doc(currentUser.churchId).collection('talentPurchases')
+            .where('uid', '==', currentUser.uid).get()
             .then(snap => {
                 if (!alive) return;
                 const rows = snap.docs
@@ -104,7 +105,8 @@ const TalentShop = ({
         setBuyingId(item.id);
         setMessage(null);
         try {
-            const purchaseRef = db.collection('talentPurchases').doc();
+            const purchaseRef = db.collection('churches').doc(currentUser.churchId)
+                .collection('talentPurchases').doc();
             const result = await db.runTransaction(async (transaction) => {
                 const userRef = db.collection('users').doc(currentUser.uid);
                 const userSnap = await transaction.get(userRef);

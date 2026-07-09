@@ -125,7 +125,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             setTalentShop(talentShopDoc.exists ? { enabled: false, items: [], ...talentShopDoc.data() } : { enabled: false, items: [] });
             try {
                 const memberIds = new Set(activeMembers.map(m => m.uid));
-                const purchaseSnap = await db.collection('talentPurchases')
+                const purchaseSnap = await db.collection('churches').doc(currentUser.churchId)
+                    .collection('talentPurchases')
                     .orderBy('createdAt', 'desc')
                     .limit(200)
                     .get();
@@ -483,7 +484,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
     const updatePurchaseStatus = async (purchase, mode) => {
         if (mode === 'delivered') {
-            await db.collection('talentPurchases').doc(purchase.id).update({
+            await db.collection('churches').doc(currentUser.churchId)
+                .collection('talentPurchases').doc(purchase.id).update({
                 status: 'delivered',
                 deliveredAt: firebase.firestore.FieldValue.serverTimestamp(),
                 deliveredBy: currentUser.uid,
@@ -494,7 +496,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         }
 
         const batch = db.batch();
-        const purchaseRef = db.collection('talentPurchases').doc(purchase.id);
+        const purchaseRef = db.collection('churches').doc(currentUser.churchId)
+            .collection('talentPurchases').doc(purchase.id);
         const userRef = db.collection('users').doc(purchase.uid);
         batch.update(purchaseRef, {
             status: 'cancelled',
