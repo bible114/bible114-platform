@@ -4,6 +4,7 @@ import { firebase } from '../utils/firebase';
 import ChurchAdminView from './ChurchAdminView';
 import { getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
 import { rebuildChurchDirectory, removeChurchFromDirectory } from '../utils/churchDirectory';
+import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
 
 const PlatformAdminView = ({
     handleLogout,
@@ -44,6 +45,7 @@ const PlatformAdminView = ({
     const [platformKakaoInput, setPlatformKakaoInput] = React.useState('');
     const [savingPlatformKakao, setSavingPlatformKakao] = React.useState(false);
     const [directoryRebuilding, setDirectoryRebuilding] = React.useState(false);
+    const [checkingUnaffiliatedChurch, setCheckingUnaffiliatedChurch] = React.useState(false);
 
     // 매일 영상 관리
     const nextVideoDate = React.useMemo(() => {
@@ -276,6 +278,34 @@ const PlatformAdminView = ({
             alert('디렉토리 재생성 실패: ' + e.message);
         } finally {
             setDirectoryRebuilding(false);
+        }
+    };
+
+    const handleEnsureUnaffiliatedChurch = async () => {
+        if (!db) return;
+        setCheckingUnaffiliatedChurch(true);
+        try {
+            await db.collection('churches').doc(UNAFFILIATED_CHURCH_ID).set({
+                name: UNAFFILIATED_CHURCH_NAME,
+                pastorName: '',
+                denomination: '',
+                churchCodeHash: null,
+                adminUid: null,
+                adminEmail: null,
+                isVirtual: true,
+                departments: [{
+                    id: 'personal',
+                    name: '개인 성도',
+                    color: 'bg-emerald-500',
+                    subgroups: ['성경읽기 동행'],
+                }],
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true });
+            alert('무소속 가상 교회 생성/점검이 완료되었습니다.');
+        } catch (e) {
+            alert('무소속 가상 교회 생성/점검 실패: ' + e.message);
+        } finally {
+            setCheckingUnaffiliatedChurch(false);
         }
     };
 
@@ -1176,6 +1206,22 @@ const PlatformAdminView = ({
                                 className="bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
                             >
                                 {directoryRebuilding ? '재생성 중...' : '디렉토리 재생성'}
+                            </button>
+                        </div>
+
+                        {/* 무소속 가상 교회 생성/점검 */}
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-6">
+                            <h3 className="text-sm font-bold text-emerald-800 mb-1">개인 성도 가상 교회</h3>
+                            <p className="text-xs text-emerald-700 mb-3">
+                                소속 교회가 없는 성도가 가입할 때 사용할 내부 가상 교회 문서를 생성하거나 점검합니다.
+                                이 교회는 로그인 화면의 교회 검색 목록에는 표시되지 않습니다.
+                            </p>
+                            <button
+                                onClick={handleEnsureUnaffiliatedChurch}
+                                disabled={checkingUnaffiliatedChurch}
+                                className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+                            >
+                                {checkingUnaffiliatedChurch ? '점검 중...' : '무소속 가상 교회 생성/점검'}
                             </button>
                         </div>
 

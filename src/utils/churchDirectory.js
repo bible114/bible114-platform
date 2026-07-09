@@ -1,5 +1,6 @@
 import { db, firebase } from './firebase';
 import { sha256 } from './crypto';
+import { UNAFFILIATED_CHURCH_ID } from '../data/constants';
 
 // ── 최근 교회 기억 (localStorage) ──────────────────────────────────────────
 // 멤버 로그인 성공 시 저장, 다음 방문 시 URL 파라미터가 없으면 preselect에 사용.
@@ -94,7 +95,7 @@ export const rebuildChurchDirectory = async () => {
     const churches = (await Promise.all(
         snap.docs
             .map(d => ({ id: d.id, ...d.data() }))
-            .filter(c => !c.isDeleted)
+            .filter(c => !c.isDeleted && c.id !== UNAFFILIATED_CHURCH_ID)
             .map(async c => ({
                 id: c.id,
                 name: c.name || '',

@@ -12,3 +12,7 @@ export const SUPABASE_FUNCTION_URL = "https://mvwhepqqzdtqtorgkrtf.supabase.co/f
 // 카카오톡 채널 상담 URL (실제 채널 ID로 교체 필요)
 export const KAKAO_CHANNEL_URL = "http://pf.kakao.com/_xdJrRX/chat";
 
+// 무소속(개인) 성도 가상 교회 — 문서 ID를 클라이언트 상수로 고정한다.
+// 입장코드 검증 스킵은 "이 상수와의 ID 일치"로만 판단한다.
+export const UNAFFILIATED_CHURCH_ID = 'unaffiliated_v1';
+export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
