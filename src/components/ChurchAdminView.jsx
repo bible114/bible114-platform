@@ -35,6 +35,9 @@ const formatAnyDate = (value) => {
 const getSubId = (s) => (typeof s === 'string' ? s : s.id);
 const getSubName = (s) => (typeof s === 'string' ? s : s.name);
 const genSubId = () => 'sub_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+const SHOP_EMOJIS = ['☕', '🍞', '🍪', '🍎', '🎁', '📖', '✏️', '🧦', '🧴', '🌿', '🕯️', '⭐'];
+const emptyShopItem = { emoji: '🎁', name: '', price: 10, description: '', active: true };
+const genShopItemId = () => 'item_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [members, setMembers] = useState([]);
@@ -79,6 +82,14 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [orgComms, setOrgComms] = useState([]);
     const [savingOrg, setSavingOrg] = useState(false);
 
+    // 달란트 상점
+    const [talentShop, setTalentShop] = useState({ enabled: false, items: [] });
+    const [shopItemDraft, setShopItemDraft] = useState(emptyShopItem);
+    const [editingShopItemId, setEditingShopItemId] = useState(null);
+    const [savingTalentShop, setSavingTalentShop] = useState(false);
+    const [talentPurchases, setTalentPurchases] = useState([]);
+    const [purchaseFilter, setPurchaseFilter] = useState('pending');
+
     // 교회 전용 로그인 링크
     const [linkCopied, setLinkCopied] = useState(false);
 
@@ -90,14 +101,16 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [membersSnap, announcementDoc, churchDoc, kakaoDoc, platformDoc] = await Promise.all([
+            const [membersSnap, announcementDoc, churchDoc, kakaoDoc, platformDoc, talentShopDoc] = await Promise.all([
                 db.collection('users').where('churchId', '==', currentUser.churchId).get(),
                 db.collection('churches').doc(currentUser.churchId).collection('settings').doc('announcement').get(),
                 db.collection('churches').doc(currentUser.churchId).get(),
                 db.collection('churches').doc(currentUser.churchId).collection('settings').doc('kakao').get(),
                 db.collection('settings').doc('platform').get(),
+                db.collection('churches').doc(currentUser.churchId).collection('settings').doc('talentShop').get(),
             ]);
             const loadedMembers = membersSnap.docs.map(d => ({ uid: d.id, ...d.data() })).filter(m => m.role !== 'churchAdmin');
+            const activeMembers = loadedMembers.filter(m => !m.isDeleted);
             setMembers(loadedMembers.filter(m => !m.isDeleted));
             setDeletedMembers(loadedMembers.filter(m => m.isDeleted));
             if (announcementDoc.exists) setAnnouncement(announcementDoc.data());
@@ -109,6 +122,20 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             }
             if (kakaoDoc.exists) setKakaoLink(kakaoDoc.data().url || '');
             if (platformDoc.exists) setPlatformKakaoUrl(platformDoc.data().kakaoUrl || '');
+            setTalentShop(talentShopDoc.exists ? { enabled: false, items: [], ...talentShopDoc.data() } : { enabled: false, items: [] });
+            try {
+                const memberIds = new Set(activeMembers.map(m => m.uid));
+                const purchaseSnap = await db.collection('talentPurchases')
+                    .orderBy('createdAt', 'desc')
+                    .limit(200)
+                    .get();
+                setTalentPurchases(purchaseSnap.docs
+                    .map(d => ({ id: d.id, ...d.data() }))
+                    .filter(p => memberIds.has(p.uid)));
+            } catch (purchaseError) {
+                console.error('달란트 구매 내역 로드 실패:', purchaseError);
+                setTalentPurchases([]);
+            }
         } catch (e) {
             console.error(e);
         }
@@ -291,6 +318,9 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             if (action.type === 'bulkSubgroup') await applySubgroupToMembers(action.members, action.commId, action.subId);
             if (action.type === 'bulkPassword') await resetPasswordsForMembers(action.members);
             if (action.type === 'singlePassword') await resetPasswordsForMembers([action.member]);
+            if (action.type === 'deleteShopItem') await executeDeleteShopItem(action.item);
+            if (action.type === 'deliverPurchase') await updatePurchaseStatus(action.purchase, 'delivered');
+            if (action.type === 'refundPurchase') await updatePurchaseStatus(action.purchase, 'cancelled');
             action.after?.();
         } catch (e) {
             console.error(e);
@@ -374,6 +404,110 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             alert('저장 실패');
         }
         setSavingOrg(false);
+    };
+
+    const saveTalentShop = async (nextShop = talentShop) => {
+        setSavingTalentShop(true);
+        try {
+            await db.collection('churches').doc(currentUser.churchId).collection('settings').doc('talentShop').set({
+                enabled: nextShop.enabled === true,
+                items: nextShop.items || [],
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true });
+            setTalentShop({ enabled: nextShop.enabled === true, items: nextShop.items || [] });
+            toast.success('달란트 상점 설정을 저장했습니다.');
+        } catch (e) {
+            console.error(e);
+            toast.error('달란트 상점 저장에 실패했습니다.');
+        } finally {
+            setSavingTalentShop(false);
+        }
+    };
+
+    const toggleTalentShopEnabled = async (enabled) => {
+        await saveTalentShop({ ...talentShop, enabled });
+    };
+
+    const resetShopItemDraft = () => {
+        setShopItemDraft(emptyShopItem);
+        setEditingShopItemId(null);
+    };
+
+    const submitShopItem = async () => {
+        const name = shopItemDraft.name.trim();
+        const price = Number(shopItemDraft.price);
+        if (!name) { toast.error('상품 이름을 입력해주세요.'); return; }
+        if (!Number.isFinite(price) || price <= 0) { toast.error('가격은 1 이상 숫자로 입력해주세요.'); return; }
+        const item = {
+            id: editingShopItemId || genShopItemId(),
+            emoji: shopItemDraft.emoji || '🎁',
+            name,
+            price: Math.round(price),
+            description: shopItemDraft.description.trim(),
+            active: shopItemDraft.active !== false,
+        };
+        const nextItems = editingShopItemId
+            ? (talentShop.items || []).map(existing => existing.id === editingShopItemId ? item : existing)
+            : [...(talentShop.items || []), item];
+        await saveTalentShop({ ...talentShop, items: nextItems });
+        resetShopItemDraft();
+    };
+
+    const editShopItem = (item) => {
+        setEditingShopItemId(item.id);
+        setShopItemDraft({
+            emoji: item.emoji || '🎁',
+            name: item.name || '',
+            price: item.price || 10,
+            description: item.description || '',
+            active: item.active !== false,
+        });
+    };
+
+    const deleteShopItem = async (item) => {
+        setConfirmAction({
+            type: 'deleteShopItem',
+            item,
+            title: `${item.name} 상품을 삭제할까요?`,
+            message: '이미 생성된 구매 내역은 유지되고, 상품 목록에서만 삭제됩니다.',
+            danger: true,
+            confirmLabel: '삭제',
+        });
+    };
+
+    const executeDeleteShopItem = async (item) => {
+        const nextItems = (talentShop.items || []).filter(existing => existing.id !== item.id);
+        await saveTalentShop({ ...talentShop, items: nextItems });
+        if (editingShopItemId === item.id) resetShopItemDraft();
+    };
+
+    const updatePurchaseStatus = async (purchase, mode) => {
+        if (mode === 'delivered') {
+            await db.collection('talentPurchases').doc(purchase.id).update({
+                status: 'delivered',
+                deliveredAt: firebase.firestore.FieldValue.serverTimestamp(),
+                deliveredBy: currentUser.uid,
+            });
+            setTalentPurchases(prev => prev.map(p => p.id === purchase.id ? { ...p, status: 'delivered', deliveredAt: new Date(), deliveredBy: currentUser.uid } : p));
+            toast.success('수령 완료로 처리했습니다.');
+            return;
+        }
+
+        const batch = db.batch();
+        const purchaseRef = db.collection('talentPurchases').doc(purchase.id);
+        const userRef = db.collection('users').doc(purchase.uid);
+        batch.update(purchaseRef, {
+            status: 'cancelled',
+            deliveredAt: firebase.firestore.FieldValue.serverTimestamp(),
+            deliveredBy: currentUser.uid,
+        });
+        batch.update(userRef, {
+            talent: firebase.firestore.FieldValue.increment(purchase.price || 0),
+        });
+        await batch.commit();
+        setTalentPurchases(prev => prev.map(p => p.id === purchase.id ? { ...p, status: 'cancelled', deliveredAt: new Date(), deliveredBy: currentUser.uid } : p));
+        setMembers(prev => prev.map(m => m.uid === purchase.uid ? { ...m, talent: (m.talent || 0) + (purchase.price || 0) } : m));
+        toast.success('구매를 취소하고 달란트를 환불했습니다.');
     };
 
     const todayStr = new Date().toDateString();
@@ -511,9 +645,19 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         },
     ];
 
+    const memberById = members.reduce((acc, member) => {
+        acc[member.uid] = member;
+        return acc;
+    }, {});
+    const pendingPurchaseCount = talentPurchases.filter(p => p.status === 'pending').length;
+    const filteredPurchases = talentPurchases.filter(purchase => (
+        purchaseFilter === 'all' || purchase.status === purchaseFilter
+    ));
+
     const TABS = [
         ['dashboard', '📊 대시보드'],
         ['members', '👥 교인 관리'],
+        ['talentShop', `⭐ 달란트 상점${pendingPurchaseCount > 0 ? ` (${pendingPurchaseCount})` : ''}`],
         ['org', '📋 조직'],
         ['announcement', '📢 공지'],
         ['settings', '⚙️ 설정'],
@@ -851,6 +995,218 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                         </div>
                                     </div>
                                 )}
+                            </div>
+                        )}
+
+                        {/* ── 달란트 상점 ── */}
+                        {tab === 'talentShop' && (
+                            <div className="space-y-5">
+                                <div className="rounded-2xl border border-violet-100 bg-white p-5 shadow-sm">
+                                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                        <div>
+                                            <h2 className="text-lg font-black text-slate-800">⭐ 달란트 상점</h2>
+                                            <p className="mt-1 text-xs font-bold text-slate-400">
+                                                끄면 교인에게 상점이 전혀 보이지 않아요. 언제든 다시 켤 수 있습니다.
+                                            </p>
+                                        </div>
+                                        <label className="inline-flex cursor-pointer items-center gap-3">
+                                            <span className="text-sm font-black text-slate-600">{talentShop.enabled ? '사용 중' : '꺼짐'}</span>
+                                            <input
+                                                type="checkbox"
+                                                checked={talentShop.enabled === true}
+                                                onChange={e => toggleTalentShopEnabled(e.target.checked)}
+                                                disabled={savingTalentShop}
+                                                className="h-5 w-5 rounded border-slate-300"
+                                            />
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-[0.85fr_1.15fr] gap-4">
+                                    <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+                                        <h3 className="text-sm font-black text-slate-800 mb-4">{editingShopItemId ? '상품 수정' : '상품 추가'}</h3>
+                                        <div className="space-y-3">
+                                            <div>
+                                                <p className="mb-2 text-xs font-black text-slate-500">이모지</p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {SHOP_EMOJIS.map(emoji => (
+                                                        <button
+                                                            key={emoji}
+                                                            type="button"
+                                                            onClick={() => setShopItemDraft(prev => ({ ...prev, emoji }))}
+                                                            className={`h-10 w-10 rounded-xl border text-lg ${shopItemDraft.emoji === emoji ? 'border-violet-400 bg-violet-50' : 'border-slate-100 bg-slate-50'}`}
+                                                        >
+                                                            {emoji}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <input
+                                                type="text"
+                                                value={shopItemDraft.name}
+                                                onChange={e => setShopItemDraft(prev => ({ ...prev, name: e.target.value }))}
+                                                placeholder="상품 이름"
+                                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold"
+                                            />
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                value={shopItemDraft.price}
+                                                onChange={e => setShopItemDraft(prev => ({ ...prev, price: e.target.value }))}
+                                                placeholder="가격"
+                                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold"
+                                            />
+                                            <textarea
+                                                value={shopItemDraft.description}
+                                                onChange={e => setShopItemDraft(prev => ({ ...prev, description: e.target.value }))}
+                                                placeholder="설명"
+                                                rows={3}
+                                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold resize-none"
+                                            />
+                                            <label className="flex items-center gap-2 text-sm font-bold text-slate-600">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={shopItemDraft.active !== false}
+                                                    onChange={e => setShopItemDraft(prev => ({ ...prev, active: e.target.checked }))}
+                                                />
+                                                판매중
+                                            </label>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={submitShopItem}
+                                                    disabled={savingTalentShop}
+                                                    className="flex-1 rounded-xl bg-violet-700 px-4 py-3 text-sm font-black text-white disabled:opacity-50"
+                                                >
+                                                    {editingShopItemId ? '수정 저장' : '상품 추가'}
+                                                </button>
+                                                {editingShopItemId && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={resetShopItemDraft}
+                                                        className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-500"
+                                                    >
+                                                        취소
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+                                        <div className="mb-4 flex items-center justify-between">
+                                            <h3 className="text-sm font-black text-slate-800">상품 목록</h3>
+                                            <span className="text-xs font-bold text-slate-400">{(talentShop.items || []).length}개</span>
+                                        </div>
+                                        {(talentShop.items || []).length === 0 ? (
+                                            <p className="py-10 text-center text-xs font-bold text-slate-300">아직 상품이 없습니다.</p>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {(talentShop.items || []).map(item => (
+                                                    <div key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 p-3">
+                                                        <div className="flex min-w-0 items-center gap-3">
+                                                            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-2xl">{item.emoji || '🎁'}</span>
+                                                            <div className="min-w-0">
+                                                                <p className="truncate text-sm font-black text-slate-800">{item.name}</p>
+                                                                <p className="truncate text-xs font-bold text-slate-400">⭐ {item.price} · {item.active === false ? '판매중지' : '판매중'}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex shrink-0 gap-2">
+                                                            <button type="button" onClick={() => editShopItem(item)} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-black text-slate-600">수정</button>
+                                                            <button type="button" onClick={() => deleteShopItem(item)} className="rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-500">삭제</button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+                                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                        <div>
+                                            <h3 className="text-sm font-black text-slate-800">구매 내역</h3>
+                                            <p className="mt-1 text-xs font-bold text-slate-400">최근 200건을 불러온 뒤 현재 교회 교인만 표시합니다.</p>
+                                        </div>
+                                        <select
+                                            value={purchaseFilter}
+                                            onChange={e => setPurchaseFilter(e.target.value)}
+                                            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700"
+                                        >
+                                            <option value="pending">수령 대기</option>
+                                            <option value="delivered">수령 완료</option>
+                                            <option value="cancelled">취소</option>
+                                            <option value="all">전체</option>
+                                        </select>
+                                    </div>
+                                    {filteredPurchases.length === 0 ? (
+                                        <p className="py-10 text-center text-xs font-bold text-slate-300">표시할 구매 내역이 없습니다.</p>
+                                    ) : (
+                                        <div className="overflow-x-auto">
+                                            <table className="min-w-full divide-y divide-slate-100">
+                                                <thead className="bg-slate-50">
+                                                    <tr>
+                                                        <th className="px-4 py-3 text-left text-xs font-black text-slate-400">교인</th>
+                                                        <th className="px-4 py-3 text-left text-xs font-black text-slate-400">상품</th>
+                                                        <th className="px-4 py-3 text-left text-xs font-black text-slate-400">가격</th>
+                                                        <th className="px-4 py-3 text-left text-xs font-black text-slate-400">구매일</th>
+                                                        <th className="px-4 py-3 text-left text-xs font-black text-slate-400">잔여</th>
+                                                        <th className="px-4 py-3 text-right text-xs font-black text-slate-400">처리</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {filteredPurchases.map(purchase => {
+                                                        const buyer = memberById[purchase.uid];
+                                                        return (
+                                                            <tr key={purchase.id}>
+                                                                <td className="px-4 py-3 text-sm font-bold text-slate-700">{purchase.memberName || buyer?.name || '-'}</td>
+                                                                <td className="px-4 py-3 text-sm text-slate-600">{purchase.itemName}</td>
+                                                                <td className="px-4 py-3 text-sm font-black text-amber-600">⭐ {purchase.price || 0}</td>
+                                                                <td className="px-4 py-3 text-xs font-bold text-slate-400">{formatAnyDate(purchase.createdAt)}</td>
+                                                                <td className="px-4 py-3 text-sm font-black text-slate-600">{buyer ? `⭐ ${buyer.talent || 0}` : '-'}</td>
+                                                                <td className="px-4 py-3">
+                                                                    {purchase.status === 'pending' ? (
+                                                                        <div className="flex justify-end gap-2">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setConfirmAction({
+                                                                                    type: 'deliverPurchase',
+                                                                                    purchase,
+                                                                                    title: `${purchase.itemName} 수령 완료 처리할까요?`,
+                                                                                    message: `${purchase.memberName || buyer?.name || '교인'}님에게 상품을 전달한 뒤 눌러주세요.`,
+                                                                                    confirmLabel: '수령 완료',
+                                                                                })}
+                                                                                className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-600"
+                                                                            >
+                                                                                수령 완료
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setConfirmAction({
+                                                                                    type: 'refundPurchase',
+                                                                                    purchase,
+                                                                                    title: `${purchase.itemName} 구매를 취소·환불할까요?`,
+                                                                                    message: `대기 건을 취소하고 ${purchase.price || 0}달란트를 교인 잔액에 돌려줍니다.`,
+                                                                                    danger: true,
+                                                                                    confirmLabel: '취소·환불',
+                                                                                })}
+                                                                                className="rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-500"
+                                                                            >
+                                                                                취소·환불
+                                                                            </button>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <p className="text-right text-xs font-black text-slate-400">{purchase.status === 'delivered' ? '수령 완료' : '취소됨'}</p>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
 

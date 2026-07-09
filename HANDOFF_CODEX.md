@@ -199,6 +199,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-09 | T17 talent 적립 개편 + 비밀 상점 해금 플래그 | `src/hooks/useUserBibleActions.js`, `src/utils/helpers.js`, `HANDOFF_CODEX.md` | score 적립 로직은 유지하고 talent만 하루 첫 읽기 `10 + min(streak, 7)`로 분리. history `talent` 필드와 `secretShopUnlocked`/`secretShopJustUnlocked` 추가, 상태 매핑 추가. `npm run build` 통과. |
 | 2026-07-09 | T18 매일 성경퀴즈 | `src/data/bibleQuiz.js`, `src/components/dashboard/BibleQuizCard.jsx`, `src/components/dashboard/index.js`, `src/components/DashboardView.jsx`, `src/utils/helpers.js`, `HANDOFF_CODEX.md` | 113문항 퀴즈 은행과 KST 오늘 문제 선택, 대시보드 하단 퀴즈 카드, 트랜잭션 보상 처리 추가. `npm run build` 통과. 퀴즈 내용은 사용자 검수 필요. |
 | 2026-07-09 | T19 비밀 달란트 상점 — 교인용 | `src/components/dashboard/TalentShop.jsx`, `src/components/dashboard/index.js`, `src/components/DashboardView.jsx`, `src/App.jsx`, `HANDOFF_CODEX.md` | `settings/talentShop.enabled === true`일 때만 진입 카드/해금 모달/상점 렌더링. active 상품 구매 트랜잭션과 내 구매 내역 추가. `talentPurchases` create 필드는 규칙 화이트리스트와 일치. `npm run build` 통과. |
+| 2026-07-09 | T20 교회 관리자 달란트 상점 탭 | `src/components/ChurchAdminView.jsx`, `HANDOFF_CODEX.md` | 관리자 탭 추가, 상점 enabled 토글, 상품 CRUD, 최근 구매 200건 클라이언트 필터, 수령 완료/취소·환불 처리 추가. `npm run build` 통과. 로컬 dev 앱 렌더/콘솔 무오류 확인, 관리자 인증 진입 및 실데이터 구매 처리는 미검증. |
 
 ---
 
@@ -220,6 +221,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T17 완료. `score` 계산은 기존 `addedScore = 10 + streakBonus` 흐름을 유지했고, `talent`만 하루 첫 읽기 기준으로 분리했다. 비밀 상점 UI는 T19 몫이라 아직 렌더링하지 않음.
 - T18 완료. 성경퀴즈는 113문항으로 구성했고, 정답/근거 구절의 신학적·표기 검수는 사용자 몫으로 남김.
 - T19 완료. 교인용 비밀 상점은 교회 설정이 명시적으로 enabled일 때만 보이며, 구매 문서는 `uid, memberName, itemId, itemName, price, status, createdAt`만 기록한다. 실제 구매 클릭은 운영 데이터 변경이라 실행 검증하지 않음.
+- T20 완료. 구매 내역은 복합 인덱스를 피하려고 `orderBy('createdAt','desc').limit(200)`만 사용하고, 현재 교회 교인 uid로 클라이언트 필터링한다. 로컬 dev는 로그인 화면 렌더와 콘솔 무오류까지만 확인했고, 교회 관리자 인증 진입은 미검증.
 
 ---
 
@@ -296,7 +298,7 @@ Phase C(플랫폼 관리자)·D·E는 별도 라운드로 — 이번에 손대�
   - 상점 화면: 헤더에 잔액(⭐ N), active 상품만 2열 그리드(이모지+이름+가격+구매 버튼, 잔액 부족 시 "달란트 부족" 비활성), 안내 배너 "구매한 상품은 교회에서 직접 받아요", 하단에 내 구매 내역(`talentPurchases.where('uid','==',내uid)`, 대기/수령/취소 뱃지). active 상품이 0개면 "아직 준비된 상품이 없어요".
   - 구매: 확인창 → 트랜잭션: users 문서 talent 잔액 확인·차감 + 같은 트랜잭션에서 `talentPurchases` 신규 문서 set — 필드는 **정확히** `{uid, memberName(currentUser.name), itemId, itemName, price, status: 'pending', createdAt: serverTimestamp}` (화이트리스트 초과 시 거부됨). 성공 토스트 "구매 완료! 교회에서 상품을 받아가세요".
   - **디자인 지시**: 진입 카드·상점 헤더는 딥 바이올렛 그라데이션(`from-violet-950 via-violet-800 to-violet-600` 계열) + 금색(amber-300) 달란트 강조 — "비밀" 무드. 상품 카드는 흰색 rounded-2xl. 나머지는 기존 대시보드 언어(slate, rounded-3xl) 유지.
-- [ ] **T20. 교회 관리자 달란트 상점 탭** (`src/components/ChurchAdminView.jsx`)
+- [x] **T20. 교회 관리자 달란트 상점 탭** (`src/components/ChurchAdminView.jsx`)
   - 탭 추가: `대시보드/교인 관리/달란트 상점/조직/공지/설정`. 탭 라벨에 수령 대기 건수 뱃지.
   - (a) **상점 사용 토글** (탭 최상단 패널): `settings/talentShop.enabled` on/off 스위치 + 설명 "끄면 교인에게 상점이 전혀 보이지 않아요. 언제든 다시 켤 수 있습니다." 기본 꺼짐 — 문서가 없으면 꺼진 것으로 간주.
   - (b) 상품 관리: items CRUD — **이모지(프리셋 목록에서 선택)**/이름/가격/설명/판매중 토글, 추가·수정·삭제. 저장은 문서 set(merge). Toast/ConfirmDialog 재사용. 재고 수량 관리는 만들지 말 것(소진 시 판매중지 토글로 대응 — 확정).
