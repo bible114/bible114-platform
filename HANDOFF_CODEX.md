@@ -296,7 +296,13 @@ Phase C(플랫폼 관리자)·D·E는 별도 라운드로 — 이번에 손대�
   - (d) **취소·환불**: 대기 건에 "취소·환불" 액션 — ConfirmDialog 후 batch로 ① purchase update `{status:'cancelled', deliveredAt: serverTimestamp, deliveredBy: 관리자uid}` ② 해당 교인 users 문서 `talent: increment(price)` (관리자는 교인 문서 update 가능). 어르신 오터치 대비 필수.
   - 완료 기준: 빌드 통과 + 로컬 dev에서 탭 렌더링 확인 (실데이터 구매/수령은 미검증 허용).
 
-**라운드 3 보류 항목 (Codex 손대지 말 것):** 기존 talent 잔액 리셋 여부(실물 상품 도입으로 구 잔액 처리 필요 — 사용자 결정 대기), 퀴즈 문항의 신학적 검수(사용자 몫).
+- [ ] **T21. 달란트 잔액 전원 리셋 버튼 (플랫폼 관리자, 1회성)** — 사용자 확정: 실물 상점 오픈과 함께 구 적립 방식 잔액은 전원 0으로 새 출발.
+  - `PlatformAdminView.jsx` 시스템 섹션(자격증명 이관 박스 근처)에 앰버 톤 박스 "⭐ 달란트 잔액 초기화 (상점 새 출발)" + 설명 "구 적립 방식으로 쌓인 달란트를 전원 0으로 초기화합니다. 새 적립(하루 1회)과 실물 상점 도입 시점에 딱 한 번 실행하세요." + 버튼(더블 confirm — 파괴적 작업).
+  - 핸들러: `db.collection('users').get()` 전체 순회, 10개 단위 청크로 각 문서 update `{ talent: 0, talentMigrated: true, updatedAt: serverTimestamp }`. 진행률 표시, 완료 시 처리 인원 alert.
+  - **`talentMigrated: true`를 반드시 함께 세팅** — `helpers.js`의 `migrateTalentIfNeeded`가 이 플래그 없는 구 계정의 로그인 시 talent를 score로 복원해버리므로, 이걸 잠그지 않으면 리셋이 뒤집힌다.
+  - 실행 자체는 사용자 수동(배포 후 버튼 클릭). 실행 순서: 라운드 3 배포 → 이 버튼 클릭 → 그다음 교회들에 상점 안내.
+
+**라운드 3 보류 항목 (Codex 손대지 말 것):** 퀴즈 문항의 신학적 검수(사용자 몫).
 
 ---
 
