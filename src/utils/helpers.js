@@ -7,6 +7,9 @@ export const makePseudoEmail = (name, birthdate, churchId = '') => {
     return churchId ? `${base}_${churchId}@bible.local` : `${base}@bible.local`;
 };
 
+export const makeUnaffiliatedIdentity = (birthdate, phone4) =>
+    `${String(birthdate || '').trim()}p${String(phone4 || '').trim()}`;
+
 const FREE_DEFAULTS = ['wall_plain_white', 'floor_plain_white', 'base_man', 'eye_basic', 'expr_happy'];
 
 // 지연(lazy) 마이그레이션: score/talent 이중화 이전 계정을 1회성으로 복구한다.

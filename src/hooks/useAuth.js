@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { auth, authReady, db, firebase } from '../utils/firebase';
-import { makePseudoEmail, userDocToState, migrateTalentIfNeeded } from '../utils/helpers';
+import { makePseudoEmail, makeUnaffiliatedIdentity, userDocToState, migrateTalentIfNeeded } from '../utils/helpers';
 import { sha256 } from '../utils/crypto';
 import { getChurchDirectory, addChurchToDirectory, saveLastChurch } from '../utils/churchDirectory';
+import { UNAFFILIATED_CHURCH_ID } from '../data/constants';
 
 export const useAuth = ({
     setCurrentUser,
@@ -40,13 +41,20 @@ export const useAuth = ({
         setView('plan_type_select');
     };
 
+    const makeMemberEmail = (name, birthdate, churchId, phone4) => {
+        const identity = churchId === UNAFFILIATED_CHURCH_ID
+            ? makeUnaffiliatedIdentity(birthdate, phone4)
+            : birthdate;
+        return makePseudoEmail(name, identity, churchId);
+    };
+
     // ── 교인 로그인 ──
-    const handleMemberLogin = async (name, birthdate, pw, churchId) => {
+    const handleMemberLogin = async (name, birthdate, pw, churchId, phone4) => {
         setErrorMsg('');
         try {
             await authReady;
             // 신 포맷(이름+생년월일+교회ID) 시도 → 실패 시 구 포맷으로 마이그레이션
-            const newEmail = makePseudoEmail(name, birthdate, churchId);
+            const newEmail = makeMemberEmail(name, birthdate, churchId, phone4);
             const oldEmail = makePseudoEmail(name, birthdate);
             let cred = await auth.signInWithEmailAndPassword(newEmail, pw).catch(() => null);
 
@@ -142,7 +150,7 @@ export const useAuth = ({
     // (firestore.rules: churches read는 isSignedIn() 필요). 대신 공개된
     // settings/churchDirectory 의 codeHash로 입장코드를 클라이언트에서 검증한다.
     // → Firebase Auth 계정 생성 전에 실패시키므로 가입 실패 시 롤백이 불필요하다.
-    const handleMemberSignup = async ({ name, birthdate, password, churchId, churchCode }) => {
+    const handleMemberSignup = async ({ name, birthdate, password, churchId, churchCode, phone4 }) => {
         setErrorMsg('');
         try {
             await authReady;
@@ -155,7 +163,7 @@ export const useAuth = ({
             if (churchEntry.codeHash !== inputHash) { setErrorMsg('교회 입장코드가 틀렸습니다.'); return; }
 
             const churchName = churchEntry.name;
-            const email = makePseudoEmail(name, birthdate, churchId);
+            const email = makeMemberEmail(name, birthdate, churchId, phone4);
             let signupErrorCode = null;
             let cred = await auth.createUserWithEmailAndPassword(email, password).catch(err => {
                 signupErrorCode = err?.code || 'unknown';

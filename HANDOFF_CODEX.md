@@ -75,7 +75,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
   - `src/utils/churchDirectory.js`의 `rebuildChurchDirectory`에서 `UNAFFILIATED_CHURCH_ID` 문서를 **제외**한다 (가상 교회는 교회 검색 목록에 나오면 안 됨 — 코드 없이 가입되는 교회가 검색에 노출되는 것 방지).
   - 완료 기준: 빌드 통과. (버튼 클릭은 사용자 수동 작업 M1.)
 
-- [ ] **T2. 가짜 이메일에 무소속 식별자 확장**
+- [x] **T2. 가짜 이메일에 무소속 식별자 확장**
   - 문제: 무소속 풀은 전국 단위라 `이름+생년월일` 충돌 확률이 단일 교회보다 훨씬 높다.
   - `src/utils/helpers.js`의 `makePseudoEmail`은 건드리지 말고, 호출부에서 무소속일 때만 birthdate 인자를 `` `${birthdate}p${phone4}` `` 형태로 확장한다 (`phone4` = 전화번호 뒤 4자리 문자열). 예: `makePseudoEmail(name, '900101p1234', UNAFFILIATED_CHURCH_ID)`.
   - 이 조합 로직은 헬퍼 함수 `makeUnaffiliatedIdentity(birthdate, phone4)` 하나로 만들어 가입·로그인 양쪽에서 공유할 것 (문자열 조립이 두 곳에서 어긋나면 로그인 불가 사고가 난다).
@@ -178,6 +178,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
 | 2026-07-09 | T1 상수 + 가상 교회 생성 버튼 | `src/data/constants.js`, `src/components/PlatformAdminView.jsx`, `src/utils/churchDirectory.js`, `HANDOFF_CODEX.md` | `npm run build` 통과. 수동 M1(플랫폼 관리자 버튼 클릭)은 미실행. |
+| 2026-07-09 | T2 가짜 이메일에 무소속 식별자 확장 | `src/utils/helpers.js`, `src/hooks/useAuth.js`, `HANDOFF_CODEX.md` | `makeUnaffiliatedIdentity(birthdate, phone4)` 추가 및 무소속 이메일 생성 호출부 연결. `npm run build` 통과. |
 
 ---
 
