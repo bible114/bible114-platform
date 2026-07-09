@@ -258,6 +258,14 @@ T1~T11 전체 diff 검토 완료 — 설계 결정 4가지(가상 교회/익명 
 
 ---
 
+## ✅ Claude 리뷰 결과 — 라운드 2 (2026-07-09)
+
+T12~T16 5개 커밋 검토 완료. 규칙 위반 없음(rules 무수정, compat API 유지, 외부 차트 라이브러리 없음), Phase 0 ts 필드 하위호환 정확, 통계 계산 0-나눗셈/타임존 방어 확인, ConfirmDialog·CSV·모바일 카드 전환 스펙 충족. 조치한 발견 사항:
+
+1. ~~교인 상세 SlideOver의 history 조회가 규칙상 항상 거부됨~~ → Claude의 규칙 변경(history read를 같은 교회 churchAdmin에 개방)이 해결. 규칙 배포 후 정상 동작.
+2. ~~T16 마이그레이션 후 구 편집 UI ~150줄이 죽은 코드로 잔존~~ (미도달 changePassword가 평문 표시 회귀 지뢰) → Claude가 삭제하고, 비밀번호 온디맨드 조회("확인" 버튼, private/auth 조회)를 살아있는 SlideOver 상세로 이식. 초기화 후 새 비밀번호 전달도 이 버튼으로 해결.
+3. (라운드 3 참고 nit) AdminDataTable을 stable id 없는 데이터로 재사용할 때 기본 getRowId(index 기반)가 정렬/페이지네이션과 어긋날 수 있음 — Phase C에서 재사용 시 반드시 `getRowId` 명시. 부서 카드의 소그룹 아코디언은 플랜과 달리 항상 펼침(기능상 문제 없음).
+
 ## 🔒 Claude 별도 작업 완료: users read 랭킹 버그 + 규칙 (2026-07-09)
 
 랭킹/달리기/주간MVP가 비어 보이던 원인(일반 교인의 같은 교회 users 목록 쿼리가 규칙상 거부)을 수정했다. Codex가 다음 라운드에서 알아야 할 것:

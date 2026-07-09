@@ -18,13 +18,6 @@ import {
     useToast,
 } from './admin';
 
-const SORT_OPTIONS = [
-    { key: 'name',     label: '이름순' },
-    { key: 'day',      label: '진행순' },
-    { key: 'score',    label: '점수순' },
-    { key: 'subgroup', label: '소그룹순' },
-];
-
 const formatReadDate = (dateStr) => {
     if (!dateStr) return '-';
     const d = new Date(dateStr);
@@ -54,7 +47,6 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     // 교인 관리
     const [sortBy, setSortBy] = useState('name');
     const [editing, setEditing] = useState(null); // { uid, mode: 'pw' | 'subgroup' }
-    const [newPw, setNewPw] = useState('');
     const [revealedPasswords, setRevealedPasswords] = useState({}); // uid -> '__loading__' | '__error__' | 실제 비밀번호
     const [sgCommId, setSgCommId] = useState('');
     const [sgSubId, setSgSubId] = useState('');
@@ -123,48 +115,6 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         setLoading(false);
     };
 
-    const openEdit = (member, mode) => {
-        if (editing?.uid === member.uid && editing?.mode === mode) {
-            setEditing(null);
-            return;
-        }
-        setEditing({ uid: member.uid, mode });
-        setNewPw('');
-        if (mode === 'subgroup') {
-            setSgCommId(member.departmentId || orgComms[0]?.id || '');
-            setSgSubId(member.subgroupId || '');
-        }
-    };
-
-    const changePassword = async (member) => {
-        if (!newPw || newPw.length < 6) { toast.error('비밀번호는 6자리 이상이어야 합니다.'); return; }
-        if (!confirm(`${member.name}님의 비밀번호를 변경하시겠습니까?`)) return;
-        try {
-            // 평문 암호는 private 하위문서에 먼저 기록하고, 본문서에는 null 마커만 남긴다
-            // (같은 교회 교인 랭킹 조회를 열어주는 firestore.rules 조건 유지 — memberCredentials.js 참고)
-            try {
-                await writeMemberCredentials(member.uid, { password: newPw });
-                await db.collection('users').doc(member.uid).set({
-                    password: null,
-                    passwordResetRequired: true,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-            } catch (privateWriteError) {
-                console.error('private 자격증명 기록 실패, 기존 방식으로 대체:', privateWriteError);
-                await db.collection('users').doc(member.uid).set({
-                    password: newPw,
-                    passwordResetRequired: true,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-            }
-            setMembers(prev => prev.map(m => m.uid === member.uid ? { ...m, password: newPw } : m));
-            toast.success(`${member.name}님의 비밀번호가 재설정되었습니다.`);
-            setEditing(null);
-        } catch (e) {
-            toast.error('비밀번호 변경에 실패했습니다.');
-        }
-    };
-
     // 이관 완료된 회원은 본문서의 password가 null이므로, 필요할 때만 private 하위문서를 조회한다.
     const revealPassword = async (uid) => {
         setRevealedPasswords(prev => ({ ...prev, [uid]: '__loading__' }));
@@ -173,33 +123,6 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             setRevealedPasswords(prev => ({ ...prev, [uid]: data?.password || '알 수 없음' }));
         } catch (e) {
             setRevealedPasswords(prev => ({ ...prev, [uid]: '__error__' }));
-        }
-    };
-
-    const changeSubgroup = async (member) => {
-        if (!sgCommId || !sgSubId) { toast.error('부서와 소그룹을 모두 선택해주세요.'); return; }
-        const comm = orgComms.find(c => c.id === sgCommId);
-        if (!comm) return;
-        // sgSubId 는 신 포맷에서는 sub.id, 레거시에서는 sub 이름 자체
-        const subEntry = (comm.subgroups || []).find(s => getSubId(s) === sgSubId);
-        const subgroupName = subEntry ? getSubName(subEntry) : sgSubId;
-        try {
-            await db.collection('users').doc(member.uid).set({
-                departmentId: sgCommId,
-                departmentName: comm.name,
-                subgroupId: sgSubId,
-                subgroupName,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-            setMembers(prev => prev.map(m =>
-                m.uid === member.uid
-                    ? { ...m, departmentId: sgCommId, departmentName: comm.name, subgroupId: sgSubId, subgroupName }
-                    : m
-            ));
-            setEditing(null);
-            toast.success(`${member.name}님의 소그룹을 변경했습니다.`);
-        } catch (e) {
-            toast.error('소그룹 변경에 실패했습니다.');
         }
     };
 
@@ -326,6 +249,17 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             const found = updates.find(u => u.member.uid === m.uid);
             return found ? { ...m, password: found.password, passwordResetRequired: true } : m;
         }));
+        // 상세 패널이 열려 있으면 새 비밀번호가 바로 보이도록 갱신하고, 조회 캐시는 비운다.
+        setRevealedPasswords(prev => {
+            const next = { ...prev };
+            updates.forEach(u => { delete next[u.member.uid]; });
+            return next;
+        });
+        setSelectedMember(prev => {
+            if (!prev) return prev;
+            const found = updates.find(u => u.member.uid === prev.uid);
+            return found ? { ...prev, password: found.password } : prev;
+        });
         toast.success(`${targetMembers.length}명의 비밀번호를 초기화했습니다.`);
     };
 
@@ -510,32 +444,6 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         .sort((a, b) => (b.streak || 0) - (a.streak || 0))
         .slice(0, 5);
 
-    // 소그룹순: orgComms 순서 기준 그룹핑, 내부 가나다순
-    const subgroupGroups = (() => {
-        const groups = orgComms.flatMap(comm =>
-            (comm.subgroups || []).map(sub => {
-                const sId = getSubId(sub);
-                const sName = getSubName(sub);
-                return {
-                    key: `${comm.id}__${sId}`,
-                    label: orgComms.length > 1 ? `${comm.name} · ${sName}` : sName,
-                    members: members
-                        .filter(m => m.departmentId === comm.id && (m.subgroupId === sId || m.subgroupId === sName))
-                        .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR')),
-                };
-            })
-        ).filter(g => g.members.length > 0);
-
-        const assignedUids = new Set(groups.flatMap(g => g.members.map(m => m.uid)));
-        const unassigned = members
-            .filter(m => !assignedUids.has(m.uid))
-            .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR'));
-        if (unassigned.length > 0) {
-            groups.push({ key: '__unassigned', label: '미배정', members: unassigned });
-        }
-        return groups;
-    })();
-
     const sortedMembers = [...members].sort((a, b) => {
         if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '', 'ko-KR');
         if (sortBy === 'day') {
@@ -612,169 +520,6 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     ];
 
     const sgComm = orgComms.find(c => c.id === sgCommId);
-
-    const renderEditRow = (m) => {
-        const isEditingPw = editing?.uid === m.uid && editing?.mode === 'pw';
-        const isEditingSg = editing?.uid === m.uid && editing?.mode === 'subgroup';
-        if (!isEditingPw && !isEditingSg) return null;
-
-        return (
-            <tr key={`edit-${m.uid}`} className="bg-slate-50">
-                <td colSpan="7" className="px-5 py-3 border-b border-slate-100">
-                    {isEditingSg && (
-                        <div className="space-y-2">
-                            <p className="text-xs font-bold text-indigo-600">소그룹 변경 — {m.name}</p>
-                            {orgComms.length === 0 ? (
-                                <p className="text-xs text-slate-400">먼저 조직 관리에서 부서/소그룹을 설정해주세요.</p>
-                            ) : (
-                                <div className="flex flex-wrap gap-2">
-                                    <select value={sgCommId}
-                                        onChange={e => { setSgCommId(e.target.value); setSgSubId(''); }}
-                                        className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm min-w-[120px]">
-                                        <option value="">부서 선택</option>
-                                        {orgComms.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                    </select>
-                                    <select value={sgSubId}
-                                        onChange={e => setSgSubId(e.target.value)}
-                                        className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm min-w-[120px]"
-                                        disabled={!sgCommId}>
-                                        <option value="">소그룹 선택</option>
-                                        {(sgComm?.subgroups || []).map((s, i) => {
-                                            const sId = getSubId(s);
-                                            const sName = getSubName(s);
-                                            return <option key={sId || i} value={sId}>{sName}</option>;
-                                        })}
-                                    </select>
-                                    <button onClick={() => changeSubgroup(m)}
-                                        className="bg-indigo-600 text-white text-xs px-4 py-1.5 rounded-lg font-bold">저장</button>
-                                    <button onClick={() => setEditing(null)}
-                                        className="bg-slate-200 text-slate-600 text-xs px-3 py-1.5 rounded-lg">취소</button>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                    {isEditingPw && (
-                        <div className="space-y-2">
-                            <p className="text-xs font-bold text-blue-600">비밀번호 변경 — {m.name}
-                                <span className="ml-2 font-normal text-slate-400">
-                                    새 비밀번호를 입력하면 다음 로그인 때 적용됩니다.
-                                </span>
-                            </p>
-                            <div className="flex items-center gap-2 text-xs text-slate-500">
-                                <span>현재:</span>
-                                {typeof m.password === 'string' && m.password ? (
-                                    <span className="font-mono">{m.password}</span>
-                                ) : revealedPasswords[m.uid] === '__loading__' ? (
-                                    <span>확인 중...</span>
-                                ) : revealedPasswords[m.uid] === '__error__' ? (
-                                    <span>조회 실패</span>
-                                ) : revealedPasswords[m.uid] ? (
-                                    <span className="font-mono">{revealedPasswords[m.uid]}</span>
-                                ) : (
-                                    <button type="button" onClick={() => revealPassword(m.uid)}
-                                        className="bg-slate-100 hover:bg-slate-200 text-slate-500 text-[11px] px-2 py-0.5 rounded-lg font-bold">
-                                        비밀번호 확인
-                                    </button>
-                                )}
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                <input type="text" value={newPw} onChange={e => setNewPw(e.target.value)}
-                                    placeholder="새 비밀번호 (6자리 이상)"
-                                    className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm flex-1 min-w-[180px]" />
-                                <button onClick={() => changePassword(m)}
-                                    className="bg-blue-600 text-white text-xs px-4 py-1.5 rounded-lg font-bold">변경</button>
-                                <button onClick={() => setEditing(null)}
-                                    className="bg-slate-200 text-slate-600 text-xs px-3 py-1.5 rounded-lg">취소</button>
-                            </div>
-                        </div>
-                    )}
-                </td>
-            </tr>
-        );
-    };
-
-    const renderMemberRow = (m, idx) => {
-        const rc = m.readCount || 1;
-        const totalDays = (rc - 1) * 365 + (m.currentDay || 1);
-        const readToday = m.lastReadDate === todayStr;
-        const isExpanded = editing?.uid === m.uid;
-
-        return (
-            <React.Fragment key={m.uid}>
-                <tr className={`border-b border-slate-50 hover:bg-slate-50/60 transition-colors ${isExpanded ? 'bg-blue-50/30' : ''}`}>
-                    {/* # */}
-                    <td className="px-4 py-3.5 text-xs text-slate-400 font-mono italic w-8">{idx + 1}</td>
-
-                    {/* 이름 */}
-                    <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-slate-800 text-sm">{m.name}</span>
-                            {readToday && <span className="text-green-500 text-[10px] font-bold">✓</span>}
-                        </div>
-                    </td>
-
-                    {/* 부서/소그룹 */}
-                    <td className="px-4 py-3.5">
-                        <div className="font-bold text-slate-700 text-sm">{m.departmentName || '-'}</div>
-                        <div className="text-xs text-slate-400">{(() => {
-                            if (!m.subgroupId) return '미배정';
-                            if (m.subgroupName) return m.subgroupName;
-                            // 신 포맷의 id 라면 orgComms에서 이름 lookup
-                            for (const c of orgComms) {
-                                const found = (c.subgroups || []).find(s => getSubId(s) === m.subgroupId);
-                                if (found) return getSubName(found);
-                            }
-                            return m.subgroupId;
-                        })()}</div>
-                    </td>
-
-                    {/* DAY */}
-                    <td className="px-4 py-3.5 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                            <span className={`font-bold text-sm ${readToday ? 'text-blue-600' : 'text-slate-700'}`}>
-                                DAY {totalDays}
-                            </span>
-                            {rc > 1 && (
-                                <span className="text-[10px] bg-purple-500 text-white px-1.5 py-0.5 rounded-full font-bold leading-none">
-                                    {rc - 1}독
-                                </span>
-                            )}
-                        </div>
-                    </td>
-
-                    {/* 점수 */}
-                    <td className="px-4 py-3.5 text-center text-sm text-slate-600">{m.score || 0}</td>
-
-                    {/* 마지막읽은날 */}
-                    <td className="px-4 py-3.5 text-center text-xs text-slate-400">
-                        {readToday
-                            ? <span className="text-green-600 font-bold">오늘</span>
-                            : formatReadDate(m.lastReadDate)
-                        }
-                    </td>
-
-                    {/* 관리 */}
-                    <td className="px-4 py-3.5">
-                        <div className="flex items-center justify-center gap-2">
-                            <button onClick={() => openEdit(m, 'subgroup')} title="소그룹 변경"
-                                className={`w-7 h-7 rounded-full flex items-center justify-center text-sm transition-all ${editing?.uid === m.uid && editing?.mode === 'subgroup' ? 'bg-indigo-500 text-white' : 'bg-indigo-50 text-indigo-500 hover:bg-indigo-100'}`}>
-                                ↻
-                            </button>
-                            <button onClick={() => openEdit(m, 'pw')} title="비밀번호 변경"
-                                className={`w-7 h-7 rounded-full flex items-center justify-center text-sm transition-all ${editing?.uid === m.uid && editing?.mode === 'pw' ? 'bg-blue-500 text-white' : 'bg-blue-50 text-blue-500 hover:bg-blue-100'}`}>
-                                ✎
-                            </button>
-                            <button onClick={() => deleteMember(m)} title="삭제"
-                                className="w-7 h-7 rounded-full flex items-center justify-center text-sm bg-red-50 text-red-400 hover:bg-red-100 transition-all">
-                                ✕
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-                {renderEditRow(m)}
-            </React.Fragment>
-        );
-    };
 
     const renderRiskList = (title, items, emptyText, getMeta) => (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -1066,7 +811,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                                                 type: 'bulkPassword',
                                                                 members: selectedRows,
                                                                 title: `${selectedRows.length}명의 비밀번호를 초기화할까요?`,
-                                                                message: '각 교인에게 6자리 임시 비밀번호가 새로 발급됩니다. 평문 비밀번호는 화면에 표시하지 않습니다.',
+                                                                message: '각 교인에게 6자리 임시 비밀번호가 새로 발급됩니다. 새 비밀번호는 교인 상세의 "비밀번호 확인"에서 조회할 수 있습니다.',
                                                                 danger: true,
                                                                 confirmLabel: '초기화',
                                                                 after: clearSelection,
@@ -1298,7 +1043,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                 type: 'singlePassword',
                                 member: selectedMember,
                                 title: `${selectedMember.name}님의 비밀번호를 초기화할까요?`,
-                                message: '6자리 임시 비밀번호가 새로 발급됩니다. 평문 비밀번호는 화면에 표시하지 않습니다.',
+                                message: '6자리 임시 비밀번호가 새로 발급됩니다. 새 비밀번호는 교인 상세의 "비밀번호 확인"에서 조회할 수 있습니다.',
                                 danger: true,
                                 confirmLabel: '초기화',
                             })}
@@ -1340,6 +1085,34 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                 <span className={`rounded-full px-3 py-1 text-xs font-black ${selectedMember.lastReadDate === todayStr ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
                                     {selectedMember.lastReadDate === todayStr ? '오늘 읽음' : '오늘 미독'}
                                 </span>
+                            </div>
+                        </div>
+
+                        {/* 비밀번호 조회 — 이관 후 평문은 private 하위문서에 있으므로 필요할 때만 조회한다.
+                            초기화 직후에도 이 버튼으로 새로 발급된 비밀번호를 확인해 전달할 수 있다. */}
+                        <div className="rounded-2xl border border-slate-100 p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <p className="text-sm font-black text-slate-800">비밀번호</p>
+                                    <p className="text-xs font-bold text-slate-400">로그인을 못 하는 교인에게 확인 후 전달해주세요.</p>
+                                </div>
+                                {typeof selectedMember.password === 'string' && selectedMember.password ? (
+                                    <span className="font-mono text-sm font-bold text-slate-700">{selectedMember.password}</span>
+                                ) : revealedPasswords[selectedMember.uid] === '__loading__' ? (
+                                    <span className="text-xs font-bold text-slate-400">확인 중...</span>
+                                ) : revealedPasswords[selectedMember.uid] === '__error__' ? (
+                                    <span className="text-xs font-bold text-red-400">조회 실패</span>
+                                ) : revealedPasswords[selectedMember.uid] ? (
+                                    <span className="font-mono text-sm font-bold text-slate-700">{revealedPasswords[selectedMember.uid]}</span>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => revealPassword(selectedMember.uid)}
+                                        className="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600 hover:bg-slate-200"
+                                    >
+                                        확인
+                                    </button>
+                                )}
                             </div>
                         </div>
 
