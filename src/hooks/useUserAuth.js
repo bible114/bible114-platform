@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { auth, authReady, db } from '../utils/firebase';
 import { userDocToState, migrateTalentIfNeeded } from '../utils/helpers';
+import { getGuestState } from '../utils/guestStorage';
 
 export const useUserAuth = () => {
     const [currentUser, setCurrentUser] = useState(null);
@@ -33,6 +34,24 @@ export const useUserAuth = () => {
 
                 if (firebaseUser) {
                     try {
+                        if (firebaseUser.isAnonymous) {
+                            const guest = getGuestState();
+                            setCurrentUser({
+                                uid: firebaseUser.uid,
+                                role: 'guest',
+                                name: '게스트',
+                                churchId: null,
+                                planId: guest.planId,
+                                currentDay: guest.currentDay,
+                                streak: guest.streak,
+                                lastReadDate: guest.lastReadDate,
+                                readCount: 1,
+                                videoType: guest.videoType || 'adult',
+                            });
+                            setAuthLoading(false);
+                            return;
+                        }
+
                         // Firestore에서 사용자 데이터 불러오기
                         const userDoc = await db.collection('users').doc(firebaseUser.uid).get();
 

@@ -117,7 +117,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
   - 신규 `src/utils/guestStorage.js`: `getGuestState()` / `saveGuestState(partial)` / `recordGuestRead()` (currentDay 증가·365 순환, streak 계산은 `lastReadDate`가 어제면 +1 아니면 1, readDates append+400 cap) / `clearGuestMigrated()`.
   - streak 계산은 기존 `useUserBibleActions.js`의 로직을 참고하되 게스트용은 단순 버전이면 충분 (보너스·점수·달란트 없음).
 
-- [ ] **T7. 게스트 세션 복원 (useUserAuth.js)**
+- [x] **T7. 게스트 세션 복원 (useUserAuth.js)**
   - `src/hooks/useUserAuth.js` `onAuthStateChanged`에서 `firebaseUser.isAnonymous`이면 Firestore 조회 없이:
     ```js
     const g = getGuestState();
@@ -183,6 +183,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-09 | T4 로그인 화면 | `src/components/LoginView.jsx`, `HANDOFF_CODEX.md` | 무소속 선택지/전화번호 뒤 4자리 입력 UI 연결. `npm run build` 통과. Browser에서 로그인/가입 탭 UI 확인. 실제 Firebase 가입→대시보드 진입은 테스트 데이터 생성 부작용 때문에 미검증. |
 | 2026-07-09 | T5 firestore.rules isRealUser 도입 | `firestore.rules`, `HANDOFF_CODEX.md` | 익명 인증의 users/churches/churchDirectory/platformStats 쓰기 차단. read 규칙과 dailyVideos create는 유지. `npm run build` 통과. 수동 M2(규칙 배포)는 미실행. |
 | 2026-07-09 | T6 게스트 진도 저장소 유틸 | `src/utils/guestStorage.js`, `HANDOFF_CODEX.md` | `getGuestState`/`saveGuestState`/`recordGuestRead`/`clearGuestMigrated` 추가. readDates 400개 제한 및 365일 순환 처리. `npm run build` 통과. |
+| 2026-07-09 | T7 게스트 세션 복원 | `src/hooks/useUserAuth.js`, `HANDOFF_CODEX.md` | Firebase 익명 사용자일 때 Firestore users 조회 없이 localStorage 게스트 상태로 currentUser 구성. `npm run build` 통과. |
 
 ---
 
