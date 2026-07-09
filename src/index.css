@@ -50,7 +50,6 @@
     --cy-gradient-sunset: linear-gradient(135deg, #ffe8d6 0%, #ffd6e8 50%, #e8d6ff 100%);
     --cy-gradient-sky: linear-gradient(180deg, #e0f2fe 0%, #bae6fd 50%, #f0f9ff 100%);
     --cy-gradient-candy: linear-gradient(135deg, #fce7f3 0%, #ddd6fe 50%, #cffafe 100%);
-    --cy-gradient-miniroom: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
 
     /* 그림자 */
     --cy-shadow-soft: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
@@ -115,13 +114,6 @@
     background-color: #fff;
     color: #0080ff;
     width: 55px;
-}
-
-.cy-miniroom-box {
-    border: 1px solid #ccc;
-    background: #f9f9f9;
-    position: relative;
-    overflow: hidden;
 }
 
 .cy-dotori-badge {

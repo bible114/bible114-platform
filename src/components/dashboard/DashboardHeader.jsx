@@ -39,7 +39,7 @@ const DashboardHeader = ({
                                 {myLevel.emoji} {score || 0}pt
                             </button>
                             {talent !== undefined && (
-                                <div className="text-xs font-bold text-orange-600 bg-orange-50 border border-orange-100 px-2.5 py-1.5 rounded-xl shrink-0" title="미니룸에서 사용할 수 있는 달란트">
+                                <div className="text-xs font-bold text-orange-600 bg-orange-50 border border-orange-100 px-2.5 py-1.5 rounded-xl shrink-0" title="성경 읽기로 모은 달란트">
                                     ⭐ {talent || 0} 달란트
                                 </div>
                             )}
