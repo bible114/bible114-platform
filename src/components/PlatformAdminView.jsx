@@ -50,6 +50,8 @@ const PlatformAdminView = ({
     const [fetchedCurrentPassword, setFetchedCurrentPassword] = React.useState(null); // changingPassword 모달에서 조회한 현재 암호
     const [credentialMigrating, setCredentialMigrating] = React.useState(false);
     const [credentialMigrationProgress, setCredentialMigrationProgress] = React.useState({ done: 0, total: 0 });
+    const [talentResetting, setTalentResetting] = React.useState(false);
+    const [talentResetProgress, setTalentResetProgress] = React.useState({ done: 0, total: 0 });
     const pendingCredentialMigration = React.useMemo(() => (
         (allUsers || []).filter(u => typeof u.password === 'string' && u.password.length > 0).length
     ), [allUsers]);
@@ -354,6 +356,37 @@ const PlatformAdminView = ({
             alert('자격증명 이관 실패: ' + e.message);
         } finally {
             setCredentialMigrating(false);
+        }
+    };
+
+    const handleResetAllTalentBalances = async () => {
+        if (!db) return;
+        if (!confirm('모든 회원의 달란트 잔액을 0으로 초기화합니다. 계속하시겠습니까?')) return;
+        if (!confirm('정말 실행할까요? 이 작업은 실물 상점 오픈 시점에 딱 한 번만 실행해야 합니다.')) return;
+        setTalentResetting(true);
+        try {
+            const snap = await db.collection('users').get();
+            const docs = snap.docs;
+            setTalentResetProgress({ done: 0, total: docs.length });
+            let processed = 0;
+            for (let i = 0; i < docs.length; i += 10) {
+                const batch = db.batch();
+                docs.slice(i, i + 10).forEach(doc => {
+                    batch.update(doc.ref, {
+                        talent: 0,
+                        talentMigrated: true,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    });
+                });
+                await batch.commit();
+                processed = Math.min(i + 10, docs.length);
+                setTalentResetProgress({ done: processed, total: docs.length });
+            }
+            alert(`달란트 잔액 초기화 완료: ${processed}명 처리`);
+        } catch (e) {
+            alert('달란트 잔액 초기화 실패: ' + e.message);
+        } finally {
+            setTalentResetting(false);
         }
     };
 
@@ -1296,6 +1329,24 @@ const PlatformAdminView = ({
                                 <p className="text-xs text-slate-400">🔐 자격증명 보안 이관 완료 — 모든 회원이 이관되었습니다.</p>
                             </div>
                         )}
+
+                        {/* 달란트 잔액 전원 초기화 */}
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+                            <h3 className="text-sm font-bold text-amber-800 mb-1">⭐ 달란트 잔액 초기화 (상점 새 출발)</h3>
+                            <p className="text-xs text-amber-700 mb-3">
+                                구 적립 방식으로 쌓인 달란트를 전원 0으로 초기화합니다. 새 적립(하루 1회)과 실물 상점 도입 시점에 딱 한 번 실행하세요.
+                                <br />실행 시 <code className="bg-amber-100 px-1 rounded">talentMigrated: true</code>도 함께 저장해 로그인 시 구 잔액이 복원되지 않게 잠급니다.
+                            </p>
+                            <button
+                                onClick={handleResetAllTalentBalances}
+                                disabled={talentResetting}
+                                className="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+                            >
+                                {talentResetting
+                                    ? `초기화 중... (${talentResetProgress.done}/${talentResetProgress.total})`
+                                    : '전원 달란트 0으로 초기화'}
+                            </button>
+                        </div>
 
                         <h2 className="text-base font-bold text-slate-800 mb-4">🔄 노션 데이터 동기화</h2>
                         <div className="bg-blue-50 p-4 rounded-xl border border-blue-200 mb-4">

@@ -200,6 +200,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-09 | T18 매일 성경퀴즈 | `src/data/bibleQuiz.js`, `src/components/dashboard/BibleQuizCard.jsx`, `src/components/dashboard/index.js`, `src/components/DashboardView.jsx`, `src/utils/helpers.js`, `HANDOFF_CODEX.md` | 113문항 퀴즈 은행과 KST 오늘 문제 선택, 대시보드 하단 퀴즈 카드, 트랜잭션 보상 처리 추가. `npm run build` 통과. 퀴즈 내용은 사용자 검수 필요. |
 | 2026-07-09 | T19 비밀 달란트 상점 — 교인용 | `src/components/dashboard/TalentShop.jsx`, `src/components/dashboard/index.js`, `src/components/DashboardView.jsx`, `src/App.jsx`, `HANDOFF_CODEX.md` | `settings/talentShop.enabled === true`일 때만 진입 카드/해금 모달/상점 렌더링. active 상품 구매 트랜잭션과 내 구매 내역 추가. `talentPurchases` create 필드는 규칙 화이트리스트와 일치. `npm run build` 통과. |
 | 2026-07-09 | T20 교회 관리자 달란트 상점 탭 | `src/components/ChurchAdminView.jsx`, `HANDOFF_CODEX.md` | 관리자 탭 추가, 상점 enabled 토글, 상품 CRUD, 최근 구매 200건 클라이언트 필터, 수령 완료/취소·환불 처리 추가. `npm run build` 통과. 로컬 dev 앱 렌더/콘솔 무오류 확인, 관리자 인증 진입 및 실데이터 구매 처리는 미검증. |
+| 2026-07-09 | T21 달란트 잔액 전원 리셋 버튼 | `src/components/PlatformAdminView.jsx`, `HANDOFF_CODEX.md` | 플랫폼 관리자 시스템 섹션에 1회성 전원 달란트 0 초기화 버튼 추가. 10개 단위 batch update로 `talent: 0`, `talentMigrated: true`, `updatedAt` 저장. `npm run build` 통과. 파괴적 작업이므로 버튼 실행은 미실행. |
 
 ---
 
@@ -222,6 +223,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T18 완료. 성경퀴즈는 113문항으로 구성했고, 정답/근거 구절의 신학적·표기 검수는 사용자 몫으로 남김.
 - T19 완료. 교인용 비밀 상점은 교회 설정이 명시적으로 enabled일 때만 보이며, 구매 문서는 `uid, memberName, itemId, itemName, price, status, createdAt`만 기록한다. 실제 구매 클릭은 운영 데이터 변경이라 실행 검증하지 않음.
 - T20 완료. 구매 내역은 복합 인덱스를 피하려고 `orderBy('createdAt','desc').limit(200)`만 사용하고, 현재 교회 교인 uid로 클라이언트 필터링한다. 로컬 dev는 로그인 화면 렌더와 콘솔 무오류까지만 확인했고, 교회 관리자 인증 진입은 미검증.
+- T21 완료. 전원 달란트 리셋 버튼은 파괴적 수동 작업이라 실행하지 않음. 배포 후 상점 오픈 시 사용자가 직접 눌러야 한다.
 
 ---
 
@@ -306,7 +308,7 @@ Phase C(플랫폼 관리자)·D·E는 별도 라운드로 — 이번에 손대�
   - (d) **취소·환불**: 대기 건에 "취소·환불" 액션 — ConfirmDialog 후 batch로 ① purchase update `{status:'cancelled', deliveredAt: serverTimestamp, deliveredBy: 관리자uid}` ② 해당 교인 users 문서 `talent: increment(price)` (관리자는 교인 문서 update 가능). 어르신 오터치 대비 필수.
   - 완료 기준: 빌드 통과 + 로컬 dev에서 탭 렌더링 확인 (실데이터 구매/수령은 미검증 허용).
 
-- [ ] **T21. 달란트 잔액 전원 리셋 버튼 (플랫폼 관리자, 1회성)** — 사용자 확정: 실물 상점 오픈과 함께 구 적립 방식 잔액은 전원 0으로 새 출발.
+- [x] **T21. 달란트 잔액 전원 리셋 버튼 (플랫폼 관리자, 1회성)** — 사용자 확정: 실물 상점 오픈과 함께 구 적립 방식 잔액은 전원 0으로 새 출발.
   - `PlatformAdminView.jsx` 시스템 섹션(자격증명 이관 박스 근처)에 앰버 톤 박스 "⭐ 달란트 잔액 초기화 (상점 새 출발)" + 설명 "구 적립 방식으로 쌓인 달란트를 전원 0으로 초기화합니다. 새 적립(하루 1회)과 실물 상점 도입 시점에 딱 한 번 실행하세요." + 버튼(더블 confirm — 파괴적 작업).
   - 핸들러: `db.collection('users').get()` 전체 순회, 10개 단위 청크로 각 문서 update `{ talent: 0, talentMigrated: true, updatedAt: serverTimestamp }`. 진행률 표시, 완료 시 처리 인원 alert.
   - **`talentMigrated: true`를 반드시 함께 세팅** — `helpers.js`의 `migrateTalentIfNeeded`가 이 플래그 없는 구 계정의 로그인 시 talent를 score로 복원해버리므로, 이걸 잠그지 않으면 리셋이 뒤집힌다.
