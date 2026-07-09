@@ -220,6 +220,12 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
         clearError();
     };
 
+    const selectHasChurch = () => {
+        setLoginChurchId(prev => (prev === UNAFFILIATED_CHURCH_ID ? '' : prev));
+        setMChurchId(prev => (prev === UNAFFILIATED_CHURCH_ID ? '' : prev));
+        clearError();
+    };
+
     const isLoginUnaffiliated = loginChurchId === UNAFFILIATED_CHURCH_ID;
     const isSignupUnaffiliated = mChurchId === UNAFFILIATED_CHURCH_ID;
 
@@ -302,23 +308,51 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
 
     const resetAdminSignup = () => { setSignupStep(1); setOrgComms([{ id: 'comm_0', name: '', subgroups: [{ id: 'sub_0', name: '' }] }]); clearError(); };
 
+    // ── Church selector: segmented "교회에 다녀요 / 소속 교회 없어요" toggle ───
+    const renderChurchSelector = (mode) => {
+        const isUnaffiliated = mode === 'login' ? isLoginUnaffiliated : isSignupUnaffiliated;
+        const value = mode === 'login' ? loginChurchId : mChurchId;
+        const onChange = mode === 'login' ? setLoginChurchId : setMChurchId;
+        const label = mode === 'login' ? '출석 교회' : '교회 선택';
+        const toggleBaseCls = 'rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors';
+        const inactiveCls = 'bg-cream border-hairline text-ink/55 hover:text-ink hover:border-ink/25';
+        return (
+            <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                    <button
+                        type="button"
+                        onClick={selectHasChurch}
+                        className={`${toggleBaseCls} ${!isUnaffiliated ? 'bg-ink text-cream border-ink' : inactiveCls}`}
+                    >
+                        ⛪ 교회에 다녀요
+                    </button>
+                    <button
+                        type="button"
+                        onClick={selectUnaffiliatedChurch}
+                        className={`${toggleBaseCls} ${isUnaffiliated ? 'bg-emerald-500 text-white border-emerald-500' : inactiveCls}`}
+                    >
+                        🙋 소속 교회 없어요
+                    </button>
+                </div>
+                {isUnaffiliated ? (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3.5 py-2.5">
+                        <p className="text-[12px] font-semibold text-emerald-800">개인 성도로 함께 읽어요</p>
+                        <p className="text-[11px] text-emerald-700 mt-0.5">소속 교회가 없어도 괜찮아요. 이름·생년월일·전화번호 뒤 4자리만으로 성경을 읽을 수 있어요.</p>
+                    </div>
+                ) : (
+                    <ChurchPicker value={value} onChange={onChange} label={label} />
+                )}
+            </div>
+        );
+    };
+
     // ── Render login card content ────────────────────────────────────────────
     const renderCard = () => {
         // ── Member Login ──
         if (activeTab === 'member') return (
             <form onSubmit={handleMemberLogin} className="space-y-3.5">
                 {/* Church selector */}
-                <div className="space-y-2">
-                    <ChurchPicker value={isLoginUnaffiliated ? '' : loginChurchId} onChange={setLoginChurchId} label="출석 교회" />
-                    <button
-                        type="button"
-                        onClick={selectUnaffiliatedChurch}
-                        className={`w-full border rounded-lg px-3.5 py-2.5 text-left transition-colors ${isLoginUnaffiliated ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-cream border-hairline text-ink/60 hover:text-ink hover:border-ink/25'}`}
-                    >
-                        <span className="block text-sm font-semibold">소속 교회가 없어요</span>
-                        <span className="block text-[11px] mt-0.5">소속 교회가 없어도 개인 성도로 함께 읽을 수 있어요.</span>
-                    </button>
-                </div>
+                {renderChurchSelector('login')}
                 <div>
                     <label className="block text-[11px] font-semibold text-ink/55 mb-1.5 uppercase tracking-wide">이름</label>
                     <input type="text" value={loginName} onChange={e => setLoginName(e.target.value)} placeholder="홍길동" className={inputCls} />
@@ -416,17 +450,8 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                         <p className="text-[11px] text-emerald-700 mt-0.5">점수는 가입 후부터 적립돼요.</p>
                     </div>
                 )}
-                <div className="space-y-2">
-                    <ChurchPicker value={isSignupUnaffiliated ? '' : mChurchId} onChange={setMChurchId} label="교회 선택" />
-                    <button
-                        type="button"
-                        onClick={selectUnaffiliatedChurch}
-                        className={`w-full border rounded-lg px-3.5 py-2.5 text-left transition-colors ${isSignupUnaffiliated ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-cream border-hairline text-ink/60 hover:text-ink hover:border-ink/25'}`}
-                    >
-                        <span className="block text-sm font-semibold">소속 교회가 없어요</span>
-                        <span className="block text-[11px] mt-0.5">소속 교회가 없어도 개인 성도로 함께 읽을 수 있어요.</span>
-                    </button>
-                </div>
+                <p className="text-[11px] text-ink/50 leading-relaxed">소속 교회가 없으신가요? '소속 교회 없어요'를 선택하면 개인 성도로 바로 가입할 수 있어요.</p>
+                {renderChurchSelector('signup')}
                 {isSignupUnaffiliated ? (
                     <input type="text" inputMode="numeric" value={mPhone4} onChange={e => setMPhone4(e.target.value.replace(/\D/g, ''))}
                         placeholder="전화번호 뒤 4자리" maxLength={4} className={inputCls} />
