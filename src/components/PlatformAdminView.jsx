@@ -50,6 +50,9 @@ const PlatformAdminView = ({
     const [fetchedCurrentPassword, setFetchedCurrentPassword] = React.useState(null); // changingPassword 모달에서 조회한 현재 암호
     const [credentialMigrating, setCredentialMigrating] = React.useState(false);
     const [credentialMigrationProgress, setCredentialMigrationProgress] = React.useState({ done: 0, total: 0 });
+    const pendingCredentialMigration = React.useMemo(() => (
+        (allUsers || []).filter(u => typeof u.password === 'string' && u.password.length > 0).length
+    ), [allUsers]);
 
     // 매일 영상 관리
     const nextVideoDate = React.useMemo(() => {
@@ -1272,21 +1275,27 @@ const PlatformAdminView = ({
                         </div>
 
                         {/* 자격증명 보안 이관 */}
-                        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6">
-                            <h3 className="text-sm font-bold text-indigo-800 mb-1">🔐 자격증명 보안 이관 (랭킹 활성화)</h3>
-                            <p className="text-xs text-indigo-700 mb-3">
-                                회원 문서의 평문 비밀번호를 비공개 하위문서로 옮깁니다. 모든 회원이 이관되어야 교인 랭킹·달리기 지도가 정상 표시됩니다.
-                            </p>
-                            <button
-                                onClick={handleMigrateCredentials}
-                                disabled={credentialMigrating}
-                                className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-                            >
-                                {credentialMigrating
-                                    ? `이관 중... (${credentialMigrationProgress.done}/${credentialMigrationProgress.total})`
-                                    : '전체 회원 이관 실행'}
-                            </button>
-                        </div>
+                        {pendingCredentialMigration > 0 ? (
+                            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6">
+                                <h3 className="text-sm font-bold text-indigo-800 mb-1">🔐 자격증명 보안 이관 (랭킹 활성화)</h3>
+                                <p className="text-xs text-indigo-700 mb-3">
+                                    회원 문서의 평문 비밀번호를 비공개 하위문서로 옮깁니다. 모든 회원이 이관되어야 교인 랭킹·달리기 지도가 정상 표시됩니다.
+                                </p>
+                                <button
+                                    onClick={handleMigrateCredentials}
+                                    disabled={credentialMigrating}
+                                    className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+                                >
+                                    {credentialMigrating
+                                        ? `이관 중... (${credentialMigrationProgress.done}/${credentialMigrationProgress.total})`
+                                        : `전체 회원 이관 실행 (${pendingCredentialMigration}명 대기)`}
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="bg-slate-50 rounded-lg px-3 py-1.5 mb-6">
+                                <p className="text-xs text-slate-400">🔐 자격증명 보안 이관 완료 — 모든 회원이 이관되었습니다.</p>
+                            </div>
+                        )}
 
                         <h2 className="text-base font-bold text-slate-800 mb-4">🔄 노션 데이터 동기화</h2>
                         <div className="bg-blue-50 p-4 rounded-xl border border-blue-200 mb-4">
