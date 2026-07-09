@@ -192,6 +192,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-09 | T10 게스트 → 가입 시 진도 이관 | `src/hooks/useAuth.js`, `src/components/LoginView.jsx`, `HANDOFF_CODEX.md` | 게스트 readDates가 있고 migratedAt이 없으면 가입 문서의 currentDay/streak/lastReadDate만 시드, score/talent는 0 유지. 가입 화면 이관 예고 문구 추가. `npm run build` 통과. 실제 Firebase 가입 이관은 테스트 데이터 생성 부작용 때문에 미검증. |
 | 2026-07-09 | T11 관리자 교회 이동 기능 | `src/App.jsx`, `src/components/PlatformAdminView.jsx`, `HANDOFF_CODEX.md` | 플랫폼 관리자 회원 편집에 교회 선택 추가. 교회 변경 시 부서/소그룹 필드 null 리셋, 저장 시 churchId/churchName 포함. `npm run build` 통과. 실제 Firestore 회원 이동은 운영 데이터 변경 부작용 때문에 미검증. |
 | 2026-07-09 | T12 history ts 필드 추가 | `src/hooks/useUserBibleActions.js`, `HANDOFF_CODEX.md` | historyItem에 `ts: firebase.firestore.FieldValue.serverTimestamp()`만 추가. 기존 `date` 필드 유지. `npm run build` 통과. |
+| 2026-07-09 | T13 단순 공통 관리자 컴포넌트 | `src/components/admin/StatCard.jsx`, `src/components/admin/ConfirmDialog.jsx`, `src/components/admin/Toast.jsx`, `src/components/admin/ProgressBar.jsx`, `src/components/admin/DonutStat.jsx`, `src/components/admin/index.js`, `HANDOFF_CODEX.md` | Phase A 기본 컴포넌트 신설. 화면 연결은 다음 작업에서 수행. `npm run build` 통과. |
 
 ---
 
@@ -224,7 +225,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - [x] **T12. Phase 0 — history에 ts 필드 추가**
   - `src/hooks/useUserBibleActions.js`의 handleRead 트랜잭션에서 historyItem에 `ts: firebase.firestore.FieldValue.serverTimestamp()` 한 필드 추가. 기존 `date` 필드는 그대로 유지 (하위호환).
   - 완료 기준: 빌드 통과, 기존 읽기 흐름 코드 다른 변경 없음.
-- [ ] **T13. Phase A(1) — 단순 공통 컴포넌트**
+- [x] **T13. Phase A(1) — 단순 공통 컴포넌트**
   - `src/components/admin/` 신설: `StatCard.jsx`, `ConfirmDialog.jsx`, `Toast.jsx`(+`useToast`), `ProgressBar.jsx`, `DonutStat.jsx`. 스펙은 플랜 Phase A 참고.
   - 아직 어디에도 연결하지 않아도 됨 (다음 작업들이 소비).
 - [ ] **T14. Phase A(2) — AdminDataTable + SlideOverPanel**
