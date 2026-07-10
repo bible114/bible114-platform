@@ -110,6 +110,53 @@ export const getVideoDateKST = () => {
     return shifted.toISOString().slice(0, 10);
 };
 
+const isValidMonthDay = (month, day) => {
+    if (!Number.isInteger(month) || !Number.isInteger(day)) return false;
+    if (month < 1 || month > 12 || day < 1) return false;
+    return day <= new Date(2024, month, 0).getDate();
+};
+
+export const titleMatchesDate = (title, dateKey) => {
+    if (!title || !dateKey) return false;
+    const target = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+    if (!target) return false;
+    const targetYear = Number(target[1]);
+    const targetMonth = Number(target[2]);
+    const targetDay = Number(target[3]);
+    const text = String(title);
+
+    const candidates = [];
+    const pushMonthDay = (month, day) => {
+        if (isValidMonthDay(month, day)) candidates.push({ month, day });
+    };
+    const pushYearMonthDay = (year, month, day) => {
+        if (year === targetYear && isValidMonthDay(month, day)) candidates.push({ month, day });
+    };
+
+    for (const match of text.matchAll(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/g)) {
+        pushMonthDay(Number(match[1]), Number(match[2]));
+    }
+    for (const match of text.matchAll(/(?<!\d)(\d{1,2})\s*\/\s*(\d{1,2})(?!\d)/g)) {
+        pushMonthDay(Number(match[1]), Number(match[2]));
+    }
+    for (const match of text.matchAll(/(?<!\d)(\d{1,2})\s*\.\s*(\d{1,2})(?!\d)/g)) {
+        pushMonthDay(Number(match[1]), Number(match[2]));
+    }
+    for (const match of text.matchAll(/(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)/g)) {
+        pushYearMonthDay(Number(match[1]), Number(match[2]), Number(match[3]));
+    }
+    for (const match of text.matchAll(/(?<!\d)(\d{2})(\d{2})(?!\d)/g)) {
+        pushMonthDay(Number(match[1]), Number(match[2]));
+    }
+
+    // titleMatchesDate('7월 10일 매일성경', '2026-07-10') === true
+    // titleMatchesDate('07.10 신앙생활 1분만', '2026-07-10') === true
+    // titleMatchesDate('7/10 매일성경', '2026-07-10') === true
+    // titleMatchesDate('12월 25일 성탄 묵상', '2026-07-10') === false
+    // titleMatchesDate('13월 40일 잘못된 날짜', '2026-07-10') === false
+    return candidates.some(({ month, day }) => month === targetMonth && day === targetDay);
+};
+
 // 유튜브 URL에서 videoId 추출.
 // 지원 형식: youtu.be/{id}, watch?v={id}, /live/{id}, /shorts/{id}, /embed/{id}
 export const extractYouTubeId = (url) => {

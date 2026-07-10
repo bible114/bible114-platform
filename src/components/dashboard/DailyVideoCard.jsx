@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { db, firebase } from '../../utils/firebase';
-import { getVideoDateKST, extractYouTubeId, parseAndMapChapters } from '../../utils/helpers';
+import { getVideoDateKST, extractYouTubeId, parseAndMapChapters, titleMatchesDate } from '../../utils/helpers';
 import { saveGuestState } from '../../utils/guestStorage';
 
 const CHAPTER_ORDER = [
@@ -36,17 +36,22 @@ const fetchPlaylistCandidates = async (playlistId, apiKey) => {
     return candidates;
 };
 
-const fetchLatestFromPlaylist = async (playlistId, apiKey) => {
+export const fetchLatestFromPlaylist = async (playlistId, apiKey, targetDateKey) => {
     const items = await fetchPlaylistCandidates(playlistId, apiKey);
     const now = Date.now();
     const candidates = items
         .map(it => ({
             it,
             publishedAt: it?.contentDetails?.videoPublishedAt || it?.snippet?.publishedAt || null,
+            title: it?.snippet?.title || '',
         }))
         .filter(({ publishedAt }) => publishedAt && new Date(publishedAt).getTime() <= now)
         .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
-    const chosen = candidates[0]?.it;
+    const dateMatched = targetDateKey
+        ? candidates.filter(candidate => titleMatchesDate(candidate.title, targetDateKey))
+        : [];
+    const chosenCandidate = dateMatched[0] || candidates[0];
+    const chosen = chosenCandidate?.it;
     const videoId = chosen?.contentDetails?.videoId || chosen?.snippet?.resourceId?.videoId;
     if (!videoId) throw new Error('재생목록에 사용 가능한 영상이 없음');
 
@@ -54,10 +59,17 @@ const fetchLatestFromPlaylist = async (playlistId, apiKey) => {
     const videoRes = await fetch(videoUrl);
     if (!videoRes.ok) throw new Error(`videos HTTP ${videoRes.status}`);
     const videoJson = await videoRes.json();
-    const description = videoJson.items?.[0]?.snippet?.description || '';
+    const snippet = videoJson.items?.[0]?.snippet || {};
+    const description = snippet.description || '';
     const chapters = parseAndMapChapters(description);
 
-    return { url: `https://youtu.be/${videoId}`, chapters };
+    return {
+        url: `https://youtu.be/${videoId}`,
+        chapters,
+        title: snippet.title || chosenCandidate?.title || '',
+        publishedAt: chosenCandidate?.publishedAt || snippet.publishedAt || null,
+        matchedDate: Boolean(dateMatched[0]),
+    };
 };
 
 // 매일 유튜브 영상 카드 — 읽기 탭 최상단에 표시.
@@ -120,7 +132,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
 
                 const results = await Promise.all(modes.map(async ([key, playlistId]) => {
                     try {
-                        const entry = await fetchLatestFromPlaylist(playlistId, config.apiKey);
+                        const entry = await fetchLatestFromPlaylist(playlistId, config.apiKey, dateKey);
                         return [key, entry];
                     } catch (e) {
                         console.warn(`매일 영상 자동 채움 실패 (${key}):`, e);
