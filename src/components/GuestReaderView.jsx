@@ -1,12 +1,40 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { TOTAL_DAYS } from '../data/constants';
+import { PLAN_TYPES, BIBLE_VERSIONS, isBibleVersionVisibleForUser } from '../data/bible_options';
 import { useBibleContent } from '../hooks/useBibleContent';
 import { useTTS } from '../hooks/useTTS';
-import { recordGuestRead } from '../utils/guestStorage';
+import { recordGuestRead, saveGuestState } from '../utils/guestStorage';
 import { DailyVideoCard, BibleReader } from './dashboard';
 
 const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupClick }) => {
     const { verseData, viewingDay, setViewingDay, loadContent } = useBibleContent(currentUser);
+
+    // 게스트가 고를 수 있는 버전 목록 — 특정 교회 전용(쉬운성경·새한글·메시지)은
+    // isBibleVersionVisibleForUser가 걸러내므로 공개 버전만 남는다.
+    const versionOptions = useMemo(() => {
+        const options = [];
+        PLAN_TYPES.forEach(plan => {
+            (BIBLE_VERSIONS[plan.id] || [])
+                .filter(version => isBibleVersionVisibleForUser(version, currentUser))
+                .forEach(version => {
+                    options.push({
+                        planId: `${plan.id}_${version.id}`,
+                        planTitle: plan.title,
+                        versionName: version.name,
+                    });
+                });
+        });
+        return options;
+    }, [currentUser]);
+
+    const currentPlanId = currentUser?.planId || '1year_revised';
+
+    const handleGuestVersionChange = (newPlanId) => {
+        if (!newPlanId || newPlanId === currentPlanId) return;
+        saveGuestState({ planId: newPlanId });
+        setCurrentUser(prev => (prev ? { ...prev, planId: newPlanId } : prev));
+    };
+
     const [fontSize, setFontSize] = useState(() => {
         const saved = localStorage.getItem('bible_fontSize');
         return saved ? parseInt(saved, 10) : 16;
@@ -90,6 +118,26 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-sm text-amber-900 font-medium">
                     기록은 이 기기에만 저장되며, 브라우저 데이터 삭제 시 사라질 수 있어요. 가입하면 안전하게 보관됩니다.
                 </div>
+
+                {versionOptions.length > 1 && (
+                    <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3">
+                        <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-500">읽는 버전</p>
+                            <p className="text-[11px] text-slate-400">순서·번역을 자유롭게 골라보세요.</p>
+                        </div>
+                        <select
+                            value={currentPlanId}
+                            onChange={(e) => handleGuestVersionChange(e.target.value)}
+                            className="ml-auto shrink-0 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        >
+                            {versionOptions.map(opt => (
+                                <option key={opt.planId} value={opt.planId}>
+                                    {opt.planTitle} · {opt.versionName}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
 
                 <DailyVideoCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
 

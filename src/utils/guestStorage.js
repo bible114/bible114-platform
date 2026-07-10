@@ -1,4 +1,14 @@
+import { dateToOffset } from './helpers';
+
 const GUEST_STORAGE_KEY = 'b114_guest_v1';
+
+// 오늘 날짜에 해당하는 통독 Day (1월 1일 = Day 1, 12월 31일 = Day 365).
+// 게스트 "로그인 없이 오늘 말씀 먼저 읽어보기"는 개인 진도가 없으므로
+// 교회 통독처럼 날짜에 맞는 본문을 보여준다.
+const getTodayPlanDay = () => {
+    const now = new Date();
+    return Math.min(365, dateToOffset(now.getMonth() + 1, now.getDate()) + 1);
+};
 
 const DEFAULT_GUEST_STATE = {
     planId: '1year_revised',
@@ -36,7 +46,14 @@ const writeGuestState = (state) => {
     }
 };
 
-export const getGuestState = () => normalizeGuestState(readRawGuestState());
+export const getGuestState = () => {
+    const state = normalizeGuestState(readRawGuestState());
+    // 아직 한 번도 읽기 완료를 하지 않은 게스트는 저장된 진도가 의미 없으므로
+    // 방문할 때마다 오늘 날짜의 본문으로 맞춘다. 한 번이라도 읽은 게스트는
+    // 자기 진도(마지막 읽은 다음 Day)를 그대로 이어간다.
+    if (!state.lastReadDate) state.currentDay = getTodayPlanDay();
+    return state;
+};
 
 export const saveGuestState = (partial) => {
     const next = normalizeGuestState({
