@@ -19,6 +19,7 @@ import {
 } from './admin';
 import TalentShop from './dashboard/TalentShop';
 import QRCode from 'qrcode';
+import { SITE_URL } from '../data/constants';
 
 const formatReadDate = (dateStr) => {
     if (!dateStr) return '-';
@@ -568,10 +569,11 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
     // ── 성도용 가입 안내문 A4 인쇄 (교회 QR + 가입/로그인 방법, 어르신 큰 글씨) ──
     const printMemberGuide = async () => {
-        const link = `${window.location.origin}${window.location.pathname}?church=${currentUser.churchId}`;
+        // 인쇄물은 교회별 자동선택 링크가 아니라 대표 주소로 통일한다 —
+        // 성도는 QR로 접속한 뒤 앱에서 교회 이름을 검색해 들어간다.
         let qrDataUrl = '';
         try {
-            qrDataUrl = await QRCode.toDataURL(link, { width: 560, margin: 1 });
+            qrDataUrl = await QRCode.toDataURL(SITE_URL, { width: 560, margin: 1 });
         } catch (e) {
             console.error('QR 생성 실패:', e);
             toast.error('QR 코드 생성에 실패했습니다.');
@@ -611,11 +613,11 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
   <div class="qr">
     <img src="${qrDataUrl}" alt="QR" />
     <div class="big">휴대폰 카메라로 이 네모(QR)를 비춰주세요</div>
-    <div class="url">인터넷 주소: ${esc(link)}</div>
+    <div class="url">인터넷 주소: ${esc(SITE_URL)}</div>
   </div>
   <div class="section">
     <h2>1️⃣ 처음 오신 분 — 회원가입 (딱 한 번만)</h2>
-    <div class="step"><span class="num">①</span><span>QR로 접속하면 우리 교회가 자동으로 선택돼 있어요</span></div>
+    <div class="step"><span class="num">①</span><span>QR로 접속한 뒤 <b>"${churchName}"</b>을 검색해서 선택해주세요</span></div>
     <div class="step"><span class="num">②</span><span>"처음 오셨나요? <b>회원가입</b>"을 눌러주세요</span></div>
     <div class="step"><span class="num">③</span><span><b>이름</b> · <b>생년월일 8자리</b>(예: 19560315) · <b>비밀번호</b>(6자리 이상)를 넣어주세요</span></div>
     <div class="step"><span class="num">④</span><span>교회 입장코드: ${codeBlock}</span></div>
