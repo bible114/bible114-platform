@@ -96,6 +96,9 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [editingShopItemId, setEditingShopItemId] = useState(null);
     const [savingTalentShop, setSavingTalentShop] = useState(false);
     const [showShopPreview, setShowShopPreview] = useState(false);
+    // 창구 판매(관리자 직접 차감) 입력 폼
+    const [deductForm, setDeductForm] = useState({ uid: '', itemName: '', price: '' });
+    const [deducting, setDeducting] = useState(false);
     const [talentPurchases, setTalentPurchases] = useState([]);
     const [purchaseFilter, setPurchaseFilter] = useState('pending');
 
@@ -331,6 +334,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             if (action.type === 'deleteShopItem') await executeDeleteShopItem(action.item);
             if (action.type === 'deliverPurchase') await updatePurchaseStatus(action.purchase, 'delivered');
             if (action.type === 'refundPurchase') await updatePurchaseStatus(action.purchase, 'cancelled');
+            if (action.type === 'manualDeduct') await executeManualDeduct(action.form);
             action.after?.();
         } catch (e) {
             console.error(e);
@@ -489,6 +493,112 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         const nextItems = (talentShop.items || []).filter(existing => existing.id !== item.id);
         await saveTalentShop({ ...talentShop, items: nextItems });
         if (editingShopItemId === item.id) resetShopItemDraft();
+    };
+
+    // ── 창구 판매: 관리자가 교인 대신 달란트를 차감하고 구입 물품을 기록 (어르신 지원) ──
+    const requestManualDeduct = () => {
+        const member = members.find(m => m.uid === deductForm.uid);
+        const price = parseInt(deductForm.price, 10);
+        const itemName = deductForm.itemName.trim();
+        if (!member) { toast.error('교인을 선택해주세요.'); return; }
+        if (!itemName) { toast.error('구입 물품을 반드시 기록해주세요.'); return; }
+        if (!price || price <= 0) { toast.error('차감할 달란트를 입력해주세요.'); return; }
+        if ((member.talent || 0) < price) {
+            toast.error(`${member.name}님의 잔액(⭐${member.talent || 0})이 부족합니다.`);
+            return;
+        }
+        setConfirmAction({
+            type: 'manualDeduct',
+            form: { member, itemName, price },
+            title: `${member.name}님 달란트를 차감할까요?`,
+            message: `${itemName} · ⭐${price} 차감 (잔액 ⭐${member.talent || 0} → ⭐${(member.talent || 0) - price})`,
+            confirmLabel: '차감하기',
+        });
+    };
+
+    const executeManualDeduct = async ({ member, itemName, price }) => {
+        setDeducting(true);
+        try {
+            const purchaseRef = db.collection('churches').doc(currentUser.churchId)
+                .collection('talentPurchases').doc();
+            await db.runTransaction(async (transaction) => {
+                const userRef = db.collection('users').doc(member.uid);
+                const snap = await transaction.get(userRef);
+                if (!snap.exists) throw new Error('교인 정보를 찾을 수 없습니다.');
+                const balance = snap.data().talent || 0;
+                if (balance < price) throw new Error(`잔액이 부족합니다 (현재 ⭐${balance}).`);
+                transaction.update(userRef, { talent: balance - price });
+                transaction.set(purchaseRef, {
+                    uid: member.uid,
+                    memberName: member.name,
+                    itemId: 'manual',
+                    itemName,
+                    price,
+                    status: 'delivered',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    deliveredAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    deliveredBy: currentUser.uid || 'platformAdmin',
+                });
+            });
+            setMembers(prev => prev.map(m => m.uid === member.uid ? { ...m, talent: (m.talent || 0) - price } : m));
+            setTalentPurchases(prev => [{
+                id: purchaseRef.id, uid: member.uid, memberName: member.name,
+                itemId: 'manual', itemName, price, status: 'delivered',
+                createdAt: new Date(), deliveredAt: new Date(), deliveredBy: currentUser.uid || 'platformAdmin',
+            }, ...prev]);
+            setDeductForm({ uid: '', itemName: '', price: '' });
+            toast.success(`${member.name}님 ⭐${price} 차감 완료 (${itemName})`);
+        } catch (e) {
+            console.error(e);
+            toast.error(e.message || '차감 처리에 실패했습니다.');
+        } finally {
+            setDeducting(false);
+        }
+    };
+
+    // ── 상품 목록 A4 인쇄 — 상품 수에 따라 글씨·그림 크기 자동 조절 ──
+    const printShopItems = () => {
+        const items = (talentShop.items || []).filter(i => i && i.active !== false);
+        if (items.length === 0) { toast.error('인쇄할 판매중 상품이 없습니다.'); return; }
+        const n = items.length;
+        const size = n <= 4 ? { cols: 2, emoji: 88, name: 30, price: 24, desc: 15 }
+            : n <= 8 ? { cols: 2, emoji: 64, name: 24, price: 20, desc: 13 }
+            : n <= 12 ? { cols: 3, emoji: 52, name: 20, price: 17, desc: 12 }
+            : n <= 20 ? { cols: 4, emoji: 40, name: 16, price: 14, desc: 10 }
+            : { cols: 5, emoji: 30, name: 13, price: 12, desc: 9 };
+        const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const cards = items.map(item => `
+            <div class="card">
+                <div class="emoji">${esc(item.emoji)}</div>
+                <div class="name">${esc(item.name)}</div>
+                <div class="price">⭐ ${Number(item.price) || 0} 달란트</div>
+                ${item.description ? `<div class="desc">${esc(item.description)}</div>` : ''}
+            </div>`).join('');
+        const html = `<!doctype html><html><head><meta charset="utf-8"><title>달란트 상점 상품 목록</title>
+<style>
+  @page { size: A4 portrait; margin: 14mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; color: #1e293b; }
+  .header { text-align: center; margin-bottom: 8mm; }
+  .header h1 { font-size: 30px; }
+  .header p { font-size: 14px; color: #64748b; margin-top: 3mm; }
+  .grid { display: grid; grid-template-columns: repeat(${size.cols}, 1fr); gap: 5mm; }
+  .card { border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 5mm 3mm; text-align: center; break-inside: avoid; }
+  .emoji { font-size: ${size.emoji}px; line-height: 1.25; }
+  .name { font-size: ${size.name}px; font-weight: 800; margin-top: 2mm; }
+  .price { font-size: ${size.price}px; font-weight: 700; color: #7c3aed; margin-top: 1.5mm; }
+  .desc { font-size: ${size.desc}px; color: #64748b; margin-top: 1.5mm; }
+  .footer { text-align: center; font-size: 12px; color: #94a3b8; margin-top: 8mm; }
+</style></head><body>
+  <div class="header"><h1>⭐ 달란트 상점</h1><p>${esc(churchInfo?.name || currentUser.churchName || '')} · 구입은 관리자(선생님)께 말씀해주세요</p></div>
+  <div class="grid">${cards}</div>
+  <div class="footer">성경 읽기로 달란트를 모아보세요 — 매일 첫 읽기마다 적립됩니다</div>
+  <script>window.onload = function(){ window.print(); };<\/script>
+</body></html>`;
+        const w = window.open('', '_blank');
+        if (!w) { toast.error('팝업이 차단되었습니다. 브라우저에서 팝업을 허용한 뒤 다시 시도해주세요.'); return; }
+        w.document.write(html);
+        w.document.close();
     };
 
     const updatePurchaseStatus = async (purchase, mode) => {
@@ -1024,6 +1134,12 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                         <div className="flex items-center gap-4">
                                             <button
                                                 type="button"
+                                                onClick={printShopItems}
+                                                className="rounded-xl border border-violet-200 bg-white px-4 py-2 text-sm font-black text-violet-700 hover:bg-violet-50">
+                                                🖨️ 상품 목록 인쇄
+                                            </button>
+                                            <button
+                                                type="button"
                                                 onClick={() => setShowShopPreview(true)}
                                                 disabled={talentShop.enabled !== true}
                                                 title={talentShop.enabled !== true ? '상점을 켜야 미리볼 수 있어요' : ''}
@@ -1068,6 +1184,62 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                         </div>
                                     </div>
                                 )}
+
+                                {/* 창구 판매 — 앱 사용이 어려운 어르신을 위한 관리자 직접 차감 */}
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+                                    <h3 className="text-sm font-black text-slate-800">🧾 창구 판매 — 관리자가 직접 차감</h3>
+                                    <p className="mt-1 mb-4 text-xs font-bold text-amber-700">
+                                        앱 사용이 어려운 어르신은 관리자에게 말씀만 하시면 돼요. 구입 물품을 기록해야 차감할 수 있습니다.
+                                    </p>
+                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.1fr_1.3fr_0.7fr_auto]">
+                                        <select
+                                            value={deductForm.uid}
+                                            onChange={e => setDeductForm(prev => ({ ...prev, uid: e.target.value }))}
+                                            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700">
+                                            <option value="">교인 선택</option>
+                                            {[...members].sort((a, b) => a.name.localeCompare(b.name, 'ko-KR')).map(m => (
+                                                <option key={m.uid} value={m.uid}>{m.name} (⭐{m.talent || 0})</option>
+                                            ))}
+                                        </select>
+                                        <input
+                                            value={deductForm.itemName}
+                                            onChange={e => setDeductForm(prev => ({ ...prev, itemName: e.target.value }))}
+                                            placeholder="구입 물품 (필수, 예: 세탁세제)"
+                                            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700"
+                                        />
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            value={deductForm.price}
+                                            onChange={e => setDeductForm(prev => ({ ...prev, price: e.target.value }))}
+                                            placeholder="달란트"
+                                            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={requestManualDeduct}
+                                            disabled={deducting}
+                                            className="rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-black text-white hover:bg-amber-700 disabled:opacity-50">
+                                            {deducting ? '처리 중...' : '차감하기'}
+                                        </button>
+                                    </div>
+                                    {(talentShop.items || []).filter(i => i && i.active !== false).length > 0 && (
+                                        <div className="mt-3">
+                                            <p className="mb-1.5 text-[11px] font-bold text-amber-700/70">상품 빠른 선택 (물품·가격 자동 입력)</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {(talentShop.items || []).filter(i => i && i.active !== false).map(item => (
+                                                    <button
+                                                        key={item.id}
+                                                        type="button"
+                                                        onClick={() => setDeductForm(prev => ({ ...prev, itemName: item.name, price: String(item.price) }))}
+                                                        className="rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-amber-100">
+                                                        {item.emoji} {item.name} ⭐{item.price}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
 
                                 <div className="grid grid-cols-1 lg:grid-cols-[0.85fr_1.15fr] gap-4">
                                     <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">

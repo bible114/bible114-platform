@@ -106,6 +106,13 @@ service cloud.firestore {
           request.resource.data.status == 'pending' &&
           request.resource.data.keys().hasOnly(
             ['uid', 'memberName', 'itemId', 'itemName', 'price', 'status', 'createdAt']);
+        // 창구 판매(관리자 대리 차감): 앱 사용이 어려운 어르신 교인을 대신해 관리자가
+        // 달란트를 차감하며 구입 물품을 기록한다. 즉시 수령이므로 delivered로 생성.
+        allow create: if (isChurchAdmin(churchId) || isPlatformAdmin()) &&
+          request.resource.data.status == 'delivered' &&
+          request.resource.data.keys().hasOnly(
+            ['uid', 'memberName', 'itemId', 'itemName', 'price', 'status',
+             'createdAt', 'deliveredAt', 'deliveredBy']);
         allow update: if (isChurchAdmin(churchId) || isPlatformAdmin()) &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(
             ['status', 'deliveredAt', 'deliveredBy']);
