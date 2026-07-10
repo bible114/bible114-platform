@@ -204,6 +204,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-10 | T22 날짜 매칭 영상 선택 | `src/utils/helpers.js`, `src/components/dashboard/DailyVideoCard.jsx`, `HANDOFF_CODEX.md` | `titleMatchesDate(title, dateKey)` 추가 및 재생목록 자동 선택 시 제목 날짜 매칭 우선, 없으면 기존 최신 게시 영상 폴백. `npm run build` 통과. 주석 케이스 5개 이상 명시. |
 | 2026-07-10 | T23 묵상 해설/기도제목 UX | `src/components/dashboard/DailyVideoCard.jsx`, `HANDOFF_CODEX.md` | 챕터 표준 키는 유지하고 표시 라벨을 묵상 해설/성경읽기/기도제목으로 변경. 썸네일 재생 시 해설 챕터부터 시작, 구간 안내 문구와 기도제목 강조 버튼 추가. `npm run build` 통과. |
 | 2026-07-10 | T24 관리자 오늘 영상 미리보기 | `src/components/PlatformAdminView.jsx`, `HANDOFF_CODEX.md` | 매일 영상 탭의 연결 테스트를 T22 선택 로직 기반 오늘 영상 미리보기로 확장. 성인용/어린이용 제목·게시일·챕터·타임스탬프 경고 표시. `npm run build` 통과. 실제 YouTube API 호출은 API 키/재생목록 필요로 미검증. |
+| 2026-07-10 | T25 범위 파서 + 퀴즈 선택기 | `src/utils/quizEngine.js`, `src/data/quiz/.gitkeep`, `HANDOFF_CODEX.md` | 66권 약칭 범위 파서, 최근 읽기 완료일 캐시/스케줄 범위 조회, 책별 JSON lazy load, readCount 기반 문항 회전 선택기 추가. `npm run build` 통과. 문항 JSON은 T28 전까지 없어 pool은 빈 배열을 반환. |
 
 ---
 
@@ -232,6 +233,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T22 완료. 자동 채움은 제목 날짜가 `dateKey`와 맞는 게시 완료 영상을 우선 선택하고, 매칭 후보가 없으면 기존처럼 최신 게시 영상으로 폴백한다. 선택 함수는 T24 관리자 미리보기에서 재사용할 수 있도록 export했다.
 - T23 완료. 저장된 chapters 호환을 위해 표준 키(`해설`/`성경읽기`/`기도`)는 그대로 두고 표시 라벨과 기본 시작 시각만 조정했다.
 - T24 완료. 관리자 미리보기는 `fetchLatestFromPlaylist`를 직접 재사용해 T22와 같은 날짜 매칭/최신 폴백 로직을 쓴다. 실제 YouTube API 호출은 키/재생목록이 없어 미검증.
+- T25 완료. `quizEngine.js`는 캐시 제목을 우선 파싱하고 실패하면 `read_schedules.json` 범위로 폴백한다. `src/data/quiz/*.json`이 아직 없으면 `loadQuestionsForRange`는 빈 pool을 반환하므로 T26에서 기존 `QUIZ_BANK` 폴백을 유지해야 한다.
 
 ---
 
@@ -398,7 +400,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
 
 **설계 핵심**: "오늘 읽은 장"의 진실 원천은 본문 캐시 문서의 title이다. `useBibleContent`가 본문을 로드할 때 `localStorage['v_{planType}_{version}_{actualDay}']`에 `{title, text, ...}`를 저장하며, title은 "개역개정 7월 10일 / 민 17-21장" 형태로 장 범위를 포함한다. 퀴즈는 읽기 완료 후에만 열리므로 이 캐시는 퀴즈 시점에 항상 존재한다. 이 title을 파싱하면 플랜(114/순서대로/신약)과 무관하게 실제 읽은 범위를 얻는다.
 
-- [ ] **T25. 범위 파서 + 퀴즈 선택기** (신규 `src/utils/quizEngine.js`)
+- [x] **T25. 범위 파서 + 퀴즈 선택기** (신규 `src/utils/quizEngine.js`)
   - `parseReadingRange(str)`: "민 17-21장" → `[{book:'민수기', ch:17}, ..., {book:'민수기', ch:21}]`, "눅 1:46-80" → `[{book:'누가복음', ch:1, vStart:46, vEnd:80}]`, "창 1-2장" 등. 성경 66권 약칭→정식명 매핑 테이블 포함(창/출/레/민/신/수/삿/룻/삼상/삼하/왕상/왕하/대상/대하/스/느/에/욥/시/잠/전/아/사/렘/애/겔/단/호/욜/암/옵/욘/미/나/합/습/학/슥/말/마/막/눅/요/행/롬/고전/고후/갈/엡/빌/골/살전/살후/딤전/딤후/딛/몬/히/약/벧전/벧후/유/계). "창 1-2장; 시 1편" 같은 복합 표기는 `;`·`,` 분리 후 각각 파싱. 파싱 실패 시 빈 배열 (호출부가 폴백 처리).
   - `getTodayReadingRange(user)`: ① `getActualDay(user.currentDay - 1 <= 0 ? 365 : user.currentDay - 1, user.dayOffset)`로 "가장 최근에 읽기 완료한 날"의 actualDay를 구하고 (읽기 완료 시 currentDay가 +1 되므로 -1), ② localStorage 캐시 title 파싱 시도, ③ 실패 시 `SCHEDULE_DATA[planId][actualDay-1].range` 파싱 폴백.
   - `selectQuiz(pool, readCount)`: pool을 (책, 장, 문항 순서)로 정렬 후 `pool[(readCount - 1) % pool.length]`. 절 범위가 있는 날(vStart/vEnd)은 ref의 절이 범위 안에 있는 문항만 pool에 포함.
