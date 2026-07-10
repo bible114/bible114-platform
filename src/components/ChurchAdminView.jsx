@@ -36,7 +36,14 @@ const formatAnyDate = (value) => {
 const getSubId = (s) => (typeof s === 'string' ? s : s.id);
 const getSubName = (s) => (typeof s === 'string' ? s : s.name);
 const genSubId = () => 'sub_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-const SHOP_EMOJIS = ['☕', '🍞', '🍪', '🍎', '🎁', '📖', '✏️', '🧦', '🧴', '🌿', '🕯️', '⭐'];
+// 상품 이모지 프리셋 — 부서 특성별 그룹 (어린이부: 장난감·학용품 / 어르신 교회: 생필품)
+const SHOP_EMOJI_GROUPS = [
+    { label: '간식·음료', emojis: ['☕', '🧃', '🥤', '🍞', '🍪', '🍫', '🍬', '🍭', '🍩', '🧁', '🍦', '🍎', '🍌', '🍊', '🍕', '🍗'] },
+    { label: '장난감·놀이', emojis: ['🧸', '🚗', '🚂', '🤖', '🪀', '🪁', '🎨', '🖍️', '⚽', '🏀', '🎲', '🧩', '🎮', '👑', '🦖', '🎈'] },
+    { label: '학용품', emojis: ['✏️', '🖊️', '📓', '📔', '📒', '🎒', '📐', '✂️', '📎', '🗂️', '🖌️', '📖'] },
+    { label: '생필품', emojis: ['🧴', '🧻', '🧼', '🪥', '🧦', '🧤', '🧣', '🌂', '🥫', '🍚', '🧂', '🧺', '💊', '🩹', '👓', '🪮'] },
+    { label: '특별 선물', emojis: ['🎁', '⭐', '💝', '💐', '🌹', '🌿', '🕯️', '📿', '🎫', '🏆'] },
+];
 const emptyShopItem = { emoji: '🎁', name: '', price: 10, description: '', active: true };
 const genShopItemId = () => 'item_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
@@ -1068,16 +1075,23 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                         <div className="space-y-3">
                                             <div>
                                                 <p className="mb-2 text-xs font-black text-slate-500">이모지</p>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {SHOP_EMOJIS.map(emoji => (
-                                                        <button
-                                                            key={emoji}
-                                                            type="button"
-                                                            onClick={() => setShopItemDraft(prev => ({ ...prev, emoji }))}
-                                                            className={`h-10 w-10 rounded-xl border text-lg ${shopItemDraft.emoji === emoji ? 'border-violet-400 bg-violet-50' : 'border-slate-100 bg-slate-50'}`}
-                                                        >
-                                                            {emoji}
-                                                        </button>
+                                                <div className="max-h-56 space-y-3 overflow-y-auto pr-1">
+                                                    {SHOP_EMOJI_GROUPS.map(group => (
+                                                        <div key={group.label}>
+                                                            <p className="mb-1.5 text-[11px] font-bold text-slate-400">{group.label}</p>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {group.emojis.map(emoji => (
+                                                                    <button
+                                                                        key={emoji}
+                                                                        type="button"
+                                                                        onClick={() => setShopItemDraft(prev => ({ ...prev, emoji }))}
+                                                                        className={`h-10 w-10 rounded-xl border text-lg ${shopItemDraft.emoji === emoji ? 'border-violet-400 bg-violet-50' : 'border-slate-100 bg-slate-50'}`}
+                                                                    >
+                                                                        {emoji}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
                                                     ))}
                                                 </div>
                                             </div>
