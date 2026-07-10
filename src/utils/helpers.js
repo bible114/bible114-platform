@@ -250,15 +250,3 @@ export const getActualDay = (currentDay, dayOffset) => {
     while (actualDay < 1) actualDay += 365;
     return actualDay;
 };
-
-// 하단 고정 카카오 광고 배너 숨김 — 관리자 화면에서는 광고가 콘텐츠(표·목록)를
-// 가리므로 숨긴다. 광고 수익은 교인·게스트 화면에서만 발생하면 충분하다.
-// 플랫폼 관리자 → "교회관리자 화면으로 보기"처럼 관리자 화면이 중첩 마운트돼도
-// 안전하도록 참조 카운트로 관리한다 (마지막 관리자 화면이 사라질 때만 다시 표시).
-let adBannerHideCount = 0;
-const applyAdBannerVisibility = () => {
-    const layer = document.getElementById('kakao-static-ad-layer');
-    if (layer) layer.style.display = adBannerHideCount > 0 ? 'none' : '';
-};
-export const hideAdBanner = () => { adBannerHideCount += 1; applyAdBannerVisibility(); };
-export const releaseAdBanner = () => { adBannerHideCount = Math.max(0, adBannerHideCount - 1); applyAdBannerVisibility(); };

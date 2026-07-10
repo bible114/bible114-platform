@@ -2,7 +2,7 @@ import React from 'react';
 import Icon from './Icon';
 import { firebase } from '../utils/firebase';
 import ChurchAdminView from './ChurchAdminView';
-import { getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId, hideAdBanner, releaseAdBanner } from '../utils/helpers';
+import { getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
 import { rebuildChurchDirectory, removeChurchFromDirectory, syncChurchDirectoryEntry } from '../utils/churchDirectory';
 import { sha256 } from '../utils/crypto';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
@@ -86,12 +86,6 @@ const PlatformAdminView = ({
     const [savingAutoConfig, setSavingAutoConfig] = React.useState(false);
     const [testingConnection, setTestingConnection] = React.useState(false);
     const [connectionTestResult, setConnectionTestResult] = React.useState(null); // { ok: bool, message: string }
-
-    // 관리자 화면에서는 하단 광고 배너가 표·목록을 가리므로 숨긴다
-    React.useEffect(() => {
-        hideAdBanner();
-        return () => releaseAdBanner();
-    }, []);
 
     React.useEffect(() => {
         if (tab !== 'dailyVideo' || !db) return;
@@ -613,7 +607,8 @@ const PlatformAdminView = ({
     }
 
     return (
-        <div className="min-h-screen bg-slate-100">
+        // 하단 고정 광고(50px)가 콘텐츠를 가리지 않도록 광고 높이만큼 여백 확보
+        <div className="min-h-screen bg-slate-100" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
             {/* 교회 삭제 확인 모달 */}
             {confirmDelete?.type === 'church' && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-4">

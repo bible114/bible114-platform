@@ -19,7 +19,6 @@ import {
 } from './admin';
 import TalentShop from './dashboard/TalentShop';
 import QRCode from 'qrcode';
-import { hideAdBanner, releaseAdBanner } from '../utils/helpers';
 
 const formatReadDate = (dateStr) => {
     if (!dateStr) return '-';
@@ -107,12 +106,6 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
     // 교회 전용 로그인 링크
     const [linkCopied, setLinkCopied] = useState(false);
-
-    // 관리자 화면에서는 하단 광고 배너가 표·목록을 가리므로 숨긴다
-    useEffect(() => {
-        hideAdBanner();
-        return () => releaseAdBanner();
-    }, []);
 
     useEffect(() => {
         if (!currentUser?.churchId) return;
@@ -954,7 +947,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     );
 
     return (
-        <div className="min-h-screen bg-slate-50">
+        // 하단 고정 광고(50px)가 콘텐츠를 가리지 않도록 광고 높이만큼 여백 확보
+        <div className="min-h-screen bg-slate-50" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
             {/* 상단 헤더 */}
             <div className="bg-white border-b border-slate-200 px-4 py-4 flex items-center justify-between sticky top-0 z-10">
                 <div>
