@@ -459,10 +459,11 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
 
 > 배경: 2026-07-10 전체 코드 점검에서 나온 발견 중 사용자가 승인한 4건. 작업 프로토콜 동일.
 
-- [ ] **T29. "읽기 완료" 버튼 중복 제출 방지**
-  - `src/hooks/useUserBibleActions.js` `handleRead`(44행 부근): 트랜잭션은 원자적이지만 연타 시 트랜잭션이 **여러 번 각각 성공**해 진도·점수·달란트가 중복된다. 훅에 `readSubmitting` state 추가 — 함수 진입 시 true면 즉시 return, try/finally로 해제. `readSubmitting`을 훅 반환값에 포함.
-  - `src/components/dashboard/BibleReader.jsx` 읽기 완료 버튼(207행 부근): `readSubmitting` prop 받아 `disabled` + 라벨 "기록 중...". DashboardView에서 prop 연결.
-  - `src/components/GuestReaderView.jsx` `handleRead`: 게스트도 동일 문제(`recordGuestRead`가 호출마다 currentDay +1). 같은 패턴의 submitting 가드 추가, BibleReader에 같은 prop 전달.
+- [ ] **T29. "읽기 완료" 버튼 중복 제출 방지** (2026-07-10 실환경 재현됨 — 아래 실측 증거 반영해 이중 방어로 구현할 것)
+  - **실측 증거** (테스트 계정 더블클릭): `currentDay 1→3` (하루치 본문 스킵), `score 0→21` (10+11 중복 적립), talent는 11로 정상 — talent만 `isFirstReadToday` 가드가 있고 score/currentDay는 없어서다.
+  - **방어 1 (UI)**: 훅에 `readSubmitting` state — 함수 진입 시 true면 즉시 return, try/finally 해제, 훅 반환값에 포함. `src/components/dashboard/BibleReader.jsx` 읽기 완료 버튼(207행 부근)에 `disabled` + 라벨 "기록 중...". DashboardView에서 prop 연결.
+  - **방어 2 (트랜잭션 — 근본 수정)**: UI 가드만으론 두 번째 클릭이 state 반영 전에 들어올 수 있다. 트랜잭션 내부에서 "같은 날 같은 진행일의 재제출"을 감지해 no-op 처리: `!isFirstReadToday && vDay === data.currentDay - ?` 형태가 아니라, 정확히는 **`data.lastReadDate === todayStr && vDay < data.currentDay`이면(이미 오늘 이 화면의 완료가 반영됨) 진도·점수·달란트 전부 갱신 없이 조기 종료**. "한 장 더 읽기"(미리 읽기 — vDay가 이미 증가한 currentDay와 같음)는 정상 통과해야 한다 — 구분 조건을 신중히: 첫 클릭 후 currentDay는 +1 된 상태이므로 재제출은 `vDay === currentDay - 1`로 판별 가능.
+  - `src/components/GuestReaderView.jsx` `handleRead`: 게스트도 동일 문제(`recordGuestRead`가 호출마다 currentDay +1). 같은 submitting 가드 + `recordGuestRead` 내부에서 오늘 이미 기록됐고 같은 날짜 재호출이면 currentDay 증가 스킵.
 - [ ] **T30. 주간 읽기왕 수리** (현재 항상 "-" 표시되는 죽은 기능)
   - 원인: `src/utils/statsUtils.js` `getWeeklyMVP`(67-127행)가 users 문서의 `readHistory` 배열을 읽지만, 읽기 기록은 하위 컬렉션(`users/{uid}/history`)으로만 저장된 지 오래라 항상 빈 배열.
   - 해결(경량 롤링 필드): `handleRead` 트랜잭션의 updateData에 `recentReadDates` 추가 — `[...(data.recentReadDates || []).filter(최근 14일 이내), todayStr]` (중복 제거, 최대 14개). 하위 컬렉션 조회 N회 방식은 금지(비용).
@@ -488,7 +489,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
   - a = 트랜잭션 resultData의 talentEarned(오늘 첫 완료가 아니면 0 — 이때는 달란트 줄 자체를 생략), b = `quizDate === 오늘 && quizSolved`면 `quizAttempts === 1 ? 10 : 5` 아니면 0 (클라이언트 계산 — 새 필드 추가 금지), M = 갱신된 talent.
   - 완독(365일차) 축하 오버레이(T32)와 겹치는 날은 오버레이 안에 같은 정보를 넣고 토스트는 생략.
   - 게스트는 달란트가 없으므로 대상 아님.
-- [ ] **T35. 묵상(메모) 저장·조회 점검 및 수정**
+- [ ] **T35. 묵상(메모) 저장·조회 점검 및 수정** (2026-07-10 실환경 점검 완료 — 저장/재로드/게스트 숨김 정상. 남은 수정 1건: `src/hooks/useMemos.js:66-68` `saveMemo`가 로컬 state 먼저 갱신 후 Firestore 실패를 console.error로만 삼킴 → 실패 시 토스트/에러 표시 + 로컬 롤백 추가)
   - 묵상 기능의 전체 경로를 추적: 어디서 쓰고(컴포넌트·훅), 어디에 저장되며(users 문서 필드 vs 하위 컬렉션), 규칙을 통과하는지, 다시 열었을 때·다른 날짜로 이동했을 때 제대로 표시되는지.
   - 점검 항목: 저장 실패가 조용히 삼켜지는 catch 없는지 / 날짜 키 불일치(KST vs toDateString) 없는지 / 긴 텍스트·이모지 입력 시 깨짐 없는지 / 게스트 모드에서 묵상 UI가 노출되어 서버 쓰기를 시도하지 않는지.
   - 발견된 버그는 이 작업 안에서 수정. 문제가 없으면 작업 로그에 "점검 완료·이상 없음"과 확인한 경로(file:line)를 기록.
