@@ -57,7 +57,6 @@ const PlatformAdminView = ({
     const [credentialMigrationProgress, setCredentialMigrationProgress] = React.useState({ done: 0, total: 0 });
     const [talentResetting, setTalentResetting] = React.useState(false);
     const [talentResetProgress, setTalentResetProgress] = React.useState({ done: 0, total: 0 });
-    const [copiedLinkChurchId, setCopiedLinkChurchId] = React.useState(null);
     const pendingCredentialMigration = React.useMemo(() => (
         (allUsers || []).filter(u => typeof u.password === 'string' && u.password.length > 0).length
     ), [allUsers]);
@@ -578,21 +577,6 @@ const PlatformAdminView = ({
         ? allUsers.filter(u => u.churchId === selectedChurchId && u.role !== 'churchAdmin')
         : [];
 
-    const copyChurchInviteLink = (churchId) => {
-        const link = `${window.location.origin}${window.location.pathname}?church=${churchId}`;
-        const markCopied = () => {
-            setCopiedLinkChurchId(churchId);
-            setTimeout(() => setCopiedLinkChurchId(null), 2000);
-        };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(link).then(markCopied).catch(() => {
-                window.prompt('링크를 복사하세요', link);
-            });
-        } else {
-            window.prompt('링크를 복사하세요', link);
-        }
-    };
-
     const TABS = [
         ['overview', '📊 전체 현황'],
         ['churches', '🏛️ 교회 목록'],
@@ -728,16 +712,8 @@ const PlatformAdminView = ({
                                             <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${church.readRate}%` }}></div>
                                         </div>
                                         <div className="text-xs text-slate-500 w-24 text-right">{church.readToday}/{church.memberCount}명 ({church.readRate}%)</div>
-                                        <div className="flex items-center gap-1 shrink-0">
-                                            {church.id !== UNAFFILIATED_CHURCH_ID && (
-                                                <button onClick={() => copyChurchInviteLink(church.id)} title="교인 로그인 링크 복사"
-                                                    className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-lg font-bold hover:bg-slate-200">
-                                                    {copiedLinkChurchId === church.id ? '✓ 복사됨' : '🔗'}
-                                                </button>
-                                            )}
-                                            <button onClick={() => { setTab('churches'); setSelectedChurchId(church.id); }}
-                                                className="text-xs text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg font-bold hover:bg-blue-100">관리</button>
-                                        </div>
+                                        <button onClick={() => { setTab('churches'); setSelectedChurchId(church.id); }}
+                                            className="text-xs text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg font-bold shrink-0 hover:bg-blue-100">관리</button>
                                     </div>
                                 ))}
                                 {churchStats.length === 0 && (
@@ -933,12 +909,6 @@ const PlatformAdminView = ({
                                                 <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
                                                     <div className="h-full bg-blue-400 rounded-full transition-all" style={{ width: `${church.readRate}%` }}></div>
                                                 </div>
-                                                {church.id !== UNAFFILIATED_CHURCH_ID && (
-                                                    <button onClick={(e) => { e.stopPropagation(); copyChurchInviteLink(church.id); }} title="교인 로그인 링크 복사"
-                                                        className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-lg font-bold shrink-0 hover:bg-slate-200">
-                                                        {copiedLinkChurchId === church.id ? '✓ 복사됨' : '🔗'}
-                                                    </button>
-                                                )}
                                                 <span className="text-xs text-blue-600 font-bold shrink-0">관리 →</span>
                                             </div>
                                         </div>
