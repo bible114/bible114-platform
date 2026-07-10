@@ -206,6 +206,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-10 | T24 관리자 오늘 영상 미리보기 | `src/components/PlatformAdminView.jsx`, `HANDOFF_CODEX.md` | 매일 영상 탭의 연결 테스트를 T22 선택 로직 기반 오늘 영상 미리보기로 확장. 성인용/어린이용 제목·게시일·챕터·타임스탬프 경고 표시. `npm run build` 통과. 실제 YouTube API 호출은 API 키/재생목록 필요로 미검증. |
 | 2026-07-10 | T25 범위 파서 + 퀴즈 선택기 | `src/utils/quizEngine.js`, `src/data/quiz/.gitkeep`, `HANDOFF_CODEX.md` | 66권 약칭 범위 파서, 최근 읽기 완료일 캐시/스케줄 범위 조회, 책별 JSON lazy load, readCount 기반 문항 회전 선택기 추가. `npm run build` 통과. 문항 JSON은 T28 전까지 없어 pool은 빈 배열을 반환. |
 | 2026-07-10 | T26 BibleQuizCard v2 | `src/components/dashboard/BibleQuizCard.jsx`, `src/utils/quizEngine.js`, `src/utils/helpers.js`, `HANDOFF_CODEX.md` | 읽기 전 잠금 카드, 본문 기반 퀴즈 로딩, `quizKey` 문제 고정, 기존 `QUIZ_BANK` 폴백을 연결. 보상/시도 트랜잭션은 유지하고 신규 users 필드는 `quizKey`만 추가. `npm run build` 통과. |
+| 2026-07-10 | T27 문항 검증 스크립트 | `scripts/validate-quiz.mjs`, `HANDOFF_CODEX.md` | 책별 JSON 필수 필드, ref 책 일치, 장별 q 중복, choices 중복, 장당 문항 수 경고를 검사하는 스크립트 추가. `node scripts/validate-quiz.mjs` 통과(현재 JSON 없음 안내), `npm run build` 통과. |
 
 ---
 
@@ -236,6 +237,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T24 완료. 관리자 미리보기는 `fetchLatestFromPlaylist`를 직접 재사용해 T22와 같은 날짜 매칭/최신 폴백 로직을 쓴다. 실제 YouTube API 호출은 키/재생목록이 없어 미검증.
 - T25 완료. `quizEngine.js`는 캐시 제목을 우선 파싱하고 실패하면 `read_schedules.json` 범위로 폴백한다. `src/data/quiz/*.json`이 아직 없으면 `loadQuestionsForRange`는 빈 pool을 반환하므로 T26에서 기존 `QUIZ_BANK` 폴백을 유지해야 한다.
 - T26 완료. 읽기 완료 전에는 퀴즈가 잠기고, 열린 뒤에는 본문 기반 문항을 먼저 찾는다. 현재 문항 JSON이 없으면 기존 상식 문제로 폴백하며, 첫 제출 때 `quizKey`를 저장해 재방문/재렌더 시 같은 문항을 다시 보여준다.
+- T27 완료. 검증 스크립트는 현재 JSON이 없으면 안내 후 통과하고, T28 문항 파일이 생기면 필수 필드/중복/ref 책 일치/장당 문항 수를 검사한다.
 
 ---
 
@@ -414,7 +416,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
   - **문항 고정**: 첫 제출 트랜잭션에서 `quizKey`(예: `'genesis-1-2'` = 파일-장-문항index)를 함께 저장. 재방문·재렌더 시 `quizDate === todayKey && quizKey` 있으면 그 문항을 다시 로드해 표시 (풀이 도중 "한 장 더 읽기"로 currentDay가 바뀌어도 문제 바뀜 방지). 폴백 문항은 `quizKey: 'bank-{index}'`.
   - 보상·시도 횟수·트랜잭션·결과 표시는 T18 코드 그대로.
   - 게스트는 기존대로 렌더링하지 않음.
-- [ ] **T27. 문항 검증 스크립트** (신규 `scripts/validate-quiz.mjs`)
+- [x] **T27. 문항 검증 스크립트** (신규 `scripts/validate-quiz.mjs`)
   - `node scripts/validate-quiz.mjs`: src/data/quiz/*.json 전체를 검사 — ① 필수 필드 `{ch, q, choices[정확히 4], answerIndex 0-3, ref}` ② ref의 책이 파일의 책과 일치 ③ 같은 장 안에서 q 중복 금지 ④ choices 내 중복 금지 ⑤ 장당 문항 수 리포트(구약 3개·신약 5개 미만이면 경고 목록 출력). 실패 시 exit 1.
 - [ ] **T28. 문항 은행 저작 — 1차분** (신규 `src/data/quiz/*.json`)
   - **형식**: `[{ "ch": 1, "q": "...", "choices": ["...","...","...","..."], "answerIndex": 0, "ref": "창세기 1:3" }, ...]` — ref는 반드시 `책 장:절`.
