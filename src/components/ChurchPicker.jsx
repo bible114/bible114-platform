@@ -35,6 +35,7 @@ const ChurchPicker = ({ value, onChange, label = '출석 교회' }) => {
         const starts = [];
         const includes = [];
         for (const c of directory) {
+            if (c.hidden) continue; // 검색 노출 숨김 교회 — 링크로 들어온 경우(selected)는 별도 처리
             const name = c.name || '';
             if (!name.includes(q)) continue;
             if (name.startsWith(q)) starts.push(c);

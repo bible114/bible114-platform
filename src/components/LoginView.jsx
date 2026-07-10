@@ -131,12 +131,12 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                 } else {
                     // platformStats 없으면 공개 디렉토리로 교회 수만 추정
                     // (churches 컬렉션은 Phase 3부터 미인증 read 불가)
-                    getChurchDirectory().then(list => setStats(prev => ({ ...prev, total_churches: list.length })));
+                    getChurchDirectory().then(list => setStats(prev => ({ ...prev, total_churches: list.filter(c => !c.hidden).length })));
                 }
             })
             .catch(() => {
                 // 실패 시 디렉토리로 교회 수만 추정
-                getChurchDirectory().then(list => setStats(prev => ({ ...prev, total_churches: list.length })));
+                getChurchDirectory().then(list => setStats(prev => ({ ...prev, total_churches: list.filter(c => !c.hidden).length })));
             });
     }, []);
 

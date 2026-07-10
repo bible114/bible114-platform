@@ -344,27 +344,24 @@ const PlatformAdminView = ({
         }
     };
 
-    // 교회 검색 노출 숨김/해제 — 숨기면 로그인 화면 교회 검색(디렉토리)에서 빠져
-    // 신규 가입·교인 로그인 선택이 불가능해진다 (테스트 교회용). 교회 관리자
-    // 이메일 로그인과 슈퍼관리자의 "교회관리자 화면으로 보기"는 계속 동작한다.
+    // 교회 검색 노출 숨김/해제 — 숨기면 로그인 화면 교회 "검색"(자동완성)에서만 빠진다
+    // (테스트 교회용). 초대 링크(?church=id)로 들어오는 회원가입·로그인, 입장코드
+    // 검증은 디렉토리에 항목이 그대로 남아 있어야 하므로 계속 동작해야 한다.
+    // → 디렉토리에서 항목을 제거하는 대신 hidden 플래그만 동기화한다.
     const isChurchHidden = (church) =>
         hiddenOverrides[church.id] ?? (church.hiddenFromDirectory === true);
 
     const toggleChurchHidden = async (church) => {
         const next = !isChurchHidden(church);
         const msg = next
-            ? `'${church.name}' 교회를 검색에서 숨깁니다.\n\n다른 사람들은 이 교회를 찾거나 가입할 수 없게 됩니다.\n(교회 관리자 이메일 로그인과 슈퍼관리자 진입은 계속 가능)`
+            ? `'${church.name}' 교회를 검색에서 숨깁니다.\n\n다른 사람들은 검색으로 이 교회를 찾을 수 없게 됩니다. (초대 링크로는 계속 가입/로그인 가능)\n(교회 관리자 이메일 로그인과 슈퍼관리자 진입은 계속 가능)`
             : `'${church.name}' 교회를 검색에 다시 노출할까요?`;
         if (!confirm(msg)) return;
         setHiddenToggling(true);
         try {
             await db.collection('churches').doc(church.id).update({ hiddenFromDirectory: next });
-            if (next) {
-                await removeChurchFromDirectory(church.id);
-            } else {
-                const codeHash = church.churchCodeHash || (church.churchCode ? await sha256(church.churchCode) : null);
-                await syncChurchDirectoryEntry({ id: church.id, name: church.name, codeHash });
-            }
+            const codeHash = church.churchCodeHash || (church.churchCode ? await sha256(church.churchCode) : null);
+            await syncChurchDirectoryEntry({ id: church.id, name: church.name, codeHash, hidden: next });
             setHiddenOverrides(prev => ({ ...prev, [church.id]: next }));
             alert(next ? '✅ 검색에서 숨겼습니다.' : '✅ 검색에 다시 노출했습니다.');
         } catch (e) {

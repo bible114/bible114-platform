@@ -56,15 +56,19 @@ export const addChurchToDirectory = async ({ id, name, codeHash }) => {
     invalidateChurchDirectoryCache();
 };
 
-// 기존 교회 1건의 디렉토리 항목을 갱신 (이름/입장코드 변경 시 호출).
+// 기존 교회 1건의 디렉토리 항목을 갱신 (이름/입장코드/숨김 상태 변경 시 호출).
 // arrayUnion은 객체 전체가 일치해야 중복 제거가 되므로, 값이 바뀌는 갱신에는
 // 전체 배열을 읽어 해당 id 항목만 교체하는 방식을 쓴다.
-export const syncChurchDirectoryEntry = async ({ id, name, codeHash }) => {
+// hidden 인자를 넘기지 않으면 기존 항목의 hidden 상태를 그대로 보존한다
+// (예: 입장코드만 바꾸는 ChurchAdminView 호출은 숨김 여부에 영향을 주지 않아야 함).
+export const syncChurchDirectoryEntry = async ({ id, name, codeHash, hidden }) => {
     const ref = DIRECTORY_DOC();
     const doc = await ref.get();
     const churches = doc.exists ? (doc.data().churches || []) : [];
     const idx = churches.findIndex(c => c.id === id);
+    const resolvedHidden = hidden !== undefined ? !!hidden : !!churches[idx]?.hidden;
     const entry = { id, name, codeHash: codeHash ?? churches[idx]?.codeHash ?? null };
+    if (resolvedHidden) entry.hidden = true;
     if (idx === -1) churches.push(entry);
     else churches[idx] = entry;
     await ref.set({
@@ -95,12 +99,15 @@ export const rebuildChurchDirectory = async () => {
     const churches = (await Promise.all(
         snap.docs
             .map(d => ({ id: d.id, ...d.data() }))
-            // hiddenFromDirectory: 테스트 교회 등 검색 노출을 원치 않는 교회 (관리자 토글)
-            .filter(c => !c.isDeleted && c.id !== UNAFFILIATED_CHURCH_ID && !c.hiddenFromDirectory)
+            // hiddenFromDirectory인 교회(테스트 교회 등)도 디렉토리 항목 자체는 유지한다.
+            // 그래야 초대 링크(?church=id)·가입 코드 검증이 계속 동작한다.
+            // 검색 노출만 막고 싶다면 hidden 플래그로 표시하고, 소비자 쪽(검색 결과 등)에서 걸러낸다.
+            .filter(c => !c.isDeleted && c.id !== UNAFFILIATED_CHURCH_ID)
             .map(async c => ({
                 id: c.id,
                 name: c.name || '',
                 codeHash: c.churchCodeHash || (c.churchCode ? await sha256(c.churchCode) : null),
+                ...(c.hiddenFromDirectory ? { hidden: true } : {}),
             }))
     )).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR'));
 
