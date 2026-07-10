@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: "🔁 라운드 3" 섹션의 체크리스트 (T17~T20).** 라운드 1(T1~T11)·라운드 2(T12~T16)는 완료·리뷰 통과됨.
+> **현재 활성 작업: "🔁 라운드 4" 체크리스트 (T22~T28) → 완료 후 "🔁 라운드 5" (T29~T32).** 라운드 1(T1~T11)·라운드 2(T12~T16)·라운드 3(T17~T21)은 완료·리뷰 통과됨.
 > 라운드 1의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -351,6 +351,103 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
 1. **(차단급 → Claude가 수정, 커밋 c3a822c)** 클라이언트 5곳(TalentShop 2, ChurchAdminView 3)이 최상위 `talentPurchases` 컬렉션을 참조 — 규칙은 `churches/{churchId}/talentPurchases` 하위 컬렉션에만 있어 전부 permission-denied가 났을 것. 하위 컬렉션 경로로 수정 완료. **Codex 참고: 앞으로 talentPurchases는 반드시 `db.collection('churches').doc(churchId).collection('talentPurchases')` 경로 사용.**
 2. (nit, 무해) 경로 수정으로 구매 내역이 교회별로 자연 분리되므로 ChurchAdminView의 memberIds 클라이언트 필터는 이제 불필요하지만 남겨둠 — 삭제 교인 필터 역할은 유지되므로 그대로 둔다.
 3. 퀴즈 113문항의 신학적·표기 검수는 사용자 몫으로 남아 있음 (라운드 3 보류 항목).
+
+---
+
+## 🔁 라운드 4 — 매일 영상(신앙생활 1분만) 자동화 마무리 + 본문 연동 성경퀴즈 (2026-07-10 위임)
+
+> 설계: Claude Fable 5, 2026-07-10. 작업 프로토콜은 문서 상단과 동일 (순서대로, 작업당 커밋, `npm run build` 통과, 로그 기록).
+>
+> **배경 두 가지:**
+> 1. **매일 영상**: 사용자가 유튜브 채널 "신앙생활 1분만"을 직접 운영하며, 매일성경 장년용/어린이용 재생목록이 따로 있다. 자동 채움 인프라(`settings/videoAutoConfig`, `DailyVideoCard`의 재생목록 최신 영상 선택 + 설명문 타임스탬프 챕터 파싱)는 이미 있다. 남은 것은 ① 날짜 매칭 정확도(지금은 "가장 최근에 게시된 영상"이라, 내일자 영상을 미리 올려두면 오늘 그게 나와버림) ② UX — 영상 하나에 "묵상 해설"(앞부분)과 "기도제목"(뒷부분)이 함께 들어 있으므로, 기본 재생은 해설부터 시작하고 "기도제목" 버튼으로 그 지점으로 점프.
+> 2. **성경퀴즈 v2**: 현재 T18 퀴즈는 성경 전체 상식 113문항을 dayOfYear로 순환시키는 방식이라 "오늘 읽은 본문"과 무관하다. 사용자 확정 요구사항: (a) **정답이 항상 그 사용자가 오늘 읽은 본문 안에 있어야 한다** — 사용자마다 진도(currentDay·dayOffset·planId)가 달라 읽는 부분이 다르다. (b) 난이도는 너무 쉽지도 어렵지도 않게. (c) **1년 10독 하는 사용자가 같은 본문을 다시 읽을 때는 다른 문제가 나와야 한다** (readCount 회전).
+
+### 라운드 4 제약 (기존 금지사항에 더해)
+
+- 보상 체계(1차 +10 / 2차 +5 달란트, 트랜잭션 처리)와 `score` 로직은 바꾸지 말 것 — T18의 트랜잭션 코드를 그대로 재사용.
+- `users` 문서에 쓰는 퀴즈 필드는 기존 `quizDate/quizAttempts/quizSolved`에 `quizKey`(문자열) 하나만 추가. 다른 신규 필드 금지. (본인 문서 update라 규칙 통과 — T18과 동일 경로. 만약 permission-denied가 나면 메모란에 남기고 quizKey 없이 진행.)
+- 기존 `QUIZ_BANK`(bibleQuiz.js 113문항)는 삭제하지 말 것 — 은행 미구축 구간의 폴백으로 계속 쓴다.
+- YouTube Data API 호출 코드는 `DailyVideoCard.jsx`의 기존 함수를 수정하는 방식으로 — 새 파일로 분리해도 좋으나 호출 흐름(문서 있으면 스킵 → 자동 채움 → create 경합 처리)은 유지.
+
+### Phase V — 매일 영상
+
+- [ ] **T22. 날짜 매칭 영상 선택** (`src/components/dashboard/DailyVideoCard.jsx`)
+  - `fetchLatestFromPlaylist(playlistId, apiKey)`에 `targetDateKey`(예: '2026-07-10') 인자 추가. 후보 정렬 전에 **제목 날짜 매칭**을 먼저 시도:
+    - 제목에서 날짜 패턴 추출: `M월 D일`, `M/D`, `MM.DD`, `YYYYMMDD`, `MMDD`(4자리는 연도 없는 월일로 해석) — 헬퍼 `titleMatchesDate(title, dateKey)`를 `src/utils/helpers.js`에 신설 (순수 함수, 존재하는 달·일만 유효 처리).
+    - 제목이 targetDateKey와 일치하는 게시된(<= now) 영상이 있으면 그중 최신을 선택.
+    - 하나도 없으면 **기존 동작(게시 시각 최신)으로 폴백** — 제목에 날짜를 안 넣는 채널도 계속 동작해야 한다.
+  - 완료 기준: 빌드 통과 + `titleMatchesDate` 단위 케이스를 주석으로 5개 이상 명시("7월 10일", "07.10", "7/10 매일성경", 불일치 "12월 25일", 잘못된 날짜 "13월 40일").
+- [ ] **T23. 묵상 해설/기도제목 UX** (`src/components/dashboard/DailyVideoCard.jsx`)
+  - `CHAPTER_ORDER` 표시 라벨 변경: `해설 → "묵상 해설"(📖)`, `성경읽기 → "성경읽기"(📕)`, `기도 → "기도제목"(🙏)`. **표준 키('해설'/'성경읽기'/'기도')와 `mapToStandardLabel`은 절대 바꾸지 말 것** — 저장된 chapters 데이터와의 호환성.
+  - 썸네일 ▶ 클릭 시(콜드스타트): '해설' 챕터가 있고 sec > 0이면 그 지점부터 시작 (인트로 스킵). 없으면 0초부터 — 기존과 동일.
+  - 챕터 버튼 영역 위에 안내 한 줄: "영상 속 구간으로 바로 이동해요" (text-xs slate-400).
+  - '기도' 챕터가 있으면 기도제목 버튼을 시각적으로 강조(예: indigo 채움 배경) — 사용자가 해설을 본 뒤 이 버튼을 눌러 기도제목 구간을 이어 보는 흐름이 핵심 요구사항.
+- [ ] **T24. 관리자 "오늘 영상 미리보기"** (`src/components/PlatformAdminView.jsx` 매일 영상 탭)
+  - 기존 "연결 테스트" 버튼을 확장: API 키 + 재생목록으로 **T22와 동일한 선택 로직**을 돌려 "오늘 날짜로 선택될 영상"의 제목·게시일·파싱된 챕터(라벨+초)를 성인용/어린이용 각각 표시. 선택 로직 함수를 DailyVideoCard에서 export 하거나 helpers로 옮겨 **한 곳만 유지**할 것 (로직 사본 2개 금지).
+  - 챕터가 0개로 파싱되면 경고 문구: "설명문에 타임스탬프(예: 0:00 매일성경 해설 / 3:20 기도제목)가 없어 구간 버튼이 표시되지 않습니다."
+
+### Phase Q — 본문 연동 성경퀴즈 v2
+
+**설계 핵심**: "오늘 읽은 장"의 진실 원천은 본문 캐시 문서의 title이다. `useBibleContent`가 본문을 로드할 때 `localStorage['v_{planType}_{version}_{actualDay}']`에 `{title, text, ...}`를 저장하며, title은 "개역개정 7월 10일 / 민 17-21장" 형태로 장 범위를 포함한다. 퀴즈는 읽기 완료 후에만 열리므로 이 캐시는 퀴즈 시점에 항상 존재한다. 이 title을 파싱하면 플랜(114/순서대로/신약)과 무관하게 실제 읽은 범위를 얻는다.
+
+- [ ] **T25. 범위 파서 + 퀴즈 선택기** (신규 `src/utils/quizEngine.js`)
+  - `parseReadingRange(str)`: "민 17-21장" → `[{book:'민수기', ch:17}, ..., {book:'민수기', ch:21}]`, "눅 1:46-80" → `[{book:'누가복음', ch:1, vStart:46, vEnd:80}]`, "창 1-2장" 등. 성경 66권 약칭→정식명 매핑 테이블 포함(창/출/레/민/신/수/삿/룻/삼상/삼하/왕상/왕하/대상/대하/스/느/에/욥/시/잠/전/아/사/렘/애/겔/단/호/욜/암/옵/욘/미/나/합/습/학/슥/말/마/막/눅/요/행/롬/고전/고후/갈/엡/빌/골/살전/살후/딤전/딤후/딛/몬/히/약/벧전/벧후/유/계). "창 1-2장; 시 1편" 같은 복합 표기는 `;`·`,` 분리 후 각각 파싱. 파싱 실패 시 빈 배열 (호출부가 폴백 처리).
+  - `getTodayReadingRange(user)`: ① `getActualDay(user.currentDay - 1 <= 0 ? 365 : user.currentDay - 1, user.dayOffset)`로 "가장 최근에 읽기 완료한 날"의 actualDay를 구하고 (읽기 완료 시 currentDay가 +1 되므로 -1), ② localStorage 캐시 title 파싱 시도, ③ 실패 시 `SCHEDULE_DATA[planId][actualDay-1].range` 파싱 폴백.
+  - `selectQuiz(pool, readCount)`: pool을 (책, 장, 문항 순서)로 정렬 후 `pool[(readCount - 1) % pool.length]`. 절 범위가 있는 날(vStart/vEnd)은 ref의 절이 범위 안에 있는 문항만 pool에 포함.
+  - 문항 로딩: `loadQuestionsForRange(range)` — 신규 디렉토리 `src/data/quiz/` 아래 **책별 JSON**(`src/data/quiz/genesis.json` 등, 영문 소문자 파일명 66개 예약)을 Vite dynamic import(`import.meta.glob` eager:false)로 lazy 로드. 파일이 아직 없는 책은 조용히 스킵.
+  - pool이 비면 `null` 반환 — 호출부(T26)가 기존 `QUIZ_BANK` 폴백 사용.
+- [ ] **T26. BibleQuizCard v2** (`src/components/dashboard/BibleQuizCard.jsx`)
+  - **읽기 전 잠금**: `currentUser.lastReadDate !== new Date().toDateString()`이면 문제 대신 잠금 카드 표시 — "📖 오늘 본문을 읽으면 퀴즈가 열려요" + 흐린 배경. (오늘 읽어야 "오늘 읽은 부분에서 출제" 전제가 성립.)
+  - 열리면: `getTodayReadingRange` → `loadQuestionsForRange` → `selectQuiz(pool, readCount)`. 문항을 찾으면 카드 상단에 배지 "오늘 읽은 본문에서 나왔어요 · {range 원문}" 표시. pool이 비면 기존 `getTodayQuiz()` 폴백 + 배지 "성경 상식 문제".
+  - **문항 고정**: 첫 제출 트랜잭션에서 `quizKey`(예: `'genesis-1-2'` = 파일-장-문항index)를 함께 저장. 재방문·재렌더 시 `quizDate === todayKey && quizKey` 있으면 그 문항을 다시 로드해 표시 (풀이 도중 "한 장 더 읽기"로 currentDay가 바뀌어도 문제 바뀜 방지). 폴백 문항은 `quizKey: 'bank-{index}'`.
+  - 보상·시도 횟수·트랜잭션·결과 표시는 T18 코드 그대로.
+  - 게스트는 기존대로 렌더링하지 않음.
+- [ ] **T27. 문항 검증 스크립트** (신규 `scripts/validate-quiz.mjs`)
+  - `node scripts/validate-quiz.mjs`: src/data/quiz/*.json 전체를 검사 — ① 필수 필드 `{ch, q, choices[정확히 4], answerIndex 0-3, ref}` ② ref의 책이 파일의 책과 일치 ③ 같은 장 안에서 q 중복 금지 ④ choices 내 중복 금지 ⑤ 장당 문항 수 리포트(구약 3개·신약 5개 미만이면 경고 목록 출력). 실패 시 exit 1.
+- [ ] **T28. 문항 은행 저작 — 1차분** (신규 `src/data/quiz/*.json`)
+  - **형식**: `[{ "ch": 1, "q": "...", "choices": ["...","...","...","..."], "answerIndex": 0, "ref": "창세기 1:3" }, ...]` — ref는 반드시 `책 장:절`.
+  - **분량**: 구약 장당 3문항, 신약 장당 5문항(신약일독 플랜은 하루 1장이라 회전 여유 필요).
+  - **우선순위(중요)**: 통독 스케줄상 사용자들이 곧 읽을 책부터. `read_schedules.json`의 whole_bible Day 191(7/10) 이후 90일 내 등장하는 책 + new_testament 스케줄의 같은 구간 책을 먼저 만들고, 나머지는 후속 라운드로. 1차분 목표는 "이 90일 구간 100% 커버" — 각 책을 완성할 때마다 `node scripts/validate-quiz.mjs` 통과 후 커밋 (책 단위 커밋 권장).
+  - **저작 지침(난이도 조절 — 사용자 요구: 너무 쉽지도 어렵지도 않게)**:
+    - 본문을 읽었다면 기억날 **핵심 사건·인물·행동·이유**에서 출제. "누가 ~했나 / 왜 ~했나 / ~한 결과 무엇이 됐나" 유형 권장.
+    - 금지(너무 쉬움): 정답이 질문 안에 있는 문제, 전국민이 아는 상식(노아 방주 등)을 해당 장 문제로 재활용.
+    - 금지(너무 어려움): 족보 속 인물 이름 맞히기, 정확한 숫자·치수 암기(성막 규격 등), 지명 나열.
+    - 오답 3개는 정답과 같은 범주(인물↔인물, 장소↔장소)로 그럴듯하게. 성경에 실제 등장하는 것 위주.
+    - 표기는 개역개정 기준. 다른 번역(새번역 등) 사용자도 풀 수 있도록 특정 번역에만 있는 표현으로 정답이 갈리는 문제 금지.
+    - 어르신·어린이 모두 읽는 서비스 — 문장은 짧고 존대로.
+  - 작업 로그에 **"퀴즈 문항 신학적 검수는 사용자 몫"** 명시할 것.
+
+### 사용자(관리자) 수동 작업 — 라운드 4
+
+- **M5** (T22 전에도 가능): Google Cloud Console에서 YouTube Data API v3 키 발급 → 플랫폼 관리자 "매일 영상" 탭 → API 키 + "신앙생활 1분만" 장년/어린이 재생목록 URL 입력 → 자동 채움 켜기 → 연결 테스트.
+- **M6**: 유튜브 영상 설명문에 타임스탬프 표기 유지 — 형식: `0:00 매일성경 해설` / `3:20 기도제목` (줄 시작에 타임스탬프). 이 두 줄이 있어야 구간 버튼이 나온다.
+- **M7** (라운드 4 배포 후): 퀴즈 문항 무작위 샘플 신학·표기 검수.
+
+---
+
+## 🔁 라운드 5 — 사이트 점검 수정분 (2026-07-10 사용자 승인, 라운드 4 완료 후 진행)
+
+> 배경: 2026-07-10 전체 코드 점검에서 나온 발견 중 사용자가 승인한 4건. 작업 프로토콜 동일.
+
+- [ ] **T29. "읽기 완료" 버튼 중복 제출 방지**
+  - `src/hooks/useUserBibleActions.js` `handleRead`(44행 부근): 트랜잭션은 원자적이지만 연타 시 트랜잭션이 **여러 번 각각 성공**해 진도·점수·달란트가 중복된다. 훅에 `readSubmitting` state 추가 — 함수 진입 시 true면 즉시 return, try/finally로 해제. `readSubmitting`을 훅 반환값에 포함.
+  - `src/components/dashboard/BibleReader.jsx` 읽기 완료 버튼(207행 부근): `readSubmitting` prop 받아 `disabled` + 라벨 "기록 중...". DashboardView에서 prop 연결.
+  - `src/components/GuestReaderView.jsx` `handleRead`: 게스트도 동일 문제(`recordGuestRead`가 호출마다 currentDay +1). 같은 패턴의 submitting 가드 추가, BibleReader에 같은 prop 전달.
+- [ ] **T30. 주간 읽기왕 수리** (현재 항상 "-" 표시되는 죽은 기능)
+  - 원인: `src/utils/statsUtils.js` `getWeeklyMVP`(67-127행)가 users 문서의 `readHistory` 배열을 읽지만, 읽기 기록은 하위 컬렉션(`users/{uid}/history`)으로만 저장된 지 오래라 항상 빈 배열.
+  - 해결(경량 롤링 필드): `handleRead` 트랜잭션의 updateData에 `recentReadDates` 추가 — `[...(data.recentReadDates || []).filter(최근 14일 이내), todayStr]` (중복 제거, 최대 14개). 하위 컬렉션 조회 N회 방식은 금지(비용).
+  - `src/utils/helpers.js` `userDocToState`에 `recentReadDates: d.recentReadDates ?? []` 매핑 추가. `getWeeklyMVP`는 `readHistory` 대신 `recentReadDates` 사용(레거시 `readHistory`가 비어있지 않으면 병합 폴백).
+  - 알려진 한계(수용): 기존 사용자는 다음 읽기부터 데이터가 쌓이므로 주간 랭킹이 채워지는 데 최대 1주 걸린다 — 작업 로그에 명시.
+- [ ] **T31. 로그인·버전선택 화면 광고 하단 여백**
+  - `src/components/LoginView.jsx`와 `src/components/PlanSelectionView.jsx`의 각 화면 루트 컨테이너에 `style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}` 추가 (ChurchAdminView 957행 부근과 동일 패턴). 하단 고정 광고(50px)가 마지막 버튼/목록을 가리는 문제.
+  - 주의: PlanSelectionView는 화면이 4개(view 분기)라 루트가 4곳이다 — 전부.
+- [ ] **T32. 완독 축하 개선**
+  - 현재: `handleRead`에서 365일차 완주 시 `alert()` 한 줄(166행 부근). `completedRound`/`newReadCount`는 이미 계산되고 `platformStats.finished_total`도 이미 증가한다 — 이 로직들은 건드리지 말 것.
+  - (a) alert 대신 전용 축하 오버레이 컴포넌트(신규 `src/components/dashboard/CompletionCelebration.jsx`): 전체 화면, 🎉 + "N독 완주!" + "N+1독을 시작합니다" + 닫기 버튼. confetti와 함께 표시. resultData의 completedRound 플래그로 트리거.
+  - (b) 교회 관리자 대시보드 탭에 StatCard "완독자" 추가 — 로드된 members 중 `readCount > 1`인 인원 수 + 클릭 시 명단(이름·N독).
+  - (c) 랜딩의 "올해 완독자" 통계는 `platformStats.finished_total`을 이미 읽는지 확인하고, 안 읽고 있으면 연결 (LoginView 랜딩 통계 부분).
+
+**라운드 5 이후 백로그 (착수 금지 — 다음 설계 세션에서)**: 교회 관리자 가입 시 비밀번호 평문 본문서 저장(memberCredentials 경유로 전환), 본문 캐시 누락 날짜 관리자 경고, KST/기기시간 날짜 기준 통일, 커스텀 부서 왕관 배지, RaceMap 이름표 겹침, 게스트 가입 전환 유도 배너.
 
 ---
 
