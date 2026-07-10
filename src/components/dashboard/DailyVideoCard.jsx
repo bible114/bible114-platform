@@ -4,9 +4,9 @@ import { getVideoDateKST, extractYouTubeId, parseAndMapChapters, titleMatchesDat
 import { saveGuestState } from '../../utils/guestStorage';
 
 const CHAPTER_ORDER = [
-    { key: '해설', emoji: '📖' },
-    { key: '성경읽기', emoji: '📕' },
-    { key: '기도', emoji: '🙏' },
+    { key: '해설', label: '묵상 해설', emoji: '📖' },
+    { key: '성경읽기', label: '성경읽기', emoji: '📕' },
+    { key: '기도', label: '기도제목', emoji: '🙏' },
 ];
 
 // 재생목록에서 지금 시점 기준 가장 최신 영상을 하나 골라 { url, chapters }를 만든다.
@@ -253,7 +253,8 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
     };
 
     const handlePlayClick = () => {
-        setStartSec(0);
+        const commentary = (activeEntry.chapters || []).find(ch => ch.label === '해설');
+        setStartSec(commentary?.sec > 0 ? commentary.sec : 0);
         setPlaying(true);
     };
 
@@ -338,16 +339,23 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
                 </div>
 
                 {availableChapters.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-4">
-                        {availableChapters.map(({ key, emoji, chapter }) => (
-                            <button
-                                key={key}
-                                onClick={() => handleChapterClick(chapter.sec)}
-                                className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-indigo-50 text-indigo-700 font-bold text-sm hover:bg-indigo-100 active:scale-95 transition-all"
-                            >
-                                <span>{emoji}</span> {key}
-                            </button>
-                        ))}
+                    <div className="mt-4">
+                        <p className="mb-2 text-xs font-bold text-slate-400">영상 속 구간으로 바로 이동해요</p>
+                        <div className="flex flex-wrap gap-2">
+                            {availableChapters.map(({ key, label, emoji, chapter }) => (
+                                <button
+                                    key={key}
+                                    onClick={() => handleChapterClick(chapter.sec)}
+                                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-2xl font-bold text-sm active:scale-95 transition-all ${
+                                        key === '기도'
+                                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 hover:bg-indigo-700'
+                                            : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                                    }`}
+                                >
+                                    <span>{emoji}</span> {label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 )}
             </div>
