@@ -171,6 +171,11 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
     const [loading, setLoading] = useState(false);
     const [guestMigrationPreview, setGuestMigrationPreview] = useState(null);
 
+    // 첫 화면 입구 선택: 'entry'(교회와 함께 / 혼자 읽기 카드) → 'form'(로그인 폼).
+    // 재방문자는 preselect(URL 파라미터·최근 교회)가 있으면 바로 'form'으로 건너뛴다.
+    const [memberStep, setMemberStep] = useState('entry');
+    const [directory, setDirectory] = useState([]);
+
     const verse = todayVerse();
 
     useEffect(() => {
@@ -187,23 +192,25 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
     // 디렉토리 문서에서 유효성(존재 여부)을 확인한 뒤에만 preselect 한다.
     useEffect(() => {
         let alive = true;
-        getChurchDirectory().then(directory => {
+        getChurchDirectory().then(dir => {
             if (!alive) return;
+            setDirectory(dir);
             let preset = null;
             if (presetChurchId) {
-                preset = directory.find(c => c.id === presetChurchId) || null;
+                preset = dir.find(c => c.id === presetChurchId) || null;
             }
             if (!preset) {
                 const last = getLastChurch();
                 if (last?.id === UNAFFILIATED_CHURCH_ID) {
                     preset = { id: UNAFFILIATED_CHURCH_ID, name: UNAFFILIATED_CHURCH_NAME };
                 } else if (last?.id) {
-                    preset = directory.find(c => c.id === last.id) || null;
+                    preset = dir.find(c => c.id === last.id) || null;
                 }
             }
             if (preset) {
                 setLoginChurchId(preset.id);
                 setMChurchId(preset.id);
+                setMemberStep('form');
             }
         });
         return () => { alive = false; };
@@ -217,13 +224,33 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
         setLoginChurchId(church.id);
         setMChurchId(church.id);
         saveLastChurch(church);
+        setMemberStep('form');
         clearError();
     };
 
-    const selectHasChurch = () => {
-        setLoginChurchId(prev => (prev === UNAFFILIATED_CHURCH_ID ? '' : prev));
-        setMChurchId(prev => (prev === UNAFFILIATED_CHURCH_ID ? '' : prev));
+    // 입구 화면의 교회 검색에서 교회를 고르면 로그인/가입 양쪽 컨텍스트에 반영하고 폼으로 진입.
+    const selectChurchById = (id) => {
+        if (!id) return;
+        setLoginChurchId(id);
+        setMChurchId(id);
+        const c = directory.find(x => x.id === id);
+        if (c) saveLastChurch({ id: c.id, name: c.name });
+        setMemberStep('form');
         clearError();
+    };
+
+    // "변경" — 입구 선택으로 되돌리기 (선택 컨텍스트 초기화)
+    const resetEntryChoice = () => {
+        setLoginChurchId('');
+        setMChurchId('');
+        setMemberStep('entry');
+        setActiveTab('member');
+        clearError();
+    };
+
+    const churchNameOf = (id) => {
+        if (id === UNAFFILIATED_CHURCH_ID) return UNAFFILIATED_CHURCH_NAME;
+        return directory.find(c => c.id === id)?.name || getLastChurch()?.name || '선택한 교회';
     };
 
     const isLoginUnaffiliated = loginChurchId === UNAFFILIATED_CHURCH_ID;
@@ -308,51 +335,68 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
 
     const resetAdminSignup = () => { setSignupStep(1); setOrgComms([{ id: 'comm_0', name: '', subgroups: [{ id: 'sub_0', name: '' }] }]); clearError(); };
 
-    // ── Church selector: segmented "교회에 다녀요 / 소속 교회 없어요" toggle ───
-    const renderChurchSelector = (mode) => {
-        const isUnaffiliated = mode === 'login' ? isLoginUnaffiliated : isSignupUnaffiliated;
-        const value = mode === 'login' ? loginChurchId : mChurchId;
-        const onChange = mode === 'login' ? setLoginChurchId : setMChurchId;
-        const label = mode === 'login' ? '출석 교회' : '교회 선택';
-        const toggleBaseCls = 'rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors';
-        const inactiveCls = 'bg-cream border-hairline text-ink/55 hover:text-ink hover:border-ink/25';
+    // ── 선택 컨텍스트 뱃지: 폼 상단에 "어디로 들어와 있는지"를 항상 보여준다 ───
+    const renderContextBadge = (id, onReset = resetEntryChoice) => {
+        if (!id) return null;
+        const solo = id === UNAFFILIATED_CHURCH_ID;
         return (
-            <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-2">
-                    <button
-                        type="button"
-                        onClick={selectHasChurch}
-                        className={`${toggleBaseCls} ${!isUnaffiliated ? 'bg-ink text-cream border-ink' : inactiveCls}`}
-                    >
-                        ⛪ 교회에 다녀요
-                    </button>
-                    <button
-                        type="button"
-                        onClick={selectUnaffiliatedChurch}
-                        className={`${toggleBaseCls} ${isUnaffiliated ? 'bg-emerald-500 text-white border-emerald-500' : inactiveCls}`}
-                    >
-                        🙋 소속 교회 없어요
-                    </button>
-                </div>
-                {isUnaffiliated ? (
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3.5 py-2.5">
-                        <p className="text-[12px] font-semibold text-emerald-800">개인 성도로 함께 읽어요</p>
-                        <p className="text-[11px] text-emerald-700 mt-0.5">소속 교회가 없어도 괜찮아요. 이름·생년월일·전화번호 뒤 4자리만으로 성경을 읽을 수 있어요.</p>
-                    </div>
-                ) : (
-                    <ChurchPicker value={value} onChange={onChange} label={label} />
-                )}
+            <div className={`flex items-center justify-between rounded-lg border px-3.5 py-2.5 ${solo ? 'bg-emerald-50 border-emerald-200' : 'bg-cream border-hairline'}`}>
+                <span className={`text-[13px] font-semibold ${solo ? 'text-emerald-800' : 'text-ink'}`}>
+                    {solo ? <>🙋 「{UNAFFILIATED_CHURCH_NAME}」 <span className="font-normal text-emerald-700">· 혼자 읽어요</span></> : <>⛪ {churchNameOf(id)}</>}
+                </span>
+                <button type="button" onClick={onReset}
+                    className="text-[11px] underline underline-offset-2 text-ink/45 hover:text-ink transition-colors shrink-0 ml-2">
+                    변경
+                </button>
             </div>
         );
     };
 
+    // ── 첫 화면 입구: "우리 교회와 함께 / 혼자 읽어요" 두 카드 + 게스트 ───────
+    const renderEntryChoice = () => (
+        <div className="space-y-3.5">
+            <div className="border border-hairline rounded-xl p-4 bg-cream-card">
+                <p className="text-[15px] font-bold text-ink mb-0.5">⛪ 우리 교회와 함께 읽어요</p>
+                <p className="text-[11px] text-ink/55 mb-2.5">교회 이름을 한 글자만 입력해도 바로 찾아드려요.</p>
+                <ChurchPicker value={''} onChange={selectChurchById} label="" />
+            </div>
+            <button
+                type="button"
+                onClick={selectUnaffiliatedChurch}
+                className="w-full text-left border border-emerald-200 bg-emerald-50 hover:border-emerald-400 rounded-xl p-4 transition-colors"
+            >
+                <p className="text-[15px] font-bold text-emerald-900 mb-0.5">🙋 혼자 읽어요</p>
+                <p className="text-[11px] text-emerald-700 leading-relaxed">
+                    「{UNAFFILIATED_CHURCH_NAME}」 모임으로 들어가요. 전국에서 혼자 읽는 분들과 함께 걷는 길이에요.
+                </p>
+            </button>
+            {errorMsg && <p className="text-red-500 text-xs text-center py-1 bg-red-50 rounded-lg px-3">{errorMsg}</p>}
+            <div className="pt-3 border-t border-hairline text-center">
+                <p className="text-[11px] text-ink/45 mb-2">아직 고민되시나요?</p>
+                <button
+                    type="button"
+                    onClick={handleGuestLogin}
+                    disabled={loading}
+                    className="w-full bg-cream-card border border-hairline text-ink font-semibold py-3 rounded-full text-sm hover:border-ink/25 hover:bg-cream transition-colors disabled:opacity-50"
+                >
+                    {loading ? '들어가는 중...' : '로그인 없이 오늘 말씀 먼저 읽어보기 →'}
+                </button>
+            </div>
+        </div>
+    );
+
     // ── Render login card content ────────────────────────────────────────────
     const renderCard = () => {
+        // ── Member Entry Choice (첫 화면) ──
+        if (activeTab === 'member' && (memberStep === 'entry' || !loginChurchId)) {
+            return renderEntryChoice();
+        }
+
         // ── Member Login ──
         if (activeTab === 'member') return (
             <form onSubmit={handleMemberLogin} className="space-y-3.5">
-                {/* Church selector */}
-                {renderChurchSelector('login')}
+                {/* 선택한 입구(교회/혼자 읽기) 표시 */}
+                {renderContextBadge(loginChurchId)}
                 <div>
                     <label className="block text-[11px] font-semibold text-ink/55 mb-1.5 uppercase tracking-wide">이름</label>
                     <input type="text" value={loginName} onChange={e => setLoginName(e.target.value)} placeholder="홍길동" className={inputCls} />
@@ -386,16 +430,6 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                     <button type="button" onClick={() => setShowAdminContact(true)}
                         className="text-[11px] text-ink/40 hover:text-ink/60 transition-colors underline underline-offset-2">
                         비밀번호 문의
-                    </button>
-                </div>
-                <div className="pt-2 border-t border-hairline">
-                    <button
-                        type="button"
-                        onClick={handleGuestLogin}
-                        disabled={loading}
-                        className="w-full bg-cream-card border border-hairline text-ink font-semibold py-3 rounded-full text-sm hover:border-ink/25 hover:bg-cream transition-colors disabled:opacity-50"
-                    >
-                        로그인 없이 바로 읽기
                     </button>
                 </div>
             </form>
@@ -450,8 +484,18 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                         <p className="text-[11px] text-emerald-700 mt-0.5">점수는 가입 후부터 적립돼요.</p>
                     </div>
                 )}
-                <p className="text-[11px] text-ink/50 leading-relaxed">소속 교회가 없으신가요? '소속 교회 없어요'를 선택하면 개인 성도로 바로 가입할 수 있어요.</p>
-                {renderChurchSelector('signup')}
+                {mChurchId ? renderContextBadge(mChurchId, () => { setMChurchId(''); clearError(); }) : (
+                    <div className="space-y-2">
+                        <ChurchPicker value={mChurchId} onChange={(id) => { setMChurchId(id); setLoginChurchId(id); clearError(); }} label="교회 선택" />
+                        <button
+                            type="button"
+                            onClick={selectUnaffiliatedChurch}
+                            className="w-full rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[12px] font-semibold text-emerald-800 hover:border-emerald-400 transition-colors text-left"
+                        >
+                            🙋 소속 교회가 없어요 — 「{UNAFFILIATED_CHURCH_NAME}」로 가입
+                        </button>
+                    </div>
+                )}
                 {isSignupUnaffiliated ? (
                     <input type="text" inputMode="numeric" value={mPhone4} onChange={e => setMPhone4(e.target.value.replace(/\D/g, ''))}
                         placeholder="전화번호 뒤 4자리" maxLength={4} className={inputCls} />
@@ -524,8 +568,9 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
     };
 
     const isSignupTab = activeTab === 'memberSignup' || activeTab === 'adminSignup';
+    const isEntryStep = activeTab === 'member' && (memberStep === 'entry' || !loginChurchId);
     const cardTitle = {
-        member: '로그인',
+        member: isEntryStep ? '어떻게 읽으실래요?' : '로그인',
         admin: '관리자 로그인',
         memberSignup: '성도 회원가입',
         adminSignup: '교회 등록',

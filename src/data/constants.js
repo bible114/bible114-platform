@@ -15,4 +15,6 @@ export const KAKAO_CHANNEL_URL = "http://pf.kakao.com/_xdJrRX/chat";
 // 무소속(개인) 성도 가상 교회 — 문서 ID를 클라이언트 상수로 고정한다.
 // 입장코드 검증 스킵은 "이 상수와의 ID 일치"로만 판단한다.
 export const UNAFFILIATED_CHURCH_ID = 'unaffiliated_v1';
-export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
+// 표시명은 「성경 읽는 사람들」로 브랜딩 (2026-07-10 확정 — "소속 없음" 결핍 프레임 대신
+// 이름 있는 모임으로). 주의: 레거시 실제 교회 "성경읽는 사람들"과는 별개 공동체.
+export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
