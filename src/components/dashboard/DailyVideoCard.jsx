@@ -281,7 +281,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
             <div className="p-5 bg-gradient-to-br from-indigo-600 to-blue-700 text-white">
                 <div className="flex items-center justify-between">
                     <h2 className="text-lg font-bold flex items-center gap-2">
-                        <span className="text-xl">🎬</span> 오늘의 영상
+                        <span className="text-xl">🎬</span> 매일성경
                     </h2>
                     <div className="flex items-center bg-white/20 backdrop-blur-md rounded-full p-1 shrink-0">
                         <button
@@ -312,7 +312,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
                             ref={iframeRef}
                             className="absolute inset-0 w-full h-full"
                             src={embedSrc(startSec)}
-                            title="오늘의 영상"
+                            title="매일성경"
                             frameBorder="0"
                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                             allowFullScreen
