@@ -334,6 +334,8 @@ const DashboardView = ({
 
                     <DailyVideoCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
 
+                    <BibleQuizCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
+
                     <BibleReader
                         verseData={verseData}
                         viewingDay={viewingDay}
@@ -380,8 +382,6 @@ const DashboardView = ({
                     </div>
 
                     <ReadingChampionSection getWeeklyMVP={getWeeklyMVP} />
-
-                    <BibleQuizCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
 
                     <TalentShop
                         currentUser={currentUser}
