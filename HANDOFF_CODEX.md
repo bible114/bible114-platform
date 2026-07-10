@@ -203,6 +203,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-09 | T21 달란트 잔액 전원 리셋 버튼 | `src/components/PlatformAdminView.jsx`, `HANDOFF_CODEX.md` | 플랫폼 관리자 시스템 섹션에 1회성 전원 달란트 0 초기화 버튼 추가. 10개 단위 batch update로 `talent: 0`, `talentMigrated: true`, `updatedAt` 저장. `npm run build` 통과. 파괴적 작업이므로 버튼 실행은 미실행. |
 | 2026-07-10 | T22 날짜 매칭 영상 선택 | `src/utils/helpers.js`, `src/components/dashboard/DailyVideoCard.jsx`, `HANDOFF_CODEX.md` | `titleMatchesDate(title, dateKey)` 추가 및 재생목록 자동 선택 시 제목 날짜 매칭 우선, 없으면 기존 최신 게시 영상 폴백. `npm run build` 통과. 주석 케이스 5개 이상 명시. |
 | 2026-07-10 | T23 묵상 해설/기도제목 UX | `src/components/dashboard/DailyVideoCard.jsx`, `HANDOFF_CODEX.md` | 챕터 표준 키는 유지하고 표시 라벨을 묵상 해설/성경읽기/기도제목으로 변경. 썸네일 재생 시 해설 챕터부터 시작, 구간 안내 문구와 기도제목 강조 버튼 추가. `npm run build` 통과. |
+| 2026-07-10 | T24 관리자 오늘 영상 미리보기 | `src/components/PlatformAdminView.jsx`, `HANDOFF_CODEX.md` | 매일 영상 탭의 연결 테스트를 T22 선택 로직 기반 오늘 영상 미리보기로 확장. 성인용/어린이용 제목·게시일·챕터·타임스탬프 경고 표시. `npm run build` 통과. 실제 YouTube API 호출은 API 키/재생목록 필요로 미검증. |
 
 ---
 
@@ -230,6 +231,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 2026-07-10 Codex 라운드4:
 - T22 완료. 자동 채움은 제목 날짜가 `dateKey`와 맞는 게시 완료 영상을 우선 선택하고, 매칭 후보가 없으면 기존처럼 최신 게시 영상으로 폴백한다. 선택 함수는 T24 관리자 미리보기에서 재사용할 수 있도록 export했다.
 - T23 완료. 저장된 chapters 호환을 위해 표준 키(`해설`/`성경읽기`/`기도`)는 그대로 두고 표시 라벨과 기본 시작 시각만 조정했다.
+- T24 완료. 관리자 미리보기는 `fetchLatestFromPlaylist`를 직접 재사용해 T22와 같은 날짜 매칭/최신 폴백 로직을 쓴다. 실제 YouTube API 호출은 키/재생목록이 없어 미검증.
 
 ---
 
@@ -388,7 +390,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
   - 썸네일 ▶ 클릭 시(콜드스타트): '해설' 챕터가 있고 sec > 0이면 그 지점부터 시작 (인트로 스킵). 없으면 0초부터 — 기존과 동일.
   - 챕터 버튼 영역 위에 안내 한 줄: "영상 속 구간으로 바로 이동해요" (text-xs slate-400).
   - '기도' 챕터가 있으면 기도제목 버튼을 시각적으로 강조(예: indigo 채움 배경) — 사용자가 해설을 본 뒤 이 버튼을 눌러 기도제목 구간을 이어 보는 흐름이 핵심 요구사항.
-- [ ] **T24. 관리자 "오늘 영상 미리보기"** (`src/components/PlatformAdminView.jsx` 매일 영상 탭)
+- [x] **T24. 관리자 "오늘 영상 미리보기"** (`src/components/PlatformAdminView.jsx` 매일 영상 탭)
   - 기존 "연결 테스트" 버튼을 확장: API 키 + 재생목록으로 **T22와 동일한 선택 로직**을 돌려 "오늘 날짜로 선택될 영상"의 제목·게시일·파싱된 챕터(라벨+초)를 성인용/어린이용 각각 표시. 선택 로직 함수를 DailyVideoCard에서 export 하거나 helpers로 옮겨 **한 곳만 유지**할 것 (로직 사본 2개 금지).
   - 챕터가 0개로 파싱되면 경고 문구: "설명문에 타임스탬프(예: 0:00 매일성경 해설 / 3:20 기도제목)가 없어 구간 버튼이 표시되지 않습니다."
 

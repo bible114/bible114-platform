@@ -2,6 +2,7 @@ import React from 'react';
 import Icon from './Icon';
 import { firebase } from '../utils/firebase';
 import ChurchAdminView from './ChurchAdminView';
+import { fetchLatestFromPlaylist } from './dashboard/DailyVideoCard';
 import { getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
 import { rebuildChurchDirectory, removeChurchFromDirectory, syncChurchDirectoryEntry } from '../utils/churchDirectory';
 import { sha256 } from '../utils/crypto';
@@ -129,26 +130,34 @@ const PlatformAdminView = ({
         setTestingConnection(true);
         setConnectionTestResult(null);
         try {
-            const playlistId = extractYouTubePlaylistId(autoAdultPlaylist);
-            if (!autoApiKey.trim() || !playlistId) {
+            const apiKey = autoApiKey.trim();
+            const adultPlaylistId = extractYouTubePlaylistId(autoAdultPlaylist);
+            const kidsPlaylistId = autoKidsPlaylist.trim() ? extractYouTubePlaylistId(autoKidsPlaylist) : null;
+            if (!apiKey || !adultPlaylistId) {
                 setConnectionTestResult({ ok: false, message: 'API 키와 성인용 재생목록을 먼저 입력해주세요.' });
                 return;
             }
-            const url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${encodeURIComponent(playlistId)}&maxResults=10&key=${encodeURIComponent(autoApiKey.trim())}`;
-            const res = await fetch(url);
-            const json = await res.json();
-            if (!res.ok) {
-                setConnectionTestResult({ ok: false, message: json?.error?.message || `HTTP ${res.status}` });
-                return;
-            }
-            const items = (json.items || []).slice().sort((a, b) =>
-                new Date(b.snippet?.publishedAt || 0) - new Date(a.snippet?.publishedAt || 0));
-            const newest = items[0];
-            if (!newest) {
-                setConnectionTestResult({ ok: false, message: '재생목록에서 영상을 찾을 수 없습니다.' });
-                return;
-            }
-            setConnectionTestResult({ ok: true, message: `최신 영상: ${newest.snippet?.title || '(제목 없음)'}` });
+            const targetDateKey = getVideoDateKST();
+            const targets = [
+                ['성인용', adultPlaylistId],
+                ['어린이용', kidsPlaylistId],
+            ].filter(([, playlistId]) => !!playlistId);
+            const previews = await Promise.all(targets.map(async ([label, playlistId]) => {
+                try {
+                    const entry = await fetchLatestFromPlaylist(playlistId, apiKey, targetDateKey);
+                    return { label, ok: true, entry };
+                } catch (e) {
+                    return { label, ok: false, error: e.message };
+                }
+            }));
+            const failed = previews.filter(p => !p.ok);
+            setConnectionTestResult({
+                ok: failed.length === 0,
+                message: failed.length === 0
+                    ? `${targetDateKey} 기준 선택 미리보기 완료`
+                    : `${failed.map(p => p.label).join(', ')} 확인 실패`,
+                previews,
+            });
         } catch (e) {
             setConnectionTestResult({ ok: false, message: e.message });
         } finally {
@@ -1162,7 +1171,7 @@ const PlatformAdminView = ({
                                         </button>
                                         <button onClick={testAutoConnection} disabled={testingConnection}
                                             className="bg-slate-100 text-slate-700 px-6 py-2.5 rounded-xl font-bold hover:bg-slate-200 disabled:opacity-50">
-                                            {testingConnection ? '확인 중...' : '🔌 연결 테스트'}
+                                            {testingConnection ? '확인 중...' : '🔌 오늘 영상 미리보기'}
                                         </button>
                                         {connectionTestResult && (
                                             <span className={`text-xs font-bold ${connectionTestResult.ok ? 'text-green-600' : 'text-red-500'}`}>
@@ -1170,6 +1179,43 @@ const PlatformAdminView = ({
                                             </span>
                                         )}
                                     </div>
+                                    {connectionTestResult?.previews && (
+                                        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            {connectionTestResult.previews.map(preview => (
+                                                <div key={preview.label} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                                    <div className="flex items-center justify-between gap-3 mb-2">
+                                                        <h3 className="text-sm font-black text-slate-700">{preview.label}</h3>
+                                                        {preview.ok && (
+                                                            <span className={`text-[11px] font-black px-2 py-1 rounded-full ${preview.entry?.matchedDate ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+                                                                {preview.entry?.matchedDate ? '날짜 매칭' : '최신 폴백'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {preview.ok ? (
+                                                        <div className="space-y-2">
+                                                            <p className="text-sm font-bold text-slate-800 line-clamp-2">{preview.entry?.title || '(제목 없음)'}</p>
+                                                            <p className="text-xs text-slate-400">게시일: {preview.entry?.publishedAt ? new Date(preview.entry.publishedAt).toLocaleString('ko-KR') : '-'}</p>
+                                                            {(preview.entry?.chapters || []).length > 0 ? (
+                                                                <div className="flex flex-wrap gap-1.5">
+                                                                    {preview.entry.chapters.map((chapter, idx) => (
+                                                                        <span key={`${chapter.label}_${idx}`} className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-slate-600 border border-slate-100">
+                                                                            {chapter.label} · {chapter.sec}초
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                <p className="text-xs font-bold text-amber-600">
+                                                                    설명문에 타임스탬프(예: 0:00 매일성경 해설 / 3:20 기도제목)가 없어 구간 버튼이 표시되지 않습니다.
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-xs font-bold text-red-500">{preview.error || '확인 실패'}</p>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </>
                             )}
                         </div>
