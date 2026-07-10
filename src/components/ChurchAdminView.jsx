@@ -17,6 +17,7 @@ import {
     ToastContainer,
     useToast,
 } from './admin';
+import TalentShop from './dashboard/TalentShop';
 
 const formatReadDate = (dateStr) => {
     if (!dateStr) return '-';
@@ -87,6 +88,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [shopItemDraft, setShopItemDraft] = useState(emptyShopItem);
     const [editingShopItemId, setEditingShopItemId] = useState(null);
     const [savingTalentShop, setSavingTalentShop] = useState(false);
+    const [showShopPreview, setShowShopPreview] = useState(false);
     const [talentPurchases, setTalentPurchases] = useState([]);
     const [purchaseFilter, setPurchaseFilter] = useState('pending');
 
@@ -1012,18 +1014,53 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                                 끄면 교인에게 상점이 전혀 보이지 않아요. 언제든 다시 켤 수 있습니다.
                                             </p>
                                         </div>
-                                        <label className="inline-flex cursor-pointer items-center gap-3">
-                                            <span className="text-sm font-black text-slate-600">{talentShop.enabled ? '사용 중' : '꺼짐'}</span>
-                                            <input
-                                                type="checkbox"
-                                                checked={talentShop.enabled === true}
-                                                onChange={e => toggleTalentShopEnabled(e.target.checked)}
-                                                disabled={savingTalentShop}
-                                                className="h-5 w-5 rounded border-slate-300"
-                                            />
-                                        </label>
+                                        <div className="flex items-center gap-4">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowShopPreview(true)}
+                                                disabled={talentShop.enabled !== true}
+                                                title={talentShop.enabled !== true ? '상점을 켜야 미리볼 수 있어요' : ''}
+                                                className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-black text-white hover:bg-violet-700 disabled:opacity-40">
+                                                👀 교인 화면 미리보기
+                                            </button>
+                                            <label className="inline-flex cursor-pointer items-center gap-3">
+                                                <span className="text-sm font-black text-slate-600">{talentShop.enabled ? '사용 중' : '꺼짐'}</span>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={talentShop.enabled === true}
+                                                    onChange={e => toggleTalentShopEnabled(e.target.checked)}
+                                                    disabled={savingTalentShop}
+                                                    className="h-5 w-5 rounded border-slate-300"
+                                                />
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
+
+                                {showShopPreview && (
+                                    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60"
+                                        onClick={e => { if (e.target === e.currentTarget) setShowShopPreview(false); }}>
+                                        <div className="mx-auto my-8 w-full max-w-md px-4">
+                                            <div className="mb-3 flex items-center justify-between">
+                                                <span className="text-xs font-black text-white">👀 교인에게 보이는 화면 미리보기</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowShopPreview(false)}
+                                                    className="rounded-lg bg-white px-3 py-1.5 text-xs font-black text-slate-700 hover:bg-slate-100">
+                                                    ✕ 닫기
+                                                </button>
+                                            </div>
+                                            <div className="rounded-2xl bg-slate-100 p-4">
+                                                <TalentShop
+                                                    currentUser={currentUser}
+                                                    setCurrentUser={() => {}}
+                                                    showUnlockModal={false}
+                                                    onCloseUnlockModal={() => {}}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
                                 <div className="grid grid-cols-1 lg:grid-cols-[0.85fr_1.15fr] gap-4">
                                     <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">

@@ -95,7 +95,8 @@ export const rebuildChurchDirectory = async () => {
     const churches = (await Promise.all(
         snap.docs
             .map(d => ({ id: d.id, ...d.data() }))
-            .filter(c => !c.isDeleted && c.id !== UNAFFILIATED_CHURCH_ID)
+            // hiddenFromDirectory: 테스트 교회 등 검색 노출을 원치 않는 교회 (관리자 토글)
+            .filter(c => !c.isDeleted && c.id !== UNAFFILIATED_CHURCH_ID && !c.hiddenFromDirectory)
             .map(async c => ({
                 id: c.id,
                 name: c.name || '',

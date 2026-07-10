@@ -3,7 +3,8 @@ import Icon from './Icon';
 import { firebase } from '../utils/firebase';
 import ChurchAdminView from './ChurchAdminView';
 import { getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
-import { rebuildChurchDirectory, removeChurchFromDirectory } from '../utils/churchDirectory';
+import { rebuildChurchDirectory, removeChurchFromDirectory, syncChurchDirectoryEntry } from '../utils/churchDirectory';
+import { sha256 } from '../utils/crypto';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
 import { migrateCredentialsIfNeeded, fetchMemberCredentials } from '../utils/memberCredentials';
 
@@ -43,6 +44,9 @@ const PlatformAdminView = ({
     const [confirmDelete, setConfirmDelete] = React.useState(null); // { type: 'church'|'user', target }
     const [deleteUserConfirm, setDeleteUserConfirm] = React.useState(null); // { uid, name }
     const [viewingChurchAsAdmin, setViewingChurchAsAdmin] = React.useState(false);
+    // 검색 숨김 토글의 낙관적 반영 (allChurches는 prop이라 로컬 오버라이드로 관리)
+    const [hiddenOverrides, setHiddenOverrides] = React.useState({});
+    const [hiddenToggling, setHiddenToggling] = React.useState(false);
     const [platformKakaoInput, setPlatformKakaoInput] = React.useState('');
     const [savingPlatformKakao, setSavingPlatformKakao] = React.useState(false);
     const [directoryRebuilding, setDirectoryRebuilding] = React.useState(false);
@@ -328,6 +332,37 @@ const PlatformAdminView = ({
             alert('무소속 가상 교회 생성/점검 실패: ' + e.message);
         } finally {
             setCheckingUnaffiliatedChurch(false);
+        }
+    };
+
+    // 교회 검색 노출 숨김/해제 — 숨기면 로그인 화면 교회 검색(디렉토리)에서 빠져
+    // 신규 가입·교인 로그인 선택이 불가능해진다 (테스트 교회용). 교회 관리자
+    // 이메일 로그인과 슈퍼관리자의 "교회관리자 화면으로 보기"는 계속 동작한다.
+    const isChurchHidden = (church) =>
+        hiddenOverrides[church.id] ?? (church.hiddenFromDirectory === true);
+
+    const toggleChurchHidden = async (church) => {
+        const next = !isChurchHidden(church);
+        const msg = next
+            ? `'${church.name}' 교회를 검색에서 숨깁니다.\n\n다른 사람들은 이 교회를 찾거나 가입할 수 없게 됩니다.\n(교회 관리자 이메일 로그인과 슈퍼관리자 진입은 계속 가능)`
+            : `'${church.name}' 교회를 검색에 다시 노출할까요?`;
+        if (!confirm(msg)) return;
+        setHiddenToggling(true);
+        try {
+            await db.collection('churches').doc(church.id).update({ hiddenFromDirectory: next });
+            if (next) {
+                await removeChurchFromDirectory(church.id);
+            } else {
+                const codeHash = church.churchCodeHash || (church.churchCode ? await sha256(church.churchCode) : null);
+                await syncChurchDirectoryEntry({ id: church.id, name: church.name, codeHash });
+            }
+            setHiddenOverrides(prev => ({ ...prev, [church.id]: next }));
+            alert(next ? '✅ 검색에서 숨겼습니다.' : '✅ 검색에 다시 노출했습니다.');
+        } catch (e) {
+            console.error(e);
+            alert('처리 실패: ' + e.message);
+        } finally {
+            setHiddenToggling(false);
         }
     };
 
@@ -706,11 +741,21 @@ const PlatformAdminView = ({
                                         className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 font-bold">
                                         ← 교회 목록으로
                                     </button>
-                                    <button
-                                        onClick={() => setViewingChurchAsAdmin(true)}
-                                        className="flex items-center gap-1.5 bg-blue-600 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-blue-700 shadow-sm">
-                                        ⛪ 교회관리자 화면으로 보기
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => toggleChurchHidden(selectedChurch)}
+                                            disabled={hiddenToggling}
+                                            className={`flex items-center gap-1.5 text-sm font-bold px-4 py-2 rounded-xl shadow-sm disabled:opacity-50 ${isChurchHidden(selectedChurch)
+                                                ? 'bg-slate-700 text-white hover:bg-slate-800'
+                                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}>
+                                            {isChurchHidden(selectedChurch) ? '🙈 검색 숨김 중 (해제하기)' : '🔍 검색에서 숨기기'}
+                                        </button>
+                                        <button
+                                            onClick={() => setViewingChurchAsAdmin(true)}
+                                            className="flex items-center gap-1.5 bg-blue-600 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-blue-700 shadow-sm">
+                                            ⛪ 교회관리자 화면으로 보기
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="bg-white rounded-xl shadow-sm p-6">
                                     <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">

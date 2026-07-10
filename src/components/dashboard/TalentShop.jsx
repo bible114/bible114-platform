@@ -91,11 +91,17 @@ const TalentShop = ({
 
     if (loading || !enabled) return null;
 
-    const unlocked = currentUser.secretShopUnlocked === true;
+    // 교회 관리자는 7일 연속 해금 없이 항상 볼 수 있다 (상품 구성·교인 화면 확인용).
+    const unlocked = currentUser.secretShopUnlocked === true || currentUser.role === 'churchAdmin';
     if (!unlocked) return null;
 
     const buyItem = async (item) => {
         if (buyingId) return;
+        // 슈퍼관리자 미리보기(fakeChurchAdmin)는 uid가 없어 구매 불가
+        if (!currentUser.uid) {
+            setMessage({ type: 'error', text: '미리보기 모드에서는 구매할 수 없어요.' });
+            return;
+        }
         if ((currentUser.talent || 0) < item.price) {
             setMessage({ type: 'error', text: '달란트가 부족합니다.' });
             return;
