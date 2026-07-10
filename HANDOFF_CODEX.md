@@ -211,6 +211,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-10 | T28 부분 — 열왕기상 문항 | `src/data/quiz/1kings.json`, `HANDOFF_CODEX.md` | 열왕기상 1-22장 장당 3문항(총 66문항) 추가. `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. T28 전체 90일 커버리지는 아직 미완료. |
 | 2026-07-10 | T28 부분 — 잠언 문항 | `src/data/quiz/proverbs.json`, `HANDOFF_CODEX.md` | 잠언 1-31장 장당 3문항(총 93문항) 추가. `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. T28 전체 90일 커버리지는 아직 미완료. |
 | 2026-07-10 | T28 부분 — 전도서/아가 문항 | `src/data/quiz/ecclesiastes.json`, `src/data/quiz/songofsongs.json`, `HANDOFF_CODEX.md` | 전도서 1-12장 장당 3문항(총 36문항), 아가 1-8장 장당 3문항(총 24문항) 추가. `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. T28 전체 90일 커버리지는 아직 미완료. |
+| 2026-07-10 | T28 부분 — 열왕기하 문항 | `src/data/quiz/2kings.json`, `HANDOFF_CODEX.md` | 열왕기하 1-25장 장당 3문항(총 75문항) 추가. `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. T28 전체 90일 커버리지는 아직 미완료. |
 
 ---
 
@@ -246,6 +247,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T28 진행 중. 열왕기상 1-22장 66문항을 추가했고 검증/빌드는 통과했다. 다음 책 우선순위는 잠언 1-31장 또는 신약일독 구간의 누가복음 1-24장이다.
 - T28 진행 중. 잠언 1-31장 93문항을 추가했고 검증/빌드는 통과했다. 다음 우선순위는 전도서/아가/열왕기하 또는 신약일독 구간의 누가복음 1-24장이다.
 - T28 진행 중. 전도서 1-12장 36문항과 아가 1-8장 24문항을 추가했고 검증/빌드는 통과했다. 다음 우선순위는 열왕기하 또는 신약일독 구간의 누가복음 1-24장이다.
+- T28 진행 중. 열왕기하 1-25장 75문항을 추가했고 검증/빌드는 통과했다. 다음 우선순위는 신약일독 구간의 누가복음 1-24장 또는 에스겔 1-48장이다.
 
 ---
 
