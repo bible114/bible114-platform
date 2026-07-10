@@ -207,6 +207,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-10 | T25 범위 파서 + 퀴즈 선택기 | `src/utils/quizEngine.js`, `src/data/quiz/.gitkeep`, `HANDOFF_CODEX.md` | 66권 약칭 범위 파서, 최근 읽기 완료일 캐시/스케줄 범위 조회, 책별 JSON lazy load, readCount 기반 문항 회전 선택기 추가. `npm run build` 통과. 문항 JSON은 T28 전까지 없어 pool은 빈 배열을 반환. |
 | 2026-07-10 | T26 BibleQuizCard v2 | `src/components/dashboard/BibleQuizCard.jsx`, `src/utils/quizEngine.js`, `src/utils/helpers.js`, `HANDOFF_CODEX.md` | 읽기 전 잠금 카드, 본문 기반 퀴즈 로딩, `quizKey` 문제 고정, 기존 `QUIZ_BANK` 폴백을 연결. 보상/시도 트랜잭션은 유지하고 신규 users 필드는 `quizKey`만 추가. `npm run build` 통과. |
 | 2026-07-10 | T27 문항 검증 스크립트 | `scripts/validate-quiz.mjs`, `HANDOFF_CODEX.md` | 책별 JSON 필수 필드, ref 책 일치, 장별 q 중복, choices 중복, 장당 문항 수 경고를 검사하는 스크립트 추가. `node scripts/validate-quiz.mjs` 통과(현재 JSON 없음 안내), `npm run build` 통과. |
+| 2026-07-10 | T28 부분 — 민수기 문항 | `src/data/quiz/numbers.json`, `HANDOFF_CODEX.md` | 민수기 17-36장 장당 3문항(총 60문항) 추가. `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. T28 전체 90일 커버리지는 아직 미완료. |
 
 ---
 
@@ -238,6 +239,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T25 완료. `quizEngine.js`는 캐시 제목을 우선 파싱하고 실패하면 `read_schedules.json` 범위로 폴백한다. `src/data/quiz/*.json`이 아직 없으면 `loadQuestionsForRange`는 빈 pool을 반환하므로 T26에서 기존 `QUIZ_BANK` 폴백을 유지해야 한다.
 - T26 완료. 읽기 완료 전에는 퀴즈가 잠기고, 열린 뒤에는 본문 기반 문항을 먼저 찾는다. 현재 문항 JSON이 없으면 기존 상식 문제로 폴백하며, 첫 제출 때 `quizKey`를 저장해 재방문/재렌더 시 같은 문항을 다시 보여준다.
 - T27 완료. 검증 스크립트는 현재 JSON이 없으면 안내 후 통과하고, T28 문항 파일이 생기면 필수 필드/중복/ref 책 일치/장당 문항 수를 검사한다.
+- T28 진행 중. 첫 책으로 민수기 17-36장 60문항을 추가했고 검증/빌드는 통과했다. T28 전체 완료까지는 90일 구간의 나머지 책 문항이 필요하다. 문항 내용은 사용자 신학·표기 검수가 필요하다.
 
 ---
 
