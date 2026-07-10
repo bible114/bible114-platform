@@ -1,6 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { db, firebase } from '../../utils/firebase';
-import { getKstDateString, getTodayQuiz } from '../../data/bibleQuiz';
+import { QUIZ_BANK, getKstDateString, getKstDayOfYear } from '../../data/bibleQuiz';
+import {
+    getTodayReadingRange,
+    loadQuestionByKey,
+    loadQuestionsForRange,
+    selectQuiz,
+} from '../../utils/quizEngine';
 
 const getRewardForAttempts = (attempts) => {
     if (attempts === 1) return 10;
@@ -8,14 +14,69 @@ const getRewardForAttempts = (attempts) => {
     return 0;
 };
 
+const getFallbackQuizWithKey = () => {
+    const index = getKstDayOfYear() % QUIZ_BANK.length;
+    return {
+        quiz: QUIZ_BANK[index],
+        quizKey: `bank-${index}`,
+        badge: '성경 상식 문제',
+    };
+};
+
+const resolveQuizKey = async (quizKey) => {
+    if (!quizKey) return null;
+    if (quizKey.startsWith('bank-')) {
+        const index = Number(quizKey.replace('bank-', ''));
+        if (!Number.isInteger(index) || !QUIZ_BANK[index]) return null;
+        return {
+            quiz: QUIZ_BANK[index],
+            quizKey,
+            badge: '성경 상식 문제',
+        };
+    }
+
+    const quiz = await loadQuestionByKey(quizKey);
+    if (!quiz) return null;
+    return {
+        quiz,
+        quizKey,
+        badge: '오늘 읽은 본문에서 나왔어요',
+    };
+};
+
+const buildTodayQuiz = async (currentUser) => {
+    const range = getTodayReadingRange(currentUser);
+    const pool = await loadQuestionsForRange(range);
+    const selected = selectQuiz(pool, currentUser?.readCount || 1);
+    if (selected) {
+        return {
+            quiz: selected,
+            quizKey: selected.key,
+            badge: `오늘 읽은 본문에서 나왔어요 · ${range.displayText || range.sourceText || '오늘 본문'}`,
+        };
+    }
+    return getFallbackQuizWithKey();
+};
+
+const LockedQuizCard = () => (
+    <section className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 overflow-hidden opacity-75">
+        <div className="rounded-3xl bg-slate-50 border border-slate-100 p-5">
+            <p className="text-xs font-black text-slate-400 mb-1">오늘의 성경퀴즈</p>
+            <h2 className="text-lg font-black text-slate-700">📖 오늘 본문을 읽으면 퀴즈가 열려요</h2>
+            <p className="mt-2 text-sm font-bold text-slate-400">읽기 완료 후 오늘 읽은 부분에서 문제가 나옵니다.</p>
+        </div>
+    </section>
+);
+
 const BibleQuizCard = ({ currentUser, setCurrentUser }) => {
-    const quiz = useMemo(() => getTodayQuiz(), []);
     const todayKey = useMemo(() => getKstDateString(), []);
-    const attempts = currentUser.quizDate === todayKey ? (currentUser.quizAttempts || 0) : 0;
-    const solved = currentUser.quizDate === todayKey && currentUser.quizSolved === true;
+    const hasReadToday = currentUser?.lastReadDate === new Date().toDateString();
+    const attempts = currentUser?.quizDate === todayKey ? (currentUser.quizAttempts || 0) : 0;
+    const solved = currentUser?.quizDate === todayKey && currentUser.quizSolved === true;
     const finished = solved || attempts >= 2;
     const earnedReward = solved ? getRewardForAttempts(attempts) : 0;
 
+    const [quizState, setQuizState] = useState({ loading: true, quiz: null, quizKey: null, badge: '' });
     const [selectedIndex, setSelectedIndex] = useState(null);
     const [feedback, setFeedback] = useState(() => {
         if (!finished) return null;
@@ -24,10 +85,45 @@ const BibleQuizCard = ({ currentUser, setCurrentUser }) => {
     });
     const [submitting, setSubmitting] = useState(false);
 
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadQuiz = async () => {
+            if (!currentUser || currentUser.role === 'guest' || !hasReadToday) return;
+            setQuizState(prev => ({ ...prev, loading: true }));
+            try {
+                const savedKey = currentUser.quizDate === todayKey ? currentUser.quizKey : null;
+                const resolved = savedKey ? await resolveQuizKey(savedKey) : null;
+                const nextQuiz = resolved || await buildTodayQuiz(currentUser);
+                if (!cancelled) setQuizState({ loading: false, ...nextQuiz });
+            } catch (e) {
+                console.error('본문 기반 퀴즈 로딩 실패:', e);
+                if (!cancelled) setQuizState({ loading: false, ...getFallbackQuizWithKey() });
+            }
+        };
+
+        loadQuiz();
+        return () => { cancelled = true; };
+    }, [
+        currentUser?.uid,
+        currentUser?.currentDay,
+        currentUser?.dayOffset,
+        currentUser?.planId,
+        currentUser?.quizDate,
+        currentUser?.quizKey,
+        currentUser?.readCount,
+        hasReadToday,
+        todayKey,
+    ]);
+
     if (!currentUser || currentUser.role === 'guest') return null;
+    if (!hasReadToday) return <LockedQuizCard />;
+
+    const quiz = quizState.quiz;
+    const quizKey = quizState.quizKey;
 
     const submitAnswer = async () => {
-        if (selectedIndex === null || submitting || finished) return;
+        if (!quiz || !quizKey || selectedIndex === null || submitting || finished) return;
         setSubmitting(true);
         try {
             const result = await db.runTransaction(async (transaction) => {
@@ -38,6 +134,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser }) => {
                 const data = snap.data();
                 const freshAttempts = data.quizDate === todayKey ? (data.quizAttempts || 0) : 0;
                 const alreadyDone = data.quizDate === todayKey && (data.quizSolved === true || freshAttempts >= 2);
+                const storedQuizKey = data.quizDate === todayKey ? data.quizKey : null;
                 if (alreadyDone) {
                     return {
                         alreadyDone: true,
@@ -45,6 +142,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser }) => {
                         solved: data.quizSolved === true,
                         reward: data.quizSolved === true ? getRewardForAttempts(freshAttempts) : 0,
                         talent: data.talent || 0,
+                        quizKey: storedQuizKey || quizKey,
                     };
                 }
 
@@ -56,6 +154,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser }) => {
                     quizDate: todayKey,
                     quizAttempts: nextAttempts,
                     quizSolved: isCorrect,
+                    quizKey: storedQuizKey || quizKey,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 };
                 if (reward > 0) updateData.talent = nextTalent;
@@ -67,6 +166,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser }) => {
                     solved: isCorrect,
                     reward,
                     talent: nextTalent,
+                    quizKey: updateData.quizKey,
                 };
             });
 
@@ -75,6 +175,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser }) => {
                 quizDate: todayKey,
                 quizAttempts: result.attempts,
                 quizSolved: result.solved,
+                quizKey: result.quizKey,
                 talent: result.talent,
             }));
 
@@ -106,7 +207,12 @@ const BibleQuizCard = ({ currentUser, setCurrentUser }) => {
             <div className="flex items-start justify-between gap-4 mb-4">
                 <div>
                     <p className="text-xs font-black text-indigo-500 mb-1">오늘의 성경퀴즈</p>
-                    <h2 className="text-lg font-black text-slate-800 leading-snug">{quiz.q}</h2>
+                    <div className="mb-2 inline-flex rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-black text-indigo-600">
+                        {quizState.badge || '성경 상식 문제'}
+                    </div>
+                    <h2 className="text-lg font-black text-slate-800 leading-snug">
+                        {quizState.loading ? '문제를 준비하고 있어요...' : quiz?.q}
+                    </h2>
                 </div>
                 <div className="shrink-0 rounded-2xl bg-amber-50 px-3 py-2 text-right">
                     <p className="text-[11px] font-black text-amber-600">보상</p>
@@ -115,14 +221,14 @@ const BibleQuizCard = ({ currentUser, setCurrentUser }) => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {quiz.choices.map((choice, index) => {
+                {(quiz?.choices || Array.from({ length: 4 }, () => '준비 중')).map((choice, index) => {
                     const isSelected = selectedIndex === index;
-                    const isAnswer = showAnswer && index === quiz.answerIndex;
+                    const isAnswer = showAnswer && index === quiz?.answerIndex;
                     return (
                         <button
-                            key={choice}
+                            key={`${choice}_${index}`}
                             type="button"
-                            disabled={submitting || showAnswer}
+                            disabled={quizState.loading || submitting || showAnswer}
                             onClick={() => setSelectedIndex(index)}
                             className={`text-left rounded-2xl border px-4 py-3 text-sm font-bold transition-all disabled:cursor-default ${
                                 isAnswer
@@ -156,14 +262,14 @@ const BibleQuizCard = ({ currentUser, setCurrentUser }) => {
                 <button
                     type="button"
                     onClick={submitAnswer}
-                    disabled={selectedIndex === null || submitting || showAnswer}
+                    disabled={quizState.loading || selectedIndex === null || submitting || showAnswer}
                     className="shrink-0 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white disabled:bg-slate-200 disabled:text-slate-400"
                 >
                     {submitting ? '확인 중...' : showAnswer ? '오늘 완료' : '정답 확인'}
                 </button>
             </div>
 
-            {showAnswer && (
+            {showAnswer && quiz && (
                 <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3">
                     <p className="text-sm font-black text-slate-700">정답: {quiz.choices[quiz.answerIndex]}</p>
                     <p className="mt-1 text-xs font-bold text-slate-400">근거: {quiz.ref}</p>

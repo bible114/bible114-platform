@@ -79,6 +79,7 @@ export const userDocToState = (doc) => {
         quizDate: d.quizDate ?? null,
         quizAttempts: d.quizAttempts ?? 0,
         quizSolved: d.quizSolved ?? false,
+        quizKey: d.quizKey ?? null,
         lastReadDate: d.lastReadDate ?? null,
         gender: d.gender ?? "male",
         departmentId: d.departmentId ?? d.communityId ?? null,

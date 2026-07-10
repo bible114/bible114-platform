@@ -220,6 +220,26 @@ export const loadQuestionsForRange = async (range) => {
     return pools.flat();
 };
 
+export const loadQuestionByKey = async (quizKey) => {
+    if (!quizKey || quizKey.startsWith('bank-')) return null;
+    const [slug, ch, order] = quizKey.split('-');
+    const loader = quizModules[`../data/quiz/${slug}.json`];
+    if (!loader || !ch || !order) return null;
+    const mod = await loader();
+    const questions = Array.isArray(mod.default) ? mod.default : [];
+    const index = Number(order) - 1;
+    const question = questions[index];
+    const book = BOOKS.find(item => item.slug === slug);
+    if (!question || Number(question.ch) !== Number(ch)) return null;
+    return {
+        ...question,
+        book: book?.full || question.book,
+        slug,
+        key: quizKey,
+        order: index,
+    };
+};
+
 export const selectQuiz = (pool, readCount = 1) => {
     if (!Array.isArray(pool) || pool.length === 0) return null;
     const sorted = pool.slice().sort((a, b) => {
