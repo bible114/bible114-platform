@@ -18,6 +18,7 @@ import {
     useToast,
 } from './admin';
 import TalentShop from './dashboard/TalentShop';
+import QRCode from 'qrcode';
 
 const formatReadDate = (dateStr) => {
     if (!dateStr) return '-';
@@ -99,6 +100,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     // 창구 판매(관리자 직접 차감) 입력 폼
     const [deductForm, setDeductForm] = useState({ uid: '', itemName: '', price: '' });
     const [deducting, setDeducting] = useState(false);
+    const [emojiGroupIdx, setEmojiGroupIdx] = useState(0); // 이모지 그룹 탭 선택
     const [talentPurchases, setTalentPurchases] = useState([]);
     const [purchaseFilter, setPurchaseFilter] = useState('pending');
 
@@ -554,6 +556,141 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         } finally {
             setDeducting(false);
         }
+    };
+
+    // ── 인쇄 공통: 새 창에 A4 인쇄용 HTML을 띄우고 자동으로 인쇄 대화상자 열기 ──
+    const openPrintWindow = (html) => {
+        const w = window.open('', '_blank');
+        if (!w) { toast.error('팝업이 차단되었습니다. 브라우저에서 팝업을 허용한 뒤 다시 시도해주세요.'); return; }
+        w.document.write(html);
+        w.document.close();
+    };
+
+    // ── 성도용 가입 안내문 A4 인쇄 (교회 QR + 가입/로그인 방법, 어르신 큰 글씨) ──
+    const printMemberGuide = async () => {
+        const link = `${window.location.origin}${window.location.pathname}?church=${currentUser.churchId}`;
+        let qrDataUrl = '';
+        try {
+            qrDataUrl = await QRCode.toDataURL(link, { width: 560, margin: 1 });
+        } catch (e) {
+            console.error('QR 생성 실패:', e);
+            toast.error('QR 코드 생성에 실패했습니다.');
+            return;
+        }
+        const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const churchName = esc(churchInfo?.name || currentUser.churchName || '');
+        const code = churchInfo?.churchCode || '';
+        const codeBlock = code
+            ? `<span class="code">${esc(code)}</span>`
+            : '<span class="code blank">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span> <span class="hint">(관리자가 적어주세요)</span>';
+        const html = `<!doctype html><html><head><meta charset="utf-8"><title>${churchName} 성경 읽기 안내</title>
+<style>
+  @page { size: A4 portrait; margin: 15mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; color: #1e293b; }
+  .header { text-align: center; margin-bottom: 7mm; }
+  .header h1 { font-size: 34px; }
+  .header p { font-size: 17px; color: #475569; margin-top: 2.5mm; }
+  .qr { text-align: center; border: 2px solid #cbd5e1; border-radius: 16px; padding: 6mm; margin-bottom: 7mm; }
+  .qr img { width: 62mm; height: 62mm; }
+  .qr .big { font-size: 20px; font-weight: 800; margin-top: 2mm; }
+  .qr .url { font-size: 14px; color: #64748b; margin-top: 1.5mm; word-break: break-all; }
+  .section { margin-bottom: 6mm; }
+  .section h2 { font-size: 21px; background: #f1f5f9; border-radius: 10px; padding: 2.5mm 4mm; margin-bottom: 3mm; }
+  .step { display: flex; gap: 4mm; align-items: baseline; font-size: 18px; line-height: 1.55; margin-bottom: 2.5mm; padding-left: 2mm; }
+  .num { font-weight: 900; color: #7c3aed; flex-shrink: 0; }
+  .code { font-size: 22px; font-weight: 900; letter-spacing: 2px; background: #fef3c7; border: 1.5px dashed #d97706; border-radius: 8px; padding: 1mm 4mm; }
+  .code.blank { min-width: 30mm; display: inline-block; }
+  .hint { font-size: 13px; color: #94a3b8; }
+  .footer { text-align: center; font-size: 15px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 4mm; margin-top: 2mm; }
+</style></head><body>
+  <div class="header">
+    <h1>📖 ${churchName} 성경 읽기</h1>
+    <p>매일 함께 성경을 읽고 달란트 ⭐ 를 모아요</p>
+  </div>
+  <div class="qr">
+    <img src="${qrDataUrl}" alt="QR" />
+    <div class="big">휴대폰 카메라로 이 네모(QR)를 비춰주세요</div>
+    <div class="url">인터넷 주소: ${esc(link)}</div>
+  </div>
+  <div class="section">
+    <h2>1️⃣ 처음 오신 분 — 회원가입 (딱 한 번만)</h2>
+    <div class="step"><span class="num">①</span><span>QR로 접속하면 우리 교회가 자동으로 선택돼 있어요</span></div>
+    <div class="step"><span class="num">②</span><span>"처음 오셨나요? <b>회원가입</b>"을 눌러주세요</span></div>
+    <div class="step"><span class="num">③</span><span><b>이름</b> · <b>생년월일 8자리</b>(예: 19560315) · <b>비밀번호</b>(6자리 이상)를 넣어주세요</span></div>
+    <div class="step"><span class="num">④</span><span>교회 입장코드: ${codeBlock}</span></div>
+  </div>
+  <div class="section">
+    <h2>2️⃣ 다음부터 — 로그인</h2>
+    <div class="step"><span class="num">①</span><span><b>이름 + 생년월일 + 비밀번호</b>만 넣고 "오늘의 본문 펼치기"</span></div>
+    <div class="step"><span class="num">②</span><span>본문을 다 읽고 <b>"읽기 완료"</b> 버튼을 누르면 달란트 ⭐ 가 쌓여요</span></div>
+  </div>
+  <div class="footer">막히는 부분이 있으면 언제든 관리자에게 말씀해주세요 😊</div>
+  <script>window.onload = function(){ window.print(); };<\/script>
+</body></html>`;
+        openPrintWindow(html);
+    };
+
+    // ── 관리자 매뉴얼 A4 인쇄 (책상 비치용) ──
+    const printAdminManual = () => {
+        const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const churchName = esc(churchInfo?.name || currentUser.churchName || '');
+        const link = `${window.location.origin}${window.location.pathname}?church=${currentUser.churchId}`;
+        const html = `<!doctype html><html><head><meta charset="utf-8"><title>관리자 매뉴얼</title>
+<style>
+  @page { size: A4 portrait; margin: 13mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; color: #1e293b; font-size: 12.5px; line-height: 1.5; }
+  h1 { font-size: 22px; margin-bottom: 1mm; }
+  .sub { font-size: 12px; color: #64748b; margin-bottom: 5mm; }
+  .sec { border: 1px solid #e2e8f0; border-radius: 10px; padding: 3.5mm 4mm; margin-bottom: 3.5mm; break-inside: avoid; }
+  .sec h2 { font-size: 14.5px; margin-bottom: 1.5mm; }
+  .sec li { margin-left: 5mm; margin-bottom: 0.8mm; }
+  b.violet { color: #7c3aed; }
+  .tip { background: #fefce8; border-radius: 6px; padding: 1.5mm 3mm; margin-top: 1.5mm; font-size: 11.5px; color: #854d0e; }
+</style></head><body>
+  <h1>📘 ${churchName} — 관리자 매뉴얼</h1>
+  <p class="sub">성경114 (www.bible114.net) · 관리자 로그인: 로그인 화면에서 "교회 관리자" 탭 → 이메일 + 비밀번호</p>
+
+  <div class="sec"><h2>📊 대시보드 — 매일 아침 한 눈에</h2><ul>
+    <li>오늘 읽은 교인 수, 부서별 현황, <b>관심 필요 명단</b>(3일·1주 이상 안 읽은 분)을 확인해요.</li>
+    <li>연속 읽기 Top 5로 칭찬할 분을 찾아보세요.</li>
+  </ul></div>
+
+  <div class="sec"><h2>👥 교인 관리</h2><ul>
+    <li>이름 검색, 부서/읽기 상태 필터, 교인을 클릭하면 상세 정보가 열려요.</li>
+    <li><b>비밀번호를 잊은 교인</b>: 교인 클릭 → "비밀번호 재설정" → 새 비밀번호를 전달해주세요.</li>
+    <li>여러 명 선택 후 일괄 소그룹 배정도 가능해요. CSV 내보내기로 명단을 저장할 수 있어요.</li>
+  </ul></div>
+
+  <div class="sec"><h2>⭐ 달란트 상점</h2><ul>
+    <li><b>켜기</b>: 상점 탭 맨 위 스위치. 꺼져 있으면 교인에게 전혀 보이지 않아요.</li>
+    <li><b>상품 등록</b>: 이모지 그룹(간식/장난감/학용품/생필품)에서 골라 이름·가격 입력.</li>
+    <li><b class="violet">창구 판매</b>: 앱이 어려운 어르신은 말씀만 하시면 — 교인 선택 + 구입 물품 기록 + 달란트 입력 → 차감. <b>물품 기록은 필수</b>예요.</li>
+    <li>교인이 앱에서 직접 산 건 "수령 대기"로 들어와요 → 상품 전달 후 <b>수령 완료</b> 누르기. 실수면 <b>취소·환불</b>.</li>
+    <li><b>🖨️ 상품 목록 인쇄</b>: A4로 뽑아 게시판에 붙여두세요 (상품 수에 따라 크기 자동 조절).</li>
+  </ul>
+  <p class="tip">💡 달란트는 매일 첫 읽기에 10 + 연속 보너스(최대 7), 성경퀴즈 정답 시 추가 적립됩니다. 7일 연속 읽으면 교인에게 상점이 열려요.</p></div>
+
+  <div class="sec"><h2>📋 조직 / 📢 공지</h2><ul>
+    <li>조직 탭: 부서와 소그룹을 만들고 수정해요 (예: 장년부 > 1구역).</li>
+    <li>공지 탭: 대시보드 상단에 뜨는 공지와 카카오톡 단체방 링크를 등록해요.</li>
+  </ul></div>
+
+  <div class="sec"><h2>⚙️ 설정 — 인쇄물 · 링크 · 입장코드</h2><ul>
+    <li><b>성도용 가입 안내문 인쇄</b>: QR + 가입 방법이 담긴 A4 — 새 성도에게 나눠주세요.</li>
+    <li>우리 교회 전용 링크: ${esc(link)}</li>
+    <li>교회 입장코드 변경도 여기서 해요 (가입할 때 교인이 입력하는 코드).</li>
+  </ul></div>
+
+  <div class="sec"><h2>❓ 자주 묻는 질문</h2><ul>
+    <li><b>교인이 로그인이 안 된대요</b> → 이름·생년월일 8자리가 가입 때와 똑같은지 확인, 그래도 안 되면 비밀번호 재설정.</li>
+    <li><b>랭킹/달리기가 안 보인대요</b> → 새로고침 후에도 그러면 플랫폼 관리자에게 문의.</li>
+    <li><b>기타 문의</b> → 관리자 화면 상단의 카카오 채널 버튼으로 플랫폼 운영자에게 연락하세요.</li>
+  </ul></div>
+  <script>window.onload = function(){ window.print(); };<\/script>
+</body></html>`;
+        openPrintWindow(html);
     };
 
     // ── 상품 목록 A4 인쇄 — 상품 수에 따라 글씨·그림 크기 자동 조절 ──
@@ -1247,23 +1384,30 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                         <div className="space-y-3">
                                             <div>
                                                 <p className="mb-2 text-xs font-black text-slate-500">이모지</p>
-                                                <div className="max-h-56 space-y-3 overflow-y-auto pr-1">
-                                                    {SHOP_EMOJI_GROUPS.map(group => (
-                                                        <div key={group.label}>
-                                                            <p className="mb-1.5 text-[11px] font-bold text-slate-400">{group.label}</p>
-                                                            <div className="flex flex-wrap gap-2">
-                                                                {group.emojis.map(emoji => (
-                                                                    <button
-                                                                        key={emoji}
-                                                                        type="button"
-                                                                        onClick={() => setShopItemDraft(prev => ({ ...prev, emoji }))}
-                                                                        className={`h-10 w-10 rounded-xl border text-lg ${shopItemDraft.emoji === emoji ? 'border-violet-400 bg-violet-50' : 'border-slate-100 bg-slate-50'}`}
-                                                                    >
-                                                                        {emoji}
-                                                                    </button>
-                                                                ))}
-                                                            </div>
-                                                        </div>
+                                                <div className="mb-2 flex flex-wrap gap-1.5">
+                                                    {SHOP_EMOJI_GROUPS.map((group, idx) => (
+                                                        <button
+                                                            key={group.label}
+                                                            type="button"
+                                                            onClick={() => setEmojiGroupIdx(idx)}
+                                                            className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${emojiGroupIdx === idx
+                                                                ? 'bg-violet-600 text-white'
+                                                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                                                        >
+                                                            {group.emojis[0]} {group.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {SHOP_EMOJI_GROUPS[emojiGroupIdx].emojis.map(emoji => (
+                                                        <button
+                                                            key={emoji}
+                                                            type="button"
+                                                            onClick={() => setShopItemDraft(prev => ({ ...prev, emoji }))}
+                                                            className={`h-10 w-10 rounded-xl border text-lg ${shopItemDraft.emoji === emoji ? 'border-violet-400 bg-violet-50' : 'border-slate-100 bg-slate-50'}`}
+                                                        >
+                                                            {emoji}
+                                                        </button>
                                                     ))}
                                                 </div>
                                             </div>
@@ -1578,6 +1722,24 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                             }}
                                             className="bg-indigo-600 text-white font-bold px-4 rounded-xl text-sm hover:bg-indigo-700 whitespace-nowrap">
                                             {linkCopied ? '복사됨!' : '복사'}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="bg-white rounded-2xl p-4 border border-slate-100">
+                                    <p className="font-bold text-slate-700 mb-1">🖨️ 인쇄물</p>
+                                    <p className="text-xs text-slate-400 mb-3">
+                                        A4 용지에 인쇄해서 사용하세요. 성도용 안내문에는 우리 교회 QR과 가입·로그인 방법이 큰 글씨로 담기고{churchInfo?.churchCode ? ' 입장코드도 함께 인쇄돼요' : ' 입장코드 자리는 빈칸이라 직접 적어주시면 돼요'}. 관리자 매뉴얼은 책상에 두고 보는 용도예요.
+                                    </p>
+                                    <div className="flex flex-wrap gap-2">
+                                        <button
+                                            onClick={printMemberGuide}
+                                            className="bg-emerald-600 text-white font-bold px-4 py-2.5 rounded-xl text-sm hover:bg-emerald-700">
+                                            📱 성도용 가입 안내문 인쇄
+                                        </button>
+                                        <button
+                                            onClick={printAdminManual}
+                                            className="bg-slate-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm hover:bg-slate-800">
+                                            📘 관리자 매뉴얼 인쇄
                                         </button>
                                     </div>
                                 </div>
