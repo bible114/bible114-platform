@@ -249,6 +249,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-12 | T47 읽기 진도 roster 동기화 | `src/hooks/useUserBibleActions.js`, `HANDOFF_CODEX.md` | 현재 `extraOrgs` 최대 3개 roster에 score/currentDay/streak/readCount/lastReadDate/updatedAt만 users·history와 같은 transaction으로 update. 삭제 경합으로 전체 transaction이 취소되면 strict collectionGroup 재조회 후 남은 행으로 1회 재시도하며 행을 재생성하지 않는다. 재조회도 일시 실패하면 개인 읽기만 원자 재시도하고 기존 runtime 목록을 보존해 다음 절대 진도 update에서 회복. Auth UID guard와 함수형 상태 갱신으로 계정 전환 오염 차단. `npm run build`, `git diff --check`, 독립 리뷰 3건 통과. 실제 roster 정상/제명 경합은 미검증. |
 | 2026-07-12 | T48 조직 랭킹 병합·관리자 명부 | `src/utils/rosterMembers.js`, `src/hooks/useDepartment.js`, `src/components/ChurchAdminView.jsx`, `src/utils/exportUtils.js`, `HANDOFF_CODEX.md` | 자체 users 교인을 우선하는 uid 병합으로 roster 멤버를 랭킹·달리기·통계·관심 명단·완독자에 포함하고 삭제 자체 교인의 roster 부활을 차단. 관리자 명부에 외부 뱃지와 CSV 구분을 추가하고 roster 소그룹 update·제명 delete만 허용. 외부 users/private/history/비밀번호/달란트 직접 차감·환불은 UI와 handler에서 차단하되 조직 구매 수령은 허용. roster 실패는 자체 교인 로드와 격리. `npm run build`, mapper/own-first fixture, `git diff --check`, 독립 리뷰 3건 통과. 실제 관리자 인증·roster update/delete는 미검증. |
 | 2026-07-12 | T50 개인 가입 화면 | `src/App.jsx`, `src/components/LoginView.jsx`, `src/hooks/useAuth.js`, `src/utils/helpers.js`, `HANDOFF_CODEX.md` | 첫 화면에 개인 계정 진입을 추가하고 Google 또는 이름·생년월일 8자리·전화4·비밀번호 방식을 제공. 비밀번호 방식은 교회 ID 없는 `이름_생일p전화4@bible.local` 식별자와 `private/auth`를 사용하고, Google 방식은 비밀번호 없이 personal users 문서를 생성. 기존 교인 로그인과 게스트 진도 이관을 유지하고 중복 제출·Auth 경합을 방어. `npm run build`, `git diff --check` 통과. 실제 Firebase Auth/Firestore 가입·Google 팝업은 운영 데이터 생성 때문에 미검증. |
+| 2026-07-12 | T51 개인 계정 공동체 온보딩 | `src/App.jsx`, `src/components/dashboard/CommunityMembershipCard.jsx`, `HANDOFF_CODEX.md` | 개인 계정의 플랜·성경 버전 선택 뒤 공동체 참여 선택 화면을 추가하고 T46 검색·입장코드·부서/소그룹 UI를 onboarding 모드로 재사용. 참여 시 roster 생성과 users `primaryOrgId`·`planId`를 한 transaction에 저장하고, 나중에 선택하면 공동체 없이 dashboard로 진입. Auth uid 방어와 저장 실패 잔류 처리 적용. `npm run build`, `git diff --check` 통과. 실제 roster/users 쓰기는 운영 데이터 생성 때문에 미검증. |
 
 ---
 
@@ -346,6 +347,8 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T48 검증: `npm run build`, canonical mapper·uid 자체교인 우선·삭제 부활 방지 fixture, `git diff --check`, 독립 리뷰 3건 통과. 실제 관리자 인증 화면과 roster 소그룹 배정/제명/구매 수령은 운영 데이터 변경 없이 미검증이다. 라운드 8 T44~T48 완료, 다음 순번은 이미 선행 T49가 완료된 라운드 9의 T50이다.
 - T50 완료. 첫 화면의 기존 교회 선택 로그인은 그대로 두고 "처음이세요? 시작하기"에서 Google 또는 이름·생년월일·전화4·비밀번호 개인 가입을 선택하게 했다. 개인 users 문서는 `accountType: 'personal'`, `churchId: null`, `primaryOrgId: null`로 만들며 비밀번호 방식의 식별자는 교회 ID 없는 `이름_생일p전화4@bible.local`이고 자격정보는 `private/auth`에 저장한다. Google 개인 계정은 비밀번호 필드를 만들지 않는다.
 - T50 상태·검증: 신규 개인 계정은 기존 T10의 게스트 진도 값을 users 초기 상태에 반영하고 plan 선택으로 이어진다. 중복 클릭과 대화형 Auth 리스너 경합, 기존 비개인 users 문서 충돌을 방어했다. `npm run build`, `git diff --check` 통과. 실제 Firebase 계정/users/private 생성과 Google 팝업은 운영 데이터 생성 때문에 미검증이다. 설계와 다르게 한 점이나 막힌 점은 없으며 다음 순번은 T51 가입 직후 공동체 온보딩이다.
+- T51 완료. 개인 계정만 성경 버전 선택 뒤 공동체 온보딩으로 보내며, T46 `CommunityMembershipCard`의 검색·입장코드 검증·부서/소그룹 선택·최대 3개 검사를 onboarding 모드로 재사용한다. 참여 시 roster 행과 users의 `primaryOrgId`/`planId`를 같은 transaction에 쓰고, "나중에 할게요"는 `primaryOrgId: null`로 혼자 읽기를 시작한다.
+- T51 상태·검증: 현재 Auth uid와 임시 사용자 uid가 다르면 완료 처리를 중단하고, 건너뛰기 저장 실패 시 화면에 남겨 재시도하게 했다. `npm run build`, `git diff --check` 통과. 실제 인증 계정의 roster/users transaction은 운영 데이터 생성 때문에 미검증이다. 설계와 다르게 한 점이나 막힌 점은 없으며 다음 순번은 T52 개인 계정 대시보드다.
 
 ---
 
@@ -690,7 +693,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
 
 - [x] **T49. (Claude 담당) 규칙 확장 — 개인 계정의 조직 멤버 읽기** — users read에 "조회자가 그 교회 roster에 있으면 허용" 분기(`exists(/churches/$(resource.data.churchId)/roster/$(request.auth.uid))`, 목록 쿼리 증명 가능) 추가·배포. T44와 함께 처리. Codex는 이 항목 `[x]` 전에 T50 이하 착수 금지.
 - [x] **T50. 개인 가입 화면** — 첫 화면에 "처음이세요? 시작하기" 경로: [구글로 시작] / [이름·생일·전화4·비밀번호로 시작]. 게스트 진도 이관(T10 로직) 재사용. 기존 "교인 로그인"(교회 선택 방식)은 그대로 병존 — 문구로 구분: "이미 교회에서 가입하셨나요? 교인 로그인".
-- [ ] **T51. 가입 직후 공동체 온보딩** — 플랜 선택 → "공동체에 참여하시겠어요?" (교회 검색+입장코드 → 부서/소그룹 → roster 행 + primaryOrgId 지정) 또는 "나중에 할게요"(혼자 읽기 시작). T46 컴포넌트 재사용.
+- [x] **T51. 가입 직후 공동체 온보딩** — 플랜 선택 → "공동체에 참여하시겠어요?" (교회 검색+입장코드 → 부서/소그룹 → roster 행 + primaryOrgId 지정) 또는 "나중에 할게요"(혼자 읽기 시작). T46 컴포넌트 재사용.
 - [ ] **T52. 개인 계정 대시보드** — 커뮤니티 뷰(랭킹·달리기·MVP)는 primaryOrgId 기준(loadAllMembers(primaryOrgId) 병합 경로 재사용). 공동체 2개 이상이면 헤더에 조직 전환 드롭다운(= primaryOrgId 변경, users 문서 update). 공동체 0개면 커뮤니티 카드 숨김(현 무소속 화면 스타일).
 - [ ] **T53. 관리자·지원 대응** — 플랫폼 관리자 회원 목록에 accountType 뱃지("개인"), 개인 계정 비밀번호 확인은 플랫폼 관리자의 private/auth 조회로(기존 규칙 커버). 교회 관리자 화면의 roster 멤버(개인 계정 포함) 관리에는 이미 T48로 충분 — 회귀 확인만.
 

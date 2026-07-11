@@ -18,6 +18,7 @@ import PlatformAdminView from './components/PlatformAdminView';
 import PlanSelectionView from './components/PlanSelectionView';
 import DashboardView from './components/DashboardView';
 import GuestReaderView from './components/GuestReaderView';
+import { CommunityMembershipCard } from './components/dashboard';
 import { ToastContainer, useToast } from './components/admin';
 import { useTTS } from './hooks/useTTS';
 
@@ -407,7 +408,10 @@ const App = () => {
             return;
         }
         const fullPlanId = `${selectedPlanType}_${versionId}`;
-        if (tempUser) { setTempUser(prev => ({ ...prev, planId: fullPlanId })); setView('community_select'); }
+        if (tempUser) {
+            setTempUser(prev => ({ ...prev, planId: fullPlanId }));
+            setView(tempUser.accountType === 'personal' ? 'personal_community_onboarding' : 'community_select');
+        }
         else if (currentUser) {
             const updatedUser = { ...currentUser, planId: fullPlanId };
             setCurrentUser(updatedUser);
@@ -434,6 +438,31 @@ const App = () => {
             const uid = (auth.currentUser ? auth.currentUser.uid : null) || finalUser.uid;
             if (uid) await db.collection('users').doc(uid).set({ ...persistedUser, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
         } catch (e) { console.error(e); alert("서버 저장 실패"); }
+    };
+
+    const finishPersonalOnboarding = async (runtimeOrg = null) => {
+        if (!tempUser?.uid || auth.currentUser?.uid !== tempUser.uid) return;
+        const nextUser = {
+            ...tempUser,
+            primaryOrgId: runtimeOrg?.orgId || null,
+            extraOrgs: runtimeOrg ? [runtimeOrg] : [],
+        };
+        try {
+            if (!runtimeOrg) {
+                await db.collection('users').doc(tempUser.uid).set({
+                    planId: tempUser.planId,
+                    primaryOrgId: null,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                }, { merge: true });
+            }
+        } catch (error) {
+            console.error('개인 계정 온보딩 저장 실패:', error);
+            alert('설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
+            return;
+        }
+        setCurrentUser(nextUser);
+        setTempUser(null);
+        setView('dashboard');
     };
 
     // ----------------------------------------------------------------------
@@ -571,6 +600,12 @@ const App = () => {
                 presetChurchId={presetChurchId}
                 initialTab={loginInitialTab}
             />
+        );
+    } else if (view === 'personal_community_onboarding' && tempUser?.accountType === 'personal') {
+        pageContent = (
+            <div className="min-h-screen bg-slate-50 p-6 flex items-center justify-center" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
+                <CommunityMembershipCard currentUser={tempUser} setCurrentUser={setTempUser} onboarding onJoinComplete={finishPersonalOnboarding} onSkip={() => finishPersonalOnboarding()} />
+            </div>
         );
     } else if (['plan_type_select', 'bible_version_select', 'community_select', 'subgroup_select'].includes(view)) {
         pageContent = (

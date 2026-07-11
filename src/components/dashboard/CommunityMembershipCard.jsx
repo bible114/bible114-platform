@@ -8,7 +8,7 @@ import { loadUserExtraOrgsStrict } from '../../utils/roster';
 
 const emptySelection = { departmentId: '', departmentName: '', subgroupId: '', subgroupName: '' };
 
-const CommunityMembershipCard = ({ currentUser, setCurrentUser }) => {
+const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = false, onJoinComplete, onSkip }) => {
     const [directory, setDirectory] = useState([]);
     const [showJoin, setShowJoin] = useState(false);
     const [orgId, setOrgId] = useState('');
@@ -35,6 +35,10 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser }) => {
             .catch(() => { if (alive) setDirectory([]); });
         return () => { alive = false; };
     }, []);
+
+    useEffect(() => {
+        if (onboarding) setShowJoin(true);
+    }, [onboarding]);
 
     useEffect(() => {
         if (!showJoin) return undefined;
@@ -162,8 +166,22 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser }) => {
                 joinedAt: now,
                 updatedAt: now,
             };
-            await rosterRef.set(rosterData);
+            if (onboarding) {
+                const userRef = db.collection('users').doc(currentUser.uid);
+                await db.runTransaction(async transaction => {
+                    const userSnap = await transaction.get(userRef);
+                    if (!userSnap.exists || userSnap.data()?.accountType !== 'personal') throw new Error('personal user unavailable');
+                    transaction.set(rosterRef, rosterData);
+                    transaction.update(userRef, { primaryOrgId: orgId, planId: currentUser.planId, updatedAt: now });
+                });
+            } else {
+                await rosterRef.set(rosterData);
+            }
             const runtimeOrg = { uid: currentUser.uid, orgId, rosterPath: rosterRef.path, ...selection, joinedAt: null, updatedAt: null };
+            if (onboarding && onJoinComplete) {
+                onJoinComplete(runtimeOrg);
+                return;
+            }
             setCurrentUser(user => user?.uid === currentUser.uid
                 ? { ...user, extraOrgs: [...latestExtraOrgs, runtimeOrg].sort((a, b) => a.orgId.localeCompare(b.orgId)) }
                 : user);
@@ -198,6 +216,25 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser }) => {
             setBusy(false);
         }
     };
+
+    if (onboarding) return (
+        <section className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="text-center">
+                <h2 className="text-xl font-bold text-slate-800">공동체에 참여하시겠어요?</h2>
+                <p className="mt-2 text-sm text-slate-500">교회나 공동체와 함께 읽으면 랭킹과 응원을 나눌 수 있어요.</p>
+                <button type="button" onClick={() => setShowJoin(true)} className="mt-5 w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white">공동체 찾아보기</button>
+                <button type="button" onClick={onSkip} disabled={busy} className="mt-2 w-full rounded-xl py-3 text-sm font-bold text-slate-500 disabled:opacity-40">나중에 할게요</button>
+            </div>
+            {showJoin && <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onMouseDown={e => { if (e.target === e.currentTarget) closeJoin(); }}>
+                <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="공동체 참여" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
+                    <div className="mb-5 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-800">공동체 참여</h3><button type="button" aria-label="공동체 참여 창 닫기" onClick={closeJoin} className="p-2 text-slate-400">✕</button></div>
+                    {step === 'church' ? <div className="space-y-4"><ChurchPicker value={orgId} onChange={setOrgId} label="참여할 공동체" /><div><label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-ink/55">입장코드</label><input value={entryCode} onChange={e => setEntryCode(e.target.value)} type="password" className="w-full rounded-lg border border-hairline bg-cream px-3.5 py-3 text-sm" placeholder="공동체 입장코드" /></div><button type="button" disabled={busy || !orgId || !entryCode} onClick={verifyChurch} className="w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white disabled:bg-slate-300">{busy ? '확인 중...' : '다음'}</button></div>
+                        : <div className="space-y-4"><div><p className="mb-2 text-xs font-bold text-slate-500">부서 선택</p><div className="grid grid-cols-2 gap-2">{departments.map(dept => <button type="button" key={dept.id || dept.name} onClick={() => selectDepartment(dept)} className={`rounded-xl border p-3 text-sm font-bold ${selection.departmentId === (dept.id || dept.name) ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600'}`}>{dept.name}</button>)}</div>{departments.length === 0 && <p className="text-sm text-slate-500">선택할 부서가 없습니다. 공동체 관리자에게 문의해주세요.</p>}</div>{selection.departmentId && <div><p className="mb-2 text-xs font-bold text-slate-500">소그룹 선택</p><div className="grid grid-cols-2 gap-2">{(departments.find(dept => (dept.id || dept.name) === selection.departmentId)?.subgroups || []).map((sub, index) => { const id = typeof sub === 'string' ? sub : sub.id || sub.name; return <button type="button" key={id || index} onClick={() => selectSubgroup(sub)} className={`rounded-xl border p-3 text-sm font-bold ${selection.subgroupId === id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600'}`}>{typeof sub === 'string' ? sub : sub.name}</button>; })}</div></div>}<div className="flex gap-2"><button type="button" disabled={busy} onClick={() => setStep('church')} className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-bold text-slate-600">뒤로</button><button type="button" disabled={busy || !selection.departmentId} onClick={joinCommunity} className="flex-[2] rounded-xl bg-blue-600 py-3 text-sm font-bold text-white disabled:bg-slate-300">{busy ? '참여 중...' : '참여하기'}</button></div></div>}
+                    {notice && <p role="alert" aria-live="polite" className={`mt-3 text-xs ${notice.type === 'error' ? 'text-red-600' : 'text-blue-600'}`}>{notice.text}</p>}
+                </div>
+            </div>}
+        </section>
+    );
 
     return (
         <section className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
