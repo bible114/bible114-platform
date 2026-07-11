@@ -240,6 +240,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-11 | T37 관리자 Google 로그인 | `src/utils/authFlowGuard.js`, `src/hooks/useUserAuth.js`, `src/hooks/useAuth.js`, `src/components/LoginView.jsx`, `src/App.jsx`, `HANDOFF_CODEX.md` | 관리자 탭에만 compat `signInWithPopup` Google 로그인과 오류·카카오톡 인앱 안내를 추가하고 기존 관리자 후처리를 공유. users 문서가 없거나 관리자 역할이 아니면 즉시 로그아웃하며 `churchAdmin`/`platformAdmin`과 레거시 플랫폼 역할 `superAdmin`만 허용. password provider 소실 안내 토스트와 Auth 리스너 대화형 흐름·stale UID 경합 방어 추가. 브라우저에서 관리자 버튼 1개, member/memberSignup/adminSignup/guest 비노출, 콘솔 오류 0건 확인. `npm run build`, Auth flow 중첩 테스트, `git diff --check`, 독립 계약 감사·코드리뷰 통과. M8 미실행으로 실 Google 팝업·실제 관리자 로그인·계정 병합은 미검증. |
 | 2026-07-11 | T38 교회 등록 Google 계정 흐름 | `src/hooks/useAuth.js`, `src/components/LoginView.jsx`, `src/App.jsx`, `HANDOFF_CODEX.md` | adminSignup 1단계에 Google 시작과 기존 이메일·비밀번호 방식을 병행하고 Google 이메일 고정·이름 수정, 이메일 방식 복귀, 탭 이탈 취소를 구현. 팝업·최종 제출 Promise-ref 중복 방어와 장기 Auth guard를 적용하고, 최종 transaction에서 users 문서 부재와 현재 Auth uid·email·google.com provider를 재검증한 뒤 church/user/churchDirectory 3문서를 원자 기록. Google users는 `password: null`, createUser/private/auth 쓰기 없음. 브라우저에서 Google+이메일 병행 UI와 최종 reload 이후 콘솔 오류 0건 확인. `npm run build`, 원자성·상태 정적 계약 검사, `git diff --check`, 독립 재감사 통과. M8 미실행으로 실 Google 팝업·Firestore transaction·가입→온보딩→로그아웃→Google 재로그인은 미검증. |
 | 2026-07-11 | T39 기존 관리자 Google 연결 | `src/components/admin/GoogleLinkCard.jsx`, `src/components/admin/index.js`, `src/components/ChurchAdminView.jsx`, `src/components/PlatformAdminView.jsx`, `src/App.jsx`, `HANDOFF_CODEX.md` | UID·관리자 역할을 재검증하는 공용 카드를 교회 관리자 설정/플랫폼 관리자 시스템 탭에 연결. compat `linkWithPopup`과 provider 상태 갱신, 충돌·팝업·카카오톡 안내, 중복 실행 방어를 추가하고, Google 연결 후 비밀번호 provider를 2회 확인으로 제거한 뒤 users.password를 null 처리. Auth 해제 후 Firestore 갱신 실패는 부분 성공 경고로 구분하며 users의 다른 필드와 private/auth는 수정하지 않음. `npm run build`, T39 정적 계약 검사, `git diff --check`, 독립 코드리뷰 통과. M8/M9 미실행으로 실 Google 연결·재로그인·비밀번호 제거는 미검증. |
+| 2026-07-11 | T40 데이터 필드 + 공용 헬퍼 | `src/utils/memberships.js`, `src/utils/helpers.js`, `src/hooks/useAuth.js`, `src/components/PlatformAdminView.jsx`, `HANDOFF_CODEX.md` | 신규 users 생성 경로와 seed에 `extraMemberships: []`를 추가하고 기존·비정상 문서는 `userDocToState`에서 빈 배열로 안전 매핑. 공용 헬퍼는 주 소속을 우선해 추가 소속 최대 3개를 정규화하고 `(departmentId, subgroupId)` 기준 중복 제거하며, 부서/소그룹 판정도 이 목록만 사용. 기존 사용자 백필은 하지 않음. `npm run build`, 중복·상한·입력 불변·비정상 데이터 인라인 assertion, `git diff --check`, 독립 코드리뷰 통과. |
 
 ---
 
@@ -310,6 +311,9 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T39 완료. `GoogleLinkCard`는 렌더와 각 작업 시점에 화면 계정 uid·현재 Auth uid·관리자 역할을 확인하고, 로컬 provider snapshot으로 연결/해제 결과를 즉시 반영한다. 플랫폼 관리자 시스템 탭과 교회 관리자 설정 탭에서 재사용하며 uid가 없는 가짜 관리자 미리보기에서는 렌더링하지 않는다.
 - T39 비밀번호 제거는 경고를 두 번 확인한 뒤 Auth의 password provider를 먼저 해제하고 users 문서의 `password`만 null로 갱신한다. 후속 Firestore 갱신 실패나 계정 전환은 Auth 해제가 이미 끝난 부분 성공 상태로 별도 경고하며, 다른 users 필드와 `private/auth`는 수정하지 않는다.
 - T39 검증: `npm run build`, 정확 문구·compat API·uid/role guard·두 관리자 화면 연결 정적 계약 검사, `git diff --check`, 독립 코드리뷰를 통과했다. M8/M9를 실행하지 않아 실 Google 연결·Google 재로그인·비밀번호 provider 제거는 미검증이다. 코드상 막힌 점은 없으며 다음 작업은 T40 데이터 필드와 공용 멤버십 헬퍼다.
+- T40 완료. 성도 신규 가입, Google/이메일 교회 관리자 생성, 플랫폼 seed 생성에 `extraMemberships: []`를 넣고, 기존 문서나 잘못된 타입은 `userDocToState`에서 빈 배열로 처리한다. 기존 사용자 문서는 백필하지 않으며 로그인/목록 로드 시 안전하게 호환된다.
+- T40 공용 `memberships.js`는 주 소속을 먼저 보존하고 저장 순서상 추가 소속 최대 3개를 새 객체로 정규화한다. `(departmentId, subgroupId)` 쌍으로 중복을 제거하며 `belongsToDepartment`와 `belongsToSubgroup`도 반드시 이 공용 목록을 거친다. 부서만 배정되고 소그룹이 없는 주 소속도 부서 판정을 위해 유지한다.
+- T40 검증: `npm run build`, 중복 제거·같은 소그룹명/다른 부서·추가 3개 상한·frozen 입력 불변·비정상 입력·부서/소그룹 true/false 인라인 assertion, `git diff --check`, 독립 코드리뷰를 통과했다. 막힌 점은 없으며 다음 작업은 T41 다중 소속 집계·랭킹 반영이다.
 
 ---
 
@@ -593,7 +597,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
 > 배경: 한 사람이 "여전도회이면서 1구역"처럼 교회 안에서 여러 공동체에 속할 수 있다. 읽기 기록은 이미 사람(users 문서)에 붙어 있으므로 **데이터를 복제하지 않는다** — 집계·표시에서 한 사람을 여러 그룹에 세는 방식. 규칙 변경 불필요(같은 교회 안).
 > 설계 원칙: 기존 `departmentId/subgroupId`는 **주 소속으로 유지**(마이그레이션 없음, 온보딩도 그대로 주 소속 1개 선택). 추가 소속은 새 배열 필드.
 
-- [ ] **T40. 데이터 필드 + 공용 헬퍼**
+- [x] **T40. 데이터 필드 + 공용 헬퍼**
   - users 문서에 `extraMemberships: [{departmentId, departmentName, subgroupId, subgroupName}]` (기본 없음/빈 배열, 최대 3개). `userDocToState`에 `extraMemberships: d.extraMemberships ?? []` 매핑.
   - 신규 `src/utils/memberships.js`: `getMembershipList(user)` → 주 소속 + extraMemberships를 합쳐 (departmentId+subgroupId) 기준 중복 제거한 배열 반환. **모든 소비자는 반드시 이 헬퍼만 사용** (직접 필드 조합 금지 — 소비자마다 어긋나면 집계 불일치 사고).
   - `belongsToDepartment(user, deptId)` / `belongsToSubgroup(user, deptId, subId)` 헬퍼도 함께.

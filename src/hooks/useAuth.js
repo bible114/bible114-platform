@@ -103,6 +103,7 @@ export const useAuth = ({
             // (finishMemberSignup). null 마커는 같은 교회 랭킹 read 허용 조건이다.
             name, birthdate, password: null, email,
             role: 'member', churchId, churchName,
+            extraMemberships: [],
             startDate: new Date().toDateString(),
             currentDay: migrateGuest ? guest.currentDay : 1,
             streak: migrateGuest ? guest.streak : 0,
@@ -576,6 +577,7 @@ export const useAuth = ({
                     const newUser = {
                         name, email: resolvedEmail, password: null, birthdate: null,
                         role: 'churchAdmin', churchId: churchRef.id, churchName,
+                        extraMemberships: [],
                         startDate: new Date().toDateString(),
                         currentDay: 1, streak: 0, score: 0, talent: 0, talentMigrated: true, readCount: 1,
                         lastReadDate: null, gender: 'male', planId: '1year_revised',
@@ -657,6 +659,7 @@ export const useAuth = ({
             const newUser = {
                 name, email, password, birthdate: null,
                 role: 'churchAdmin', churchId: churchRef.id, churchName,
+                extraMemberships: [],
                 startDate: new Date().toDateString(),
                 currentDay: 1, streak: 0, score: 0, talent: 0, talentMigrated: true, readCount: 1,
                 lastReadDate: null, gender: 'male', planId: '1year_revised',

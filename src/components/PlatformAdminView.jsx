@@ -477,6 +477,7 @@ const PlatformAdminView = ({
                     name, birthdate, password: null,
                     email: `${encodeURIComponent(name)}_${birthdate}@bible.local`,
                     role: 'member', churchId: church.id, churchName: church.name,
+                    extraMemberships: [],
                     departmentId: comm.id, departmentName: comm.name, subgroupId: subgroup,
                     planId: '1year_revised', currentDay, readCount, score, streak,
                     lastReadDate, gender: isMale ? 'male' : 'female',

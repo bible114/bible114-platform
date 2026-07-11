@@ -69,6 +69,7 @@ export const userDocToState = (doc) => {
         role: d.role || 'member',
         churchId: d.churchId || null,
         churchName: d.churchName || null,
+        extraMemberships: Array.isArray(d.extraMemberships) ? d.extraMemberships : [],
         startDate: d.startDate,
         currentDay: d.currentDay ?? 1,
         streak: d.streak ?? 0,
