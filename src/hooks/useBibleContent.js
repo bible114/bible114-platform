@@ -74,7 +74,8 @@ export const useBibleContent = (currentUser) => {
         return null;
     };
 
-    const fetchNotionData = async (planId, currentDay) => {
+    // 관리자 도구로 사전 캐싱된 본문을 조회한다 (Notion 실시간 연동 없음, 캐시 미스 시 에러 반환)
+    const fetchCachedVerseData = async (planId, currentDay) => {
         const [planType, version] = (planId || '1year_revised').split('_');
 
         console.log(`📖 본문 로딩: planId=${planId}, day=${currentDay}, cacheKey=${planType}_${version}_${currentDay}`);
@@ -103,19 +104,19 @@ export const useBibleContent = (currentUser) => {
         const planTypeName = planTypeData ? planTypeData.title : '성경 통독';
 
         const actualDay = getActualDay(dayToShow, dayOffset);
-        const notionData = await fetchNotionData(planId, actualDay);
+        const cachedContent = await fetchCachedVerseData(planId, actualDay);
 
         const readCountBadge = readCount > 1 ? ` (${readCount - 1}독 완료)` : '';
 
-        if (notionData && notionData.text && !notionData.text.startsWith('[오류]')) {
-            let processedText = notionData.text;
+        if (cachedContent && cachedContent.text && !cachedContent.text.startsWith('[오류]')) {
+            let processedText = cachedContent.text;
 
             // 새한글 버전일 경우 절 표시 처리
             if (version && version.startsWith('saehangul')) {
                 processedText = formatSaehangulText(processedText);
             }
 
-            let finalAudioUrl = notionData.audioUrl || null;
+            let finalAudioUrl = cachedContent.audioUrl || null;
             if (!finalAudioUrl && AUDIO_BASE_URL && AUDIO_BASE_URL.startsWith('http')) {
                 const baseUrl = AUDIO_BASE_URL.replace(/\/$/, '');
                 finalAudioUrl = `${baseUrl}/${planId}/${actualDay}.mp3`;
@@ -123,7 +124,7 @@ export const useBibleContent = (currentUser) => {
 
             setVerseData({
                 title: `${planTypeName} DAY ${dayToShow}일${readCountBadge}`,
-                subtitle: notionData.title || `(제목 없음)`,
+                subtitle: cachedContent.title || `(제목 없음)`,
                 text: processedText,
                 audioUrl: finalAudioUrl,
                 error: false,
@@ -131,10 +132,10 @@ export const useBibleContent = (currentUser) => {
             });
         } else {
             const versionName = getVersionName(planType, version);
-            const isMissingCache = notionData && notionData.error === 'missing_cache';
+            const isMissingCache = cachedContent && cachedContent.error === 'missing_cache';
             let displayText = actualDay === 1 && !isMissingCache
                 ? GENESIS_1
-                : ((notionData && notionData.text) || createMissingContentMessage(versionName, dayToShow));
+                : ((cachedContent && cachedContent.text) || createMissingContentMessage(versionName, dayToShow));
 
             // 새한글 버전일 경우 절 표시 처리
             if (version && version.startsWith('saehangul') && !isMissingCache) {

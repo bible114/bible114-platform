@@ -1,4 +1,4 @@
-// 기본 텍스트 (창세기 1장 - 캐시/노션 로드 실패 시 기본값)
+// 기본 텍스트 (창세기 1장 - 캐시 로드 실패 시 기본값)
 export const GENESIS_1 = `### 1. 태초에 하나님이 천지를 창조하시니라
 2. 땅이 혼돈하고 공허하며 흑암이 깊음 위에 있고 하나님의 영은 수면 위에 운행하시니라
 3. 하나님이 이르시되 빛이 있으라 하시니 빛이 있었고
@@ -10,7 +10,6 @@ export const AUDIO_BASE_URL = "https://bible114.net/html/audio";
 // 인쇄물(QR·링크 텍스트)에는 절대 localhost/개발 주소가 들어가면 안 되므로
 // window.location.origin 대신 이 고정 주소를 사용한다.
 export const SITE_URL = "https://www.bible114.net";
-export const SUPABASE_FUNCTION_URL = "https://mvwhepqqzdtqtorgkrtf.supabase.co/functions/v1/notion-proxy";
 // 카카오톡 채널 상담 URL (실제 채널 ID로 교체 필요)
 export const KAKAO_CHANNEL_URL = "http://pf.kakao.com/_xdJrRX/chat";
 

@@ -18,7 +18,6 @@ import PlatformAdminView from './components/PlatformAdminView';
 import PlanSelectionView from './components/PlanSelectionView';
 import DashboardView from './components/DashboardView';
 import GuestReaderView from './components/GuestReaderView';
-import { SUPABASE_FUNCTION_URL } from './data/constants';
 import { useTTS } from './hooks/useTTS';
 
 
@@ -124,13 +123,10 @@ const App = () => {
         enabled: false
     }); // 공지 입력
     const [kakaoLinkInput, setKakaoLinkInput] = useState(''); // 카카오 링크 입력
-    const [syncProgress, setSyncProgress] = useState(null);   // 동기화 진행 상황
     const [fontSize, setFontSize] = useState(() => {
         const saved = localStorage.getItem('bible_fontSize');
         return saved ? parseInt(saved, 10) : 16; // 기본값 16px
     });
-    const [lastSyncInfo, setLastSyncInfo] = useState(null); // 마지막 동기화 정보
-    const [selectedSyncVersions, setSelectedSyncVersions] = useState(['1year_revised']); // 동기화할 버전들
 
     // Auth Hook
     // const { currentUser, setCurrentUser, authLoading } = useUserAuth(); // Already defined above
@@ -404,166 +400,6 @@ const App = () => {
         } catch (e) { console.error(e); alert("서버 저장 실패"); }
     };
 
-
-
-
-
-    // Supabase URL들
-    const SUPABASE_BULK_URL = SUPABASE_FUNCTION_URL.replace('notion-proxy', 'notion-proxy-bulk');
-    const SUPABASE_PAGE_URL = SUPABASE_FUNCTION_URL.replace('notion-proxy', 'notion-proxy-page');
-
-    // 관리자용: 노션 → Firestore 동기화 (Bulk 방식)
-    const syncNotionToFirestore = async (planIds = ['1year_revised']) => {
-        if (!db || !SUPABASE_FUNCTION_URL) {
-            alert('설정 오류');
-            return { success: 0, error: 0, failedItems: [] };
-        }
-
-        let totalSuccess = 0;
-        let totalError = 0;
-        const failedItems = [];
-
-        for (const planId of planIds) {
-            const [planType, version] = planId.split('_');
-            const versionInfo = BIBLE_VERSIONS[planType] ? BIBLE_VERSIONS[planType].find(v => v.id === version) : null;
-            const targetTag = (versionInfo && versionInfo.tagName) || '개역개정 일년일독';
-            const versionName = (versionInfo && versionInfo.name) || planId;
-
-            setSyncProgress({
-                current: 0,
-                total: 365,
-                success: 0,
-                error: 0,
-                currentVersion: versionName,
-                currentDay: 0,
-                status: '📥 노션에서 목록 가져오는 중...'
-            });
-
-            try {
-                // 1단계: Bulk로 모든 페이지 메타데이터 가져오기
-                console.log(`📥 ${versionName} 목록 가져오는 중...`);
-                const bulkResponse = await fetch(SUPABASE_BULK_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tag: targetTag, includeContent: false })
-                });
-
-                if (!bulkResponse.ok) {
-                    throw new Error(`Bulk API Error: ${bulkResponse.status}`);
-                }
-
-                const bulkData = await bulkResponse.json();
-                console.log(`✅ ${bulkData.count}개 페이지 목록 수신`);
-
-                if (!bulkData.items || bulkData.items.length === 0) {
-                    throw new Error('노션에서 가져온 데이터가 없습니다');
-                }
-
-                // 날짜 → Day 번호 맵
-                const dateToDay = {};
-                for (let day = 1; day <= 365; day++) {
-                    const targetDate = new Date(2025, 0, day);
-                    const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
-                    const dd = String(targetDate.getDate()).padStart(2, '0');
-                    dateToDay[`${mm}-${dd}`] = day;
-                }
-
-                // 2단계: 각 페이지의 본문 가져와서 저장
-                const items = bulkData.items;
-                let processed = 0;
-
-                for (const item of items) {
-                    const day = dateToDay[item.date];
-                    if (!day) {
-                        console.log(`⚠️ 날짜 매핑 실패: ${item.date}`);
-                        totalError++;
-                        failedItems.push({
-                            planId, versionName, day: 0, date: item.date,
-                            error: '날짜 매핑 실패'
-                        });
-                        continue;
-                    }
-
-                    try {
-                        // pageId로 직접 본문 가져오기 (DB 쿼리 없이!)
-                        const pageResponse = await fetch(SUPABASE_PAGE_URL, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ pageId: item.pageId })
-                        });
-
-                        if (!pageResponse.ok) throw new Error(`Page API Error: ${pageResponse.status}`);
-                        const pageData = await pageResponse.json();
-
-                        if (pageData.text) {
-                            // Firestore에 저장
-                            // ★ pageId 저장 (오디오 실시간 로드용)
-                            const cacheKey = `${planType}_${version}_${day}`;
-                            await db.collection('verses').doc(cacheKey).set({
-                                title: item.title,
-                                text: pageData.text,
-                                pageId: item.pageId,  // ★ pageId 저장!
-                                day: day,
-                                planId: planId,
-                                syncedAt: firebase.firestore.FieldValue.serverTimestamp()
-                            });
-                            totalSuccess++;
-                            console.log(`✅ Day ${day} (${item.date}) 저장 완료`);
-                        } else {
-                            throw new Error('본문 없음');
-                        }
-
-                    } catch (e) {
-                        totalError++;
-                        failedItems.push({
-                            planId, versionName, day, date: item.date,
-                            error: e.message
-                        });
-                        console.error(`❌ Day ${day} 실패:`, e.message);
-                    }
-
-                    processed++;
-
-                    // 진행 상황 업데이트 (5개마다)
-                    if (processed % 5 === 0) {
-                        setSyncProgress({
-                            current: processed,
-                            total: items.length,
-                            success: totalSuccess,
-                            error: totalError,
-                            currentVersion: versionName,
-                            currentDay: day,
-                            status: `📝 본문 저장 중... (${processed}/${items.length})`
-                        });
-                    }
-
-                    // API 부하 방지 (200ms)
-                    await new Promise(r => setTimeout(r, 200));
-                }
-
-            } catch (e) {
-                console.error(`❌ ${versionName} 동기화 실패:`, e);
-                totalError += 365;
-                failedItems.push({
-                    planId, versionName, day: 0, date: '',
-                    error: `전체 실패: ${e.message}`
-                });
-            }
-        }
-
-        // 마지막 동기화 시간 저장
-        await db.collection('settings').doc('sync').set({
-            lastSyncAt: firebase.firestore.FieldValue.serverTimestamp(),
-            successCount: totalSuccess,
-            errorCount: totalError,
-            syncedVersions: planIds,
-            failedItems: failedItems.slice(0, 50)
-        });
-
-        setSyncProgress(null);
-        return { success: totalSuccess, error: totalError, failedItems };
-    };
-
     // ----------------------------------------------------------------------
     // [섹션 H] 데이터 페칭 - 대시보드 진입 시 말씀 로딩
     // ----------------------------------------------------------------------
@@ -665,13 +501,6 @@ const App = () => {
                     setNewPassword={setNewPassword}
                     changePassword={changePassword}
                     deleteUser={deleteUser}
-                    lastSyncInfo={lastSyncInfo}
-                    setLastSyncInfo={setLastSyncInfo}
-                    syncProgress={syncProgress}
-                    setSyncProgress={setSyncProgress}
-                    selectedSyncVersions={selectedSyncVersions}
-                    setSelectedSyncVersions={setSelectedSyncVersions}
-                    syncNotionToFirestore={syncNotionToFirestore}
                     adminStats={getAdminStats(allUsers)}
                     kakaoLinkInput={kakaoLinkInput}
                     setKakaoLinkInput={setKakaoLinkInput}

@@ -16,7 +16,6 @@ const PlatformAdminView = ({
     allUsers,
     allChurches,
     DEFAULT_DEPARTMENTS,
-    BIBLE_VERSIONS,
     announcementInput, setAnnouncementInput,
     saveAnnouncement,
     editingUser, setEditingUser,
@@ -25,10 +24,6 @@ const PlatformAdminView = ({
     newPassword, setNewPassword,
     changePassword,
     deleteUser,
-    lastSyncInfo, setLastSyncInfo,
-    syncProgress, setSyncProgress,
-    selectedSyncVersions, setSelectedSyncVersions,
-    syncNotionToFirestore,
     adminStats,
     kakaoLinkInput, setKakaoLinkInput,
     saveKakaoLink,
@@ -583,7 +578,7 @@ const PlatformAdminView = ({
         ['members', '👥 회원 목록'],
         ['announcement', '📢 공지 관리'],
         ['dailyVideo', '🎬 매일 영상'],
-        ['sync', '🔄 동기화'],
+        ['sync', '🛠 시스템'],
     ];
 
     if (viewingChurchAsAdmin && selectedChurch) {
@@ -1333,7 +1328,7 @@ const PlatformAdminView = ({
                     </div>
                 )}
 
-                {/* ── 노션 동기화 ── */}
+                {/* ── 시스템 유지보수 도구 ── */}
                 {tab === 'sync' && (
                     <div className="space-y-5">
                     {/* 플랫폼 문의 카카오 채널 */}
@@ -1436,102 +1431,6 @@ const PlatformAdminView = ({
                                     : '전원 달란트 0으로 초기화'}
                             </button>
                         </div>
-
-                        <h2 className="text-base font-bold text-slate-800 mb-4">🔄 노션 데이터 동기화</h2>
-                        <div className="bg-blue-50 p-4 rounded-xl border border-blue-200 mb-4">
-                            <p className="text-sm text-blue-700">
-                                노션의 성경 본문을 Firestore에 캐싱하여 <strong>로딩 속도를 10배 이상</strong> 향상시킵니다.<br />
-                                노션 본문을 수정했을 때만 동기화하면 됩니다.
-                            </p>
-                        </div>
-                        {lastSyncInfo && (
-                            <div className="bg-slate-50 p-3 rounded-lg mb-4 text-sm">
-                                <p className="text-slate-600">마지막 동기화: {(lastSyncInfo.lastSyncAt && lastSyncInfo.lastSyncAt.toDate) ? lastSyncInfo.lastSyncAt.toDate().toLocaleString('ko-KR') : '정보 없음'}</p>
-                                <p className="text-slate-500 text-xs">성공: {lastSyncInfo.successCount || 0}개 / 실패: {lastSyncInfo.errorCount || 0}개</p>
-                                {lastSyncInfo.syncedVersions && <p className="text-slate-400 text-xs mt-1">동기화된 버전: {lastSyncInfo.syncedVersions.join(', ')}</p>}
-                                {lastSyncInfo.failedItems && lastSyncInfo.failedItems.length > 0 && (
-                                    <div className="mt-3 pt-3 border-t border-slate-200">
-                                        <p className="text-red-600 text-xs font-bold mb-2">❌ 실패 목록 ({lastSyncInfo.failedItems.length}개):</p>
-                                        <div className="max-h-32 overflow-y-auto bg-white rounded p-2 text-xs">
-                                            {lastSyncInfo.failedItems.map((item, idx) => (
-                                                <div key={idx} className="text-red-500 py-0.5">• {item.versionName} Day {item.day} ({item.date}) - {item.error}</div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                        {syncProgress ? (
-                            <div className="space-y-3">
-                                <div className="bg-amber-50 p-4 rounded-xl border border-amber-200">
-                                    <p className="text-sm font-bold text-amber-700 mb-2">⏳ 동기화 진행 중... ({syncProgress.current}/{syncProgress.total})</p>
-                                    {syncProgress.status && <p className="text-xs text-amber-800 mb-2 font-medium">{syncProgress.status}</p>}
-                                    {syncProgress.currentVersion && <p className="text-xs text-amber-600 mb-2">버전: {syncProgress.currentVersion} {syncProgress.currentDay > 0 && `- Day ${syncProgress.currentDay}`}</p>}
-                                    <div className="w-full bg-amber-200 rounded-full h-3">
-                                        <div className="bg-amber-500 h-3 rounded-full transition-all" style={{ width: `${(syncProgress.current / syncProgress.total) * 100}%` }}></div>
-                                    </div>
-                                    <p className="text-xs text-amber-600 mt-2">✅ 성공: {syncProgress.success}개 / ❌ 실패: {syncProgress.error}개</p>
-                                </div>
-                                <p className="text-xs text-slate-500 text-center">⚠️ 창을 닫지 마세요. 약 2분 소요됩니다.</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-4">
-                                <p className="text-sm font-bold text-slate-700">동기화할 버전 선택:</p>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div className="bg-slate-50 p-3 rounded-lg">
-                                        <p className="text-xs font-bold text-slate-500 mb-2">📖 일년일독</p>
-                                        {BIBLE_VERSIONS['1year'].map(v => {
-                                            const planId = `1year_${v.id}`;
-                                            const isChecked = selectedSyncVersions.indexOf(planId) !== -1;
-                                            return (
-                                                <label key={planId} className="flex items-center gap-2 py-1 cursor-pointer">
-                                                    <input type="checkbox" checked={isChecked}
-                                                        onChange={e => {
-                                                            if (e.target.checked) setSelectedSyncVersions([...selectedSyncVersions, planId]);
-                                                            else setSelectedSyncVersions(selectedSyncVersions.filter(id => id !== planId));
-                                                        }} className="w-4 h-4 rounded" />
-                                                    <span className="text-sm text-slate-700">{v.name}</span>
-                                                </label>
-                                            );
-                                        })}
-                                    </div>
-                                    <div className="bg-slate-50 p-3 rounded-lg">
-                                        <p className="text-xs font-bold text-slate-500 mb-2">📗 신약일독</p>
-                                        {BIBLE_VERSIONS['nt'].map(v => {
-                                            const planId = `nt_${v.id}`;
-                                            const isChecked = selectedSyncVersions.indexOf(planId) !== -1;
-                                            return (
-                                                <label key={planId} className="flex items-center gap-2 py-1 cursor-pointer">
-                                                    <input type="checkbox" checked={isChecked}
-                                                        onChange={e => {
-                                                            if (e.target.checked) setSelectedSyncVersions([...selectedSyncVersions, planId]);
-                                                            else setSelectedSyncVersions(selectedSyncVersions.filter(id => id !== planId));
-                                                        }} className="w-4 h-4 rounded" />
-                                                    <span className="text-sm text-slate-700">{v.name}</span>
-                                                </label>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                                <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                                    <p className="text-sm text-green-700">선택됨: <strong>{selectedSyncVersions.length}개</strong> 버전</p>
-                                </div>
-                                <button
-                                    onClick={async () => {
-                                        if (selectedSyncVersions.length === 0) { alert('동기화할 버전을 선택해주세요.'); return; }
-                                        if (!confirm(`${selectedSyncVersions.length}개 버전을 동기화합니다. 진행할까요?`)) return;
-                                        setSyncProgress({ current: 0, total: selectedSyncVersions.length * 365, success: 0, error: 0, currentVersion: '', currentDay: 0 });
-                                        const result = await syncNotionToFirestore(selectedSyncVersions);
-                                        alert(`동기화 완료!\n성공: ${result.success}개\n실패: ${result.error}개`);
-                                        const syncDoc = await db.collection('settings').doc('sync').get();
-                                        if (syncDoc.exists) setLastSyncInfo(syncDoc.data());
-                                    }}
-                                    disabled={selectedSyncVersions.length === 0}
-                                    className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl hover:bg-blue-700 text-lg disabled:opacity-50">
-                                    📥 선택한 버전 동기화 ({selectedSyncVersions.length * 365}개)
-                                </button>
-                            </div>
-                        )}
                     </div>
                     </div>
                 )}
