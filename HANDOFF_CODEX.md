@@ -247,6 +247,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-12 | T45 로그인 시 내 조직 파악 | `src/utils/roster.js`, `src/utils/rosterSnapshot.js`, `src/hooks/useAuth.js`, `src/hooks/useUserAuth.js`, `src/App.jsx`, `HANDOFF_CODEX.md` | 실제 회원 로그인 경로에서 `collectionGroup('roster').where('uid','==',uid)`를 병렬 조회해 검증·중복 제거·orgId 정렬한 최대 3개 소속을 `currentUser.extraOrgs`에만 보존. 실패는 빈 배열로 처리하고 동일 uid 중복 요청을 합쳤으며, 게스트는 조회하지 않는다. 온보딩 저장 시 transient 필드의 users 문서 영속화를 차단. `npm run build`, mapper fixture, `git diff --check`, 독립 리뷰 2건 통과. 실제 인증 계정의 collectionGroup 조회는 미검증. |
 | 2026-07-12 | T46 공동체 추가·탈퇴 흐름 | `src/components/dashboard/CommunityMembershipCard.jsx`, `src/components/dashboard/index.js`, `src/components/DashboardView.jsx`, `src/utils/roster.js`, `src/utils/rosterSnapshot.js`, `HANDOFF_CODEX.md` | 회원 대시보드에 주 소속+외부 공동체 목록, 검색·입장코드 검증, 부서/소그룹 선택 후 roster 생성, confirm 탈퇴를 추가. mutation 전 오류를 숨기지 않는 전체 collectionGroup 재조회로 중복·최대 3개를 fail-closed 검증하고 users 문서에는 저장하지 않는다. 모달 ESC·포커스 트랩/복원·스크롤 잠금·ARIA 적용. `npm run build`, mapper 상한 fixture, `git diff --check`, 독립 리뷰 3건, 비인증 랜딩 브라우저 콘솔 오류 0건 통과. 인증 회원의 실제 roster 생성·삭제는 운영 데이터 변경 없이 미검증. 동시 탭 max3/create-only 한계는 Claude 메모에 기록. |
 | 2026-07-12 | T47 읽기 진도 roster 동기화 | `src/hooks/useUserBibleActions.js`, `HANDOFF_CODEX.md` | 현재 `extraOrgs` 최대 3개 roster에 score/currentDay/streak/readCount/lastReadDate/updatedAt만 users·history와 같은 transaction으로 update. 삭제 경합으로 전체 transaction이 취소되면 strict collectionGroup 재조회 후 남은 행으로 1회 재시도하며 행을 재생성하지 않는다. 재조회도 일시 실패하면 개인 읽기만 원자 재시도하고 기존 runtime 목록을 보존해 다음 절대 진도 update에서 회복. Auth UID guard와 함수형 상태 갱신으로 계정 전환 오염 차단. `npm run build`, `git diff --check`, 독립 리뷰 3건 통과. 실제 roster 정상/제명 경합은 미검증. |
+| 2026-07-12 | T48 조직 랭킹 병합·관리자 명부 | `src/utils/rosterMembers.js`, `src/hooks/useDepartment.js`, `src/components/ChurchAdminView.jsx`, `src/utils/exportUtils.js`, `HANDOFF_CODEX.md` | 자체 users 교인을 우선하는 uid 병합으로 roster 멤버를 랭킹·달리기·통계·관심 명단·완독자에 포함하고 삭제 자체 교인의 roster 부활을 차단. 관리자 명부에 외부 뱃지와 CSV 구분을 추가하고 roster 소그룹 update·제명 delete만 허용. 외부 users/private/history/비밀번호/달란트 직접 차감·환불은 UI와 handler에서 차단하되 조직 구매 수령은 허용. roster 실패는 자체 교인 로드와 격리. `npm run build`, mapper/own-first fixture, `git diff --check`, 독립 리뷰 3건 통과. 실제 관리자 인증·roster update/delete는 미검증. |
 
 ---
 
@@ -339,6 +340,9 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T47 완료. 현재 `extraOrgs`의 canonical orgId 최대 3개를 users·history와 같은 transaction에서 절대 진도값으로 update한다. 제명 경합은 첫 transaction 전체가 취소된 뒤 strict collectionGroup 조회로 살아 있는 행만 다시 넣어 1회 재시도하며, `update`만 사용해 삭제 행을 되살리지 않는다. roster에는 진행 관련 6개 필드만 쓴다.
 - T47 회귀 방어/제한: 결과 적용 전 현재 Auth UID를 재검사하고 함수형 setter를 써 계정 전환이나 동시 공동체 상태를 덮지 않는다. 제명 뒤 strict 재조회도 일시 실패하면 개인 users/history만 원자 재시도하고 runtime `extraOrgs`는 보존한다. 다음 읽기의 절대 진도값으로 roster가 회복되지만 해당 1회 동안 조직 표시가 뒤처질 수 있다. 또한 T45 로그인 조회 자체가 실패해 처음부터 `extraOrgs=[]`이면 그 세션에는 동기화 대상을 알 수 없다는 기존 가용성 한계가 있다.
 - T47 검증: `npm run build`, `git diff --check`, 독립 리뷰 3건 통과. 실제 Firestore의 정상 roster 동기화, 관리자 제명 직후 경합, collectionGroup 장애 주입은 운영 계정 없이 미검증이다. 다음 순번은 T48이다.
+- T48 완료. 공용 mapper가 canonical roster 행을 관리자/랭킹용 최소 멤버로 변환하고 users 자체 교인을 uid 우선으로 병합한다. 삭제된 자체 교인도 uid를 먼저 점유한 뒤 최종 필터하므로 같은 uid roster로 부활하지 않는다. 성도 랭킹 로더는 users/roster 실패를 상호 격리하고 관리자 로더도 roster 실패 시 자체 명부는 유지한다.
+- T48 개인정보 경계: 외부 멤버 상세은 roster 진행값과 이 조직 소속만 표시하며 소그룹 update와 roster delete 제명만 제공한다. users/private/history 조회·비밀번호·계정 삭제/복원·달란트 창구 차감·환불은 UI와 실행 함수에서 모두 차단했다. 이 조직의 구매 수령 완료는 조직 문서만 바꾸므로 유지하고, 외부 구매의 개인 잔액은 비공개로 표시한다.
+- T48 검증: `npm run build`, canonical mapper·uid 자체교인 우선·삭제 부활 방지 fixture, `git diff --check`, 독립 리뷰 3건 통과. 실제 관리자 인증 화면과 roster 소그룹 배정/제명/구매 수령은 운영 데이터 변경 없이 미검증이다. 라운드 8 T44~T48 완료, 다음 순번은 이미 선행 T49가 완료된 라운드 9의 T50이다.
 
 ---
 
@@ -666,7 +670,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
 - [x] **T45. 로그인 시 내 조직 파악** — collectionGroup('roster').where('uid','==',내uid) 조회 → currentUser.extraOrgs. 실패해도 로그인은 진행(조용히 빈 배열).
 - [x] **T46. 공동체 추가/탈퇴 흐름 (성도)** — 대시보드 설정 영역 "내 공동체": 현재 조직 목록 + "공동체 추가"(검색+입장코드) + 탈퇴(자기 행 삭제, confirm). 최대 3개.
 - [x] **T47. handleRead 진도 동기화** — 트랜잭션에 extraOrgs roster 행 갱신 포함. 행이 삭제된 경우(제명) 조용히 스킵.
-- [ ] **T48. 조직 랭킹 병합 + 관리자 명부 관리** — loadAllMembers 병합(uid dedupe), ChurchAdminView에 "외부 공동체 멤버" 구분 뱃지 + 소그룹 배정/제명(roster 행만). 관심 명단·통계에 roster 멤버 포함.
+- [x] **T48. 조직 랭킹 병합 + 관리자 명부 관리** — loadAllMembers 병합(uid dedupe), ChurchAdminView에 "외부 공동체 멤버" 구분 뱃지 + 소그룹 배정/제명(roster 행만). 관심 명단·통계에 roster 멤버 포함.
 
 ---
 

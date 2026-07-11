@@ -155,10 +155,11 @@ const getMembershipCell = (user) => {
 
 export const downloadCSV = (allUsers) => {
     if (allUsers.length === 0) { alert("데이터가 없습니다."); return; }
-    let csvContent = `\uFEFF${buildCsvRow(['이름', '소속', '현재Day', '총점수', '연속일수', '마지막읽은날', '플랜ID'])}\r\n`;
+    let csvContent = `\uFEFF${buildCsvRow(['이름', '구분', '소속', '현재Day', '총점수', '연속일수', '마지막읽은날', '플랜ID'])}\r\n`;
     allUsers.forEach(u => {
         csvContent += `${buildCsvRow([
             u.name,
+            u.isExternalOrgMember ? '외부 공동체 멤버' : '자체 교인',
             getMembershipCell(u),
             u.currentDay,
             u.score,

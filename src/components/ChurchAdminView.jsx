@@ -22,6 +22,7 @@ import TalentShop from './dashboard/TalentShop';
 import GoogleLinkCard from './admin/GoogleLinkCard';
 import QRCode from 'qrcode';
 import { SITE_URL } from '../data/constants';
+import { mergePrimaryAndRosterMembers, rosterSnapshotToMembers } from '../utils/rosterMembers';
 
 const formatReadDate = (dateStr) => {
     if (!dateStr) return '-';
@@ -124,8 +125,10 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [membersSnap, announcementDoc, churchDoc, kakaoDoc, platformDoc, talentShopDoc] = await Promise.all([
+            const [membersSnap, rosterSnap, announcementDoc, churchDoc, kakaoDoc, platformDoc, talentShopDoc] = await Promise.all([
                 db.collection('users').where('churchId', '==', currentUser.churchId).get(),
+                db.collection('churches').doc(currentUser.churchId).collection('roster').get()
+                    .catch(error => { console.error('외부 명부 로딩 실패:', error); return { docs: [] }; }),
                 db.collection('churches').doc(currentUser.churchId).collection('settings').doc('announcement').get(),
                 db.collection('churches').doc(currentUser.churchId).get(),
                 db.collection('churches').doc(currentUser.churchId).collection('settings').doc('kakao').get(),
@@ -133,8 +136,11 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 db.collection('churches').doc(currentUser.churchId).collection('settings').doc('talentShop').get(),
             ]);
             const loadedMembers = membersSnap.docs.map(d => ({ uid: d.id, ...d.data() })).filter(m => m.role !== 'churchAdmin');
-            const activeMembers = loadedMembers.filter(m => !m.isDeleted);
-            setMembers(loadedMembers.filter(m => !m.isDeleted));
+            const activeMembers = mergePrimaryAndRosterMembers(
+                loadedMembers,
+                rosterSnapshotToMembers(rosterSnap)
+            ).filter(member => !member.isDeleted);
+            setMembers(activeMembers);
             setDeletedMembers(loadedMembers.filter(m => m.isDeleted));
             if (announcementDoc.exists) {
                 const data = announcementDoc.data() || {};
@@ -166,13 +172,14 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             }
             try {
                 const memberIds = new Set(activeMembers.map(m => m.uid));
+                const externalMemberIds = new Set(activeMembers.filter(m => m.isExternalOrgMember).map(m => m.uid));
                 const purchaseSnap = await db.collection('churches').doc(currentUser.churchId)
                     .collection('talentPurchases')
                     .orderBy('createdAt', 'desc')
                     .limit(200)
                     .get();
                 setTalentPurchases(purchaseSnap.docs
-                    .map(d => ({ id: d.id, ...d.data() }))
+                    .map(d => ({ id: d.id, ...d.data(), isExternalBuyer: externalMemberIds.has(d.data()?.uid) }))
                     .filter(p => memberIds.has(p.uid)));
             } catch (purchaseError) {
                 console.error('달란트 구매 내역 로드 실패:', purchaseError);
@@ -186,6 +193,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
     // 이관 완료된 회원은 본문서의 password가 null이므로, 필요할 때만 private 하위문서를 조회한다.
     const revealPassword = async (uid) => {
+        if (members.find(member => member.uid === uid)?.isExternalOrgMember) return;
         setRevealedPasswords(prev => ({ ...prev, [uid]: '__loading__' }));
         try {
             const data = await fetchMemberCredentials(uid);
@@ -196,6 +204,15 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     };
 
     const deleteMember = async (member) => {
+        if (member?.isExternalOrgMember) {
+            setConfirmAction({
+                type: 'expelRosterMember', member,
+                title: `${member.name}님을 공동체에서 제명할까요?`,
+                message: '이 공동체의 명부 행만 삭제하며 상대방의 계정과 다른 공동체 소속은 유지됩니다.',
+                danger: true, confirmLabel: '제명',
+            });
+            return;
+        }
         setConfirmAction({
             type: 'deleteMember',
             member,
@@ -205,7 +222,21 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         });
     };
 
+    const executeExpelRosterMember = async (member) => {
+        if (!member?.isExternalOrgMember || !currentUser?.churchId || !member.uid) return;
+        try {
+            await db.collection('churches').doc(currentUser.churchId).collection('roster').doc(member.uid).delete();
+            setMembers(prev => prev.filter(item => item.uid !== member.uid));
+            if (selectedMember?.uid === member.uid) closeMemberDetail();
+            toast.success(`${member.name}님을 공동체에서 제명했습니다.`);
+        } catch (error) {
+            console.error('외부 공동체 멤버 제명 실패:', error);
+            toast.error('공동체 제명에 실패했습니다.');
+        }
+    };
+
     const executeDeleteMember = async (member) => {
+        if (member?.isExternalOrgMember) return;
         try {
             const deletedData = {
                 isDeleted: true,
@@ -235,6 +266,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     };
 
     const executeRestoreMember = async (member) => {
+        if (member?.isExternalOrgMember) return;
         try {
             await db.collection('users').doc(member.uid).set({
                 isDeleted: false,
@@ -469,6 +501,16 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
         try {
             const settled = await Promise.allSettled(uniqueTargets.map(member => {
+                if (member.isExternalOrgMember) {
+                    if (!targetChurchId) return Promise.reject(new Error('ROSTER_ORG_MISSING'));
+                    return db.collection('churches').doc(targetChurchId).collection('roster').doc(member.uid).update({
+                        departmentId: comm.id,
+                        departmentName: comm.name,
+                        subgroupId: subId,
+                        subgroupName,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    }).then(() => ({ uid: member.uid, extraMemberships: [], isExternalOrgMember: true }));
+                }
                 const userRef = db.collection('users').doc(member.uid);
                 return db.runTransaction(async transaction => {
                     const userDoc = await transaction.get(userRef);
@@ -540,6 +582,11 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     };
 
     const resetPasswordsForMembers = async (targetMembers) => {
+        const externalCount = targetMembers.filter(member => member?.isExternalOrgMember).length;
+        if (externalCount > 0) {
+            toast.warning('외부 공동체 멤버의 비밀번호는 소속 교회 관리자만 변경할 수 있습니다.');
+            return;
+        }
         const updates = targetMembers.map(member => ({ member, password: generatePassword() }));
         // 평문 암호는 private 하위문서에 먼저 기록하고, 본문서에는 null 마커만 남긴다
         // (같은 교회 교인 랭킹 조회를 열어주는 firestore.rules 조건 유지 — memberCredentials.js 참고)
@@ -599,6 +646,10 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         setSgSubId(member.subgroupId || '');
         setExtraCommId('');
         setExtraSubId('');
+        if (member.isExternalOrgMember) {
+            setDetailLoading(false);
+            return;
+        }
         try {
             const snap = await db.collection('users').doc(member.uid).collection('history')
                 .orderBy('date', 'desc').limit(10).get();
@@ -620,6 +671,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         try {
             let shouldRunAfter = true;
             if (action.type === 'deleteMember') await executeDeleteMember(action.member);
+            if (action.type === 'expelRosterMember') await executeExpelRosterMember(action.member);
             if (action.type === 'restoreMember') await executeRestoreMember(action.member);
             if (action.type === 'bulkSubgroup') {
                 shouldRunAfter = await applySubgroupToMembers(action.members, action.commId, action.subId);
@@ -797,6 +849,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         const price = parseInt(deductForm.price, 10);
         const itemName = deductForm.itemName.trim();
         if (!member) { toast.error('교인을 선택해주세요.'); return; }
+        if (member.isExternalOrgMember) { toast.error('외부 공동체 멤버는 원 소속 교회에서만 달란트를 차감할 수 있습니다.'); return; }
         if (!itemName) { toast.error('구입 물품을 반드시 기록해주세요.'); return; }
         if (!price || price <= 0) { toast.error('차감할 달란트를 입력해주세요.'); return; }
         if ((member.talent || 0) < price) {
@@ -813,6 +866,10 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     };
 
     const executeManualDeduct = async ({ member, itemName, price }) => {
+        if (member?.isExternalOrgMember) {
+            toast.error('외부 공동체 멤버의 개인 달란트는 변경할 수 없습니다.');
+            return;
+        }
         setDeducting(true);
         try {
             const purchaseRef = db.collection('churches').doc(currentUser.churchId)
@@ -1063,6 +1120,11 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             return;
         }
 
+        if (purchase.isExternalBuyer || memberById[purchase.uid]?.isExternalOrgMember) {
+            toast.error('외부 공동체 멤버의 환불은 플랫폼 관리자에게 문의해주세요.');
+            return;
+        }
+
         const batch = db.batch();
         const purchaseRef = db.collection('churches').doc(currentUser.churchId)
             .collection('talentPurchases').doc(purchase.id);
@@ -1189,7 +1251,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             header: '이름',
             render: m => (
                 <div>
-                    <p className="font-black text-slate-800">{m.name}</p>
+                    <p className="font-black text-slate-800">{m.name} {m.isExternalOrgMember && <span className="ml-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] text-violet-700">외부 공동체 멤버</span>}</p>
                     <p className="text-xs text-slate-400">{m.birthdate || '-'}</p>
                 </div>
             ),
@@ -1277,7 +1339,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 ) : items.slice(0, 5).map(member => (
                     <div key={member.uid} className="px-4 py-3 flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                            <p className="text-sm font-bold text-slate-800 truncate">{member.name}</p>
+                            <p className="text-sm font-bold text-slate-800 truncate">{member.name} {member.isExternalOrgMember && <span className="ml-1 rounded-full bg-violet-50 px-1.5 py-0.5 text-[9px] text-violet-700">외부</span>}</p>
                             <p className="text-xs text-slate-400 truncate">{getMemberMembershipText(member)}</p>
                         </div>
                         <span className="shrink-0 text-xs font-black text-slate-500">{getMeta(member)}</span>
@@ -1533,6 +1595,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                             renderSelectionActions={({ selectedRows, clearSelection }) => {
                                                 const bulkComm = orgComms.find(c => c.id === bulkCommId);
                                                 const canChangeSubgroup = Boolean(bulkCommId && bulkSubId);
+                                                const hasExternalSelected = selectedRows.some(member => member.isExternalOrgMember);
                                                 return (
                                                     <>
                                                         <select
@@ -1573,6 +1636,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                                         </button>
                                                         <button
                                                             type="button"
+                                                            disabled={hasExternalSelected}
                                                             onClick={() => setConfirmAction({
                                                                 type: 'bulkPassword',
                                                                 members: selectedRows,
@@ -1582,10 +1646,11 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                                                 confirmLabel: '초기화',
                                                                 after: clearSelection,
                                                             })}
-                                                            className="rounded-lg bg-red-600 px-3 py-2 text-xs font-black text-white"
+                                                            className="rounded-lg bg-red-600 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
                                                         >
                                                             비밀번호 초기화
                                                         </button>
+                                                        {hasExternalSelected && <span className="text-[10px] font-bold text-violet-700">외부 멤버는 비밀번호 변경 제외</span>}
                                                     </>
                                                 );
                                             }}
@@ -1702,7 +1767,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                             onChange={e => setDeductForm(prev => ({ ...prev, uid: e.target.value }))}
                                             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700">
                                             <option value="">교인 선택</option>
-                                            {[...members].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR')).map(m => (
+                                            {[...members].filter(m => !m.isExternalOrgMember).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR')).map(m => (
                                                 <option key={m.uid} value={m.uid}>{m.name} (⭐{m.talent || 0})</option>
                                             ))}
                                         </select>
@@ -1901,7 +1966,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                                                 <td className="px-4 py-3 text-sm text-slate-600">{purchase.itemName}</td>
                                                                 <td className="px-4 py-3 text-sm font-black text-amber-600">⭐ {purchase.price || 0}</td>
                                                                 <td className="px-4 py-3 text-xs font-bold text-slate-400">{formatAnyDate(purchase.createdAt)}</td>
-                                                                <td className="px-4 py-3 text-sm font-black text-slate-600">{buyer ? `⭐ ${buyer.talent || 0}` : '-'}</td>
+                                                                <td className="px-4 py-3 text-sm font-black text-slate-600">{buyer?.isExternalOrgMember || purchase.isExternalBuyer ? '비공개' : (buyer ? `⭐ ${buyer.talent || 0}` : '-')}</td>
                                                                 <td className="px-4 py-3">
                                                                     {purchase.status === 'pending' ? (
                                                                         <div className="flex justify-end gap-2">
@@ -1918,7 +1983,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                                                             >
                                                                                 수령 완료
                                                                             </button>
-                                                                            <button
+                                                                            {!(purchase.isExternalBuyer || buyer?.isExternalOrgMember) && <button
                                                                                 type="button"
                                                                                 onClick={() => setConfirmAction({
                                                                                     type: 'refundPurchase',
@@ -1931,7 +1996,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                                                                 className="rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-500"
                                                                             >
                                                                                 취소·환불
-                                                                            </button>
+                                                                            </button>}
                                                                         </div>
                                                                     ) : (
                                                                         <p className="text-right text-xs font-black text-slate-400">{purchase.status === 'delivered' ? '수령 완료' : '취소됨'}</p>
@@ -2153,7 +2218,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                         >
                             닫기
                         </button>
-                        <button
+                        {!selectedMember.isExternalOrgMember && <button
                             type="button"
                             onClick={() => setConfirmAction({
                                 type: 'singlePassword',
@@ -2166,19 +2231,24 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                             className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white"
                         >
                             비밀번호 초기화
-                        </button>
+                        </button>}
                         <button
                             type="button"
                             onClick={() => deleteMember(selectedMember)}
                             className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-black text-white"
                         >
-                            삭제 처리
+                            {selectedMember.isExternalOrgMember ? '공동체에서 제명' : '삭제 처리'}
                         </button>
                     </div>
                 )}
             >
                 {selectedMember && (
                     <div className="space-y-5">
+                        {selectedMember.isExternalOrgMember && (
+                            <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-sm font-bold text-violet-800">
+                                외부 공동체 멤버 · 계정과 비밀번호 등 개인정보는 원 소속 교회에서만 관리합니다.
+                            </div>
+                        )}
                         <div className="grid grid-cols-2 gap-3">
                             <div className="rounded-2xl bg-slate-50 p-4">
                                 <p className="text-xs font-black text-slate-400">진행</p>
@@ -2206,7 +2276,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
                         {/* 비밀번호 조회 — 이관 후 평문은 private 하위문서에 있으므로 필요할 때만 조회한다.
                             초기화 직후에도 이 버튼으로 새로 발급된 비밀번호를 확인해 전달할 수 있다. */}
-                        <div className="rounded-2xl border border-slate-100 p-4">
+                        {!selectedMember.isExternalOrgMember && <div className="rounded-2xl border border-slate-100 p-4">
                             <div className="flex items-center justify-between gap-3">
                                 <div>
                                     <p className="text-sm font-black text-slate-800">비밀번호</p>
@@ -2230,16 +2300,16 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                     </button>
                                 )}
                             </div>
-                        </div>
+                        </div>}
 
                         <div className="rounded-2xl border border-slate-100 p-4">
                             <div className="mb-3 flex items-center justify-between gap-3">
                                 <p className="text-sm font-black text-slate-800">소속</p>
-                                <span className="text-xs font-bold text-slate-400">추가 {selectedExtraMemberships.length}/3</span>
+                                {!selectedMember.isExternalOrgMember && <span className="text-xs font-bold text-slate-400">추가 {selectedExtraMemberships.length}/3</span>}
                             </div>
 
                             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                                <p className="text-[11px] font-black text-slate-400">주 소속</p>
+                                <p className="text-[11px] font-black text-slate-400">{selectedMember.isExternalOrgMember ? '이 공동체 소속' : '주 소속'}</p>
                                 <p className="mt-1 text-sm font-bold text-slate-700">
                                     {getPrimaryMembership(selectedMember)
                                         ? getMembershipDisplayText(getPrimaryMembership(selectedMember))
@@ -2251,8 +2321,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                 <p className="mt-3 text-xs font-bold text-slate-400">먼저 조직 탭에서 부서/소그룹을 만들어주세요.</p>
                             ) : (
                                 <div className="mt-3">
-                                    <p className="mb-2 text-xs font-black text-slate-500">주 소속 변경</p>
-                                    <p className="mb-2 text-[11px] font-bold text-slate-400">추가 소속은 유지되며 새 주 소속과 같은 항목만 정리됩니다.</p>
+                                    <p className="mb-2 text-xs font-black text-slate-500">{selectedMember.isExternalOrgMember ? '이 공동체 소속 변경' : '주 소속 변경'}</p>
+                                    {!selectedMember.isExternalOrgMember && <p className="mb-2 text-[11px] font-bold text-slate-400">추가 소속은 유지되며 새 주 소속과 같은 항목만 정리됩니다.</p>}
                                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
                                         <select
                                             value={sgCommId}
@@ -2281,13 +2351,13 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                             onClick={() => { void applySubgroupToMembers([selectedMember], sgCommId, sgSubId); }}
                                             className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
                                         >
-                                            {membershipSaving ? '저장 중...' : '주 소속 저장'}
+                                            {membershipSaving ? '저장 중...' : (selectedMember.isExternalOrgMember ? '소그룹 저장' : '주 소속 저장')}
                                         </button>
                                     </div>
                                 </div>
                             )}
 
-                            <div className="mt-4 border-t border-slate-100 pt-4">
+                            {!selectedMember.isExternalOrgMember && <div className="mt-4 border-t border-slate-100 pt-4">
                                 <p className="mb-2 text-xs font-black text-slate-500">추가 소속</p>
                                 {selectedExtraMemberships.length === 0 ? (
                                     <p className="rounded-xl bg-slate-50 px-3 py-3 text-xs font-bold text-slate-400">추가 소속이 없습니다.</p>
@@ -2361,10 +2431,10 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                         </button>
                                     </div>
                                 )}
-                            </div>
+                            </div>}
                         </div>
 
-                        <div className="rounded-2xl border border-slate-100 p-4">
+                        {!selectedMember.isExternalOrgMember ? <div className="rounded-2xl border border-slate-100 p-4">
                             <div className="mb-3 flex items-center justify-between gap-3">
                                 <p className="text-sm font-black text-slate-800">최근 읽기 기록</p>
                                 <span className="text-xs font-bold text-slate-400">최대 10개</span>
@@ -2386,7 +2456,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                     ))}
                                 </div>
                             )}
-                        </div>
+                        </div> : <div className="rounded-2xl bg-slate-50 p-4 text-xs font-bold text-slate-500">개인 읽기 기록은 원 소속 교회 관리자만 조회할 수 있습니다.</div>}
                     </div>
                 )}
             </SlideOverPanel>
@@ -2419,7 +2489,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                 className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3"
                             >
                                 <div className="min-w-0">
-                                    <p className="text-sm font-black text-slate-800 truncate">{index + 1}. {member.name}</p>
+                                    <p className="text-sm font-black text-slate-800 truncate">{index + 1}. {member.name} {member.isExternalOrgMember && <span className="ml-1 rounded-full bg-violet-50 px-1.5 py-0.5 text-[9px] text-violet-700">외부</span>}</p>
                                     <p className="mt-0.5 text-xs font-bold text-slate-400 truncate">
                                         {getMemberMembershipText(member)}
                                     </p>

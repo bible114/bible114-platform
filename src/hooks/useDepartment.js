@@ -4,6 +4,7 @@ import { calculateSubgroupStats } from '../utils/statsUtils';
 import { userDocToState } from '../utils/helpers';
 import { belongsToDepartment } from '../utils/memberships';
 import { UNAFFILIATED_CHURCH_ID } from '../data/constants';
+import { mergePrimaryAndRosterMembers, rosterSnapshotToMembers } from '../utils/rosterMembers';
 
 export const useDepartment = (currentUser, setCurrentUser) => {
     const [subgroupStats, setSubgroupStats] = useState({});
@@ -19,11 +20,22 @@ export const useDepartment = (currentUser, setCurrentUser) => {
         try {
             // password == null 필터는 firestore.rules의 같은 교회 read 허용 조건과 쌍이다 —
             // 자격증명이 private로 이관 완료된 문서만 목록 조회가 규칙 증명을 통과한다.
-            const snapshot = await db.collection('users')
-                .where('churchId', '==', currentUser.churchId)
-                .where('password', '==', null)
-                .get();
-            return snapshot.docs.map(doc => userDocToState(doc)).filter(u => !u.isDeleted);
+            const [usersResult, rosterResult] = await Promise.allSettled([
+                db.collection('users')
+                    .where('churchId', '==', currentUser.churchId)
+                    .where('password', '==', null)
+                    .get(),
+                db.collection('churches').doc(currentUser.churchId).collection('roster').get(),
+            ]);
+            const primaryMembers = usersResult.status === 'fulfilled'
+                ? usersResult.value.docs.map(doc => userDocToState(doc))
+                : [];
+            const rosterMembers = rosterResult.status === 'fulfilled'
+                ? rosterSnapshotToMembers(rosterResult.value)
+                : [];
+            if (usersResult.status === 'rejected') console.error('주 소속 멤버 로딩 실패:', usersResult.reason);
+            if (rosterResult.status === 'rejected') console.error('외부 명부 로딩 실패:', rosterResult.reason);
+            return mergePrimaryAndRosterMembers(primaryMembers, rosterMembers).filter(member => !member.isDeleted);
         } catch (e) {
             console.error("멤버 로딩 실패:", e);
             return [];
