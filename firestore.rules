@@ -45,7 +45,15 @@ service cloud.firestore {
         isPlatformAdmin() ||
         (sameChurch(resource.data.churchId) &&
           resource.data.churchId != 'unaffiliated_v1' &&
-          resource.data.password == null);
+          resource.data.password == null) ||
+        // [라운드 9] 명부(roster) 멤버의 조직 자체 교인 읽기 — 개인 계정(churchId null)이나
+        // 타 교회 소속이라도, 그 조직 명부에 올라 있으면 그 조직 교인 목록(랭킹)을 볼 수 있다.
+        // 목록 쿼리: .where('churchId','==',org).where('password','==',null) — churchId가 필터로
+        // 증명되므로 exists 경로가 구체화되어 규칙 증명을 통과한다.
+        (isRealUser() &&
+          resource.data.churchId != 'unaffiliated_v1' &&
+          resource.data.password == null &&
+          exists(/databases/$(database)/documents/churches/$(resource.data.churchId)/roster/$(request.auth.uid)));
       allow create: if isRealUser() && request.auth.uid == uid &&
         request.resource.data.role in ['member', 'churchAdmin'];
       // 본인 수정은 role/churchId "값"을 바꿀 수 없다 (권한 상승 차단).
@@ -90,6 +98,28 @@ service cloud.firestore {
       match /settings/{settingId} {
         allow read: if sameChurch(churchId) || isPlatformAdmin();
         allow write: if isChurchAdmin(churchId) || isPlatformAdmin();
+      }
+
+      // [라운드 8] 조직 명부(roster) — 조직 간 소속의 유일한 표현.
+      // 계정(users)은 건드리지 않고, 각 조직이 자기 명부 행만 본다.
+      // read: 그 조직의 자체 교인 / 그 조직 명부에 오른 사람(exists) / 그 조직 관리자.
+      // create: 본인 행만(필드 화이트리스트 — 입장코드 검증은 클라이언트 codeHash 방식, 가입과 동일한 수용 리스크).
+      // update: 본인(uid 변조 금지) 또는 그 조직 관리자(소그룹 배정). delete: 본인(탈퇴)·관리자(제명).
+      match /roster/{memberUid} {
+        allow read: if isRealUser() && (
+          myData().churchId == churchId ||
+          isChurchAdmin(churchId) || isPlatformAdmin() ||
+          exists(/databases/$(database)/documents/churches/$(churchId)/roster/$(request.auth.uid)));
+        allow create: if isRealUser() && request.auth.uid == memberUid &&
+          request.resource.data.uid == memberUid &&
+          request.resource.data.keys().hasOnly(
+            ['uid', 'name', 'score', 'currentDay', 'streak', 'readCount', 'lastReadDate',
+             'departmentId', 'departmentName', 'subgroupId', 'subgroupName', 'joinedAt', 'updatedAt']);
+        allow update: if (isRealUser() && request.auth.uid == memberUid &&
+            request.resource.data.uid == memberUid) ||
+          isChurchAdmin(churchId) || isPlatformAdmin();
+        allow delete: if request.auth.uid == memberUid ||
+          isChurchAdmin(churchId) || isPlatformAdmin();
       }
 
       // 달란트 상점 구매 내역 — 교인이 자기 구매만 생성(필드 화이트리스트),
@@ -164,6 +194,12 @@ service cloud.firestore {
     match /settings/{settingId} {
       allow read: if isSignedIn();
       allow write: if isPlatformAdmin();
+    }
+
+    // [라운드 8] 내 명부 행 전체 조회 (collectionGroup) — 로그인 시 내 소속 조직 파악용.
+    // uid 등호 필터가 필수라 남의 행은 목록 쿼리로 절대 나오지 않는다.
+    match /{path=**}/roster/{memberUid} {
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
     }
 
     // 매일 유튜브 영상 (플랫폼 관리자가 전체 교회 공용으로 등록).
