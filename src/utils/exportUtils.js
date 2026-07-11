@@ -1,3 +1,5 @@
+import { getMembershipList } from './memberships';
+
 // 메모 키 파싱: "3_42" → {round:3, day:42} / 구형 "42" → {round:1, day:42}
 const parseMemoKeyForExport = (key) => {
     const parts = String(key).split('_');
@@ -132,11 +134,38 @@ export const generateMemosHTML = (userName, userMemos, userStats = {}) => {
     URL.revokeObjectURL(url);
 };
 
+const escapeCsvCell = (value) => {
+    const text = String(value ?? '');
+    // Excel/Sheets가 사용자 입력을 수식으로 실행하지 않도록 위험한 선두 문자를 중립화한다.
+    const safeText = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+    return `"${safeText.replace(/"/g, '""')}"`;
+};
+
+const buildCsvRow = (cells) => cells.map(escapeCsvCell).join(',');
+
+const getMembershipCell = (user) => {
+    const memberships = getMembershipList(user);
+    if (memberships.length === 0) return '-';
+    return memberships.map(membership => {
+        const department = membership.departmentName || membership.departmentId || '-';
+        const subgroup = membership.subgroupName || membership.subgroupId || '-';
+        return `${department} · ${subgroup}`;
+    }).join(', ');
+};
+
 export const downloadCSV = (allUsers) => {
     if (allUsers.length === 0) { alert("데이터가 없습니다."); return; }
-    let csvContent = "\uFEFF이름,부서,소그룹,현재Day,총점수,연속일수,마지막읽은날,플랜ID\n";
+    let csvContent = `\uFEFF${buildCsvRow(['이름', '소속', '현재Day', '총점수', '연속일수', '마지막읽은날', '플랜ID'])}\r\n`;
     allUsers.forEach(u => {
-        csvContent += `${u.name},${u.departmentName},${u.subgroupId},${u.currentDay},${u.score},${u.streak},${u.lastReadDate || '없음'},${u.planId || '1year_revised'}\r\n`;
+        csvContent += `${buildCsvRow([
+            u.name,
+            getMembershipCell(u),
+            u.currentDay,
+            u.score,
+            u.streak,
+            u.lastReadDate || '없음',
+            u.planId || '1year_revised',
+        ])}\r\n`;
     });
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -208,11 +237,12 @@ export const downloadPeriodStatsCSV = async (db, allUsers, startDateStr, endDate
         }
 
         // CSV Header
-        let csvContent = '\uFEFF이름,부서,소그룹,총읽은횟수(Day분량)';
-        dateColumns.forEach(dateStr => {
-            csvContent += `,${dateStr}`;
-        });
-        csvContent += '\n';
+        let csvContent = `\uFEFF${buildCsvRow([
+            '이름',
+            '소속',
+            '총읽은횟수(Day분량)',
+            ...dateColumns,
+        ])}\r\n`;
 
         for (const u of allUsers) {
             let periodReadCount = 0;
@@ -256,13 +286,16 @@ export const downloadPeriodStatsCSV = async (db, allUsers, startDateStr, endDate
             }
 
             // Build user row
-            csvContent += `"${u.name}","${u.departmentName || '-'}","${u.subgroupId || '-'}","${periodReadCount}"`;
-            dateColumns.forEach(dateStr => {
-                const count = readDaysMap[dateStr];
-                // Don't format as an empty string, show '0' if it's 0 to be more spreadsheet friendly for sum
-                csvContent += `,"${count > 0 ? count : 0}"`;
-            });
-            csvContent += '\n';
+            csvContent += `${buildCsvRow([
+                u.name,
+                getMembershipCell(u),
+                periodReadCount,
+                ...dateColumns.map(dateStr => {
+                    const count = readDaysMap[dateStr];
+                    // Don't format as an empty string, show '0' if it's 0 to be more spreadsheet friendly for sum
+                    return count > 0 ? count : 0;
+                }),
+            ])}\r\n`;
         }
 
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

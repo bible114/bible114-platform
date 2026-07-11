@@ -242,6 +242,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-11 | T39 기존 관리자 Google 연결 | `src/components/admin/GoogleLinkCard.jsx`, `src/components/admin/index.js`, `src/components/ChurchAdminView.jsx`, `src/components/PlatformAdminView.jsx`, `src/App.jsx`, `HANDOFF_CODEX.md` | UID·관리자 역할을 재검증하는 공용 카드를 교회 관리자 설정/플랫폼 관리자 시스템 탭에 연결. compat `linkWithPopup`과 provider 상태 갱신, 충돌·팝업·카카오톡 안내, 중복 실행 방어를 추가하고, Google 연결 후 비밀번호 provider를 2회 확인으로 제거한 뒤 users.password를 null 처리. Auth 해제 후 Firestore 갱신 실패는 부분 성공 경고로 구분하며 users의 다른 필드와 private/auth는 수정하지 않음. `npm run build`, T39 정적 계약 검사, `git diff --check`, 독립 코드리뷰 통과. M8/M9 미실행으로 실 Google 연결·재로그인·비밀번호 제거는 미검증. |
 | 2026-07-11 | T40 데이터 필드 + 공용 헬퍼 | `src/utils/memberships.js`, `src/utils/helpers.js`, `src/hooks/useAuth.js`, `src/components/PlatformAdminView.jsx`, `HANDOFF_CODEX.md` | 신규 users 생성 경로와 seed에 `extraMemberships: []`를 추가하고 기존·비정상 문서는 `userDocToState`에서 빈 배열로 안전 매핑. 공용 헬퍼는 주 소속을 우선해 추가 소속 최대 3개를 정규화하고 `(departmentId, subgroupId)` 기준 중복 제거하며, 부서/소그룹 판정도 이 목록만 사용. 기존 사용자 백필은 하지 않음. `npm run build`, 중복·상한·입력 불변·비정상 데이터 인라인 assertion, `git diff --check`, 독립 코드리뷰 통과. |
 | 2026-07-11 | T41 집계·랭킹에 다중 소속 반영 | `src/utils/statsUtils.js`, `src/hooks/useBibleLogic.js`, `src/hooks/useUserBibleActions.js`, `src/hooks/useDepartment.js`, `src/components/DashboardView.jsx`, `src/components/ChurchAdminView.jsx`, `src/components/modals/RankingModal.jsx`, `src/components/dashboard/DashboardHeader.jsx`, `src/components/dashboard/SubgroupRankingCard.jsx`, `src/components/DemoTour.jsx`, `HANDOFF_CODEX.md` | 소그룹·부서 후보 판정을 공용 멤버십 헬퍼로 교체하고 본인 화면 기준은 주 소속으로 유지. 통계 입력은 uid 중복 제거 후 boolean 포함 판정으로 그룹별 1회 집계하고, 교회/플랫폼 전체·MVP·위험군·부서 카드도 uid 1회를 보장. 랭킹은 department/subgroup ID pair를 보존해 동명 그룹을 분리하며 레거시 이름 저장도 호환. `npm run build`, esbuild fixture assertion(다중·중복·동명·레거시·단일 소속), `git diff --check`, 독립 코드리뷰, 브라우저 reload 후 콘솔 오류·경고 0건 통과. 인증 필요 랭킹 실화면은 운영 데이터 부작용 때문에 미검증. |
+| 2026-07-11 | T42 교회 관리자 추가 소속 관리 | `src/components/ChurchAdminView.jsx`, `src/utils/exportUtils.js`, `HANDOFF_CODEX.md` | 교인 상세에 주 소속과 추가 소속 최대 3개를 표시하고 pair 기준 추가/제거 UI를 구현. 최신 users 문서를 읽는 transaction으로 add/remove와 주 소속 변경을 처리해 동시 갱신 유실·중복을 막고, 교회/삭제 상태·중복·상한을 재검증. 목록/검색/부서 필터/compact 표시에 추가 소속을 반영하고 주 소속 변경 문구를 명확화. 두 CSV는 주+추가 소속을 단일 소속 셀에 병기하고 quote/newline/formula injection 방어와 BOM을 유지. `npm run build`, membership/legacy/modern 동명/CSV fixture, `git diff --check`, 독립 코드리뷰, 브라우저 reload 콘솔 오류·경고 0건 통과. 실제 Firestore add/remove/일괄 변경은 운영 데이터 부작용 때문에 미검증. |
 
 ---
 
@@ -318,6 +319,10 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T41 완료. `calculateSubgroupStats`는 멤버를 소속별로 복제하지 않고 각 department/subgroup pair의 포함 여부를 공용 helper로 판정해, 같은 사람이 같은 그룹에는 한 번·서로 다른 그룹에는 각각 한 번 집계된다. 입력에 같은 uid 행이 중복되어도 소그룹/MVP/위험군/플랫폼 전체 지표는 한 번만 센다.
 - T41 화면 기준: 격려·주간 MVP·주변 주자는 현재 사용자의 주 소속 부서를 기준으로 유지하면서, 그 부서가 추가 소속인 다른 회원도 후보에 포함한다. 교회 관리자 부서 카드는 같은 부서 여러 소그룹에 속한 회원을 부서 합계에서 한 번만 센다. 그룹 랭킹/상세/우리팀 강조는 departmentId+subgroupId pair를 보존해 다른 부서의 동명 그룹을 섞지 않으며, object형 조직으로 바뀌기 전 이름을 subgroupId에 저장한 레거시 사용자도 표시·상세 명단에서 호환한다.
 - T41 검증: `npm run build`, esbuild Node fixture(주+추가·중복 소속, 다른 부서 동명 그룹, JSON pair key 충돌 방지, 레거시 이름+신형 object 조직, 양쪽 ranking formatter ID 보존, duplicate uid 그룹/MVP/위험/플랫폼 지표 1회, 단일 소속 회귀), `git diff --check`, 독립 코드리뷰를 통과했다. 최종 브라우저 reload 후 콘솔 오류·경고 0건도 확인했다. 인증이 필요한 실제 랭킹 화면은 운영 계정/데이터 변경을 피하려고 미검증이며, 다음 작업은 T42 교회 관리자 추가 소속 관리다.
+- T42 완료. 교인 상세의 소속 영역은 주 소속을 유지하면서 추가 소속을 최대 3개까지 부서→소그룹 순서로 추가하거나 pair 기준으로 제거한다. add/remove와 주 소속 변경은 최신 users 문서를 읽는 transaction으로 구현해 서로 동시 실행되어도 재시도로 합쳐지며, 현재 교회 교인인지·삭제 상태인지·주/추가 중복인지·3개 상한인지 transaction 안에서 다시 검사한다.
+- T42 경합/호환 방어: membership action ref로 중복 클릭을 막고, `members`와 열린 `selectedMember`는 captured uid가 일치할 때만 functional update한다. 교인 A의 느린 history 응답이 교인 B 패널을 덮지 않도록 request token과 close 취소를 추가했다. subgroupId가 이름인 레거시 문서와 object ID를 호환하되 modern 동명 그룹은 ID가 다르면 별개로 유지하고, 부서만 배정된 subgroup null 주 소속도 extra로 오인하지 않는다. 일괄 주 소속 변경이 일부/전부 실패하면 선택을 유지해 재시도할 수 있다.
+- T42 표시/CSV: 교인 목록·검색·부서 필터와 관심/스트릭/삭제/완독 compact 표시에 전체 소속을 공용 formatter로 반영하고, 추가 소속은 `+` 뱃지로 구분한다. 전체/기간 CSV는 주+추가 소속을 쉼표로 병기한 단일 `소속` 셀을 사용하며 모든 셀 quote, 따옴표 doubling, 줄바꿈, 수식 선두 문자 중립화, UTF-8 BOM을 적용했다.
+- T42 검증: `npm run build`, canonical membership/max3/legacy ID-name/modern 동명/null subgroup fixture, CSV 두 스키마·comma/quote/newline/formula injection·BOM·기간 합계 fixture, `git diff --check`, 독립 코드리뷰를 통과했다. 브라우저 최종 reload 후 콘솔 오류·경고 0건도 확인했다. 실제 Firestore 추가/제거/일괄 변경은 운영 데이터 변경을 피하려고 미검증이며, 다음 작업은 T43 성도 화면 소속 뱃지다.
 
 ---
 
@@ -610,7 +615,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
   - DashboardView의 racers/departmentMembers 필터, RankingModal, `getWeeklyMVP`: `belongsToDepartment/Subgroup` 헬퍼로 교체 — 여전도회 화면에도, 1구역 화면에도 그 사람이 나타난다.
   - **중복 집계 금지 지점(중요)**: 교회 단위 명단(관심 필요 명단, 스트릭 Top5, 완독자 수, 오늘 읽음 카운트)은 **uid 기준 1회만** — 그룹 단위 뷰만 다중 표시. computeAtRisk 등에 uid dedupe 확인.
   - 본인 대시보드는 주 소속 공동체 기준 유지 (뷰 전환 드롭다운은 이번 범위 밖 — 백로그).
-- [ ] **T42. 교회 관리자 — 추가 소속 관리**
+- [x] **T42. 교회 관리자 — 추가 소속 관리**
   - 교인 상세 SlideOver에 "소속" 섹션 확장: 주 소속 표시 + 추가 소속 목록(각각 제거 버튼) + "소속 추가" (부서→소그룹 선택, 최대 3, 주 소속과 중복 선택 방지). 저장은 users 문서 update (관리자 권한 기존 규칙으로 충분).
   - 부서별 현황·교인 목록에 겸직 소속 뱃지 표시 (예: "1구역 +여전도회"). CSV 내보내기의 소속 칸은 쉼표로 병기.
   - 기존 "소그룹 변경"은 주 소속 변경으로 유지(문구만 "주 소속 변경"으로).

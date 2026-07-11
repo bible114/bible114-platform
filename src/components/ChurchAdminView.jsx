@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db, firebase } from '../utils/firebase';
 import OrgEditor from './OrgEditor';
 import ChurchAdminTutorial from './ChurchAdminTutorial';
@@ -6,7 +6,7 @@ import { sha256 } from '../utils/crypto';
 import { writeMemberCredentials, fetchMemberCredentials } from '../utils/memberCredentials';
 import { syncChurchDirectoryEntry } from '../utils/churchDirectory';
 import { calculateSubgroupStats, computeAtRisk } from '../utils/statsUtils';
-import { belongsToDepartment } from '../utils/memberships';
+import { belongsToDepartment, getMembershipList } from '../utils/memberships';
 import { downloadCSV } from '../utils/exportUtils';
 import {
     StatCard,
@@ -65,6 +65,11 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [revealedPasswords, setRevealedPasswords] = useState({}); // uid -> '__loading__' | '__error__' | 실제 비밀번호
     const [sgCommId, setSgCommId] = useState('');
     const [sgSubId, setSgSubId] = useState('');
+    const [extraCommId, setExtraCommId] = useState('');
+    const [extraSubId, setExtraSubId] = useState('');
+    const [membershipSaving, setMembershipSaving] = useState(false);
+    const membershipActionRef = useRef(false);
+    const detailRequestRef = useRef(0);
     const [memberDepartmentFilter, setMemberDepartmentFilter] = useState('all');
     const [memberReadFilter, setMemberReadFilter] = useState('all');
     const [bulkCommId, setBulkCommId] = useState('');
@@ -248,14 +253,194 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
     const generatePassword = () => String(Math.floor(100000 + Math.random() * 900000));
 
-    const getMemberSubgroupLabel = (member) => {
-        if (!member.subgroupId) return '미배정';
-        if (member.subgroupName) return member.subgroupName;
-        for (const comm of orgComms) {
-            const found = (comm.subgroups || []).find(s => getSubId(s) === member.subgroupId);
-            if (found) return getSubName(found);
+    const getMemberMembershipLabels = (member) => {
+        const primaryMembership = getPrimaryMembership(member);
+        const labels = getCanonicalMemberships(member).map(membership => {
+            const comm = orgComms.find(c => c.id === membership.departmentId);
+            const subEntry = (comm?.subgroups || [])
+                .find(sub => getSubId(sub) === membership.subgroupId);
+            const departmentName = comm?.name || membership.departmentName || membership.departmentId;
+            const subgroupName = (subEntry ? getSubName(subEntry) : null)
+                || membership.subgroupName
+                || membership.subgroupId;
+            return {
+                key: JSON.stringify([membership.departmentId, membership.subgroupId]),
+                text: subgroupName ? `${departmentName} · ${subgroupName}` : departmentName,
+                isPrimary: sameMembership(membership, primaryMembership),
+            };
+        });
+        return labels.length > 0 ? labels : [{ key: 'unassigned', text: '미배정', isPrimary: true }];
+    };
+
+    const getMemberMembershipText = (member) => (
+        getMemberMembershipLabels(member).map(label => label.text).join(', ')
+    );
+
+    const sameMembership = (left, right) => {
+        if (!left || !right || left.departmentId !== right.departmentId) return false;
+        if (left.subgroupId === right.subgroupId) return true;
+        // legacy subgroupId=name 호환. modern group끼리는 name-name만으로 같다고 보지 않는다.
+        return Boolean(
+            (left.subgroupId && right.subgroupName && left.subgroupId === right.subgroupName)
+            || (right.subgroupId && left.subgroupName && right.subgroupId === left.subgroupName)
+        );
+    };
+
+    const getPrimaryMembership = (member) => getMembershipList({
+        ...(member || {}),
+        extraMemberships: [],
+    })[0] || null;
+
+    const getExtraMemberships = (member) => {
+        const primaryMembership = getPrimaryMembership(member);
+        return getMembershipList(member)
+            .filter(membership => !sameMembership(membership, primaryMembership))
+            .slice(0, 3);
+    };
+
+    const getCanonicalMemberships = (member) => [
+        getPrimaryMembership(member),
+        ...getExtraMemberships(member),
+    ].filter(Boolean);
+
+    const belongsToMembership = (member, membership) => Boolean(
+        membership?.departmentId
+        && membership?.subgroupId
+        && getCanonicalMemberships(member)
+            .some(existing => sameMembership(existing, membership))
+    );
+
+    const getMembershipDisplayText = (membership) => {
+        const comm = orgComms.find(c => c.id === membership?.departmentId);
+        const subEntry = (comm?.subgroups || [])
+            .find(sub => getSubId(sub) === membership?.subgroupId);
+        const departmentName = comm?.name || membership?.departmentName || membership?.departmentId || '미배정';
+        const subgroupName = (subEntry ? getSubName(subEntry) : null)
+            || membership?.subgroupName
+            || membership?.subgroupId;
+        return subgroupName ? `${departmentName} · ${subgroupName}` : departmentName;
+    };
+
+    const syncMemberMembershipState = (uid, patch) => {
+        setMembers(prev => prev.map(member => member.uid === uid ? { ...member, ...patch } : member));
+        setSelectedMember(prev => prev?.uid === uid ? { ...prev, ...patch } : prev);
+    };
+
+    const mutateExtraMembership = async ({ member, type, membership }) => {
+        if (
+            !member?.uid
+            || !membership?.departmentId
+            || (type === 'add' && !membership?.subgroupId)
+        ) return false;
+        if (membershipActionRef.current) {
+            toast.warning('다른 소속 변경을 처리 중입니다. 잠시만 기다려주세요.');
+            return false;
         }
-        return member.subgroupId;
+
+        membershipActionRef.current = true;
+        setMembershipSaving(true);
+        const targetUid = member.uid;
+        const targetChurchId = currentUser?.churchId;
+
+        try {
+            const userRef = db.collection('users').doc(targetUid);
+            const result = await db.runTransaction(async transaction => {
+                const userDoc = await transaction.get(userRef);
+                if (!userDoc.exists) return { status: 'not-found' };
+
+                const latestUser = { uid: targetUid, ...userDoc.data() };
+                if (!targetChurchId || latestUser.churchId !== targetChurchId || latestUser.isDeleted) {
+                    return { status: 'forbidden' };
+                }
+
+                const currentExtras = getExtraMemberships(latestUser);
+                if (type === 'add') {
+                    if (belongsToMembership(latestUser, membership)) {
+                        return { status: 'duplicate', extraMemberships: currentExtras };
+                    }
+                    if (currentExtras.length >= 3) {
+                        return { status: 'max', extraMemberships: currentExtras };
+                    }
+                    const extraMemberships = [...currentExtras, membership].slice(0, 3);
+                    transaction.update(userRef, {
+                        extraMemberships,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    });
+                    return { status: 'ok', extraMemberships };
+                }
+
+                const extraMemberships = currentExtras.filter(item => !sameMembership(item, membership));
+                if (extraMemberships.length === currentExtras.length) {
+                    return { status: 'missing', extraMemberships: currentExtras };
+                }
+                transaction.update(userRef, {
+                    extraMemberships,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                });
+                return { status: 'ok', extraMemberships };
+            });
+
+            if (Array.isArray(result.extraMemberships)) {
+                syncMemberMembershipState(targetUid, { extraMemberships: result.extraMemberships });
+            }
+            if (result.status === 'ok') {
+                if (type === 'add') {
+                    setExtraCommId('');
+                    setExtraSubId('');
+                    toast.success('추가 소속을 저장했습니다.');
+                } else {
+                    toast.success('추가 소속을 제거했습니다.');
+                }
+                return true;
+            }
+            if (result.status === 'duplicate') toast.warning('이미 등록된 소속입니다.');
+            else if (result.status === 'max') toast.warning('추가 소속은 최대 3개까지 등록할 수 있습니다.');
+            else if (result.status === 'missing') toast.info('이미 제거된 소속입니다.');
+            else if (result.status === 'not-found') toast.error('교인 정보를 찾을 수 없습니다.');
+            else toast.error('현재 교회의 교인 정보가 아니어서 변경할 수 없습니다.');
+            return false;
+        } catch (error) {
+            console.error('추가 소속 변경 실패:', error);
+            toast.error('추가 소속을 변경하지 못했습니다. 잠시 후 다시 시도해주세요.');
+            return false;
+        } finally {
+            membershipActionRef.current = false;
+            setMembershipSaving(false);
+        }
+    };
+
+    const addSelectedMemberExtraMembership = async () => {
+        const member = selectedMember;
+        const comm = orgComms.find(c => c.id === extraCommId);
+        const subEntry = (comm?.subgroups || []).find(sub => getSubId(sub) === extraSubId);
+        if (!member || !comm || !subEntry) {
+            toast.error('추가할 부서와 소그룹을 선택해주세요.');
+            return;
+        }
+        const candidateMembership = {
+            departmentId: comm.id,
+            departmentName: comm.name,
+            subgroupId: extraSubId,
+            subgroupName: getSubName(subEntry),
+        };
+        if (belongsToMembership(member, candidateMembership)) {
+            toast.warning('이미 등록된 소속입니다.');
+            return;
+        }
+        if (getExtraMemberships(member).length >= 3) {
+            toast.warning('추가 소속은 최대 3개까지 등록할 수 있습니다.');
+            return;
+        }
+        await mutateExtraMembership({
+            member,
+            type: 'add',
+            membership: candidateMembership,
+        });
+    };
+
+    const removeSelectedMemberExtraMembership = async (membership) => {
+        if (!selectedMember) return;
+        await mutateExtraMembership({ member: selectedMember, type: 'remove', membership });
     };
 
     const applySubgroupToMembers = async (targetMembers, commId, subId) => {
@@ -263,26 +448,95 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         const subEntry = (comm?.subgroups || []).find(s => getSubId(s) === subId);
         if (!comm || !subEntry) {
             toast.error('부서와 소그룹을 선택해주세요.');
-            return;
+            return false;
         }
+        if (membershipActionRef.current) {
+            toast.warning('다른 소속 변경을 처리 중입니다. 잠시만 기다려주세요.');
+            return false;
+        }
+
+        const uniqueTargets = Array.from(new Map(
+            (Array.isArray(targetMembers) ? targetMembers : [])
+                .filter(member => member?.uid)
+                .map(member => [member.uid, member])
+        ).values());
+        if (uniqueTargets.length === 0) return false;
+
+        membershipActionRef.current = true;
+        setMembershipSaving(true);
         const subgroupName = getSubName(subEntry);
-        await Promise.all(targetMembers.map(member => db.collection('users').doc(member.uid).set({
-            departmentId: comm.id,
-            departmentName: comm.name,
-            subgroupId: subId,
-            subgroupName,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true })));
-        const ids = new Set(targetMembers.map(m => m.uid));
-        setMembers(prev => prev.map(m => ids.has(m.uid)
-            ? { ...m, departmentId: comm.id, departmentName: comm.name, subgroupId: subId, subgroupName }
-            : m
-        ));
-        setSelectedMember(prev => prev && ids.has(prev.uid)
-            ? { ...prev, departmentId: comm.id, departmentName: comm.name, subgroupId: subId, subgroupName }
-            : prev
-        );
-        toast.success(`${targetMembers.length}명의 소그룹을 변경했습니다.`);
+        const targetChurchId = currentUser?.churchId;
+
+        try {
+            const settled = await Promise.allSettled(uniqueTargets.map(member => {
+                const userRef = db.collection('users').doc(member.uid);
+                return db.runTransaction(async transaction => {
+                    const userDoc = await transaction.get(userRef);
+                    if (!userDoc.exists) throw new Error('MEMBER_NOT_FOUND');
+                    const latestUser = { uid: member.uid, ...userDoc.data() };
+                    if (!targetChurchId || latestUser.churchId !== targetChurchId || latestUser.isDeleted) {
+                        throw new Error('MEMBER_NOT_ALLOWED');
+                    }
+
+                    // 새 주 소속과 같은 extra는 transaction 안에서 함께 제거한다.
+                    const nextPrimaryMembership = {
+                        departmentId: comm.id,
+                        departmentName: comm.name,
+                        subgroupId: subId,
+                        subgroupName,
+                    };
+                    const extraMemberships = getExtraMemberships(latestUser)
+                        .filter(item => !sameMembership(item, nextPrimaryMembership));
+                    transaction.update(userRef, {
+                        departmentId: comm.id,
+                        departmentName: comm.name,
+                        subgroupId: subId,
+                        subgroupName,
+                        extraMemberships,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    });
+                    return { uid: member.uid, extraMemberships };
+                });
+            }));
+
+            const updates = settled.flatMap(result => result.status === 'fulfilled' ? [result.value] : []);
+            const updateByUid = new Map(updates.map(update => [update.uid, update]));
+            const patchMember = member => {
+                const update = updateByUid.get(member.uid);
+                return update ? {
+                    ...member,
+                    departmentId: comm.id,
+                    departmentName: comm.name,
+                    subgroupId: subId,
+                    subgroupName,
+                    extraMemberships: update.extraMemberships,
+                } : member;
+            };
+            setMembers(prev => prev.map(patchMember));
+            setSelectedMember(prev => prev ? patchMember(prev) : prev);
+
+            const failedCount = settled.length - updates.length;
+            settled.forEach(result => {
+                if (result.status === 'rejected') console.error('주 소속 변경 실패:', result.reason);
+            });
+            if (updates.length === 0) {
+                toast.error('주 소속을 변경하지 못했습니다.');
+                return false;
+            }
+            if (failedCount > 0) {
+                toast.warning(`${updates.length}명은 변경했고 ${failedCount}명은 변경하지 못했습니다.`);
+                return false;
+            }
+            toast.success(`${updates.length}명의 주 소속을 변경했습니다.`);
+            return true;
+        } catch (error) {
+            console.error('주 소속 변경 실패:', error);
+            toast.error('주 소속을 변경하지 못했습니다. 잠시 후 다시 시도해주세요.');
+            return false;
+        } finally {
+            membershipActionRef.current = false;
+            setMembershipSaving(false);
+        }
     };
 
     const resetPasswordsForMembers = async (targetMembers) => {
@@ -327,21 +581,35 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         toast.success(`${targetMembers.length}명의 비밀번호를 초기화했습니다.`);
     };
 
+    const closeMemberDetail = () => {
+        detailRequestRef.current += 1;
+        setSelectedMember(null);
+        setMemberHistory([]);
+        setDetailLoading(false);
+        setExtraCommId('');
+        setExtraSubId('');
+    };
+
     const openMemberDetail = async (member) => {
+        const requestId = ++detailRequestRef.current;
         setSelectedMember(member);
         setMemberHistory([]);
         setDetailLoading(true);
         setSgCommId(member.departmentId || orgComms[0]?.id || '');
         setSgSubId(member.subgroupId || '');
+        setExtraCommId('');
+        setExtraSubId('');
         try {
             const snap = await db.collection('users').doc(member.uid).collection('history')
                 .orderBy('date', 'desc').limit(10).get();
+            if (detailRequestRef.current !== requestId) return;
             setMemberHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         } catch (e) {
+            if (detailRequestRef.current !== requestId) return;
             setMemberHistory([]);
             toast.warning('읽기 기록을 불러오지 못했습니다. 권한 규칙이 아직 열려 있지 않을 수 있습니다.');
         } finally {
-            setDetailLoading(false);
+            if (detailRequestRef.current === requestId) setDetailLoading(false);
         }
     };
 
@@ -350,16 +618,20 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         if (!action) return;
         setConfirmAction(null);
         try {
+            let shouldRunAfter = true;
             if (action.type === 'deleteMember') await executeDeleteMember(action.member);
             if (action.type === 'restoreMember') await executeRestoreMember(action.member);
-            if (action.type === 'bulkSubgroup') await applySubgroupToMembers(action.members, action.commId, action.subId);
+            if (action.type === 'bulkSubgroup') {
+                shouldRunAfter = await applySubgroupToMembers(action.members, action.commId, action.subId);
+            }
             if (action.type === 'bulkPassword') await resetPasswordsForMembers(action.members);
             if (action.type === 'singlePassword') await resetPasswordsForMembers([action.member]);
             if (action.type === 'deleteShopItem') await executeDeleteShopItem(action.item);
             if (action.type === 'deliverPurchase') await updatePurchaseStatus(action.purchase, 'delivered');
             if (action.type === 'refundPurchase') await updatePurchaseStatus(action.purchase, 'cancelled');
             if (action.type === 'manualDeduct') await executeManualDeduct(action.form);
-            action.after?.();
+            // 주 소속 일괄 변경이 일부라도 실패하면 선택을 유지해 바로 재시도할 수 있게 한다.
+            if (shouldRunAfter !== false) action.after?.();
         } catch (e) {
             console.error(e);
             toast.error('작업 처리 중 오류가 발생했습니다.');
@@ -703,7 +975,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
   <div class="sec"><h2>👥 교인 관리</h2><ul>
     <li>이름 검색, 부서/읽기 상태 필터, 교인을 클릭하면 상세 정보가 열려요.</li>
     <li><b>비밀번호를 잊은 교인</b>: 교인 클릭 → "비밀번호 재설정" → 새 비밀번호를 전달해주세요.</li>
-    <li>여러 명 선택 후 일괄 소그룹 배정도 가능해요. CSV 내보내기로 명단을 저장할 수 있어요.</li>
+    <li>여러 명 선택 후 주 소속 일괄 변경도 가능해요. CSV 내보내기로 명단을 저장할 수 있어요.</li>
   </ul></div>
 
   <div class="sec"><h2>⭐ 달란트 상점</h2><ul>
@@ -900,7 +1172,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     });
 
     const filteredMembers = sortedMembers.filter(member => {
-        const departmentMatch = memberDepartmentFilter === 'all' || member.departmentId === memberDepartmentFilter;
+        const departmentMatch = memberDepartmentFilter === 'all'
+            || belongsToDepartment(member, memberDepartmentFilter);
         const days = daysSinceRead(member.lastReadDate);
         const readMatch =
             memberReadFilter === 'all' ||
@@ -925,13 +1198,24 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         {
             key: 'departmentName',
             header: '부서/소그룹',
-            render: m => (
-                <div>
-                    <p className="font-bold text-slate-700">{m.departmentName || '-'}</p>
-                    <p className="text-xs text-slate-400">{getMemberSubgroupLabel(m)}</p>
-                </div>
-            ),
-            searchValue: m => `${m.departmentName || ''} ${getMemberSubgroupLabel(m)}`,
+            render: m => {
+                const membershipLabels = getMemberMembershipLabels(m);
+                return (
+                    <div className="flex max-w-xs flex-wrap gap-1.5">
+                        {membershipLabels.map(label => (
+                            <span
+                                key={label.key}
+                                className={`rounded-full px-2 py-1 text-[11px] font-bold ${label.isPrimary
+                                    ? 'bg-slate-100 text-slate-700'
+                                    : 'bg-indigo-50 text-indigo-700'}`}
+                            >
+                                {label.isPrimary ? label.text : `+${label.text}`}
+                            </span>
+                        ))}
+                    </div>
+                );
+            },
+            searchValue: m => getMemberMembershipText(m),
         },
         {
             key: 'progress',
@@ -978,6 +1262,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     ];
 
     const sgComm = orgComms.find(c => c.id === sgCommId);
+    const extraComm = orgComms.find(c => c.id === extraCommId);
+    const selectedExtraMemberships = selectedMember ? getExtraMemberships(selectedMember) : [];
 
     const renderRiskList = (title, items, emptyText, getMeta) => (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -992,7 +1278,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     <div key={member.uid} className="px-4 py-3 flex items-center justify-between gap-3">
                         <div className="min-w-0">
                             <p className="text-sm font-bold text-slate-800 truncate">{member.name}</p>
-                            <p className="text-xs text-slate-400 truncate">{member.departmentName || '미배정'} · {member.subgroupName || member.subgroupId || '미배정'}</p>
+                            <p className="text-xs text-slate-400 truncate">{getMemberMembershipText(member)}</p>
                         </div>
                         <span className="shrink-0 text-xs font-black text-slate-500">{getMeta(member)}</span>
                     </div>
@@ -1139,7 +1425,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                                     <div key={member.uid} className="flex items-center justify-between gap-3 rounded-xl bg-orange-50 px-3 py-2">
                                                         <div className="min-w-0">
                                                             <p className="text-sm font-black text-slate-800 truncate">{index + 1}. {member.name}</p>
-                                                            <p className="text-xs text-slate-400 truncate">{member.departmentName || '미배정'} · {member.subgroupName || member.subgroupId || '미배정'}</p>
+                                                            <p className="text-xs text-slate-400 truncate">{getMemberMembershipText(member)}</p>
                                                         </div>
                                                         <span className="shrink-0 text-sm font-black text-orange-600">{member.streak}일</span>
                                                     </div>
@@ -1277,13 +1563,13 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                                                 members: selectedRows,
                                                                 commId: bulkCommId,
                                                                 subId: bulkSubId,
-                                                                title: `${selectedRows.length}명의 소그룹을 변경할까요?`,
-                                                                message: '선택한 교인의 부서/소그룹 배정을 한 번에 변경합니다.',
+                                                                title: `${selectedRows.length}명의 주 소속을 변경할까요?`,
+                                                                message: '선택한 교인의 주 소속(부서/소그룹)을 한 번에 변경합니다. 추가 소속은 유지되며 새 주 소속과 같은 항목만 정리됩니다.',
                                                                 after: clearSelection,
                                                             })}
                                                             className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-black text-white disabled:opacity-40"
                                                         >
-                                                            일괄 배정
+                                                            주 소속 일괄 변경
                                                         </button>
                                                         <button
                                                             type="button"
@@ -1320,7 +1606,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                                     <div key={member.uid} className="px-4 py-3 flex items-center justify-between gap-3">
                                                         <div>
                                                             <div className="font-bold text-sm text-slate-700">{member.name}</div>
-                                                            <div className="text-xs text-slate-400">{member.departmentName || '-'} · {member.subgroupName || member.subgroupId || '미배정'}</div>
+                                                            <div className="text-xs text-slate-400">{getMemberMembershipText(member)}</div>
                                                         </div>
                                                         <button onClick={() => restoreMember(member)}
                                                             className="shrink-0 text-xs bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg font-bold hover:bg-emerald-100">
@@ -1856,13 +2142,13 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             <SlideOverPanel
                 open={!!selectedMember}
                 title={selectedMember?.name}
-                subtitle={selectedMember ? `${selectedMember.departmentName || '미배정'} · ${getMemberSubgroupLabel(selectedMember)}` : ''}
-                onClose={() => setSelectedMember(null)}
+                subtitle={selectedMember ? getMemberMembershipText(selectedMember) : ''}
+                onClose={closeMemberDetail}
                 footer={selectedMember && (
                     <div className="flex flex-wrap justify-end gap-2">
                         <button
                             type="button"
-                            onClick={() => setSelectedMember(null)}
+                            onClick={closeMemberDetail}
                             className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-600"
                         >
                             닫기
@@ -1947,40 +2233,135 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                         </div>
 
                         <div className="rounded-2xl border border-slate-100 p-4">
-                            <p className="mb-3 text-sm font-black text-slate-800">소그룹 배정</p>
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                                <p className="text-sm font-black text-slate-800">소속</p>
+                                <span className="text-xs font-bold text-slate-400">추가 {selectedExtraMemberships.length}/3</span>
+                            </div>
+
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                <p className="text-[11px] font-black text-slate-400">주 소속</p>
+                                <p className="mt-1 text-sm font-bold text-slate-700">
+                                    {getPrimaryMembership(selectedMember)
+                                        ? getMembershipDisplayText(getPrimaryMembership(selectedMember))
+                                        : '미배정'}
+                                </p>
+                            </div>
+
                             {orgComms.length === 0 ? (
-                                <p className="text-xs font-bold text-slate-400">먼저 조직 탭에서 부서/소그룹을 만들어주세요.</p>
+                                <p className="mt-3 text-xs font-bold text-slate-400">먼저 조직 탭에서 부서/소그룹을 만들어주세요.</p>
                             ) : (
-                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
-                                    <select
-                                        value={sgCommId}
-                                        onChange={e => { setSgCommId(e.target.value); setSgSubId(''); }}
-                                        className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-700"
-                                    >
-                                        <option value="">부서 선택</option>
-                                        {orgComms.map(comm => <option key={comm.id} value={comm.id}>{comm.name}</option>)}
-                                    </select>
-                                    <select
-                                        value={sgSubId}
-                                        onChange={e => setSgSubId(e.target.value)}
-                                        disabled={!sgCommId}
-                                        className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-50"
-                                    >
-                                        <option value="">소그룹 선택</option>
-                                        {(sgComm?.subgroups || []).map((sub, index) => {
-                                            const subId = getSubId(sub);
-                                            return <option key={subId || index} value={subId}>{getSubName(sub)}</option>;
-                                        })}
-                                    </select>
-                                    <button
-                                        type="button"
-                                        onClick={() => applySubgroupToMembers([selectedMember], sgCommId, sgSubId)}
-                                        className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white"
-                                    >
-                                        저장
-                                    </button>
+                                <div className="mt-3">
+                                    <p className="mb-2 text-xs font-black text-slate-500">주 소속 변경</p>
+                                    <p className="mb-2 text-[11px] font-bold text-slate-400">추가 소속은 유지되며 새 주 소속과 같은 항목만 정리됩니다.</p>
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                                        <select
+                                            value={sgCommId}
+                                            onChange={e => { setSgCommId(e.target.value); setSgSubId(''); }}
+                                            disabled={membershipSaving}
+                                            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-50"
+                                        >
+                                            <option value="">부서 선택</option>
+                                            {orgComms.map(comm => <option key={comm.id} value={comm.id}>{comm.name}</option>)}
+                                        </select>
+                                        <select
+                                            value={sgSubId}
+                                            onChange={e => setSgSubId(e.target.value)}
+                                            disabled={!sgCommId || membershipSaving}
+                                            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-50"
+                                        >
+                                            <option value="">소그룹 선택</option>
+                                            {(sgComm?.subgroups || []).map((sub, index) => {
+                                                const subId = getSubId(sub);
+                                                return <option key={subId || index} value={subId}>{getSubName(sub)}</option>;
+                                            })}
+                                        </select>
+                                        <button
+                                            type="button"
+                                            disabled={!sgCommId || !sgSubId || membershipSaving}
+                                            onClick={() => { void applySubgroupToMembers([selectedMember], sgCommId, sgSubId); }}
+                                            className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                        >
+                                            {membershipSaving ? '저장 중...' : '주 소속 저장'}
+                                        </button>
+                                    </div>
                                 </div>
                             )}
+
+                            <div className="mt-4 border-t border-slate-100 pt-4">
+                                <p className="mb-2 text-xs font-black text-slate-500">추가 소속</p>
+                                {selectedExtraMemberships.length === 0 ? (
+                                    <p className="rounded-xl bg-slate-50 px-3 py-3 text-xs font-bold text-slate-400">추가 소속이 없습니다.</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {selectedExtraMemberships.map(membership => (
+                                            <div
+                                                key={JSON.stringify([membership.departmentId, membership.subgroupId])}
+                                                className="flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2.5"
+                                            >
+                                                <span className="min-w-0 truncate text-sm font-bold text-indigo-800">
+                                                    {getMembershipDisplayText(membership)}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    disabled={membershipSaving}
+                                                    onClick={() => { void removeSelectedMemberExtraMembership(membership); }}
+                                                    className="shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-xs font-black text-red-500 disabled:opacity-40"
+                                                >
+                                                    제거
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {selectedExtraMemberships.length >= 3 ? (
+                                    <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-bold text-amber-700">
+                                        추가 소속은 최대 3개까지 등록할 수 있습니다.
+                                    </p>
+                                ) : orgComms.length > 0 && (
+                                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                                        <select
+                                            value={extraCommId}
+                                            onChange={e => { setExtraCommId(e.target.value); setExtraSubId(''); }}
+                                            disabled={membershipSaving}
+                                            className="rounded-xl border border-indigo-100 bg-indigo-50/40 px-3 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-50"
+                                        >
+                                            <option value="">추가 부서 선택</option>
+                                            {orgComms.map(comm => <option key={comm.id} value={comm.id}>{comm.name}</option>)}
+                                        </select>
+                                        <select
+                                            value={extraSubId}
+                                            onChange={e => setExtraSubId(e.target.value)}
+                                            disabled={!extraCommId || membershipSaving}
+                                            className="rounded-xl border border-indigo-100 bg-indigo-50/40 px-3 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-50"
+                                        >
+                                            <option value="">추가 소그룹 선택</option>
+                                            {(extraComm?.subgroups || []).map((sub, index) => {
+                                                const subId = getSubId(sub);
+                                                const subgroupName = getSubName(sub);
+                                                const alreadyAssigned = belongsToMembership(selectedMember, {
+                                                    departmentId: extraCommId,
+                                                    subgroupId: subId,
+                                                    subgroupName,
+                                                });
+                                                return (
+                                                    <option key={subId || index} value={subId} disabled={alreadyAssigned}>
+                                                        {subgroupName}{alreadyAssigned ? ' (등록됨)' : ''}
+                                                    </option>
+                                                );
+                                            })}
+                                        </select>
+                                        <button
+                                            type="button"
+                                            disabled={!extraCommId || !extraSubId || membershipSaving}
+                                            onClick={() => { void addSelectedMemberExtraMembership(); }}
+                                            className="rounded-xl bg-indigo-100 px-4 py-2.5 text-sm font-black text-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
+                                        >
+                                            {membershipSaving ? '저장 중...' : '소속 추가'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         <div className="rounded-2xl border border-slate-100 p-4">
@@ -2040,7 +2421,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                 <div className="min-w-0">
                                     <p className="text-sm font-black text-slate-800 truncate">{index + 1}. {member.name}</p>
                                     <p className="mt-0.5 text-xs font-bold text-slate-400 truncate">
-                                        {member.departmentName || '미배정'} · {member.subgroupName || member.subgroupId || '미배정'}
+                                        {getMemberMembershipText(member)}
                                     </p>
                                 </div>
                                 <span className="shrink-0 rounded-full bg-emerald-100 px-3 py-1 text-sm font-black text-emerald-700">
