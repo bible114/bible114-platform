@@ -43,7 +43,7 @@ export const useDepartment = (currentUser, setCurrentUser) => {
     }, [currentUser?.churchId]);
 
     const loadAnnouncement = useCallback(async () => {
-        if (!currentUser?.churchId) return;
+        if (!currentUser?.churchId) { setAnnouncement(null); return; }
         try {
             const doc = await db.collection('churches').doc(currentUser.churchId)
                 .collection('settings').doc('announcement').get();
@@ -58,7 +58,7 @@ export const useDepartment = (currentUser, setCurrentUser) => {
     }, [currentUser?.churchId]);
 
     const loadKakaoLink = useCallback(async () => {
-        if (!currentUser?.churchId) return;
+        if (!currentUser?.churchId) { setKakaoLink(null); return; }
         try {
             const doc = await db.collection('churches').doc(currentUser.churchId)
                 .collection('settings').doc('kakao').get();

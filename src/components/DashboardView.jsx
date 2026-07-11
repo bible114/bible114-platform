@@ -117,6 +117,8 @@ const DashboardView = ({
     setShowSecretShopUnlocked,
     completionCelebration,
     setCompletionCelebration,
+    personalOrganizations = [],
+    onPrimaryOrgChange,
 }) => {
     const [showTutorial, setShowTutorial] = useState(false);
     const [quizGate, setQuizGate] = useState({
@@ -127,6 +129,7 @@ const DashboardView = ({
     const quizSectionRef = useRef(null);
 
     if (!currentUser) return null;
+    const hasCommunity = Boolean(currentUser.churchId);
 
     const { currentDay, score, talent, subgroupId, departmentName, planId, streak } = currentUser;
     const primaryMembership = getMembershipList({ ...currentUser, extraMemberships: [] })[0] || null;
@@ -378,16 +381,20 @@ const DashboardView = ({
                 handleChangeVersionStart={handleChangeVersionStart}
                 setView={setView}
                 isChurchAdmin={isChurchAdmin}
+                hasCommunity={hasCommunity}
+                personalOrganizations={personalOrganizations}
+                primaryOrgId={currentUser.primaryOrgId}
+                onPrimaryOrgChange={onPrimaryOrgChange}
             />
 
             <div
                 className="max-w-5xl mx-auto w-full mt-8"
                 style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8rem)' }}
             >
-                <RaceMap racers={racers} departmentChampions={departmentChampions} getSubgroupDisplay={getSubgroupDisplay} />
+                {hasCommunity && <RaceMap racers={racers} departmentChampions={departmentChampions} getSubgroupDisplay={getSubgroupDisplay} />}
 
                 <main className="px-4 space-y-6">
-                    <AnnouncementBanner announcement={announcement} />
+                    {hasCommunity && <AnnouncementBanner announcement={announcement} />}
 
                     <DailyVideoCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
 
@@ -439,23 +446,23 @@ const DashboardView = ({
                             memoLoadError={memoLoadError}
                         />
 
-                        <SubgroupRankingCard
+                        {hasCommunity && <SubgroupRankingCard
                             departmentName={departmentName}
                             getSubgroupRanking={getSubgroupRanking}
                             subgroupId={subgroupId}
                             departmentId={currentUser ? currentUser.departmentId : null}
                             extraMemberships={additionalMemberships}
-                        />
+                        />}
                     </div>
 
-                    <ReadingChampionSection getWeeklyMVP={getWeeklyMVP} />
+                    {hasCommunity && <ReadingChampionSection getWeeklyMVP={getWeeklyMVP} />}
 
-                    <TalentShop
+                    {hasCommunity && <TalentShop
                         currentUser={currentUser}
                         setCurrentUser={setCurrentUser}
                         showUnlockModal={showSecretShopUnlocked}
                         onCloseUnlockModal={() => setShowSecretShopUnlocked(false)}
-                    />
+                    />}
 
                     {currentUser.role === 'member' && (
                         <CommunityMembershipCard currentUser={currentUser} setCurrentUser={setCurrentUser} />

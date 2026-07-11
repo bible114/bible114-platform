@@ -42,6 +42,10 @@ const DashboardHeader = ({
     handleChangeVersionStart,
     setView,
     isChurchAdmin,
+    hasCommunity = true,
+    personalOrganizations = [],
+    primaryOrgId,
+    onPrimaryOrgChange,
 }) => {
     const primaryMembership = { departmentId, departmentName, subgroupId, subgroupName: null };
     const normalizedExtraMemberships = getMembershipList({ extraMemberships })
@@ -98,11 +102,19 @@ const DashboardHeader = ({
                             <Icon name="refresh" size={10} className="text-slate-400 group-hover:rotate-180 transition-transform duration-500" />
                         </div>
                     </button>
+                    {personalOrganizations.length > 1 && (
+                        <label className="flex items-center gap-2 self-start md:self-center md:order-1">
+                            <span className="text-[11px] font-bold text-slate-500">공동체</span>
+                            <select value={primaryOrgId || ''} onChange={event => onPrimaryOrgChange?.(event.target.value)} className="max-w-[180px] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-bold text-slate-700">
+                                {personalOrganizations.map(org => <option key={org.orgId} value={org.orgId}>{org.name}</option>)}
+                            </select>
+                        </label>
+                    )}
                 </div>
             </div>
 
             {/* 랭킹 영역 - 카드 디자인 완성도 제고 */}
-            <div className="px-4 w-full max-w-5xl mx-auto">
+            {hasCommunity && <div className="px-4 w-full max-w-5xl mx-auto">
                 <div className="bg-white rounded-3xl shadow-md border border-slate-100/80 p-6 md:p-8">
                     <div className="flex justify-between items-center mb-6">
                         <div className="flex flex-col gap-1">
@@ -166,7 +178,7 @@ const DashboardHeader = ({
                         })}
                     </div>
                 </div>
-            </div>
+            </div>}
         </header>
     );
 };

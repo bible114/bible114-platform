@@ -63,6 +63,8 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
             // 1. Load Community Data
             const allMembers = await loadAllMembers();
             setAllMembersForRace(allMembers);
+            setDepartmentMembers([]);
+            setSubgroupStats({});
             if (allMembers && allMembers.length > 0) {
                 setSubgroupStats(calculateSubgroupStats(allMembers, communities));
                 if (currentUser.departmentId) {

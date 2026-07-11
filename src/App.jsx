@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { db, auth, firebase } from './utils/firebase';
 import { DEFAULT_DEPARTMENTS } from './data/departments';
 import { BIBLE_VERSIONS, isBibleVersionVisibleForUser } from './data/bible_options';
@@ -40,6 +40,40 @@ const App = () => {
     // [Phase 3] 교회 전용 링크(?church=ID) — 로그인 화면 교회 preselect용. 최초 마운트 시 1회만 읽는다.
     const [presetChurchId] = useState(() => new URLSearchParams(window.location.search).get('church') || null);
     const { currentUser, setCurrentUser, authLoading, authError, retryAuthCheck } = useUserAuth();
+    const [personalOrgNames, setPersonalOrgNames] = useState({});
+    const personalOrgs = Array.isArray(currentUser?.extraOrgs) ? currentUser.extraOrgs : [];
+    const activePersonalOrg = currentUser?.accountType === 'personal'
+        ? personalOrgs.find(org => org.orgId === currentUser.primaryOrgId) || null
+        : null;
+    const dashboardUser = useMemo(() => {
+        if (currentUser?.accountType !== 'personal' || !activePersonalOrg) return currentUser;
+        return {
+            ...currentUser,
+            churchId: activePersonalOrg.orgId,
+            churchName: personalOrgNames[activePersonalOrg.orgId] || '참여 공동체',
+            departmentId: activePersonalOrg.departmentId || null,
+            departmentName: activePersonalOrg.departmentName || null,
+            subgroupId: activePersonalOrg.subgroupId || null,
+            subgroupName: activePersonalOrg.subgroupName || null,
+        };
+    }, [currentUser, activePersonalOrg, personalOrgNames]);
+
+    useEffect(() => {
+        if (currentUser?.accountType !== 'personal' || personalOrgs.length === 0) {
+            setPersonalOrgNames({});
+            return;
+        }
+        let alive = true;
+        Promise.all(personalOrgs.map(async org => {
+            try {
+                const doc = await db.collection('churches').doc(org.orgId).get();
+                return [org.orgId, doc.exists ? (doc.data()?.name || org.orgId) : org.orgId];
+            } catch {
+                return [org.orgId, org.orgId];
+            }
+        })).then(entries => { if (alive) setPersonalOrgNames(Object.fromEntries(entries)); });
+        return () => { alive = false; };
+    }, [currentUser?.uid, currentUser?.accountType, personalOrgs.map(org => org.orgId).join('|')]);
     const adminAuthToasts = useToast();
     const handleReadComplete = useCallback((resultData) => {
         if (typeof window !== 'undefined' && window.refreshKakaoAdBanner) {
@@ -89,7 +123,7 @@ const App = () => {
         loadAnnouncement,
         kakaoLink, loadKakaoLink, setKakaoLink
     } = useBibleLogic(
-        currentUser,
+        dashboardUser,
         setCurrentUser,
         view,
         churchCommunities,
@@ -188,10 +222,10 @@ const App = () => {
                     loadSuperAdminData();
                 } else if (currentUser.role === 'churchAdmin') {
                     // 교회 관리자는 부서/소그룹 없이 바로 대시보드로
-                    if (currentUser.churchId) loadChurchCommunities(currentUser.churchId);
+                    if (dashboardUser?.churchId) loadChurchCommunities(dashboardUser.churchId);
                     setView('dashboard');
                 } else {
-                    if (currentUser.churchId) loadChurchCommunities(currentUser.churchId);
+                    if (dashboardUser?.churchId) loadChurchCommunities(dashboardUser.churchId);
                     if (currentUser.departmentId && currentUser.subgroupId) {
                         setView('dashboard');
                     } else {
@@ -366,6 +400,12 @@ const App = () => {
         } catch (e) { console.error(e); }
     };
 
+    useEffect(() => {
+        if (view !== 'dashboard') return;
+        if (dashboardUser?.churchId) loadChurchCommunities(dashboardUser.churchId);
+        else setChurchCommunities([]);
+    }, [view, dashboardUser?.churchId]);
+
     const loadSuperAdminData = async () => {
         const [usersSnap, churchesSnap] = await Promise.all([
             db.collection('users').get(),
@@ -463,6 +503,22 @@ const App = () => {
         setCurrentUser(nextUser);
         setTempUser(null);
         setView('dashboard');
+    };
+
+    const handlePrimaryOrgChange = async (orgId) => {
+        if (currentUser?.accountType !== 'personal' || auth.currentUser?.uid !== currentUser.uid) return;
+        const target = personalOrgs.find(org => org.orgId === orgId);
+        if (!target || orgId === currentUser.primaryOrgId) return;
+        try {
+            await db.collection('users').doc(currentUser.uid).set({
+                primaryOrgId: orgId,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true });
+            setCurrentUser(user => user?.uid === currentUser.uid ? { ...user, primaryOrgId: orgId } : user);
+        } catch (error) {
+            console.error('기준 공동체 변경 실패:', error);
+            alert('공동체를 바꾸지 못했습니다. 잠시 후 다시 시도해주세요.');
+        }
     };
 
     // ----------------------------------------------------------------------
@@ -611,7 +667,7 @@ const App = () => {
         pageContent = (
             <PlanSelectionView
                 view={view}
-                currentUser={currentUser}
+                currentUser={dashboardUser}
                 tempUser={tempUser}
                 setView={setView}
                 selectedPlanType={selectedPlanType}
@@ -693,6 +749,8 @@ const App = () => {
                 setShowSecretShopUnlocked={setShowSecretShopUnlocked}
                 completionCelebration={completionCelebration}
                 setCompletionCelebration={setCompletionCelebration}
+                personalOrganizations={personalOrgs.map(org => ({ ...org, name: personalOrgNames[org.orgId] || org.orgId }))}
+                onPrimaryOrgChange={handlePrimaryOrgChange}
             />
         );
     } else if (view === 'guest' && currentUser?.role === 'guest') {

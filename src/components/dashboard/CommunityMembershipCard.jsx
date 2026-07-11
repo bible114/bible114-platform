@@ -166,7 +166,8 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
                 joinedAt: now,
                 updatedAt: now,
             };
-            if (onboarding) {
+            const shouldAssignPrimary = onboarding || (currentUser.accountType === 'personal' && !currentUser.primaryOrgId);
+            if (shouldAssignPrimary) {
                 const userRef = db.collection('users').doc(currentUser.uid);
                 await db.runTransaction(async transaction => {
                     const userSnap = await transaction.get(userRef);
@@ -183,7 +184,11 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
                 return;
             }
             setCurrentUser(user => user?.uid === currentUser.uid
-                ? { ...user, extraOrgs: [...latestExtraOrgs, runtimeOrg].sort((a, b) => a.orgId.localeCompare(b.orgId)) }
+                ? {
+                    ...user,
+                    extraOrgs: [...latestExtraOrgs, runtimeOrg].sort((a, b) => a.orgId.localeCompare(b.orgId)),
+                    primaryOrgId: shouldAssignPrimary ? orgId : user.primaryOrgId,
+                }
                 : user);
             setShowJoin(false);
             setOrgId('');
@@ -205,9 +210,27 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
         setBusy(true);
         setNotice(null);
         try {
-            await db.collection('churches').doc(org.orgId).collection('roster').doc(currentUser.uid).delete();
+            const rosterRef = db.collection('churches').doc(org.orgId).collection('roster').doc(currentUser.uid);
+            const remaining = extraOrgs.filter(item => item.orgId !== org.orgId);
+            const leavingPrimary = currentUser.accountType === 'personal' && currentUser.primaryOrgId === org.orgId;
+            if (leavingPrimary) {
+                const nextPrimaryOrgId = remaining[0]?.orgId || null;
+                await db.runTransaction(async transaction => {
+                    transaction.delete(rosterRef);
+                    transaction.update(db.collection('users').doc(currentUser.uid), {
+                        primaryOrgId: nextPrimaryOrgId,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    });
+                });
+            } else {
+                await rosterRef.delete();
+            }
             setCurrentUser(user => user?.uid === currentUser.uid
-                ? { ...user, extraOrgs: (user.extraOrgs || []).filter(item => item.orgId !== org.orgId) }
+                ? {
+                    ...user,
+                    extraOrgs: (user.extraOrgs || []).filter(item => item.orgId !== org.orgId),
+                    primaryOrgId: leavingPrimary ? (remaining[0]?.orgId || null) : user.primaryOrgId,
+                }
                 : user);
         } catch (error) {
             console.error('공동체 탈퇴 실패:', error);
@@ -243,9 +266,9 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
                 <button ref={joinTriggerRef} type="button" disabled={extraOrgs.length >= 3 || busy} onClick={() => { setNotice(null); setShowJoin(true); }} className="shrink-0 rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:bg-slate-300">공동체 추가</button>
             </div>
             <div className="space-y-2">
-                <div className="rounded-xl bg-slate-50 px-3 py-3 text-sm"><span className="font-bold text-slate-700">{currentUser.churchName || '주 소속 공동체'}</span><span className="ml-2 text-[11px] text-blue-600">주 소속</span></div>
-                {extraOrgs.map(org => <div key={org.orgId} className="flex items-center gap-3 rounded-xl border border-slate-100 px-3 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-700">{orgName(org.orgId)}</p><p className="truncate text-xs text-slate-400">{[org.departmentName, org.subgroupName].filter(Boolean).join(' · ') || '소속 미배정'}</p></div><button type="button" disabled={busy} onClick={() => leaveCommunity(org)} className="text-xs font-bold text-red-500 disabled:opacity-40">탈퇴</button></div>)}
-                {extraOrgs.length === 0 && <p className="py-2 text-center text-xs text-slate-400">추가로 참여 중인 공동체가 없습니다.</p>}
+                {currentUser.accountType !== 'personal' && <div className="rounded-xl bg-slate-50 px-3 py-3 text-sm"><span className="font-bold text-slate-700">{currentUser.churchName || '주 소속 공동체'}</span><span className="ml-2 text-[11px] text-blue-600">주 소속</span></div>}
+                {extraOrgs.map(org => <div key={org.orgId} className="flex items-center gap-3 rounded-xl border border-slate-100 px-3 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-700">{orgName(org.orgId)}{currentUser.accountType === 'personal' && currentUser.primaryOrgId === org.orgId && <span className="ml-2 text-[11px] text-blue-600">기준 공동체</span>}</p><p className="truncate text-xs text-slate-400">{[org.departmentName, org.subgroupName].filter(Boolean).join(' · ') || '소속 미배정'}</p></div><button type="button" disabled={busy} onClick={() => leaveCommunity(org)} className="text-xs font-bold text-red-500 disabled:opacity-40">탈퇴</button></div>)}
+                {extraOrgs.length === 0 && <p className="py-2 text-center text-xs text-slate-400">참여 중인 공동체가 없습니다. 혼자 읽는 기록은 계속 안전하게 저장됩니다.</p>}
             </div>
             {notice && !showJoin && <p className="mt-3 text-xs text-red-600">{notice.text}</p>}
 
