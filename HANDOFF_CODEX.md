@@ -215,6 +215,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-11 | T27b 파서 장 경계 수정 + 커버리지 검증기 | `src/utils/quizParsing.js`, `src/utils/quizEngine.js`, `scripts/validate-quiz.mjs`, `HANDOFF_CODEX.md` | 장 경계 절 범위(`A:B-C:D`)를 시작/중간/끝 장 아이템으로 전개하도록 파서 분리·수정. 검증기에 365일 스케줄 파싱, 저작 완료 범위 pool 검사, 미저작 집계, 신약 세그먼트 출력 추가. `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. |
 | 2026-07-11 | T28 부분 — 누가복음 1-4장 문항 | `src/data/quiz/luke.json`, `HANDOFF_CODEX.md` | 신약일독 세그먼트 기준 누가복음 1:1-4:44 범위 9세그먼트, 총 47문항 추가. `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. T28 전체 90일 커버리지는 아직 미완료. |
 | 2026-07-11 | T28 부분 — 누가복음 5-8장 문항 | `src/data/quiz/luke.json`, `HANDOFF_CODEX.md` | 신약일독 세그먼트 기준 누가복음 5:1-8:56 범위 8세그먼트, 47문항 추가(`luke.json` 총 94문항). `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. T28 전체 90일 커버리지는 아직 미완료. |
+| 2026-07-11 | T28 부분 — 누가복음 9-10장 초반 문항 | `src/data/quiz/luke.json`, `HANDOFF_CODEX.md` | 신약일독 세그먼트 기준 누가복음 9:1-10:20 범위 3세그먼트, 15문항 추가(`luke.json` 총 109문항). Day 206-208이 각각 pool 5/5로 확인됨. `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. T28 전체 90일 커버리지는 아직 미완료. |
 
 ---
 
@@ -254,6 +255,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T27b 완료. 파서는 `quizParsing.js`로 분리해 앱과 검증기가 같은 `parseReadingRange`를 사용한다. `마 10:26-11:1`, `갈 4:1-5:1`, `고전 10:1-11:1`, `눅 3:21-4:13`, `렘 26:1-29:23` 장 경계 범위가 여러 아이템으로 전개됨을 확인했다. 검증기는 신약 세그먼트 목록과 미저작 집계를 출력한다.
 - T28 진행 중. 누가복음 1:1-4:44까지 신약일독 세그먼트 기준 47문항을 추가했고 검증/빌드는 통과했다. 다음 우선순위는 누가복음 5장 이후 세그먼트 계속 저작이다.
 - T28 진행 중. 누가복음 5:1-8:56 범위 8세그먼트 47문항을 추가해 `luke.json`은 총 94문항이 됐다. 검증/빌드는 통과했다. 다음 우선순위는 누가복음 9장 이후 세그먼트 계속 저작이다.
+- T28 진행 중. 누가복음 9:1-10:20 범위 3세그먼트에 15문항을 추가해 `luke.json`은 총 109문항이 됐다. Day 206-208은 각각 pool 5/5이며 검증/빌드는 통과했다. 다음 우선순위는 누가복음 10:21-42 이후 세그먼트 계속 저작이다. 퀴즈 문항 신학적 검수는 사용자 몫이다.
 
 ---
 
@@ -524,6 +526,11 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
   - 2단계(교회 정보·조직 구성)는 동일. 최종 생성 시: Auth 계정은 이미 존재하므로 createUser 없이 **현재 uid로 users 문서 생성** — `role: 'churchAdmin'`, `email`: 구글 이메일, **`password: null`** (구글 계정은 평문 보관 대상 아님 — private/auth 문서도 만들지 않는다). 교회 문서·디렉토리 등록은 기존 흐름 재사용.
   - 중도 이탈 처리: 구글 인증 후 2단계에서 이탈하면 Auth 계정만 남고 users 문서가 없는 상태 — T37의 "문서 없음 → 안내" 경로가 자연스럽게 받아준다(별도 정리 불필요, 로그에 명시).
   - 가입 완료 기준: 구글로 교회 등록 → 관리자 뷰 진입 → 로그아웃 → 구글로 재로그인 성공 (로컬 dev에서 실제 구글 팝업 검증이 어려우면 미검증 명시).
+- [ ] **T39. 기존 관리자 계정에 구글 연결 (플랫폼 관리자 요청 — "기존 가입자 제외" 원칙의 유일한 예외)**
+  - `PlatformAdminView.jsx` 시스템 탭에 "🔗 내 계정에 구글 연결" 박스: 버튼 클릭 → `auth.currentUser.linkWithPopup(new firebase.auth.GoogleAuthProvider())` (compat API). 성공 시 "연결 완료 — 이제 관리자 로그인에서 구글 버튼으로 로그인할 수 있습니다" 안내. `auth/credential-already-in-use`(그 구글 계정이 이미 다른 계정에 사용됨) → "이 구글 계정은 이미 다른 계정에 연결되어 있습니다" 에러.
+  - 이미 연결된 상태(`auth.currentUser.providerData`에 google.com 존재)면 버튼 대신: 연결된 구글 이메일 표시 + **"비밀번호 로그인 제거"** 버튼(더블 confirm — "제거하면 이 계정은 구글로만 로그인할 수 있습니다") → `auth.currentUser.unlink('password')`. 제거 성공 시 users 문서의 `password` 필드도 null 확인(이미 null 마커 체계).
+  - 같은 UI를 `ChurchAdminView.jsx` 설정 탭에도 재사용 가능하게 컴포넌트로 분리(`src/components/admin/GoogleLinkCard.jsx`) — 기존 교회 관리자도 원하면 스스로 연결할 수 있게. 단 어디서도 연결을 강요하는 문구는 쓰지 말 것.
+  - 완료 기준: 빌드 통과. 실계정 연결 검증은 사용자 몫(수동 M9: 플랫폼 관리자 로그인 → 구글 연결 → 구글 재로그인 확인 → 비밀번호 로그인 제거).
 
 ---
 
