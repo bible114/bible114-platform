@@ -27,6 +27,7 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
         readHistory, setReadHistory, hasReadToday, setHasReadToday,
         showConfetti, setShowConfetti, levelUpToast, setLevelUpToast,
         bonusToast, setBonusToast, newAchievement, setNewAchievement,
+        readSubmitting,
         handleRead, handleRestart, changeStartDate, checkAchievements
     } = useUserBibleActions(
         currentUser, setCurrentUser,
@@ -125,6 +126,7 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
         levelUpToast, setLevelUpToast,
         bonusToast, setBonusToast,
         newAchievement, setNewAchievement,
+        readSubmitting,
 
         // Actions
         handleRead,

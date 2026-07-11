@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { TOTAL_DAYS } from '../data/constants';
 import { PLAN_TYPES, BIBLE_VERSIONS, isBibleVersionVisibleForUser } from '../data/bible_options';
 import { useBibleContent } from '../hooks/useBibleContent';
@@ -40,6 +40,8 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
         return saved ? parseInt(saved, 10) : 16;
     });
     const [showConfetti, setShowConfetti] = useState(false);
+    const [readSubmitting, setReadSubmitting] = useState(false);
+    const readSubmittingRef = useRef(false);
 
     const {
         isSpeaking, isPaused, ttsSpeed, availableVoices, selectedVoiceURI, activeChunkIndex,
@@ -60,21 +62,33 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
     const hasReadToday = currentUser?.lastReadDate === new Date().toDateString();
     const daysRemaining = Math.max(0, TOTAL_DAYS - (viewingDay || currentUser?.currentDay || 1) + 1);
 
-    const handleRead = () => {
-        const guest = recordGuestRead();
-        setCurrentUser(prev => prev ? {
-            ...prev,
-            planId: guest.planId,
-            currentDay: guest.currentDay,
-            streak: guest.streak,
-            lastReadDate: guest.lastReadDate,
-            videoType: guest.videoType,
-        } : prev);
-        setViewingDay(guest.currentDay);
-        setShowConfetti(true);
-        setTimeout(() => setShowConfetti(false), 3000);
-        window.refreshKakaoAdBanner?.();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+    const handleRead = async () => {
+        if (readSubmittingRef.current || readSubmitting) return;
+        readSubmittingRef.current = true;
+        setReadSubmitting(true);
+
+        try {
+            const guest = recordGuestRead(viewingDay);
+            if (!guest.didRecord) return;
+            setCurrentUser(prev => prev ? {
+                ...prev,
+                planId: guest.planId,
+                currentDay: guest.currentDay,
+                streak: guest.streak,
+                lastReadDate: guest.lastReadDate,
+                videoType: guest.videoType,
+            } : prev);
+            setViewingDay(guest.currentDay);
+            setShowConfetti(true);
+            setTimeout(() => setShowConfetti(false), 3000);
+            window.refreshKakaoAdBanner?.();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            // 동기 localStorage 기록도 최소 한 렌더 동안 버튼을 잠가 상태를 분명히 보인다.
+            await new Promise(resolve => setTimeout(resolve, 0));
+        } finally {
+            readSubmittingRef.current = false;
+            setReadSubmitting(false);
+        }
     };
 
     const getEncouragementMessage = () => {
@@ -164,6 +178,7 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
                     jumpToChunk={jumpToChunk}
                     hasReadToday={hasReadToday}
                     handleRead={handleRead}
+                    readSubmitting={readSubmitting}
                 />
             </div>
 

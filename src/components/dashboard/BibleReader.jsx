@@ -23,6 +23,7 @@ const BibleReader = ({
     activeChunkIndex,
     jumpToChunk,
     hasReadToday,
+    readSubmitting,
     handleRead
 }) => {
     const hasContentError = !!verseData.error;
@@ -206,14 +207,15 @@ const BibleReader = ({
                     <div id="tut-read-btn" className="mt-8 pt-6 border-t border-slate-100">
                         <button
                             onClick={handleRead}
-                            className={`w-full py-5 rounded-3xl font-bold text-xl transition-all shadow-xl hover:shadow-2xl active:scale-95 flex items-center justify-center gap-3
+                            disabled={readSubmitting}
+                            className={`w-full py-5 rounded-3xl font-bold text-xl transition-all shadow-xl hover:shadow-2xl active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100 flex items-center justify-center gap-3
                                 ${isAdvanceRead
                                     ? "bg-slate-800 text-white"
                                     : "bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700"
                                 }`}
                         >
                             <span className="text-2xl">📖</span>
-                            {readButtonLabel}
+                            {readSubmitting ? '기록 중...' : readButtonLabel}
                         </button>
                         <p className="text-center text-xs text-slate-400 mt-4 font-medium">
                             {readButtonHelp}

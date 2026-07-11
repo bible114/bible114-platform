@@ -64,6 +64,7 @@ const App = () => {
         levelUpToast, setLevelUpToast,
         bonusToast, setBonusToast,
         newAchievement, setNewAchievement,
+        readSubmitting,
 
         handleRead,
         saveMemo,
@@ -573,6 +574,7 @@ const App = () => {
                 setSelectedVoiceURI={setSelectedVoiceURI}
                 activeChunkIndex={activeChunkIndex}
                 jumpToChunk={jumpToChunk}
+                readSubmitting={readSubmitting}
                 handleRead={handleRead}
                 saveMemo={saveMemo}
                 handleLogout={handleLogout}

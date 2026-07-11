@@ -64,9 +64,21 @@ export const saveGuestState = (partial) => {
     return next;
 };
 
-export const recordGuestRead = () => {
+export const recordGuestRead = (viewingDay) => {
     const today = new Date().toDateString();
     const current = getGuestState();
+    const completedDay = Math.min(365, Math.max(1, parseInt(viewingDay, 10) || current.currentDay));
+
+    // 첫 완료 직후 같은 화면에서 이벤트가 다시 들어오면 currentDay는 이미 다음 날을
+    // 가리킨다. 이 재호출은 무시하되, 다음 날 화면에서 누르는 "한 장 더 읽기"
+    // (completedDay === currentDay)는 정상적으로 진행한다.
+    const isRepeatedCompletion = current.lastReadDate === today && (
+        current.currentDay === 1
+            ? completedDay === 365
+            : completedDay < current.currentDay
+    );
+    if (isRepeatedCompletion) return { ...current, didRecord: false };
+
     const readDates = current.readDates.includes(today)
         ? current.readDates
         : [...current.readDates, today].slice(-400);
@@ -80,12 +92,13 @@ export const recordGuestRead = () => {
         else if (diffDays === 0) streak = current.streak;
     }
 
-    return saveGuestState({
+    const next = saveGuestState({
         currentDay: current.currentDay >= 365 ? 1 : current.currentDay + 1,
         streak,
         lastReadDate: today,
         readDates,
     });
+    return { ...next, didRecord: true };
 };
 
 export const clearGuestMigrated = () => saveGuestState({ migratedAt: null });

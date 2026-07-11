@@ -63,6 +63,7 @@ const DashboardView = ({
     setSelectedVoiceURI,
     activeChunkIndex,
     jumpToChunk,
+    readSubmitting,
     handleRead,
     saveMemo,
     handleLogout,
@@ -358,6 +359,7 @@ const DashboardView = ({
                         activeChunkIndex={activeChunkIndex}
                         jumpToChunk={jumpToChunk}
                         hasReadToday={hasReadToday}
+                        readSubmitting={readSubmitting}
                         handleRead={handleRead}
                     />
 

@@ -229,6 +229,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-11 | T28 부분 — 창세기·신명기 문항 | `src/data/quiz/genesis.json`, `src/data/quiz/deuteronomy.json`, `HANDOFF_CODEX.md` | 일년일독 Day 274-280 대상 창세기 1-20장 60문항, 신명기 1-8장 24문항을 장당 3문항으로 추가. `node scripts/validate-quiz.mjs`, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. |
 | 2026-07-11 | T28 부분 — 골로새서 경계·빌레몬서 문항 | `src/data/quiz/colossians.json`, `src/data/quiz/philemon.json`, `HANDOFF_CODEX.md` | 골로새서 4:1 문항을 추가해 Day 263 분할 세그먼트 pool 5/5를 복구하고, 빌레몬서 1장 5문항을 추가해 Day 265 pool 5/5를 확보. `node scripts/validate-quiz.mjs`, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. |
 | 2026-07-11 | T28 완료 — 90일 커버리지 마무리 | `src/data/quiz/genesis.json`, `src/data/quiz/jonah.json`, `src/data/quiz/amos.json`, `src/data/quiz/hosea.json`, `src/data/quiz/zephaniah.json`, `HANDOFF_CODEX.md` | 창세기 37-50장 42문항과 요나 12·아모스 27·호세아 42·스바냐 9문항 추가. 독립 감사에서 Day 191-280 기준 whole_bible 구약 215장 모두 장당 3문항, whole_bible 신약 포함 23일 및 new_testament 90일 모두 일일 pool 최소 5문항(실패 0) 확인. `node scripts/validate-quiz.mjs`, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. |
+| 2026-07-11 | T29 읽기 완료 중복 제출 방지 | `src/hooks/useUserBibleActions.js`, `src/hooks/useBibleLogic.js`, `src/App.jsx`, `src/components/DashboardView.jsx`, `src/components/dashboard/BibleReader.jsx`, `src/components/GuestReaderView.jsx`, `src/utils/guestStorage.js`, `HANDOFF_CODEX.md` | 로그인 경로에 state+ref UI 가드와 트랜잭션 `(readCount, day)` 중복 판정·최종 반환값 처리를 추가하고, 게스트에 동일 가드와 `didRecord` 부수효과 차단을 적용. 일반 중복·한 장 더 읽기·365→1 순환 판정 재검토 및 `npm run build`, `git diff --check` 통과. 실제 Firebase 더블클릭은 운영 데이터 변경 때문에 미검증. |
 
 ---
 
@@ -277,6 +278,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T28 진행 중. 두 번째 병렬 배치로 누가복음과 사도행전의 해당 신약일독 전 세그먼트, 베드로전·후서, 요한계시록 8-14장, 창세기 1-20장, 신명기 1-8장을 추가했다. 90일 범위에서 남은 우선순위는 요나·아모스·호세아·스바냐 등 소선지서와 신약일독 Day 281 이후 책이다. `philippians.json`과 `colossians.json` 3장은 각각 4문항이라는 장당 경고가 있지만, 분할 세그먼트 경계(4:1)를 앞 세그먼트에 포함해 각 day pool은 5개 이상이다. 퀴즈 문항 신학적 검수는 사용자 몫이다.
 - T28 진행 중. 골로새서 4:1과 빌레몬서 1장 보강으로 신약일독 Day 191-280은 모든 day pool이 5개 이상이 됐다. 남은 우선순위는 일년일독 구간의 소선지서와 신약일독 Day 281 이후 책이다. `philippians.json`과 `colossians.json`의 장당 경고는 분할 세그먼트 문항 배치에 따른 것으로, 일일 풀은 충족한다. 퀴즈 문항 신학적 검수는 사용자 몫이다.
 - T28 완료. 마지막 병렬 배치로 창세기 37-50장, 요나·아모스·호세아·스바냐 문항을 추가했다. 독립 커버리지 감사 결과 두 플랜 Day 191-280의 T28 기준 실패가 0건이며 검증기와 빌드도 통과했다. `philippians.json`·`colossians.json` 3장의 장당 경고는 4:1 장 경계 세그먼트 배치 때문이며 실제 일일 pool은 5개 이상이다. 퀴즈 문항 신학적 검수는 사용자 몫이다. 다음 작업은 T29 읽기 완료 중복 제출 방지다.
+- T29 완료. 로그인 사용자는 `readSubmitting` state+ref와 트랜잭션의 `(readCount, day)` 진행 위치 비교로 일반 중복·한 장 더 읽기·365→1 순환을 구분한다. `runTransaction` 최종 반환값만 후속 통계·history·confetti에 사용해 재시도 중 폐기된 계산이 새지 않게 했다. 게스트는 `didRecord: false`면 UI 부수효과도 생략한다. 빌드와 독립 diff 재검토는 통과했고 실제 Firebase 더블클릭은 운영 데이터 변경 때문에 미검증이다. 다음 작업은 T30 주간 읽기왕 수리다.
 
 ---
 
@@ -488,7 +490,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
 
 > 배경: 2026-07-10 전체 코드 점검에서 나온 발견 중 사용자가 승인한 4건. 작업 프로토콜 동일.
 
-- [ ] **T29. "읽기 완료" 버튼 중복 제출 방지** (2026-07-10 실환경 재현됨 — 아래 실측 증거 반영해 이중 방어로 구현할 것)
+- [x] **T29. "읽기 완료" 버튼 중복 제출 방지** (2026-07-10 실환경 재현됨 — 아래 실측 증거 반영해 이중 방어로 구현할 것)
   - **실측 증거** (테스트 계정 더블클릭): `currentDay 1→3` (하루치 본문 스킵), `score 0→21` (10+11 중복 적립), talent는 11로 정상 — talent만 `isFirstReadToday` 가드가 있고 score/currentDay는 없어서다.
   - **방어 1 (UI)**: 훅에 `readSubmitting` state — 함수 진입 시 true면 즉시 return, try/finally 해제, 훅 반환값에 포함. `src/components/dashboard/BibleReader.jsx` 읽기 완료 버튼(207행 부근)에 `disabled` + 라벨 "기록 중...". DashboardView에서 prop 연결.
   - **방어 2 (트랜잭션 — 근본 수정)**: UI 가드만으론 두 번째 클릭이 state 반영 전에 들어올 수 있다. 트랜잭션 내부에서 "같은 날 같은 진행일의 재제출"을 감지해 no-op 처리: `!isFirstReadToday && vDay === data.currentDay - ?` 형태가 아니라, 정확히는 **`data.lastReadDate === todayStr && vDay < data.currentDay`이면(이미 오늘 이 화면의 완료가 반영됨) 진도·점수·달란트 전부 갱신 없이 조기 종료**. "한 장 더 읽기"(미리 읽기 — vDay가 이미 증가한 currentDay와 같음)는 정상 통과해야 한다 — 구분 조건을 신중히: 첫 클릭 후 currentDay는 +1 된 상태이므로 재제출은 `vDay === currentDay - 1`로 판별 가능.

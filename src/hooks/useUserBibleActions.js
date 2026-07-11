@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { db, firebase } from '../utils/firebase';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { calculateSubgroupStats } from '../utils/statsUtils';
@@ -20,6 +20,8 @@ export const useUserBibleActions = (
     const [levelUpToast, setLevelUpToast] = useState(null);
     const [bonusToast, setBonusToast] = useState(null);
     const [newAchievement, setNewAchievement] = useState(null);
+    const [readSubmitting, setReadSubmitting] = useState(false);
+    const readSubmittingRef = useRef(false);
 
     const checkAchievements = useCallback((user, userMemos) => {
         if (!user) return;
@@ -42,28 +44,38 @@ export const useUserBibleActions = (
     }, []);
 
     const handleRead = useCallback(async () => {
+        if (readSubmittingRef.current) return;
         if (!currentUser) return;
+        readSubmittingRef.current = true;
+        setReadSubmitting(true);
         const uid = currentUser.uid;
         const todayStr = new Date().toDateString();
         const vDay = viewingDay || currentUser.currentDay || 1;
-
-        let resultData = null;
-        let completedRound = false;
+        const submittedReadCount = currentUser.readCount || 1;
 
         try {
             // Firestore Transaction: 동시 다중 클릭/멀티 디바이스 race condition 방지
             // 문서에서 최신 값을 읽어 계산하므로 점수/진도 손실 없음
-            await db.runTransaction(async (transaction) => {
+            const resultData = await db.runTransaction(async (transaction) => {
                 const userRef = db.collection('users').doc(uid);
                 const userSnap = await transaction.get(userRef);
                 if (!userSnap.exists) throw new Error('USER_NOT_FOUND');
 
                 const data = userSnap.data();
-
                 let currentProgressDay = data.currentDay || 1;
                 if (currentProgressDay > 365) {
                     currentProgressDay = ((currentProgressDay - 1) % 365) + 1;
                 }
+                const storedReadCount = data.readCount || 1;
+
+                // 같은 화면에서 이미 반영된 오늘의 완료 요청이면 아무것도 갱신하지 않는다.
+                // (회차, Day) 진행 위치를 함께 비교해 365→1 순환 중복도 차단한다.
+                // 상태가 갱신된 뒤 다음 진행일을 누르는 "한 장 더 읽기"는 정상 허용한다.
+                const isRepeatedCompletion = data.lastReadDate === todayStr && (
+                    submittedReadCount < storedReadCount ||
+                    (submittedReadCount === storedReadCount && vDay < currentProgressDay)
+                );
+                if (isRepeatedCompletion) return null;
 
                 const oldScore = data.score || 0;
                 const oldLevel = Math.floor(oldScore / 100);
@@ -73,7 +85,7 @@ export const useUserBibleActions = (
                 const newLevel = Math.floor(newScore / 100);
 
                 const nextViewingDay = vDay >= 365 ? 1 : vDay + 1;
-                completedRound = currentProgressDay >= 365;
+                const completedRound = currentProgressDay >= 365;
                 const newProgressDay = completedRound ? 1 : currentProgressDay + 1;
                 const newReadCount = completedRound ? (data.readCount || 1) + 1 : (data.readCount || 1);
 
@@ -116,11 +128,11 @@ export const useUserBibleActions = (
                 const histRef = db.collection('users').doc(uid).collection('history').doc();
                 transaction.set(histRef, historyItem);
 
-                resultData = { updateData, newLevel, oldLevel, streakBonus, newStreak, newReadCount, nextViewingDay, historyItem, newProgressDay, talentEarned, secretShopJustUnlocked };
+                return { updateData, newLevel, oldLevel, streakBonus, newStreak, newReadCount, nextViewingDay, historyItem, newProgressDay, talentEarned, secretShopJustUnlocked, completedRound };
             });
 
             if (!resultData) return;
-            const { updateData, newLevel, oldLevel, streakBonus, newStreak, newReadCount, nextViewingDay, historyItem, newProgressDay, talentEarned } = resultData;
+            const { updateData, newLevel, oldLevel, streakBonus, newStreak, newReadCount, nextViewingDay, historyItem, newProgressDay, talentEarned, completedRound } = resultData;
 
             // 플랫폼 통계 업데이트 (fire & forget) — 날짜가 바뀌면 readers_today 리셋
             db.collection('settings').doc('platformStats').get().then(snap => {
@@ -173,6 +185,9 @@ export const useUserBibleActions = (
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (e) {
             if (e.message !== 'USER_NOT_FOUND') console.error("읽기 처리 실패:", e);
+        } finally {
+            readSubmittingRef.current = false;
+            setReadSubmitting(false);
         }
     }, [currentUser, viewingDay, setCurrentUser, setViewingDay, loadAllMembers, setAllMembersForRace, setDepartmentMembers, setSubgroupStats, checkAchievements, onReadComplete]);
 
@@ -230,6 +245,7 @@ export const useUserBibleActions = (
         setBonusToast,
         newAchievement,
         setNewAchievement,
+        readSubmitting,
         handleRead,
         handleRestart,
         changeStartDate,
