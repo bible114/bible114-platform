@@ -34,6 +34,7 @@ const App = () => {
     const [tempUser, setTempUser] = useState(null);
     const [loginInitialTab, setLoginInitialTab] = useState('member');
     const [showSecretShopUnlocked, setShowSecretShopUnlocked] = useState(false);
+    const [completionCelebration, setCompletionCelebration] = useState(null);
     // [Phase 3] 교회 전용 링크(?church=ID) — 로그인 화면 교회 preselect용. 최초 마운트 시 1회만 읽는다.
     const [presetChurchId] = useState(() => new URLSearchParams(window.location.search).get('church') || null);
     const { currentUser, setCurrentUser, authLoading, authError, retryAuthCheck } = useUserAuth();
@@ -43,6 +44,12 @@ const App = () => {
         }
         if (resultData?.secretShopJustUnlocked) {
             setShowSecretShopUnlocked(true);
+        }
+        if (resultData?.completedRound) {
+            setCompletionCelebration({
+                completedRound: Math.max(1, (resultData.newReadCount || 2) - 1),
+                newReadCount: resultData.newReadCount || 2,
+            });
         }
     }, []);
 
@@ -611,6 +618,8 @@ const App = () => {
                 churchCommunities={churchCommunities}
                 showSecretShopUnlocked={showSecretShopUnlocked}
                 setShowSecretShopUnlocked={setShowSecretShopUnlocked}
+                completionCelebration={completionCelebration}
+                setCompletionCelebration={setCompletionCelebration}
             />
         );
     } else if (view === 'guest' && currentUser?.role === 'guest') {

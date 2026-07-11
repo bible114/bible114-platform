@@ -30,7 +30,8 @@ import {
     ReadingChampionSection,
     KakaoChannelButton,
     BibleQuizCard,
-    TalentShop
+    TalentShop,
+    CompletionCelebration
 } from './dashboard';
 import TutorialOverlay from './TutorialOverlay';
 
@@ -102,6 +103,8 @@ const DashboardView = ({
     churchCommunities,
     showSecretShopUnlocked,
     setShowSecretShopUnlocked,
+    completionCelebration,
+    setCompletionCelebration,
 }) => {
     const [showTutorial, setShowTutorial] = useState(false);
 
@@ -216,6 +219,13 @@ const DashboardView = ({
 
     return (
         <div className="min-h-screen bg-slate-50 overflow-hidden relative font-sans">
+            {completionCelebration && (
+                <CompletionCelebration
+                    completedRound={completionCelebration.completedRound}
+                    newReadCount={completionCelebration.newReadCount}
+                    onClose={() => setCompletionCelebration(null)}
+                />
+            )}
             {showConfetti && <div className="fixed inset-0 z-50 flex justify-center pt-40 pointer-events-none"><div className="text-6xl animate-bounce">🎊</div></div>}
 
             {newAchievement && (

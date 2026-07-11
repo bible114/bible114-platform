@@ -68,6 +68,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [bulkCommId, setBulkCommId] = useState('');
     const [bulkSubId, setBulkSubId] = useState('');
     const [selectedMember, setSelectedMember] = useState(null);
+    const [showCompletedReaders, setShowCompletedReaders] = useState(false);
     const [memberHistory, setMemberHistory] = useState([]);
     const [detailLoading, setDetailLoading] = useState(false);
     const [confirmAction, setConfirmAction] = useState(null);
@@ -834,6 +835,12 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     }));
 
     const atRisk = computeAtRisk(members, todayStr);
+    const completedReaders = [...members]
+        .filter(member => (member.readCount || 1) > 1)
+        .sort((a, b) => {
+            const countDiff = (b.readCount || 1) - (a.readCount || 1);
+            return countDiff || (a.name || '').localeCompare(b.name || '', 'ko-KR');
+        });
     const streakTop = [...members]
         .filter(m => (m.streak || 0) > 0)
         .sort((a, b) => (b.streak || 0) - (a.streak || 0))
@@ -1004,7 +1011,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                     </p>
                                 </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                                     <StatCard label="전체 교인" value={`${dashboardStats.total}명`} subvalue={`${deletedMembers.length}명 삭제 보관`} icon="👥" accent />
                                     <StatCard
                                         label="오늘 진도"
@@ -1014,6 +1021,27 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                     />
                                     <StatCard label="최근 7일 읽기율" value={`${dashboardStats.recent7Rate}%`} subvalue="최근 7일 내 1회 이상 읽음" icon="🗓️" />
                                     <StatCard label="평균 진행 DAY" value={dashboardStats.avgDay || '-'} subvalue="독수 포함 총 진행일 기준" icon="🏁" />
+                                    <div
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-label={`완독자 ${completedReaders.length}명 명단 보기`}
+                                        onClick={() => setShowCompletedReaders(true)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === 'Enter' || event.key === ' ') {
+                                                event.preventDefault();
+                                                setShowCompletedReaders(true);
+                                            }
+                                        }}
+                                        className="rounded-2xl cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+                                    >
+                                        <StatCard
+                                            label="완독자"
+                                            value={`${completedReaders.length}명`}
+                                            subvalue="눌러서 완독 명단 보기"
+                                            icon="🏆"
+                                            className="h-full transition-transform hover:-translate-y-0.5"
+                                        />
+                                    </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 lg:grid-cols-[1.35fr_0.65fr] gap-4">
@@ -1923,6 +1951,48 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                 </div>
                             )}
                         </div>
+                    </div>
+                )}
+            </SlideOverPanel>
+
+            <SlideOverPanel
+                open={showCompletedReaders}
+                title="완독자 명단"
+                subtitle={`1독 이상 완료한 교인 ${completedReaders.length}명`}
+                onClose={() => setShowCompletedReaders(false)}
+                widthClass="max-w-md"
+                footer={(
+                    <div className="flex justify-end">
+                        <button
+                            type="button"
+                            onClick={() => setShowCompletedReaders(false)}
+                            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-600"
+                        >
+                            닫기
+                        </button>
+                    </div>
+                )}
+            >
+                {completedReaders.length === 0 ? (
+                    <p className="py-12 text-center text-sm font-bold text-slate-300">아직 완독자가 없습니다.</p>
+                ) : (
+                    <div className="space-y-2">
+                        {completedReaders.map((member, index) => (
+                            <div
+                                key={member.uid}
+                                className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3"
+                            >
+                                <div className="min-w-0">
+                                    <p className="text-sm font-black text-slate-800 truncate">{index + 1}. {member.name}</p>
+                                    <p className="mt-0.5 text-xs font-bold text-slate-400 truncate">
+                                        {member.departmentName || '미배정'} · {member.subgroupName || member.subgroupId || '미배정'}
+                                    </p>
+                                </div>
+                                <span className="shrink-0 rounded-full bg-emerald-100 px-3 py-1 text-sm font-black text-emerald-700">
+                                    {(member.readCount || 1) - 1}독 완료
+                                </span>
+                            </div>
+                        ))}
                     </div>
                 )}
             </SlideOverPanel>

@@ -232,6 +232,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-11 | T29 읽기 완료 중복 제출 방지 | `src/hooks/useUserBibleActions.js`, `src/hooks/useBibleLogic.js`, `src/App.jsx`, `src/components/DashboardView.jsx`, `src/components/dashboard/BibleReader.jsx`, `src/components/GuestReaderView.jsx`, `src/utils/guestStorage.js`, `HANDOFF_CODEX.md` | 로그인 경로에 state+ref UI 가드와 트랜잭션 `(readCount, day)` 중복 판정·최종 반환값 처리를 추가하고, 게스트에 동일 가드와 `didRecord` 부수효과 차단을 적용. 일반 중복·한 장 더 읽기·365→1 순환 판정 재검토 및 `npm run build`, `git diff --check` 통과. 실제 Firebase 더블클릭은 운영 데이터 변경 때문에 미검증. |
 | 2026-07-11 | T30 주간 읽기왕 수리 | `src/hooks/useUserBibleActions.js`, `src/utils/helpers.js`, `src/utils/statsUtils.js`, `src/components/dashboard/ReadingChampionSection.jsx`, `HANDOFF_CODEX.md` | 읽기 트랜잭션에 `recentReadDates` 최근 14일 롤링 필드 저장, 상태 매핑, 레거시 `readHistory` 병합·날짜 중복/invalid/미래 제거, 화면 `weeklyCount` 직접 표시를 적용. N회 Firestore 조회 없음. `npm run build`, `git diff --check`, 독립 diff 재검토 통과. 기존 사용자는 다음 읽기부터 쌓여 최대 1주 후 랭킹이 채워질 수 있음. |
 | 2026-07-11 | T31 광고 하단 여백 | `src/components/LoginView.jsx`, `src/components/PlanSelectionView.jsx`, `HANDOFF_CODEX.md` | LoginView 공통 루트 1곳과 PlanSelectionView 4개 분기 루트에 `safe-area-inset-bottom + 72px` 하단 여백 적용. 적용 위치 5곳 독립 감사, `npm run build`, `git diff --check` 통과. |
+| 2026-07-11 | T32 완독 축하 개선 | `src/components/dashboard/CompletionCelebration.jsx`, `src/components/dashboard/index.js`, `src/App.jsx`, `src/components/DashboardView.jsx`, `src/hooks/useUserBibleActions.js`, `src/components/ChurchAdminView.jsx`, `HANDOFF_CODEX.md` | 완독 alert를 전체화면 축하 오버레이로 교체하고 완주 회차·다음 회차 표시, 고우선 z-index·초점 트랩·ESC/복원 적용. 교회 관리자 대시보드에 활성 교인 기준 완독자 StatCard와 명단 패널 추가. 랜딩 `finished_total` 기존 연결 확인. `npm run build`, `git diff --check`, 독립 재검토 통과. 실제 365일 완주/관리자 인증 화면은 운영 데이터 변경 없이 미검증. |
 
 ---
 
@@ -283,6 +284,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T29 완료. 로그인 사용자는 `readSubmitting` state+ref와 트랜잭션의 `(readCount, day)` 진행 위치 비교로 일반 중복·한 장 더 읽기·365→1 순환을 구분한다. `runTransaction` 최종 반환값만 후속 통계·history·confetti에 사용해 재시도 중 폐기된 계산이 새지 않게 했다. 게스트는 `didRecord: false`면 UI 부수효과도 생략한다. 빌드와 독립 diff 재검토는 통과했고 실제 Firebase 더블클릭은 운영 데이터 변경 때문에 미검증이다. 다음 작업은 T30 주간 읽기왕 수리다.
 - T30 완료. 사용자 문서에 최근 14일의 고유 날짜만 `recentReadDates`로 저장하고, 주간 읽기왕은 신형 필드와 레거시 `readHistory`를 날짜 단위로 병합해 계산한다. 화면도 계산된 `weeklyCount`를 직접 표시하도록 수정했다. 추가 Firestore 조회는 없으며 빌드·diff 재검토를 통과했다. 기존 사용자는 다음 읽기부터 필드가 쌓이므로 랭킹이 채워지는 데 최대 1주 걸릴 수 있다. 다음 작업은 T31 광고 하단 여백이다.
 - T31 완료. 로그인 화면 공통 루트와 버전·플랜·공동체 선택 4개 분기 루트에 고정 광고를 피하는 safe-area 포함 72px 하단 여백을 적용했다. 적용 위치 5곳을 독립 감사했고 빌드·diff 검사를 통과했다. 다음 작업은 T32 완독 축하 개선이다.
+- T32 완료. 365일 완주 alert를 접근성 있는 전체화면 오버레이로 교체하고, 완독 회차와 다음 회차를 표시한다. 관리자 대시보드에는 활성 교인 `readCount > 1` 기준 완독자 카드·명단을 추가했다. 랜딩의 올해 완독자는 이미 `platformStats.finished_total`에 연결되어 있어 유지했다. 빌드·레이어/키보드 재검토를 통과했으며 실제 완주와 관리자 인증 진입은 운영 데이터 변경 때문에 미검증이다. 다음 작업은 T33 퀴즈 우선 게이트다.
 
 ---
 
@@ -507,7 +509,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
 - [x] **T31. 로그인·버전선택 화면 광고 하단 여백**
   - `src/components/LoginView.jsx`와 `src/components/PlanSelectionView.jsx`의 각 화면 루트 컨테이너에 `style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}` 추가 (ChurchAdminView 957행 부근과 동일 패턴). 하단 고정 광고(50px)가 마지막 버튼/목록을 가리는 문제.
   - 주의: PlanSelectionView는 화면이 4개(view 분기)라 루트가 4곳이다 — 전부.
-- [ ] **T32. 완독 축하 개선**
+- [x] **T32. 완독 축하 개선**
   - 현재: `handleRead`에서 365일차 완주 시 `alert()` 한 줄(166행 부근). `completedRound`/`newReadCount`는 이미 계산되고 `platformStats.finished_total`도 이미 증가한다 — 이 로직들은 건드리지 말 것.
   - (a) alert 대신 전용 축하 오버레이 컴포넌트(신규 `src/components/dashboard/CompletionCelebration.jsx`): 전체 화면, 🎉 + "N독 완주!" + "N+1독을 시작합니다" + 닫기 버튼. confetti와 함께 표시. resultData의 completedRound 플래그로 트리거.
   - (b) 교회 관리자 대시보드 탭에 StatCard "완독자" 추가 — 로드된 members 중 `readCount > 1`인 인원 수 + 클릭 시 명단(이름·N독).

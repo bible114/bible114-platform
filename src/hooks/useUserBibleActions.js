@@ -193,10 +193,6 @@ export const useUserBibleActions = (
                 setDepartmentMembers(myCommMembers);
             }
 
-            if (completedRound) {
-                alert(`🎉 축하합니다! ${newReadCount - 1}독을 완료하셨습니다!\n\n이제 ${newReadCount}독을 시작합니다! 🏃‍♂️`);
-            }
-
             setShowConfetti(true);
             setTimeout(() => setShowConfetti(false), 3000);
             checkAchievements(updatedUser, {});
