@@ -115,8 +115,15 @@ service cloud.firestore {
           request.resource.data.keys().hasOnly(
             ['uid', 'name', 'score', 'currentDay', 'streak', 'readCount', 'lastReadDate',
              'departmentId', 'departmentName', 'subgroupId', 'subgroupName', 'joinedAt', 'updatedAt']);
+        // 본인 update: create와 같은 필드 화이트리스트 + joinedAt 불변.
+        // (T46 경합 방어 — 기존 행 위에 set()이 오면 joinedAt(serverTimestamp)이 기존 값과
+        //  달라져 거부된다 → 관리자 배정·가입 시각의 조용한 덮어쓰기가 안전한 실패로 바뀐다.)
         allow update: if (isRealUser() && request.auth.uid == memberUid &&
-            request.resource.data.uid == memberUid) ||
+            request.resource.data.uid == memberUid &&
+            request.resource.data.keys().hasOnly(
+              ['uid', 'name', 'score', 'currentDay', 'streak', 'readCount', 'lastReadDate',
+               'departmentId', 'departmentName', 'subgroupId', 'subgroupName', 'joinedAt', 'updatedAt']) &&
+            request.resource.data.joinedAt == resource.data.joinedAt) ||
           isChurchAdmin(churchId) || isPlatformAdmin();
         allow delete: if request.auth.uid == memberUid ||
           isChurchAdmin(churchId) || isPlatformAdmin();
