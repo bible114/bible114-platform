@@ -1,5 +1,6 @@
 import React from 'react';
 import Icon from './Icon';
+import GoogleLinkCard from './admin/GoogleLinkCard';
 import { firebase } from '../utils/firebase';
 import ChurchAdminView from './ChurchAdminView';
 import { fetchLatestFromPlaylist } from './dashboard/DailyVideoCard';
@@ -10,6 +11,7 @@ import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/consta
 import { migrateCredentialsIfNeeded, fetchMemberCredentials } from '../utils/memberCredentials';
 
 const PlatformAdminView = ({
+    currentUser,
     handleLogout,
     downloadCSV,
     adminSortBy, setAdminSortBy,
@@ -1334,6 +1336,10 @@ const PlatformAdminView = ({
                 {/* ── 시스템 유지보수 도구 ── */}
                 {tab === 'sync' && (
                     <div className="space-y-5">
+                    <GoogleLinkCard
+                        accountUid={currentUser?.uid}
+                        accountRole={currentUser?.role}
+                    />
                     {/* 플랫폼 문의 카카오 채널 */}
                     <div className="bg-white rounded-xl shadow-sm p-6">
                         <h2 className="text-base font-bold text-slate-800 mb-1">💬 플랫폼 문의 카카오 채널</h2>

@@ -514,6 +514,7 @@ const App = () => {
         return (
             <>
                 <PlatformAdminView
+                    currentUser={currentUser}
                     handleLogout={handleLogout}
                     downloadCSV={downloadCSV}
                     adminSortBy={adminSortBy}

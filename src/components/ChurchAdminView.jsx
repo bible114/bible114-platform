@@ -18,6 +18,7 @@ import {
     useToast,
 } from './admin';
 import TalentShop from './dashboard/TalentShop';
+import GoogleLinkCard from './admin/GoogleLinkCard';
 import QRCode from 'qrcode';
 import { SITE_URL } from '../data/constants';
 
@@ -1780,6 +1781,10 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                         {/* ── 설정 ── */}
                         {tab === 'settings' && (
                             <div id="admin-tut-settings-section" className="space-y-4 max-w-2xl">
+                                <GoogleLinkCard
+                                    accountUid={currentUser?.uid}
+                                    accountRole={currentUser?.role}
+                                />
                                 <div className="bg-white rounded-2xl p-4 border border-slate-100">
                                     <p className="font-bold text-slate-700 mb-1">🔗 우리 교회 로그인 링크</p>
                                     <p className="text-xs text-slate-400 mb-3">이 링크로 접속하면 교인이 교회를 직접 검색하지 않아도 자동으로 선택됩니다. 성도들에게 공유해주세요.</p>
