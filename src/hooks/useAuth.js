@@ -13,6 +13,7 @@ import { getGuestState, saveGuestState } from '../utils/guestStorage';
 import { writeMemberCredentials, migrateCredentialsIfNeeded } from '../utils/memberCredentials';
 import { beginInteractiveAuthFlow, endInteractiveAuthFlow } from '../utils/authFlowGuard';
 import { loadUserExtraOrgs } from '../utils/roster';
+import { getPendingPersonalMigration } from '../utils/personalAccountMigration';
 
 const GOOGLE_ADMIN_ROLES = new Set(['churchAdmin', 'platformAdmin', 'superAdmin']);
 const GOOGLE_ADMIN_NOT_FOUND_MESSAGE = "이 구글 계정으로 등록된 관리자가 없습니다. 기존 관리자는 이메일·비밀번호로 로그인하시고, 새 교회는 '교회 등록'을 이용하세요.";
@@ -176,7 +177,8 @@ export const useAuth = ({
 
     const openExistingPersonalUser = async (firebaseUser, doc) => {
         const data = doc.data();
-        if (data.accountType !== 'personal') throw new Error('NOT_PERSONAL_ACCOUNT');
+        const pendingMigration = getPendingPersonalMigration(firebaseUser.uid);
+        if (data.accountType !== 'personal' && !pendingMigration) throw new Error('NOT_PERSONAL_ACCOUNT');
         const user = userDocToState(doc);
         user.extraOrgs = await loadUserExtraOrgs(firebaseUser.uid);
         setCurrentUser(user);
@@ -316,7 +318,7 @@ export const useAuth = ({
 
             if (!cred && isUnaffiliated) {
                 if (['auth/user-not-found', 'auth/invalid-login-credentials', 'auth/invalid-credential'].includes(newFormatError?.code)) {
-                    setErrorMsg('등록되지 않은 사용자입니다. 회원가입 후 이용해주세요.');
+                    setErrorMsg("등록되지 않은 사용자입니다. 개인 계정으로 전환하셨다면 첫 화면 '시작하기'에서 로그인해주세요.");
                 } else if (newFormatError?.code === 'auth/wrong-password') {
                     setErrorMsg('비밀번호가 틀렸습니다.');
                 } else {
@@ -329,7 +331,7 @@ export const useAuth = ({
                 // 구 포맷으로 재시도 (기존 계정 마이그레이션)
                 cred = await auth.signInWithEmailAndPassword(oldEmail, pw).catch(async err => {
                     if (['auth/user-not-found', 'auth/invalid-login-credentials', 'auth/invalid-credential'].includes(err?.code)) {
-                        setErrorMsg('등록되지 않은 사용자입니다. 회원가입 후 이용해주세요.');
+                        setErrorMsg("등록되지 않은 사용자입니다. 개인 계정으로 전환하셨다면 첫 화면 '시작하기'에서 로그인해주세요.");
                     } else if (err?.code === 'auth/wrong-password') {
                         setErrorMsg('비밀번호가 틀렸습니다.');
                     } else {

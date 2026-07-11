@@ -254,6 +254,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-12 | T53 관리자·지원 대응 | `src/components/PlatformAdminView.jsx`, `src/components/ChurchAdminView.jsx`, `HANDOFF_CODEX.md` | 플랫폼 전체 회원 목록에 개인 뱃지와 개인 계정 표기를 추가. 비밀번호 방식 개인 계정은 기존 `fetchMemberCredentials`로 private/auth 현재 암호 확인·변경을 유지하고 Google 개인 계정은 비밀번호 없음으로 표시. 개인 계정 편집에서 교회/부서 필드를 숨겨 roster 소속 원장을 보호. T48 외부 roster 멤버의 소그룹 배정·제명과 개인정보 작업 차단을 재확인하고 지원 문구를 플랫폼 관리자 기준으로 수정. `npm run build`, `git diff --check` 통과. 실제 관리자 인증 화면·암호 변경·roster 제명은 운영 데이터 변경 때문에 미검증. |
 | 2026-07-12 | T55 개인 계정 전환 진입점 | `src/components/dashboard/PersonalAccountMigrationCard.jsx`, `src/components/dashboard/index.js`, `src/components/DashboardView.jsx`, `HANDOFF_CODEX.md` | 일반 교회 소속 기존 member에게만 조용한 전환 카드와 안내 모달을 표시. 장점 2개·로그인 변경 주의·전화번호 뒤 4자리 필수 검증을 제공하고 닫기 시 localStorage 타임스탬프로 7일간 숨김. 게스트·관리자·개인 계정·무소속은 비노출. `npm run build`, `git diff --check` 통과. 실행 로직은 다음 순번 T56에서 연결. |
 | 2026-07-12 | T56 개인 계정 전환 상태머신 | `src/utils/personalAccountMigration.js`, `src/App.jsx`, `HANDOFF_CODEX.md` | T50 공용 식별자로 Auth 이메일 변경→private/auth phone4 병합→구 교회 roster 존재 확인/생성→users personal 전환을 규칙 요구대로 별개 쓰기로 순차 실행. `b114_migration_v1`에 단계·원소속 snapshot을 저장해 reload 시 같은 uid에서 자동 재개하고, 단계별 멱등·uid 단일 in-flight를 적용. 이메일 충돌·recent login 안내와 완료 후 extraOrgs 재조회/T52 상태 전환 연결. `npm run build`, `git diff --check` 통과. 실계정 전환은 미검증. |
+| 2026-07-12 | T57 개인 로그인 흐름 보완 | `src/components/LoginView.jsx`, `src/hooks/useAuth.js`, `HANDOFF_CODEX.md` | 첫 화면·개인 폼을 "시작하기 · 개인 계정 로그인"으로 명확화하고 교회 로그인 계정 없음 안내에 전환 사용자 경로 추가. 기존 email-already-in-use→signIn 로그인 겸용 동작 유지. Auth 이메일 변경 후 users 전환 전 중단된 uid는 localStorage pending 상태를 확인해 개인 로그인으로 복원하고 T56 자동 재개 허용. `npm run build`, `git diff --check` 통과. |
 
 ---
 
@@ -359,6 +360,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T53 회귀·검증: T48의 외부 roster 멤버는 교회 관리자 화면에서 소그룹 배정·제명만 가능하고 users/private/history·비밀번호·달란트 직접 변경은 계속 차단됨을 재확인했다. 개인 계정도 포함하도록 지원 안내를 플랫폼 관리자 기준으로 수정했다. `npm run build`, `git diff --check` 통과. 실제 관리자 인증 화면·private/auth 암호 변경·roster 제명은 운영 데이터 변경 때문에 미검증이다. 라운드 9 T49~T53은 모두 완료됐으며 라운드 10은 사용자 결정 전 착수 금지다.
 - T55 완료. 일반 교회 소속 기존 member에게만 개인 계정 전환 카드를 표시하고, 게스트·관리자·이미 개인 계정·무소속 가상 교회는 제외했다. 닫기는 localStorage 만료 타임스탬프로 7일간 억제하며 모달은 전화번호 뒤 4자리 형식, 전환 장점 2개, 다음 로그인 경로 주의를 안내한다. `npm run build`, `git diff --check` 통과. 실행 콜백은 T56에서 연결할 예정이며 다음 순번은 전환 상태머신이다.
 - T56 완료. 공용 `makePseudoEmail`+`makeUnaffiliatedIdentity`로 개인 이메일을 만들고 Auth 이메일, private/auth phone4, 구 교회 roster, users personal 전환을 문서 지정 순서의 별개 쓰기로 실행한다. 각 성공 단계와 원소속 snapshot을 `b114_migration_v1`에 저장해 reload 후 동일 uid에서 자동 재개하며, 이미 바뀐 이메일과 이미 존재하는 roster는 no-op 처리한다. 이메일 충돌·recent-login은 사용자 문구로 구분하고 완료 후 users/extraOrgs를 다시 읽어 T52 경로로 전환한다. `npm run build`, `git diff --check` 통과. 실제 계정 전환은 운영 데이터 변경 때문에 미검증이며 다음 순번은 T57 로그인 흐름 보완이다.
+- T57 완료. 첫 화면과 개인 폼 문구를 "시작하기 · 개인 계정 로그인"으로 바꾸고 전환 사용자 안내를 명시했다. 교회 선택 로그인에서 계정을 찾지 못하면 개인 전환 사용자는 시작하기 경로를 쓰도록 안내한다. 개인 경로의 email-already-in-use→signIn 동작을 유지하며, Auth 이메일 변경 뒤 users 전환 전 실패한 동일 uid는 `b114_migration_v1`을 확인해 NOT_PERSONAL_ACCOUNT로 거절하지 않고 대시보드에서 T56 자동 재개를 허용한다. `npm run build`, `git diff --check` 통과. 다음 순번은 T58 관리자·라운드9 공백 회귀다.
 
 ---
 
@@ -758,7 +760,7 @@ Codex가 요청한 후속 2건에 대한 조치:
     5. **users 문서 전환**: `accountType: 'personal'`, `churchId: null`, `churchName: null`, `primaryOrgId: 구 churchId`, `updatedAt`. (departmentId/subgroupId 필드는 그대로 둬도 T52 투영이 roster 기준으로 덮으므로 무해 — 지우지 말 것, 만약을 위한 복구 단서로 남긴다.)
     6. `setCurrentUser`를 T52 개인 계정 경로로 재구성(extraOrgs 재조회 포함), 완료 화면: "전환 완료! 다음 로그인부터는 '시작하기'에서 이름+생년월일+전화 뒤 4자리예요".
   - **재개 처리**: 로그인 복원(useUserAuth)·교인 로그인에서 "이메일은 개인 포맷인데 users 문서가 교회형"인 상태를 감지할 방법이 없으므로(이메일 파싱 금지), 대신 전환 진행 상태를 localStorage(`b114_migration_v1: {uid, step}`)에 남기고 같은 uid 로그인 시 미완 단계부터 재시도. localStorage가 지워졌으면 T55 배너가 다시 보이므로 처음부터 재실행해도 각 단계가 멱등이라 안전함을 확인할 것 (2단계 updateEmail은 이미 바뀐 이메일이면 no-op 취급).
-- [ ] **T57. 로그인 흐름 보완** (`LoginView` / `useAuth`)
+- [x] **T57. 로그인 흐름 보완** (`LoginView` / `useAuth`)
   - 교회 선택 로그인 실패(`user-not-found`류) 메시지에 한 줄 추가: "개인 계정으로 전환하셨다면 '시작하기'에서 로그인해주세요."
   - '시작하기'의 개인 경로가 이미 로그인 겸용(email-already-in-use → signIn)임을 확인하고, 버튼/문구를 "시작하기 · 개인 계정 로그인"으로 보완.
   - `openExistingPersonalUser`가 전환 교인(accountType personal)을 정상 통과시키는지 확인 (T50 코드 재사용 — NOT_PERSONAL_ACCOUNT 분기와 충돌 없어야 함).

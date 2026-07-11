@@ -535,8 +535,8 @@ const LoginView = ({
     const renderEntryChoice = () => (
         <div className="space-y-3.5">
             <button type="button" onClick={() => { setActiveTab('personalSignup'); setPersonalMethod('choice'); clearError(); }} className="w-full rounded-xl border border-blue-200 bg-blue-50 p-4 text-left transition-colors hover:border-blue-400">
-                <p className="text-[16px] font-bold text-blue-950">처음이세요? 시작하기 →</p>
-                <p className="mt-1 text-[11px] text-blue-700">개인 계정을 만들고 공동체는 나중에 선택할 수 있어요.</p>
+                <p className="text-[16px] font-bold text-blue-950">시작하기 · 개인 계정 로그인 →</p>
+                <p className="mt-1 text-[11px] text-blue-700">처음 시작하거나 개인 계정으로 전환하셨다면 여기로 들어오세요.</p>
             </button>
             <div className="flex items-center gap-3 py-1"><span className="h-px flex-1 bg-hairline" /><span className="text-[11px] font-semibold text-ink/45">이미 교회에서 가입하셨나요? 교인 로그인</span><span className="h-px flex-1 bg-hairline" /></div>
             <div className="border border-hairline rounded-xl p-4 bg-cream-card">
@@ -581,7 +581,7 @@ const LoginView = ({
                 <button type="button" onClick={() => { setActiveTab('member'); setMemberStep('entry'); setPersonalMethod('choice'); clearError(); }} className="text-[12px] text-ink/50 hover:text-ink">← 처음 화면으로</button>
                 {personalMethod === 'choice' ? (
                     <>
-                        <p className="text-sm font-bold text-ink">개인 계정으로 시작하세요</p>
+                        <p className="text-sm font-bold text-ink">시작하기 · 개인 계정 로그인</p>
                         {isKakaoTalkBrowser ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12px] text-amber-800">카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 다른 브라우저로 열어주세요.</p> : <button type="button" onClick={handleGooglePersonalSignup} disabled={loading} className="w-full rounded-full border border-hairline bg-white py-3.5 text-sm font-semibold text-ink disabled:opacity-50">{googlePersonalLoading ? '구글 계정 확인 중...' : 'G 구글로 시작'}</button>}
                         <button type="button" onClick={() => { setPersonalMethod('manual'); clearError(); }} className="w-full rounded-full bg-ink py-3.5 text-sm font-semibold text-cream">이름·생일·전화번호로 시작</button>
                         {guestMigrationPreview && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-[12px] font-semibold text-emerald-800">지금까지 읽은 {guestMigrationPreview.currentDay}일차 진도를 가져옵니다.</div>}
@@ -598,7 +598,7 @@ const LoginView = ({
                         {guestMigrationPreview && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-[12px] font-semibold text-emerald-800">지금까지 읽은 {guestMigrationPreview.currentDay}일차 진도를 가져옵니다.</div>}
                         <p className="text-[11px] text-ink/50">개인 계정 비밀번호 지원은 플랫폼 관리자에게 문의해주세요.</p>
                         {errorMsg && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-center text-xs text-red-500">{errorMsg}</p>}
-                        <button type="submit" disabled={loading} className="w-full rounded-full bg-ink py-3.5 text-sm font-semibold text-cream disabled:opacity-50">{loading ? '확인 중...' : '개인 계정으로 시작'}</button>
+                        <button type="submit" disabled={loading} className="w-full rounded-full bg-ink py-3.5 text-sm font-semibold text-cream disabled:opacity-50">{loading ? '확인 중...' : '시작하기 · 로그인'}</button>
                     </form>
                 )}
             </div>
