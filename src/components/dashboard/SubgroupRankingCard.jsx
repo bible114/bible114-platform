@@ -24,15 +24,17 @@ const SubgroupRankingCard = ({
                     <div className="text-center text-slate-400 py-8 text-sm">데이터를 불러오는 중입니다...</div>
                 ) : (
                     ranking.map((group, idx) => {
-                        // 우리 그룹 여부 판별 (부서와 소그룹명이 모두 일치해야 함)
-                        const isMyGroup = group.departmentId === departmentId && group.name === subgroupId;
+                        // 부서+소그룹 ID pair를 기준으로 하되 레거시 이름 저장 사용자도 호환한다.
+                        const groupSubgroupId = group.subgroupId || group.name;
+                        const isMyGroup = group.departmentId === departmentId
+                            && (groupSubgroupId === subgroupId || group.name === subgroupId);
 
                         const displayName = hasMultipleDepartments
                             ? `${group.departmentName} ${group.name}`
                             : group.name;
 
                         return (
-                            <div key={idx} className={`relative transition-all ${isMyGroup ? 'bg-blue-50/50 p-3 rounded-2xl ring-1 ring-blue-100' : ''}`}>
+                            <div key={`${group.departmentId || 'unknown'}_${groupSubgroupId}`} className={`relative transition-all ${isMyGroup ? 'bg-blue-50/50 p-3 rounded-2xl ring-1 ring-blue-100' : ''}`}>
                                 <div className="flex justify-between text-xs mb-1.5">
                                     <span className={`font-bold flex items-center gap-1.5 ${isMyGroup ? 'text-blue-600' : 'text-slate-600'}`}>
                                         <span className={`w-5 h-5 flex items-center justify-center rounded-full text-[10px] ${idx === 0 ? 'bg-yellow-100 text-yellow-700' : idx === 1 ? 'bg-slate-100 text-slate-600' : idx === 2 ? 'bg-orange-50 text-orange-700' : 'bg-slate-100 text-slate-400'}`}>{idx + 1}</span>

@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { db, firebase } from '../utils/firebase';
 import { calculateSubgroupStats } from '../utils/statsUtils';
 import { userDocToState } from '../utils/helpers';
+import { belongsToDepartment } from '../utils/memberships';
 import { UNAFFILIATED_CHURCH_ID } from '../data/constants';
 
 export const useDepartment = (currentUser, setCurrentUser) => {
@@ -75,7 +76,7 @@ export const useDepartment = (currentUser, setCurrentUser) => {
             // useBibleLogic의 [Effect 3]에서 communities와 함께 다시 계산되므로 임시로만 업데이트
             setSubgroupStats(calculateSubgroupStats(allMembers));
             if (currentUser.departmentId) {
-                setDepartmentMembers(allMembers.filter(m => m.departmentId === currentUser.departmentId));
+                setDepartmentMembers(allMembers.filter(m => belongsToDepartment(m, currentUser.departmentId)));
             }
         } catch (e) {
             console.error("소그룹 변경 실패:", e);

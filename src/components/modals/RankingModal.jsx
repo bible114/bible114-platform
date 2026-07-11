@@ -1,6 +1,7 @@
 import React from 'react';
 import Icon from '../Icon';
 import { DEFAULT_DEPARTMENTS } from '../../data/departments';
+import { belongsToSubgroup } from '../../utils/memberships';
 
 const RankingModal = ({
     show,
@@ -35,15 +36,26 @@ const RankingModal = ({
                         {(() => {
                             let filteredRanking = progressRanking;
                             if (rankingCommunityFilter !== 'all') {
-                                const selectedComm = DEFAULT_DEPARTMENTS.find(c => c.id === rankingCommunityFilter);
-                                if (selectedComm) filteredRanking = progressRanking.filter(g => selectedComm.subgroups.indexOf(g.name) !== -1);
+                                filteredRanking = progressRanking.filter(g => g.departmentId === rankingCommunityFilter);
                             }
                             if (filteredRanking.length === 0) return <div className="text-center py-8 text-slate-500"><p className="text-sm">해당 부서의 소그룹 데이터가 없습니다.</p></div>;
                             return filteredRanking.map((group, idx) => {
-                                const isMyGroup = group.name === subgroupId;
+                                const groupSubgroupId = group.subgroupId || group.name;
+                                // 우리팀 강조는 추가 소속 전체가 아니라 내 주 소속 pair만 기준으로 한다.
+                                const isMyGroup = group.departmentId === currentUser?.departmentId
+                                    && (groupSubgroupId === subgroupId || group.name === subgroupId);
                                 const rankColor = idx === 0 ? 'bg-yellow-100 text-yellow-700 border-yellow-200' : idx === 1 ? 'bg-slate-200 text-slate-700 border-slate-300' : idx === 2 ? 'bg-orange-100 text-orange-700 border-orange-200' : 'bg-slate-100 text-slate-600 border-slate-200';
                                 return (
-                                    <button key={idx} onClick={() => setSelectedSubgroupDetail(group.name)} className={`w-full p-3 rounded-xl border-2 transition-all hover:shadow-md ${isMyGroup ? 'bg-blue-50 border-blue-300 hover:bg-blue-100' : 'bg-white border-slate-100 hover:border-slate-300'}`}>
+                                    <button
+                                        key={`${group.departmentId || 'unknown'}_${groupSubgroupId}`}
+                                        onClick={() => setSelectedSubgroupDetail({
+                                            departmentId: group.departmentId,
+                                            departmentName: group.departmentName,
+                                            subgroupId: groupSubgroupId,
+                                            subgroupName: group.name,
+                                        })}
+                                        className={`w-full p-3 rounded-xl border-2 transition-all hover:shadow-md ${isMyGroup ? 'bg-blue-50 border-blue-300 hover:bg-blue-100' : 'bg-white border-slate-100 hover:border-slate-300'}`}
+                                    >
                                         <div className="flex items-center gap-3 mb-2">
                                             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 shrink-0 ${rankColor}`}>{idx + 1}</div>
                                             <div className="flex-1 min-w-0 text-left"><div className="flex justify-between items-center"><span className={`font-bold text-sm truncate pr-2 ${isMyGroup ? 'text-blue-600' : 'text-slate-700'}`}>{group.name} {isMyGroup && '(우리팀)'}</span><span className="text-xs font-bold text-slate-500 shrink-0">{group.progressRate}%</span></div></div>
@@ -59,7 +71,14 @@ const RankingModal = ({
             </div>
         );
     } else {
-        const members = allMembersForRace.filter(m => m.subgroupId === selectedSubgroupDetail).sort((a, b) => {
+        const detailDepartmentId = selectedSubgroupDetail.departmentId;
+        const detailSubgroupId = selectedSubgroupDetail.subgroupId;
+        const detailSubgroupName = selectedSubgroupDetail.subgroupName || detailSubgroupId;
+        const members = allMembersForRace.filter(m => (
+            belongsToSubgroup(m, detailDepartmentId, detailSubgroupId)
+            || (detailSubgroupName !== detailSubgroupId
+                && belongsToSubgroup(m, detailDepartmentId, detailSubgroupName))
+        )).sort((a, b) => {
             const aTotalDays = ((a.readCount || 1) - 1) * 365 + (a.currentDay || 1);
             const bTotalDays = ((b.readCount || 1) - 1) * 365 + (b.currentDay || 1);
             return bTotalDays - aTotalDays;
@@ -73,7 +92,7 @@ const RankingModal = ({
                 <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center gap-3 mb-4 border-b pb-3">
                         <button onClick={() => setSelectedSubgroupDetail(null)} className="text-slate-400 hover:text-slate-600"><Icon name="back" size={20} /></button>
-                        <div className="flex-1"><h3 className="text-xl font-bold text-slate-800">{selectedSubgroupDetail}</h3><p className="text-xs text-slate-500">멤버별 진행 상황</p></div>
+                        <div className="flex-1"><h3 className="text-xl font-bold text-slate-800">{detailSubgroupName}</h3><p className="text-xs text-slate-500">멤버별 진행 상황</p></div>
                         <button onClick={() => { setSelectedSubgroupDetail(null); onClose(); }} className="text-slate-400"><Icon name="close" /></button>
                     </div>
                     <div className="grid grid-cols-3 gap-2 mb-4">

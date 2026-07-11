@@ -3,6 +3,7 @@ import { TOTAL_DAYS } from '../data/constants';
 import { BIBLE_VERSIONS, PLAN_TYPES } from '../data/bible_options';
 import { getLevelInfo } from '../data/levels';
 import { DEFAULT_DEPARTMENTS } from '../data/departments';
+import { belongsToDepartment } from '../utils/memberships';
 
 // Modals
 import {
@@ -177,9 +178,7 @@ const DashboardView = ({
     departmentIds.forEach(commId => {
         const departmentEntry = DEFAULT_DEPARTMENTS.find(c => c.id === commId);
         const commName = departmentEntry ? departmentEntry.name : null;
-        const deptTop = allRacersSorted.find(r =>
-            r.departmentId === commId || (commName && r.departmentName === commName)
-        );
+        const deptTop = allRacersSorted.find(r => belongsToDepartment(r, commId));
         if (deptTop) {
             departmentChampions[deptTop.uid] = commName || (commId === 'senior' ? '장년부' : commId);
             deptChampionsList.push(deptTop);
@@ -190,12 +189,11 @@ const DashboardView = ({
     let nearbyRacers = [];
     if (me) {
         const myCommId = me.departmentId;
-        const myCommName = me.departmentName;
         nearbyRacers = allRacersSorted
             .filter(r => {
-                const isSameComm = (myCommId && r.departmentId === myCommId) ||
-                    (myCommName && r.departmentName === myCommName);
-                const isCandidate = !myCommId && !myCommName ? true : isSameComm;
+                // 내 대시보드의 기준은 주 소속을 유지하되, 그 부서가 추가 소속인 회원도 포함한다.
+                const isSameComm = myCommId && belongsToDepartment(r, myCommId);
+                const isCandidate = myCommId ? isSameComm : true;
                 return isCandidate &&
                     !r.isMe &&
                     !top20Overall.find(t => t.uid === r.uid) &&
@@ -338,6 +336,7 @@ const DashboardView = ({
                 departmentName={departmentName}
                 setShowFullRanking={setShowFullRanking}
                 topProgressGroups={topProgressGroups}
+                departmentId={currentUser.departmentId}
                 subgroupId={subgroupId}
                 // 버전 정보 추가
                 planTypeName={planTypeName}

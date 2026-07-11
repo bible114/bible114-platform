@@ -6,6 +6,7 @@ import { sha256 } from '../utils/crypto';
 import { writeMemberCredentials, fetchMemberCredentials } from '../utils/memberCredentials';
 import { syncChurchDirectoryEntry } from '../utils/churchDirectory';
 import { calculateSubgroupStats, computeAtRisk } from '../utils/statsUtils';
+import { belongsToDepartment } from '../utils/memberships';
 import { downloadCSV } from '../utils/exportUtils';
 import {
     StatCard,
@@ -852,23 +853,28 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             acc[key] = {
                 departmentId: stat.departmentId,
                 departmentName: stat.departmentName || '미배정',
-                totalCount: 0,
-                readCount: 0,
-                avgDaySum: 0,
                 subgroups: [],
             };
         }
-        acc[key].totalCount += stat.totalCount || 0;
-        acc[key].readCount += stat.readCount || 0;
-        acc[key].avgDaySum += (stat.avgDay || 0) * (stat.totalCount || 0);
         acc[key].subgroups.push(stat);
         return acc;
     }, {});
-    const departmentCards = Object.values(departmentStats).map(dept => ({
-        ...dept,
-        rate: dept.totalCount > 0 ? Math.round((dept.readCount / dept.totalCount) * 100) : 0,
-        avgDay: dept.totalCount > 0 ? Math.round(dept.avgDaySum / dept.totalCount) : 0,
-    }));
+    const departmentCards = Object.values(departmentStats).map(dept => {
+        // 한 사람이 같은 부서 안의 여러 소그룹에 속해도 부서 단위 지표는 uid당 한 번만 센다.
+        const departmentMembers = members.filter(member => belongsToDepartment(member, dept.departmentId));
+        const totalCount = departmentMembers.length;
+        const readCount = departmentMembers.filter(member => member.lastReadDate === todayStr).length;
+        const avgDay = totalCount > 0
+            ? Math.round(departmentMembers.reduce((sum, member) => sum + getTotalProgressDay(member), 0) / totalCount)
+            : 0;
+        return {
+            ...dept,
+            totalCount,
+            readCount,
+            rate: totalCount > 0 ? Math.round((readCount / totalCount) * 100) : 0,
+            avgDay,
+        };
+    });
 
     const atRisk = computeAtRisk(members, todayStr);
     const completedReaders = [...members]

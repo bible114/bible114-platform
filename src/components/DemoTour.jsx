@@ -125,6 +125,7 @@ const DemoTour = ({ onClose, onComplete }) => {
                     departmentName={DEMO_USER.departmentName}
                     setShowFullRanking={noop}
                     topProgressGroups={fakeRanking}
+                    departmentId={DEMO_USER.departmentId}
                     subgroupId={DEMO_USER.subgroupId}
                     planTypeName="성경통독 114"
                     versionName="개역개정"

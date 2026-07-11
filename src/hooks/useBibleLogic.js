@@ -1,6 +1,7 @@
 import { useEffect, useCallback } from 'react';
 import { auth, db } from '../utils/firebase';
 import { calculateSubgroupStats } from '../utils/statsUtils';
+import { belongsToDepartment } from '../utils/memberships';
 
 // Sub-hooks
 import { useBibleContent } from './useBibleContent';
@@ -65,7 +66,7 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
             if (allMembers && allMembers.length > 0) {
                 setSubgroupStats(calculateSubgroupStats(allMembers, communities));
                 if (currentUser.departmentId) {
-                    const myCommMembers = allMembers.filter(m => m.departmentId === currentUser.departmentId);
+                    const myCommMembers = allMembers.filter(m => belongsToDepartment(m, currentUser.departmentId));
                     setDepartmentMembers(myCommMembers);
                 }
             }

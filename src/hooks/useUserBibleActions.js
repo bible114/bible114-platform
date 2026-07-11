@@ -3,6 +3,7 @@ import { db, firebase } from '../utils/firebase';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { getKstDateString } from '../data/bibleQuiz';
 import { calculateSubgroupStats } from '../utils/statsUtils';
+import { belongsToDepartment } from '../utils/memberships';
 
 export const useUserBibleActions = (
     currentUser,
@@ -226,7 +227,7 @@ export const useUserBibleActions = (
             setSubgroupStats(calculateSubgroupStats(allMembers));
 
             if (currentUser.departmentId) {
-                const myCommMembers = allMembers.filter(m => m.departmentId === currentUser.departmentId);
+                const myCommMembers = allMembers.filter(m => belongsToDepartment(m, currentUser.departmentId));
                 setDepartmentMembers(myCommMembers);
             }
 

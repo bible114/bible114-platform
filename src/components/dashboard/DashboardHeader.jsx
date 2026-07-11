@@ -16,6 +16,7 @@ const DashboardHeader = ({
     departmentName,
     setShowFullRanking,
     topProgressGroups,
+    departmentId,
     subgroupId,
     // 새로운 props
     planTypeName,
@@ -95,13 +96,16 @@ const DashboardHeader = ({
                     </div>
                     <div className="space-y-4">
                         {topProgressGroups.map((group, idx) => (
-                            <div key={idx} className="flex items-center gap-4">
+                            <div key={`${group.departmentId || 'unknown'}_${group.subgroupId || group.name}`} className="flex items-center gap-4">
                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 shrink-0 ${idx === 0 ? 'bg-yellow-100 border-yellow-200 text-yellow-700' : idx === 1 ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-orange-50 border-orange-100 text-orange-700'}`}>
                                     {idx + 1}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex justify-between text-xs mb-1.5">
-                                        <span className={`font-bold truncate ${(group.subgroupId === subgroupId || group.name === subgroupId) ? 'text-blue-600' : 'text-slate-700'}`}>
+                                        <span className={`font-bold truncate ${(
+                                            group.departmentId === departmentId
+                                            && (group.subgroupId === subgroupId || group.name === subgroupId)
+                                        ) ? 'text-blue-600' : 'text-slate-700'}`}>
                                             {group.name}
                                         </span>
                                         <span className="font-bold text-slate-500 shrink-0">

@@ -1,38 +1,71 @@
 import { DEFAULT_DEPARTMENTS } from '../data/departments';
 import { TOTAL_DAYS } from '../data/constants';
+import { getMembershipList, belongsToDepartment, belongsToSubgroup } from './memberships';
+
+// Firestore 문서는 uid별 1개지만, 잘못 합쳐진 입력이 와도 교회/그룹 지표에서
+// 같은 사용자를 두 번 세지 않는다. uid가 없는 레거시 객체는 서로 다른 사람일 수 있어 유지한다.
+const uniqueMembersByUid = (members) => {
+    const seenUids = new Set();
+    return (Array.isArray(members) ? members : []).filter(member => {
+        if (!member || typeof member !== 'object' || Array.isArray(member)) return false;
+        const uid = typeof member?.uid === 'string' ? member.uid.trim() : '';
+        if (!uid) return true;
+        if (seenUids.has(uid)) return false;
+        seenUids.add(uid);
+        return true;
+    });
+};
 
 export const calculateSubgroupStats = (members, communities) => {
     const todayStr = new Date().toDateString();
     const stats = {};
+    // 멤버를 membership별로 펼치지 않는다. 각 그룹 포함 여부만 boolean으로 판정해 uid 1회를 보장한다.
+    const uniqueMembers = uniqueMembersByUid(members);
 
     // 소그룹 entry에서 id/name 추출 (문자열 레거시 + {id,name} 신 포맷 모두 지원)
-    const getSubId = (sub) => (typeof sub === 'string' ? sub : (sub.id || sub.name || ''));
-    const getSubName = (sub) => (typeof sub === 'string' ? sub : (sub.name || sub.id || ''));
+    const getSubId = (sub) => (typeof sub === 'string' ? sub : (sub?.id || sub?.name || ''));
+    const getSubName = (sub) => (typeof sub === 'string' ? sub : (sub?.name || sub?.id || ''));
 
-    let groups;
-    if (communities && communities.length > 0) {
-        groups = [];
+    const groupMap = new Map();
+    const addGroup = ({ departmentId, departmentName, subgroupId, subgroupName }) => {
+        if (!departmentId || !subgroupId) return;
+        const key = JSON.stringify([departmentId, subgroupId]);
+        if (!groupMap.has(key)) {
+            groupMap.set(key, { departmentId, departmentName, subgroupId, subgroupName });
+        }
+    };
+
+    if (Array.isArray(communities) && communities.length > 0) {
         communities.forEach(comm => {
-            (comm.subgroups || []).forEach(sub => {
-                groups.push({ departmentId: comm.id, departmentName: comm.name, subgroupId: getSubId(sub), subgroupName: getSubName(sub) });
+            (Array.isArray(comm?.subgroups) ? comm.subgroups : []).forEach(sub => {
+                addGroup({
+                    departmentId: comm?.id,
+                    departmentName: comm?.name,
+                    subgroupId: getSubId(sub),
+                    subgroupName: getSubName(sub),
+                });
             });
         });
     } else {
-        const seen = new Map();
-        members.forEach(m => {
-            if (m.departmentId && m.subgroupId) {
-                const key = `${m.departmentId}_${m.subgroupId}`;
-                if (!seen.has(key)) {
-                    seen.set(key, { departmentId: m.departmentId, departmentName: m.departmentId, subgroupId: m.subgroupId, subgroupName: m.subgroupId });
-                }
-            }
+        uniqueMembers.forEach(member => {
+            getMembershipList(member).forEach(membership => {
+                addGroup({
+                    departmentId: membership.departmentId,
+                    departmentName: membership.departmentName || membership.departmentId,
+                    subgroupId: membership.subgroupId,
+                    subgroupName: membership.subgroupName || membership.subgroupId,
+                });
+            });
         });
-        groups = Array.from(seen.values());
     }
+    const groups = Array.from(groupMap.values());
 
     groups.forEach(({ departmentId, departmentName, subgroupId, subgroupName }) => {
         // id 또는 name 둘 다로 멤버 매칭 (레거시/신 포맷 호환)
-        const subMembers = members.filter(m => m.departmentId === departmentId && (m.subgroupId === subgroupId || m.subgroupId === subgroupName));
+        const subMembers = uniqueMembers.filter(member => (
+            belongsToSubgroup(member, departmentId, subgroupId)
+            || (subgroupName !== subgroupId && belongsToSubgroup(member, departmentId, subgroupName))
+        ));
         const totalCount = subMembers.length;
         const readTodayCount = subMembers.filter(m => m.lastReadDate === todayStr).length;
         const rate = totalCount > 0 ? Math.round((readTodayCount / totalCount) * 100) : 0;
@@ -47,7 +80,7 @@ export const calculateSubgroupStats = (members, communities) => {
         const progressRate = TOTAL_DAYS > 0 ? Math.round((avgDay / TOTAL_DAYS) * 100) : 0;
         const totalScore = subMembers.reduce((sum, m) => sum + (m.score || 0), 0);
 
-        stats[`${departmentId}_${subgroupId || subgroupName}`] = {
+        stats[JSON.stringify([departmentId, subgroupId || subgroupName])] = {
             rate,
             readCount: readTodayCount,
             totalCount,
@@ -65,7 +98,8 @@ export const calculateSubgroupStats = (members, communities) => {
 };
 
 export const getWeeklyMVP = (departmentMembers) => {
-    if (!departmentMembers || departmentMembers.length === 0) return null;
+    const uniqueDepartmentMembers = uniqueMembersByUid(departmentMembers);
+    if (uniqueDepartmentMembers.length === 0) return null;
 
     const now = new Date();
     const weekStart = new Date(now);
@@ -91,7 +125,7 @@ export const getWeeklyMVP = (departmentMembers) => {
         })).values());
     };
 
-    const weeklyWithCounts = departmentMembers
+    const weeklyWithCounts = uniqueDepartmentMembers
         .map(m => {
             const readDates = getReadDates(m);
             return {
@@ -110,7 +144,7 @@ export const getWeeklyMVP = (departmentMembers) => {
     const mvpByWeekly = weeklyWithCounts.length > 0 ? weeklyWithCounts[0] : null;
     const weeklyTop10 = weeklyWithCounts.slice(0, 10);
 
-    const totalWithCounts = departmentMembers
+    const totalWithCounts = uniqueDepartmentMembers
         .map(m => ({
             ...m,
             totalCount: ((m.readCount || 1) - 1) * 365 + (m.currentDay || 0)
@@ -143,7 +177,8 @@ export const formatSubgroupRanking = (subgroupStats) => {
                 avgDay: data.avgDay || 0,
                 totalScore: data.totalScore || 0,
                 departmentId: data.departmentId,
-                departmentName: data.departmentName
+                departmentName: data.departmentName,
+                subgroupId: data.subgroupId,
             };
         })
         .sort(function (a, b) {
@@ -164,7 +199,8 @@ export const formatProgressRanking = (subgroupStats) => {
                 totalScore: data.totalScore || 0,
                 totalCount: data.totalCount || 0,
                 departmentId: data.departmentId,
-                departmentName: data.departmentName
+                departmentName: data.departmentName,
+                subgroupId: data.subgroupId,
             };
         })
         .filter(function (g) { return g.totalCount > 0; })
@@ -190,7 +226,7 @@ const diffDays = (fromDate, toDateValue) => {
 };
 
 export const computeAtRisk = (members, todayStr) => {
-    const activeMembers = (members || []).filter(m => !m.isDeleted && m.role !== 'churchAdmin');
+    const activeMembers = uniqueMembersByUid(members).filter(m => !m.isDeleted && m.role !== 'churchAdmin');
     const noRead7Days = activeMembers
         .filter(m => {
             if (!m.lastReadDate) return true;
@@ -226,12 +262,13 @@ export const computeAtRisk = (members, todayStr) => {
 
 export const getAdminStats = (allUsers) => {
     const todayStr = new Date().toDateString();
-    const totalUsers = allUsers.length;
-    const readToday = allUsers.filter(u => u.lastReadDate === todayStr).length;
+    const uniqueUsers = uniqueMembersByUid(allUsers);
+    const totalUsers = uniqueUsers.length;
+    const readToday = uniqueUsers.filter(u => u.lastReadDate === todayStr).length;
     const readRate = totalUsers > 0 ? Math.round((readToday / totalUsers) * 100) : 0;
     const departmentStats = {};
     DEFAULT_DEPARTMENTS.forEach(comm => {
-        const commUsers = allUsers.filter(u => u.departmentId === comm.id);
+        const commUsers = uniqueUsers.filter(u => belongsToDepartment(u, comm.id));
         const commTotal = commUsers.length;
         const commRead = commUsers.filter(u => u.lastReadDate === todayStr).length;
         departmentStats[comm.id] = { name: comm.name, total: commTotal, readToday: commRead, rate: commTotal > 0 ? Math.round((commRead / commTotal) * 100) : 0 };
