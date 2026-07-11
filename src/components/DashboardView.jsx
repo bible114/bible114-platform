@@ -33,7 +33,8 @@ import {
     BibleQuizCard,
     TalentShop,
     CompletionCelebration,
-    CommunityMembershipCard
+    CommunityMembershipCard,
+    PersonalAccountMigrationCard
 } from './dashboard';
 import TutorialOverlay from './TutorialOverlay';
 
@@ -119,6 +120,7 @@ const DashboardView = ({
     setCompletionCelebration,
     personalOrganizations = [],
     onPrimaryOrgChange,
+    onPersonalAccountMigrate,
 }) => {
     const [showTutorial, setShowTutorial] = useState(false);
     const [quizGate, setQuizGate] = useState({
@@ -467,6 +469,7 @@ const DashboardView = ({
                     {currentUser.role === 'member' && (
                         <CommunityMembershipCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
                     )}
+                    <PersonalAccountMigrationCard currentUser={currentUser} onMigrate={onPersonalAccountMigrate} />
                 </main>
             </div>
 

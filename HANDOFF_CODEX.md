@@ -252,6 +252,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-12 | T51 개인 계정 공동체 온보딩 | `src/App.jsx`, `src/components/dashboard/CommunityMembershipCard.jsx`, `HANDOFF_CODEX.md` | 개인 계정의 플랜·성경 버전 선택 뒤 공동체 참여 선택 화면을 추가하고 T46 검색·입장코드·부서/소그룹 UI를 onboarding 모드로 재사용. 참여 시 roster 생성과 users `primaryOrgId`·`planId`를 한 transaction에 저장하고, 나중에 선택하면 공동체 없이 dashboard로 진입. Auth uid 방어와 저장 실패 잔류 처리 적용. `npm run build`, `git diff --check` 통과. 실제 roster/users 쓰기는 운영 데이터 생성 때문에 미검증. |
 | 2026-07-12 | T52 개인 계정 대시보드 | `src/App.jsx`, `src/hooks/useDepartment.js`, `src/hooks/useBibleLogic.js`, `src/components/DashboardView.jsx`, `src/components/dashboard/DashboardHeader.jsx`, `src/components/dashboard/CommunityMembershipCard.jsx`, `HANDOFF_CODEX.md` | `primaryOrgId`의 roster 소속을 runtime 기준 교회·부서·소그룹으로 투영해 기존 users+roster 병합 랭킹 경로를 재사용. 2개 이상 공동체는 이름을 조회한 헤더 드롭다운으로 전환하고 users 문서를 갱신. 공동체 0개는 랭킹·달리기·공지·MVP·상점을 숨기되 내 공동체 추가는 유지. 첫 공동체 추가와 기준 공동체 탈퇴 시 primaryOrgId를 transaction으로 지정·재선택. `npm run build`, `git diff --check` 통과. 실제 인증 대시보드·전환·탈퇴는 운영 데이터 변경 때문에 미검증. |
 | 2026-07-12 | T53 관리자·지원 대응 | `src/components/PlatformAdminView.jsx`, `src/components/ChurchAdminView.jsx`, `HANDOFF_CODEX.md` | 플랫폼 전체 회원 목록에 개인 뱃지와 개인 계정 표기를 추가. 비밀번호 방식 개인 계정은 기존 `fetchMemberCredentials`로 private/auth 현재 암호 확인·변경을 유지하고 Google 개인 계정은 비밀번호 없음으로 표시. 개인 계정 편집에서 교회/부서 필드를 숨겨 roster 소속 원장을 보호. T48 외부 roster 멤버의 소그룹 배정·제명과 개인정보 작업 차단을 재확인하고 지원 문구를 플랫폼 관리자 기준으로 수정. `npm run build`, `git diff --check` 통과. 실제 관리자 인증 화면·암호 변경·roster 제명은 운영 데이터 변경 때문에 미검증. |
+| 2026-07-12 | T55 개인 계정 전환 진입점 | `src/components/dashboard/PersonalAccountMigrationCard.jsx`, `src/components/dashboard/index.js`, `src/components/DashboardView.jsx`, `HANDOFF_CODEX.md` | 일반 교회 소속 기존 member에게만 조용한 전환 카드와 안내 모달을 표시. 장점 2개·로그인 변경 주의·전화번호 뒤 4자리 필수 검증을 제공하고 닫기 시 localStorage 타임스탬프로 7일간 숨김. 게스트·관리자·개인 계정·무소속은 비노출. `npm run build`, `git diff --check` 통과. 실행 로직은 다음 순번 T56에서 연결. |
 
 ---
 
@@ -355,6 +356,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T52 상태·검증: 대시보드에서 첫 공동체를 추가하면 roster와 `primaryOrgId`를 transaction으로 함께 만들고, 기준 공동체에서 탈퇴하면 남은 첫 공동체 또는 null로 원자 재지정한다. 공동체 전환 시 조직 구성·명단·공지·카카오 링크의 기존 로더가 새 기준 조직으로 다시 실행되며 stale 통계는 먼저 비운다. `npm run build`, `git diff --check` 통과. 실제 인증 화면의 전환·가입·탈퇴는 운영 데이터 변경 때문에 미검증이다. 막힌 점은 없으며 다음 순번은 T53 관리자·지원 대응이다.
 - T53 완료. 플랫폼 관리자 전체 회원 목록에 `accountType: personal` 뱃지와 개인 계정 표기를 추가했다. `@bible.local` 비밀번호 개인 계정은 기존 `fetchMemberCredentials` 경로로 private/auth의 현재 암호를 확인·변경하고, Google 개인 계정은 비밀번호가 없음을 표시한다. 개인 계정 수정 모달에서는 교회·부서·소그룹 편집을 숨겨 roster 소속 원장을 우회하지 못하게 했다.
 - T53 회귀·검증: T48의 외부 roster 멤버는 교회 관리자 화면에서 소그룹 배정·제명만 가능하고 users/private/history·비밀번호·달란트 직접 변경은 계속 차단됨을 재확인했다. 개인 계정도 포함하도록 지원 안내를 플랫폼 관리자 기준으로 수정했다. `npm run build`, `git diff --check` 통과. 실제 관리자 인증 화면·private/auth 암호 변경·roster 제명은 운영 데이터 변경 때문에 미검증이다. 라운드 9 T49~T53은 모두 완료됐으며 라운드 10은 사용자 결정 전 착수 금지다.
+- T55 완료. 일반 교회 소속 기존 member에게만 개인 계정 전환 카드를 표시하고, 게스트·관리자·이미 개인 계정·무소속 가상 교회는 제외했다. 닫기는 localStorage 만료 타임스탬프로 7일간 억제하며 모달은 전화번호 뒤 4자리 형식, 전환 장점 2개, 다음 로그인 경로 주의를 안내한다. `npm run build`, `git diff --check` 통과. 실행 콜백은 T56에서 연결할 예정이며 다음 순번은 전환 상태머신이다.
 
 ---
 
@@ -741,7 +743,7 @@ Codex가 요청한 후속 2건에 대한 조치:
 
 ### 라운드 10 체크리스트
 
-- [ ] **T55. 전환 진입점 + 안내 모달** (`DashboardView` 또는 설정 영역)
+- [x] **T55. 전환 진입점 + 안내 모달** (`DashboardView` 또는 설정 영역)
   - 대상: `role === 'member' && accountType !== 'personal' && churchId && churchId !== UNAFFILIATED_CHURCH_ID`인 로그인 사용자. 게스트·관리자·무소속(성경 읽는 사람들)은 제외 (무소속 전환은 식별자 충돌 정리가 별도 문제라 이번 라운드 제외 — 메모만).
   - 조용한 카드/배너 "🔑 개인 계정으로 전환" — 닫으면 localStorage로 7일간 재노출 억제. 장점 문구: "교회를 옮겨도 계정·기록이 그대로", "여러 공동체(교회+동아리)에 함께 소속 가능".
   - 모달: 전화번호 뒤 4자리 입력(필수, `\d{4}`) + 설명 + 주의 1줄("전환 후 로그인은 첫 화면 '시작하기'에서 이름·생년월일·전화 뒤 4자리로").

@@ -11,3 +11,4 @@ export { default as BibleQuizCard } from './BibleQuizCard';
 export { default as TalentShop } from './TalentShop';
 export { default as CompletionCelebration } from './CompletionCelebration';
 export { default as CommunityMembershipCard } from './CommunityMembershipCard';
+export { default as PersonalAccountMigrationCard } from './PersonalAccountMigrationCard';
