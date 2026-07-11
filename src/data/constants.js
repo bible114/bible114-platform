@@ -6,7 +6,6 @@ export const GENESIS_1 = `### 1. 태초에 하나님이 천지를 창조하시�
 (중략)`;
 
 export const TOTAL_DAYS = 365;
-export const PANIC_DISTANCE = 5;
 export const AUDIO_BASE_URL = "https://bible114.net/html/audio";
 // 인쇄물(QR·링크 텍스트)에는 절대 localhost/개발 주소가 들어가면 안 되므로
 // window.location.origin 대신 이 고정 주소를 사용한다.

@@ -132,43 +132,6 @@ export const generateMemosHTML = (userName, userMemos, userStats = {}) => {
     URL.revokeObjectURL(url);
 };
 
-export const generateMemosCSV = async (db) => {
-    if (!db) return;
-
-    try {
-        const snap = await db.collection('users').get();
-        let csvContent = 'Name,Subgroup,Day,Date,Title,Memo\n';
-
-        snap.docs.forEach(doc => {
-            const data = doc.data();
-            const userName = data.name || 'Unknown';
-            const subgroup = data.subgroupId || '-';
-            const memos = data.memos || {};
-
-            Object.keys(memos).forEach(function (key) {
-                var memo = memos[key];
-                const { round, day } = parseMemoKeyForExport(key);
-                const label = round > 1 ? `${round}독 DAY ${day + 1}` : `DAY ${day + 1}`;
-                const dateStr = memo.date ? new Date(memo.date).toLocaleDateString('ko-KR') : '';
-                const title = (memo.title || '').replace(/,/g, ';').replace(/\n/g, ' ');
-                const text = (memo.text || '').replace(/,/g, ';').replace(/\n/g, ' ');
-                csvContent += `"${userName}","${subgroup}","${label}","${dateStr}","${title}","${text}"\n`;
-            });
-        });
-
-        const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `all_memos_${new Date().toISOString().split('T')[0]}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
-    } catch (e) {
-        console.error('CSV 생성 오류:', e);
-        alert('CSV 생성 중 오류가 발생했습니다.');
-    }
-};
-
 export const downloadCSV = (allUsers) => {
     if (allUsers.length === 0) { alert("데이터가 없습니다."); return; }
     let csvContent = "\uFEFF이름,부서,소그룹,현재Day,총점수,연속일수,마지막읽은날,플랜ID\n";

@@ -71,65 +71,6 @@
     --cy-transition-slow: 400ms ease;
 }
 
-.cy-pixel-font {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-}
-
-.cy-frame-container {
-    background-color: #8cbbd3;
-    /* Classic background blue-gray */
-    padding: 15px;
-    border-radius: 12px;
-    border: 1px solid #7ea6bd;
-    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.1);
-}
-
-.cy-inner-frame {
-    background-color: var(--cy-white);
-    border-radius: 8px;
-    border: 1px solid var(--cy-frame-border);
-    padding: 10px;
-    position: relative;
-}
-
-.cy-side-tab {
-    width: 60px;
-    height: 35px;
-    background-color: var(--cy-blue);
-    color: white;
-    border: 1px solid #0066cc;
-    border-left: none;
-    border-radius: 0 8px 8px 0;
-    font-size: 11px;
-    font-weight: bold;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s;
-    margin-bottom: 3px;
-}
-
-.cy-side-tab:not(.active) {
-    background-color: #fff;
-    color: #0080ff;
-    width: 55px;
-}
-
-.cy-dotori-badge {
-    background: white;
-    border: 1px solid #ddd;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    color: #666;
-}
-
-/* Isometric Tile Enhancements */
-.iso-tile-shadow {
-    box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.05);
-}
-
 /* 기본 폰트 설정 */
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -160,13 +101,6 @@ body {
     background: linear-gradient(to bottom, #bae6fd 0%, #f0f9ff 100%);
 }
 
-/* 하늘색 그라데이션 */
-.bg-map-texture {
-    background-color: #f0fdf4;
-    background-image: radial-gradient(#86efac 1px, transparent 1px);
-    background-size: 20px 20px;
-}
-
 /* 스크롤바 숨김 */
 .scrollbar-hide::-webkit-scrollbar {
     display: none;
@@ -175,24 +109,6 @@ body {
 .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
-}
-
-/* 점 패턴 */
-/* 애니메이션: 흔들림 효과 */
-@keyframes wiggle {
-
-    0%,
-    100% {
-        transform: rotate(-3deg) scale(1.1);
-    }
-
-    50% {
-        transform: rotate(3deg) scale(1.1);
-    }
-}
-
-.animate-wiggle {
-    animation: wiggle 0.3s ease-in-out infinite;
 }
 
 /* 애니메이션: 떠다니는 효과 (구름용) */
@@ -243,101 +159,6 @@ body {
     clip-path: polygon(0% 100%, 0% 85%, 8% 70%, 15% 82%, 25% 60%, 35% 85%, 45% 55%, 55% 80%,
             65% 50%, 75% 88%, 85% 65%, 92% 75%, 100% 55%, 100% 100%);
     z-index: 2;
-}
-
-/* ============================================
-   카카오톡 플로팅 버튼 스타일
-   ============================================ */
-.kakao-floating-btn {
-    position: fixed;
-    right: 20px;
-    bottom: 20px;
-    z-index: 9999;
-
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-
-    background-color: #FEE500;
-    color: #391B1B;
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15),
-        0 2px 4px rgba(0, 0, 0, 0.12);
-
-    cursor: pointer;
-    text-decoration: none;
-
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    animation: kakao-pulse 2s infinite;
-}
-
-.kakao-floating-btn:hover {
-    transform: scale(1.1);
-    box-shadow: 0 6px 20px rgba(254, 229, 0, 0.5),
-        0 4px 8px rgba(0, 0, 0, 0.15);
-    animation: none;
-}
-
-.kakao-floating-btn:active {
-    transform: scale(0.95);
-}
-
-.kakao-icon {
-    width: 28px;
-    height: 28px;
-}
-
-.kakao-badge {
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    font-size: 14px;
-    animation: kakao-bounce 1s infinite;
-}
-
-@keyframes kakao-pulse {
-
-    0%,
-    100% {
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15),
-            0 2px 4px rgba(0, 0, 0, 0.12);
-    }
-
-    50% {
-        box-shadow: 0 4px 20px rgba(254, 229, 0, 0.4),
-            0 2px 8px rgba(0, 0, 0, 0.15);
-    }
-}
-
-@keyframes kakao-bounce {
-
-    0%,
-    100% {
-        transform: translateY(0);
-    }
-
-    50% {
-        transform: translateY(-3px);
-    }
-}
-
-/* 모바일에서 버튼 위치 조정 */
-@media (max-width: 640px) {
-    .kakao-floating-btn {
-        right: 16px;
-        bottom: 16px;
-        width: 52px;
-        height: 52px;
-    }
-
-    .kakao-icon {
-        width: 24px;
-        height: 24px;
-    }
 }
 
 @keyframes pulseRing {

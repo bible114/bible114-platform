@@ -6,12 +6,18 @@
  * - 버그 체크 및 보고
  */
 
-const FIREBASE_API_KEY = "AIzaSyBF122lgD5fTX70HBtd_nl0ZVKhyyQnyGo";
+const FIREBASE_API_KEY = "AIzaSyBF122lgD5fTX70HBtd_nl0ZVKhyyQnyGo"; // 웹 앱 공개 키 (비밀 아님)
 const PROJECT_ID = "bible114-platform";
 const CHURCH_ID = "xDiqdgaKKPCTd0tYIkdm";
 const CHURCH_NAME = "성경읽는 사람들";
-const ADMIN_EMAIL = "admin@bible114.net";
-const ADMIN_PW = "[REMOVED-PASSWORD]";
+// 관리자 자격증명은 절대 하드코딩하지 말 것 — 실행 시 환경변수로 주입:
+//   B114_ADMIN_EMAIL=... B114_ADMIN_PW=... node test_simulation.mjs
+const ADMIN_EMAIL = process.env.B114_ADMIN_EMAIL || "";
+const ADMIN_PW = process.env.B114_ADMIN_PW || "";
+if (!ADMIN_EMAIL || !ADMIN_PW) {
+    console.error("B114_ADMIN_EMAIL / B114_ADMIN_PW 환경변수를 설정하고 실행하세요.");
+    process.exit(1);
+}
 
 const TEST_NAME = "테스트성도";
 const TEST_BIRTHDATE = "19900101";

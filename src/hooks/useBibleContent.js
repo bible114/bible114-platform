@@ -1,11 +1,10 @@
 import { useState, useCallback } from 'react';
 import { db } from '../utils/firebase';
-import { SUPABASE_FUNCTION_URL, GENESIS_1, AUDIO_BASE_URL } from '../data/constants';
+import { GENESIS_1, AUDIO_BASE_URL } from '../data/constants';
 import { BIBLE_VERSIONS, PLAN_TYPES } from '../data/bible_options';
 import { getActualDay } from '../utils/helpers';
 import { formatSaehangulText } from '../utils/saehangulParser';
 
-const ENABLE_NOTION_RUNTIME_FALLBACK = false;
 const CACHE_LOOKUP_TIMEOUT_MS = 8000;
 
 const getVersionName = (planType, version) => {
@@ -75,34 +74,6 @@ export const useBibleContent = (currentUser) => {
         return null;
     };
 
-    // 노션 API 호출 (캐시 없을 때 fallback)
-    const fetchFromNotion = async (planId, currentDay) => {
-        if (!SUPABASE_FUNCTION_URL) return { title: null, text: "서버 연결 설정이 필요합니다." };
-        const [planType, version] = (planId || '1year_revised').split('_');
-        const planGroup = BIBLE_VERSIONS[planType];
-        const versionInfo = planGroup ? planGroup.find(v => v.id === version) : null;
-        const targetTag = versionInfo ? versionInfo.tagName : '개역개정 일년일독';
-
-        const targetDate = new Date(2025, 0, currentDay);
-        const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
-        const dd = String(targetDate.getDate()).padStart(2, '0');
-
-        try {
-            const response = await fetch(SUPABASE_FUNCTION_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tag: targetTag, date: `${mm}-${dd}` })
-            });
-            if (!response.ok) throw new Error(`Server Error: ${response.status}`);
-            const data = await response.json();
-            if (data.error) return { title: null, text: `[오류] ${data.error}` };
-            return { title: data.title, text: data.text, audioUrl: data.audioUrl };
-        } catch (e) {
-            console.error(e);
-            return { title: null, text: "서버와 통신 중 오류가 발생했습니다." };
-        }
-    };
-
     const fetchNotionData = async (planId, currentDay) => {
         const [planType, version] = (planId || '1year_revised').split('_');
 
@@ -115,43 +86,11 @@ export const useBibleContent = (currentUser) => {
             return cached;
         }
 
-        if (!ENABLE_NOTION_RUNTIME_FALLBACK) {
-            return {
-                title: null,
-                text: null,
-                error: 'missing_cache'
-            };
-        }
-
-        console.log(`🌐 Notion API 호출 시작...`);
-        const t1 = Date.now();
-        const notionResult = await fetchFromNotion(planId, currentDay);
-        console.log(`⏱️ Notion API: ${Date.now() - t1}ms`);
-
-        // Notion에서 정상 데이터를 받으면 캐시에 저장 (다음 로드 시 빠르게)
-        if (notionResult && notionResult.text && !notionResult.text.startsWith('[오류]')) {
-            const cacheKey = `${planType}_${version}_${currentDay}`;
-            try {
-                await db.collection('verses').doc(cacheKey).set({
-                    title: notionResult.title,
-                    text: notionResult.text,
-                    audioUrl: notionResult.audioUrl || null,
-                    day: currentDay,
-                    planId: planId,
-                    syncedAt: new Date()
-                });
-            } catch (e) {
-                console.error("캐시 저장 실패:", e);
-            }
-            // localStorage에도 저장
-            try {
-                localStorage.setItem(`v_${cacheKey}`, JSON.stringify({
-                    title: notionResult.title, text: notionResult.text, audioUrl: notionResult.audioUrl || null
-                }));
-            } catch (e) { /* 용량 초과 무시 */ }
-        }
-
-        return notionResult;
+        return {
+            title: null,
+            text: null,
+            error: 'missing_cache'
+        };
     };
 
     const loadContent = useCallback(async (dayToShow) => {
