@@ -3,6 +3,15 @@ import Icon from '../Icon';
 import { DEFAULT_DEPARTMENTS } from '../../data/departments';
 import { belongsToSubgroup } from '../../utils/memberships';
 
+const membershipMatches = (left, right) => {
+    if (!left || !right || left.departmentId !== right.departmentId) return false;
+    if (left.subgroupId && left.subgroupId === right.subgroupId) return true;
+    return Boolean(
+        (left.subgroupId && right.subgroupName && left.subgroupId === right.subgroupName)
+        || (right.subgroupId && left.subgroupName && right.subgroupId === left.subgroupName)
+    );
+};
+
 const RankingModal = ({
     show,
     onClose,
@@ -13,7 +22,8 @@ const RankingModal = ({
     selectedSubgroupDetail,
     setSelectedSubgroupDetail,
     rankingCommunityFilter,
-    setRankingCommunityFilter
+    setRankingCommunityFilter,
+    extraMemberships = [],
 }) => {
     if (!show) return null;
 
@@ -41,9 +51,20 @@ const RankingModal = ({
                             if (filteredRanking.length === 0) return <div className="text-center py-8 text-slate-500"><p className="text-sm">해당 부서의 소그룹 데이터가 없습니다.</p></div>;
                             return filteredRanking.map((group, idx) => {
                                 const groupSubgroupId = group.subgroupId || group.name;
+                                const groupMembership = {
+                                    departmentId: group.departmentId,
+                                    subgroupId: groupSubgroupId,
+                                    subgroupName: group.name,
+                                };
                                 // 우리팀 강조는 추가 소속 전체가 아니라 내 주 소속 pair만 기준으로 한다.
-                                const isMyGroup = group.departmentId === currentUser?.departmentId
-                                    && (groupSubgroupId === subgroupId || group.name === subgroupId);
+                                const isMyGroup = membershipMatches(groupMembership, {
+                                    departmentId: currentUser?.departmentId,
+                                    subgroupId,
+                                    subgroupName: currentUser?.subgroupName || subgroupId,
+                                });
+                                const isExtraGroup = !isMyGroup
+                                    && (Array.isArray(extraMemberships) ? extraMemberships : [])
+                                        .some(membership => membershipMatches(groupMembership, membership));
                                 const rankColor = idx === 0 ? 'bg-yellow-100 text-yellow-700 border-yellow-200' : idx === 1 ? 'bg-slate-200 text-slate-700 border-slate-300' : idx === 2 ? 'bg-orange-100 text-orange-700 border-orange-200' : 'bg-slate-100 text-slate-600 border-slate-200';
                                 return (
                                     <button
@@ -58,7 +79,17 @@ const RankingModal = ({
                                     >
                                         <div className="flex items-center gap-3 mb-2">
                                             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 shrink-0 ${rankColor}`}>{idx + 1}</div>
-                                            <div className="flex-1 min-w-0 text-left"><div className="flex justify-between items-center"><span className={`font-bold text-sm truncate pr-2 ${isMyGroup ? 'text-blue-600' : 'text-slate-700'}`}>{group.name} {isMyGroup && '(우리팀)'}</span><span className="text-xs font-bold text-slate-500 shrink-0">{group.progressRate}%</span></div></div>
+                                            <div className="flex-1 min-w-0 text-left">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="inline-flex min-w-0 items-center gap-1.5">
+                                                        <span className={`truncate text-sm font-bold ${isMyGroup ? 'text-blue-600' : 'text-slate-700'}`}>
+                                                            {group.name} {isMyGroup && '(우리팀)'}
+                                                        </span>
+                                                        {isExtraGroup && <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">추가 소속</span>}
+                                                    </span>
+                                                    <span className="shrink-0 text-xs font-bold text-slate-500">{group.progressRate}%</span>
+                                                </div>
+                                            </div>
                                             <Icon name="arrowRight" size={16} className="text-slate-400" />
                                         </div>
                                         <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden"><div className={`h-full rounded-full ${idx === 0 ? 'bg-yellow-400' : idx === 1 ? 'bg-slate-400' : idx === 2 ? 'bg-orange-400' : 'bg-slate-300'}`} style={{ width: `${group.progressRate}%` }}></div></div>

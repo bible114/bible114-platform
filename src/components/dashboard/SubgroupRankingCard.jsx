@@ -1,11 +1,21 @@
 import React from 'react';
 import Icon from '../Icon';
 
+const membershipMatches = (left, right) => {
+    if (!left || !right || left.departmentId !== right.departmentId) return false;
+    if (left.subgroupId && left.subgroupId === right.subgroupId) return true;
+    return Boolean(
+        (left.subgroupId && right.subgroupName && left.subgroupId === right.subgroupName)
+        || (right.subgroupId && left.subgroupName && right.subgroupId === left.subgroupName)
+    );
+};
+
 const SubgroupRankingCard = ({
     departmentName,
     getSubgroupRanking,
     subgroupId,
-    departmentId // 부서 ID 추가
+    departmentId, // 부서 ID 추가
+    extraMemberships = [],
 }) => {
     const ranking = getSubgroupRanking();
     const departmentIds = [...new Set(ranking.map(g => g.departmentId))];
@@ -26,8 +36,19 @@ const SubgroupRankingCard = ({
                     ranking.map((group, idx) => {
                         // 부서+소그룹 ID pair를 기준으로 하되 레거시 이름 저장 사용자도 호환한다.
                         const groupSubgroupId = group.subgroupId || group.name;
-                        const isMyGroup = group.departmentId === departmentId
-                            && (groupSubgroupId === subgroupId || group.name === subgroupId);
+                        const groupMembership = {
+                            departmentId: group.departmentId,
+                            subgroupId: groupSubgroupId,
+                            subgroupName: group.name,
+                        };
+                        const isMyGroup = membershipMatches(groupMembership, {
+                            departmentId,
+                            subgroupId,
+                            subgroupName: subgroupId,
+                        });
+                        const isExtraGroup = !isMyGroup
+                            && (Array.isArray(extraMemberships) ? extraMemberships : [])
+                                .some(membership => membershipMatches(groupMembership, membership));
 
                         const displayName = hasMultipleDepartments
                             ? `${group.departmentName} ${group.name}`
@@ -35,12 +56,17 @@ const SubgroupRankingCard = ({
 
                         return (
                             <div key={`${group.departmentId || 'unknown'}_${groupSubgroupId}`} className={`relative transition-all ${isMyGroup ? 'bg-blue-50/50 p-3 rounded-2xl ring-1 ring-blue-100' : ''}`}>
-                                <div className="flex justify-between text-xs mb-1.5">
-                                    <span className={`font-bold flex items-center gap-1.5 ${isMyGroup ? 'text-blue-600' : 'text-slate-600'}`}>
+                                <div className="flex items-center justify-between gap-2 text-xs mb-1.5">
+                                    <span className={`min-w-0 font-bold flex items-center gap-1.5 ${isMyGroup ? 'text-blue-600' : 'text-slate-600'}`}>
                                         <span className={`w-5 h-5 flex items-center justify-center rounded-full text-[10px] ${idx === 0 ? 'bg-yellow-100 text-yellow-700' : idx === 1 ? 'bg-slate-100 text-slate-600' : idx === 2 ? 'bg-orange-50 text-orange-700' : 'bg-slate-100 text-slate-400'}`}>{idx + 1}</span>
-                                        {displayName} {isMyGroup && <span className="text-[10px] opacity-70">(우리팀)</span>}
+                                        <span className="truncate">{displayName} {isMyGroup && <span className="text-[10px] opacity-70">(우리팀)</span>}</span>
+                                        {isExtraGroup && (
+                                            <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">
+                                                추가 소속
+                                            </span>
+                                        )}
                                     </span>
-                                    <span className={`font-bold ${isMyGroup ? 'text-blue-600' : 'text-slate-400'}`}>진행률 {group.progressRate}%</span>
+                                    <span className={`shrink-0 font-bold ${isMyGroup ? 'text-blue-600' : 'text-slate-400'}`}>진행률 {group.progressRate}%</span>
                                 </div>
                                 <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                                     <div

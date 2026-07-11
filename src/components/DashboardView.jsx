@@ -1,9 +1,9 @@
 import React, { useRef, useState } from 'react';
-import { TOTAL_DAYS } from '../data/constants';
+import { TOTAL_DAYS, UNAFFILIATED_CHURCH_ID } from '../data/constants';
 import { BIBLE_VERSIONS, PLAN_TYPES } from '../data/bible_options';
 import { getLevelInfo } from '../data/levels';
 import { DEFAULT_DEPARTMENTS } from '../data/departments';
-import { belongsToDepartment } from '../utils/memberships';
+import { belongsToDepartment, getMembershipList } from '../utils/memberships';
 
 // Modals
 import {
@@ -35,6 +35,15 @@ import {
     CompletionCelebration
 } from './dashboard';
 import TutorialOverlay from './TutorialOverlay';
+
+const sameMembershipPair = (left, right) => {
+    if (!left || !right || left.departmentId !== right.departmentId) return false;
+    if (left.subgroupId === right.subgroupId) return true;
+    return Boolean(
+        (left.subgroupId && right.subgroupName && left.subgroupId === right.subgroupName)
+        || (right.subgroupId && left.subgroupName && right.subgroupId === left.subgroupName)
+    );
+};
 
 const DashboardView = ({
     currentUser,
@@ -119,6 +128,28 @@ const DashboardView = ({
     if (!currentUser) return null;
 
     const { currentDay, score, talent, subgroupId, departmentName, planId, streak } = currentUser;
+    const primaryMembership = getMembershipList({ ...currentUser, extraMemberships: [] })[0] || null;
+    const additionalMemberships = currentUser.churchId === UNAFFILIATED_CHURCH_ID
+        ? []
+        : getMembershipList(currentUser)
+            .filter(membership => !sameMembershipPair(membership, primaryMembership))
+            .slice(0, 3)
+            .map(membership => {
+                const department = (churchCommunities || [])
+                    .find(item => item?.id === membership.departmentId);
+                const subgroup = (department?.subgroups || []).find(item => {
+                    if (typeof item === 'string') return item === membership.subgroupId;
+                    return item?.id === membership.subgroupId || item?.name === membership.subgroupId;
+                });
+                const subgroupName = typeof subgroup === 'string'
+                    ? subgroup
+                    : (subgroup?.name || subgroup?.id);
+                return {
+                    ...membership,
+                    departmentName: department?.name || membership.departmentName || membership.departmentId,
+                    subgroupName: subgroupName || membership.subgroupName || membership.subgroupId,
+                };
+            });
     const [planType, version] = (planId || '1year_revised').split('_');
     const planTypeDataDashboard = PLAN_TYPES.find(p => p.id === planType);
     const planTypeName = planTypeDataDashboard ? planTypeDataDashboard.title : '성경 통독';
@@ -302,6 +333,7 @@ const DashboardView = ({
                 rankingCommunityFilter={rankingCommunityFilter}
                 setRankingCommunityFilter={setRankingCommunityFilter}
                 churchCommunities={churchCommunities}
+                extraMemberships={additionalMemberships}
             />
             <MemoListModal
                 show={showMemoList}
@@ -338,6 +370,7 @@ const DashboardView = ({
                 topProgressGroups={topProgressGroups}
                 departmentId={currentUser.departmentId}
                 subgroupId={subgroupId}
+                extraMemberships={additionalMemberships}
                 // 버전 정보 추가
                 planTypeName={planTypeName}
                 versionName={versionName}
@@ -410,6 +443,7 @@ const DashboardView = ({
                             getSubgroupRanking={getSubgroupRanking}
                             subgroupId={subgroupId}
                             departmentId={currentUser ? currentUser.departmentId : null}
+                            extraMemberships={additionalMemberships}
                         />
                     </div>
 

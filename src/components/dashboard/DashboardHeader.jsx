@@ -1,5 +1,22 @@
 import React from 'react';
 import Icon from '../Icon';
+import { getMembershipList } from '../../utils/memberships';
+
+const sameMembership = (left, right) => {
+    if (!left || !right || left.departmentId !== right.departmentId) return false;
+    if (left.subgroupId === right.subgroupId) return true;
+    // legacy subgroupId=name 호환. modern group끼리는 name-name만으로 같다고 보지 않는다.
+    return Boolean(
+        (left.subgroupId && right.subgroupName && left.subgroupId === right.subgroupName)
+        || (right.subgroupId && left.subgroupName && right.subgroupId === left.subgroupName)
+    );
+};
+
+const getMembershipLabel = (membership) => {
+    const department = membership.departmentName || membership.departmentId || '미배정';
+    const subgroup = membership.subgroupName || membership.subgroupId;
+    return subgroup ? `${department} · ${subgroup}` : department;
+};
 
 const DashboardHeader = ({
     handleLogout,
@@ -18,6 +35,7 @@ const DashboardHeader = ({
     topProgressGroups,
     departmentId,
     subgroupId,
+    extraMemberships = [],
     // 새로운 props
     planTypeName,
     versionName,
@@ -25,6 +43,10 @@ const DashboardHeader = ({
     setView,
     isChurchAdmin,
 }) => {
+    const primaryMembership = { departmentId, departmentName, subgroupId, subgroupName: null };
+    const normalizedExtraMemberships = getMembershipList({ extraMemberships })
+        .filter(membership => !sameMembership(membership, primaryMembership));
+
     return (
         <header className="sticky top-0 z-30 space-y-4 mb-4">
             {/* 상단 내비게이션 바 - 통합 및 정돈 */}
@@ -85,8 +107,16 @@ const DashboardHeader = ({
                     <div className="flex justify-between items-center mb-6">
                         <div className="flex flex-col gap-1">
                             <span className="text-xs font-bold text-blue-600 tracking-tight">{getEncouragementMessage()}</span>
-                            <div className="flex items-center gap-2">
-                                <span className="text-xl font-black text-slate-900">🏆 {departmentName}</span>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xl font-black text-slate-900">🏆 {departmentName || '미배정'}</span>
+                                {normalizedExtraMemberships.map(membership => (
+                                    <span
+                                        key={JSON.stringify([membership.departmentId, membership.subgroupId])}
+                                        className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500"
+                                    >
+                                        +{getMembershipLabel(membership)}
+                                    </span>
+                                ))}
                                 <span className="text-sm font-bold text-slate-400">누적 랭킹</span>
                             </div>
                         </div>
@@ -95,29 +125,45 @@ const DashboardHeader = ({
                         </button>
                     </div>
                     <div className="space-y-4">
-                        {topProgressGroups.map((group, idx) => (
-                            <div key={`${group.departmentId || 'unknown'}_${group.subgroupId || group.name}`} className="flex items-center gap-4">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 shrink-0 ${idx === 0 ? 'bg-yellow-100 border-yellow-200 text-yellow-700' : idx === 1 ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-orange-50 border-orange-100 text-orange-700'}`}>
-                                    {idx + 1}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex justify-between text-xs mb-1.5">
-                                        <span className={`font-bold truncate ${(
-                                            group.departmentId === departmentId
-                                            && (group.subgroupId === subgroupId || group.name === subgroupId)
-                                        ) ? 'text-blue-600' : 'text-slate-700'}`}>
-                                            {group.name}
-                                        </span>
-                                        <span className="font-bold text-slate-500 shrink-0">
-                                            평균 {group.avgDay}일 ({group.progressRate}%)
-                                        </span>
+                        {topProgressGroups.map((group, idx) => {
+                            const groupMembership = {
+                                departmentId: group.departmentId,
+                                departmentName: group.departmentName,
+                                subgroupId: group.subgroupId || group.name,
+                                subgroupName: group.name,
+                            };
+                            const isPrimaryGroup = group.departmentId === departmentId
+                                && (group.subgroupId === subgroupId || group.name === subgroupId);
+                            const isExtraGroup = !isPrimaryGroup
+                                && normalizedExtraMemberships.some(membership => sameMembership(membership, groupMembership));
+                            return (
+                                <div key={`${group.departmentId || 'unknown'}_${group.subgroupId || group.name}`} className="flex items-center gap-4">
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 shrink-0 ${idx === 0 ? 'bg-yellow-100 border-yellow-200 text-yellow-700' : idx === 1 ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-orange-50 border-orange-100 text-orange-700'}`}>
+                                        {idx + 1}
                                     </div>
-                                    <div className="h-4 w-full bg-slate-50 rounded-full border border-slate-100 overflow-hidden shadow-inner">
-                                        <div className={`h-full rounded-full transition-all duration-1000 ${idx === 0 ? 'bg-gradient-to-r from-yellow-300 to-yellow-500' : idx === 1 ? 'bg-gradient-to-r from-slate-300 to-slate-500' : 'bg-gradient-to-r from-orange-300 to-orange-500'}`} style={{ width: `${group.progressRate}%` }}></div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex justify-between text-xs mb-1.5">
+                                            <span className="inline-flex min-w-0 items-center gap-1.5">
+                                                <span className={`truncate font-bold ${isPrimaryGroup ? 'text-blue-600' : 'text-slate-700'}`}>
+                                                    {group.name}
+                                                </span>
+                                                {isExtraGroup && (
+                                                    <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">
+                                                        추가 소속
+                                                    </span>
+                                                )}
+                                            </span>
+                                            <span className="font-bold text-slate-500 shrink-0">
+                                                평균 {group.avgDay}일 ({group.progressRate}%)
+                                            </span>
+                                        </div>
+                                        <div className="h-4 w-full bg-slate-50 rounded-full border border-slate-100 overflow-hidden shadow-inner">
+                                            <div className={`h-full rounded-full transition-all duration-1000 ${idx === 0 ? 'bg-gradient-to-r from-yellow-300 to-yellow-500' : idx === 1 ? 'bg-gradient-to-r from-slate-300 to-slate-500' : 'bg-gradient-to-r from-orange-300 to-orange-500'}`} style={{ width: `${group.progressRate}%` }}></div>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             </div>
