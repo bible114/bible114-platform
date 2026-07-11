@@ -71,37 +71,40 @@ export const getWeeklyMVP = (departmentMembers) => {
     const weekStart = new Date(now);
     weekStart.setDate(now.getDate() - now.getDay()); // 이번 주 일요일
     weekStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
 
-    // 이번 주에 읽은 DAY 분량 계산 함수
-    const getWeeklyReadCount = (member) => {
-        if (!member.readHistory || !Array.isArray(member.readHistory)) return 0;
+    // 신형 롤링 필드를 기준으로 하되, 남아 있는 레거시 배열의 날짜도 병합한다.
+    const getReadDates = (member) => {
+        const recentDates = Array.isArray(member.recentReadDates) ? member.recentReadDates : [];
+        const legacyDates = Array.isArray(member.readHistory)
+            ? member.readHistory.map(item => (typeof item === 'string' ? item : item?.date))
+            : [];
 
-        return member.readHistory.reduce((total, item) => {
-            try {
-                const date = typeof item === 'string' ? item : item.date;
-                const daysRead = typeof item === 'string' ? 1 : (item.daysRead || 1);
-
-                const readDate = new Date(date);
-                if (readDate >= weekStart) {
-                    return total + daysRead;
-                }
-                return total;
-            } catch (e) {
-                return total;
-            }
-        }, 0);
+        return Array.from(new Map([...recentDates, ...legacyDates].flatMap(value => {
+            if (!value) return [];
+            const readDate = value?.toDate ? value.toDate() : new Date(value);
+            if (Number.isNaN(readDate.getTime())) return [];
+            readDate.setHours(0, 0, 0, 0);
+            if (readDate > todayEnd) return [];
+            return [[readDate.getTime(), readDate]];
+        })).values());
     };
 
     const weeklyWithCounts = departmentMembers
-        .map(m => ({
-            ...m,
-            weeklyCount: getWeeklyReadCount(m),
-            totalCount: (m.readHistory ? m.readHistory.length : 0)
-        }))
+        .map(m => {
+            const readDates = getReadDates(m);
+            return {
+                ...m,
+                weeklyCount: readDates.filter(date => date >= weekStart && date <= todayEnd).length,
+                totalCount: ((m.readCount || 1) - 1) * 365 + (m.currentDay || 0)
+            };
+        })
         .filter(m => m.weeklyCount > 0)
         .sort((a, b) => {
             if (b.weeklyCount !== a.weeklyCount) return b.weeklyCount - a.weeklyCount;
-            return b.totalCount - a.totalCount;
+            if (b.totalCount !== a.totalCount) return b.totalCount - a.totalCount;
+            return String(a.name || a.uid || '').localeCompare(String(b.name || b.uid || ''), 'ko');
         });
 
     const mvpByWeekly = weeklyWithCounts.length > 0 ? weeklyWithCounts[0] : null;

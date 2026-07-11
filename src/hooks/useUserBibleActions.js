@@ -101,6 +101,24 @@ export const useUserBibleActions = (
                 const talentEarned = isFirstReadToday ? 10 + Math.min(newStreak, 7) : 0;
                 const newTalent = (data.talent || 0) + talentEarned;
                 const secretShopJustUnlocked = !data.secretShopUnlocked && newStreak >= 7;
+                const today = new Date(todayStr);
+                today.setHours(0, 0, 0, 0);
+                const recentCutoff = new Date(today);
+                recentCutoff.setDate(recentCutoff.getDate() - 13);
+                const normalizedRecentDates = (Array.isArray(data.recentReadDates) ? data.recentReadDates : [])
+                    .flatMap(value => {
+                        if (!value) return [];
+                        const date = value?.toDate ? value.toDate() : new Date(value);
+                        if (Number.isNaN(date.getTime())) return [];
+                        date.setHours(0, 0, 0, 0);
+                        return date >= recentCutoff && date <= today ? [date.toDateString()] : [];
+                    });
+                const recentReadDates = Array.from(new Set([
+                    ...normalizedRecentDates,
+                    todayStr
+                ]))
+                    .sort((a, b) => new Date(a) - new Date(b))
+                    .slice(-14);
 
                 const historyItem = {
                     date: todayStr,
@@ -116,6 +134,7 @@ export const useUserBibleActions = (
                     talent: newTalent,
                     streak: newStreak,
                     lastReadDate: todayStr,
+                    recentReadDates,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
                 if (secretShopJustUnlocked) {

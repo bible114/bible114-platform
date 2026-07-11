@@ -8,11 +8,6 @@ const ReadingChampionSection = ({ getWeeklyMVP }) => {
     const { streakMVP, progressMVP, weeklyTop10 = [], totalTop10 = [] } = mvp;
     if (!streakMVP && !progressMVP) return null;
 
-    const now = new Date();
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - now.getDay());
-    weekStart.setHours(0, 0, 0, 0);
-
     return (
         <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-200 p-5 shadow-sm">
             <div className="flex justify-between items-center mb-4">
@@ -27,16 +22,7 @@ const ReadingChampionSection = ({ getWeeklyMVP }) => {
                     <p className="text-[10px] text-slate-500 mb-1">주간 읽기왕</p>
                     <p className="font-bold text-slate-800">{streakMVP ? streakMVP.name : '-'}</p>
                     <p className="text-xs text-orange-500 mb-2 font-bold">
-                        {(() => {
-                            if (!streakMVP) return '-';
-                            const weeklyCount = (streakMVP.readHistory || []).reduce((total, item) => {
-                                const date = typeof item === 'string' ? item : item.date;
-                                const daysRead = typeof item === 'string' ? 1 : (item.daysRead || 1);
-                                const readDate = new Date(date);
-                                return readDate >= weekStart ? total + daysRead : total;
-                            }, 0);
-                            return `이번 주 ${weeklyCount}일`;
-                        })()}
+                        {streakMVP ? `이번 주 ${streakMVP.weeklyCount || 0}일` : '-'}
                     </p>
                     <p className="text-[9px] text-slate-400 mt-2 pt-2 border-t border-slate-100">이번 주 가장 많이 읽은 사람</p>
                 </div>
@@ -69,16 +55,10 @@ const ReadingChampionSection = ({ getWeeklyMVP }) => {
                     <p className="text-[10px] text-slate-500 font-bold mb-2 text-center">주간 2-10위</p>
                     <div className="space-y-1">
                         {weeklyTop10.length > 1 ? weeklyTop10.slice(1, 10).map((member, idx) => {
-                            const weeklyCount = (member.readHistory || []).reduce((total, item) => {
-                                const date = typeof item === 'string' ? item : item.date;
-                                const daysRead = typeof item === 'string' ? 1 : (item.daysRead || 1);
-                                const readDate = new Date(date);
-                                return readDate >= weekStart ? total + daysRead : total;
-                            }, 0);
                             return (
                                 <div key={member.uid} className="flex justify-between items-center text-[10px]">
                                     <span className="text-slate-600 truncate mr-1">{idx + 2}위. {member.name}</span>
-                                    <span className="text-orange-500 font-bold shrink-0">{weeklyCount}일</span>
+                                    <span className="text-orange-500 font-bold shrink-0">{member.weeklyCount || 0}일</span>
                                 </div>
                             );
                         }) : <p className="text-[10px] text-slate-400 text-center py-2">-</p>}
