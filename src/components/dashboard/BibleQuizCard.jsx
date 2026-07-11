@@ -7,6 +7,7 @@ import {
     loadQuestionByKey,
     loadQuestionsForRange,
     selectQuiz,
+    shuffleQuizChoices,
 } from '../../utils/quizEngine';
 
 const getRewardForAttempts = (attempts) => {
@@ -20,8 +21,10 @@ const resolveQuizKey = async (quizKey) => {
     if (quizKey.startsWith('bank-')) {
         const index = Number(quizKey.replace('bank-', ''));
         if (!Number.isInteger(index) || !QUIZ_BANK[index]) return null;
+        // QUIZ_BANK도 같은 정답 위치 편향 문제가 있어(대부분 answerIndex 0),
+        // quizKey를 시드로 동일하게 결정적 셔플을 적용한다.
         return {
-            quiz: QUIZ_BANK[index],
+            quiz: shuffleQuizChoices({ ...QUIZ_BANK[index], key: quizKey }),
             quizKey,
             badge: '성경 상식 문제',
         };
