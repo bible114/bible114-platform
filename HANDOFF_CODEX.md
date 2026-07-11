@@ -246,6 +246,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-11 | T43 성도 화면 추가 소속 표시 | `src/components/DashboardView.jsx`, `src/components/dashboard/DashboardHeader.jsx`, `src/components/dashboard/SubgroupRankingCard.jsx`, `src/components/modals/RankingModal.jsx`, `HANDOFF_CODEX.md` | DashboardView에서 공용 헬퍼로 주 소속과 분리한 추가 소속 최대 3개를 한 번만 정규화하고 무소속은 강제로 숨김. 헤더에는 `+부서 · 소그룹` 보조 뱃지, 요약/전체 랭킹에는 neutral `추가 소속` 뱃지를 표시하되 우리팀·파란 강조는 주 소속만 유지. modern 동명 ID는 분리하고 legacy 이름 ID는 호환하며 모바일 말줄임/뱃지 고정을 보강. `npm run build`, matcher fixture, `git diff --check`, 독립 코드리뷰, 브라우저 reload 콘솔 오류·경고 0건 통과. 인증 필요 실제 성도 화면은 미검증. |
 | 2026-07-12 | T45 로그인 시 내 조직 파악 | `src/utils/roster.js`, `src/utils/rosterSnapshot.js`, `src/hooks/useAuth.js`, `src/hooks/useUserAuth.js`, `src/App.jsx`, `HANDOFF_CODEX.md` | 실제 회원 로그인 경로에서 `collectionGroup('roster').where('uid','==',uid)`를 병렬 조회해 검증·중복 제거·orgId 정렬한 최대 3개 소속을 `currentUser.extraOrgs`에만 보존. 실패는 빈 배열로 처리하고 동일 uid 중복 요청을 합쳤으며, 게스트는 조회하지 않는다. 온보딩 저장 시 transient 필드의 users 문서 영속화를 차단. `npm run build`, mapper fixture, `git diff --check`, 독립 리뷰 2건 통과. 실제 인증 계정의 collectionGroup 조회는 미검증. |
 | 2026-07-12 | T46 공동체 추가·탈퇴 흐름 | `src/components/dashboard/CommunityMembershipCard.jsx`, `src/components/dashboard/index.js`, `src/components/DashboardView.jsx`, `src/utils/roster.js`, `src/utils/rosterSnapshot.js`, `HANDOFF_CODEX.md` | 회원 대시보드에 주 소속+외부 공동체 목록, 검색·입장코드 검증, 부서/소그룹 선택 후 roster 생성, confirm 탈퇴를 추가. mutation 전 오류를 숨기지 않는 전체 collectionGroup 재조회로 중복·최대 3개를 fail-closed 검증하고 users 문서에는 저장하지 않는다. 모달 ESC·포커스 트랩/복원·스크롤 잠금·ARIA 적용. `npm run build`, mapper 상한 fixture, `git diff --check`, 독립 리뷰 3건, 비인증 랜딩 브라우저 콘솔 오류 0건 통과. 인증 회원의 실제 roster 생성·삭제는 운영 데이터 변경 없이 미검증. 동시 탭 max3/create-only 한계는 Claude 메모에 기록. |
+| 2026-07-12 | T47 읽기 진도 roster 동기화 | `src/hooks/useUserBibleActions.js`, `HANDOFF_CODEX.md` | 현재 `extraOrgs` 최대 3개 roster에 score/currentDay/streak/readCount/lastReadDate/updatedAt만 users·history와 같은 transaction으로 update. 삭제 경합으로 전체 transaction이 취소되면 strict collectionGroup 재조회 후 남은 행으로 1회 재시도하며 행을 재생성하지 않는다. 재조회도 일시 실패하면 개인 읽기만 원자 재시도하고 기존 runtime 목록을 보존해 다음 절대 진도 update에서 회복. Auth UID guard와 함수형 상태 갱신으로 계정 전환 오염 차단. `npm run build`, `git diff --check`, 독립 리뷰 3건 통과. 실제 roster 정상/제명 경합은 미검증. |
 
 ---
 
@@ -335,6 +336,9 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T46 완료. 회원 전용 `내 공동체` 카드에서 공개 디렉토리 검색과 기존 `sha256(code) === codeHash` 검증을 재사용하고, 대상 교회 문서의 부서·소그룹을 고른 뒤 roster 허용 필드만 저장한다. 탈퇴는 본인 roster 행만 confirm 후 삭제하며 `extraOrgs`는 runtime 상태에만 반영한다. mutation용 strict 전체 조회는 실패를 숨기지 않고 중복·3개 상한을 다시 검사한다.
 - T46 검증/미검증: `npm run build`, 전체행/기본 3개 mapper fixture, `git diff --check`, 독립 리뷰 3건을 통과했고 로컬 비인증 랜딩의 콘솔 오류·경고 0건을 확인했다. 실제 회원 인증 화면과 roster 생성·삭제는 운영 데이터 변경을 피하려고 실행하지 않았다. 다음 순번은 T47이다.
 - T46 설계 한계/Claude 후속 필요: 현재 규칙은 가입 전 대상 roster 행 read를 허용하지 않고 Web compat SDK에는 create-only precondition이 없다. 따라서 strict 조회와 `set()` 사이 같은 행이 생성되면 후행 쓰기가 관리자 배정·`joinedAt`을 덮을 수 있으며, 서로 다른 두 탭이 동시에 count 2를 읽으면 4개 행이 생길 수 있다. 일반 로그인은 계약상 첫 3개만 복원하므로 초과 행이 숨을 수도 있다. 강한 create-only/최대 3개 보장은 규칙으로 검증 가능한 슬롯 문서나 서버 함수 설계가 필요하다.
+- T47 완료. 현재 `extraOrgs`의 canonical orgId 최대 3개를 users·history와 같은 transaction에서 절대 진도값으로 update한다. 제명 경합은 첫 transaction 전체가 취소된 뒤 strict collectionGroup 조회로 살아 있는 행만 다시 넣어 1회 재시도하며, `update`만 사용해 삭제 행을 되살리지 않는다. roster에는 진행 관련 6개 필드만 쓴다.
+- T47 회귀 방어/제한: 결과 적용 전 현재 Auth UID를 재검사하고 함수형 setter를 써 계정 전환이나 동시 공동체 상태를 덮지 않는다. 제명 뒤 strict 재조회도 일시 실패하면 개인 users/history만 원자 재시도하고 runtime `extraOrgs`는 보존한다. 다음 읽기의 절대 진도값으로 roster가 회복되지만 해당 1회 동안 조직 표시가 뒤처질 수 있다. 또한 T45 로그인 조회 자체가 실패해 처음부터 `extraOrgs=[]`이면 그 세션에는 동기화 대상을 알 수 없다는 기존 가용성 한계가 있다.
+- T47 검증: `npm run build`, `git diff --check`, 독립 리뷰 3건 통과. 실제 Firestore의 정상 roster 동기화, 관리자 제명 직후 경합, collectionGroup 장애 주입은 운영 계정 없이 미검증이다. 다음 순번은 T48이다.
 
 ---
 
@@ -661,7 +665,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
 - [x] **T44. (Claude 담당) roster 규칙 + collectionGroup 인덱스 설계·배포** — Codex 착수 전 완료 조건. Codex는 이 항목이 `[x]`가 되기 전에 T45 이하를 시작하지 말 것.
 - [x] **T45. 로그인 시 내 조직 파악** — collectionGroup('roster').where('uid','==',내uid) 조회 → currentUser.extraOrgs. 실패해도 로그인은 진행(조용히 빈 배열).
 - [x] **T46. 공동체 추가/탈퇴 흐름 (성도)** — 대시보드 설정 영역 "내 공동체": 현재 조직 목록 + "공동체 추가"(검색+입장코드) + 탈퇴(자기 행 삭제, confirm). 최대 3개.
-- [ ] **T47. handleRead 진도 동기화** — 트랜잭션에 extraOrgs roster 행 갱신 포함. 행이 삭제된 경우(제명) 조용히 스킵.
+- [x] **T47. handleRead 진도 동기화** — 트랜잭션에 extraOrgs roster 행 갱신 포함. 행이 삭제된 경우(제명) 조용히 스킵.
 - [ ] **T48. 조직 랭킹 병합 + 관리자 명부 관리** — loadAllMembers 병합(uid dedupe), ChurchAdminView에 "외부 공동체 멤버" 구분 뱃지 + 소그룹 배정/제명(roster 행만). 관심 명단·통계에 roster 멤버 포함.
 
 ---

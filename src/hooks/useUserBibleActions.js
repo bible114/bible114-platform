@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef } from 'react';
-import { db, firebase } from '../utils/firebase';
+import { auth, db, firebase } from '../utils/firebase';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { getKstDateString } from '../data/bibleQuiz';
 import { calculateSubgroupStats } from '../utils/statsUtils';
 import { belongsToDepartment } from '../utils/memberships';
+import { loadUserExtraOrgsStrict } from '../utils/roster';
 
 export const useUserBibleActions = (
     currentUser,
@@ -58,7 +59,12 @@ export const useUserBibleActions = (
         try {
             // Firestore Transaction: 동시 다중 클릭/멀티 디바이스 race condition 방지
             // 문서에서 최신 값을 읽어 계산하므로 점수/진도 손실 없음
-            const resultData = await db.runTransaction(async (transaction) => {
+            let refreshedExtraOrgs = (Array.isArray(currentUser.extraOrgs) ? currentUser.extraOrgs : [])
+                .filter(org => org?.uid === uid && typeof org.orgId === 'string' && org.orgId)
+                .slice(0, 3);
+            let shouldRefreshExtraOrgs = true;
+
+            const commitRead = (rosterOrgs) => db.runTransaction(async (transaction) => {
                 const userRef = db.collection('users').doc(uid);
                 const userSnap = await transaction.get(userRef);
                 if (!userSnap.exists) throw new Error('USER_NOT_FOUND');
@@ -149,6 +155,20 @@ export const useUserBibleActions = (
 
                 transaction.update(userRef, updateData);
 
+                const rosterProgress = {
+                    currentDay: newProgressDay,
+                    readCount: newReadCount,
+                    score: newScore,
+                    streak: newStreak,
+                    lastReadDate: todayStr,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                };
+                rosterOrgs.forEach(org => {
+                    if (!org?.orgId) return;
+                    const rosterRef = db.collection('churches').doc(org.orgId).collection('roster').doc(uid);
+                    transaction.update(rosterRef, rosterProgress);
+                });
+
                 // history 서브컬렉션 쓰기 (배열 필드 대신 서브컬렉션만 사용 — 문서 크기 무한 증가 방지)
                 const histRef = db.collection('users').doc(uid).collection('history').doc();
                 transaction.set(histRef, historyItem);
@@ -171,7 +191,26 @@ export const useUserBibleActions = (
                 };
             });
 
+            let resultData;
+            try {
+                resultData = await commitRead(refreshedExtraOrgs);
+            } catch (firstError) {
+                if (refreshedExtraOrgs.length === 0) throw firstError;
+                try {
+                    refreshedExtraOrgs = (await loadUserExtraOrgsStrict(uid)).slice(0, 3);
+                } catch {
+                    // 제명 행 때문에 첫 transaction이 원자 취소됐지만 명부 재조회도
+                    // 일시 실패하면 개인 읽기는 보존한다. 다음 읽기의 절대 진도값이 roster를 복구한다.
+                    refreshedExtraOrgs = [];
+                    shouldRefreshExtraOrgs = false;
+                }
+                resultData = await commitRead(refreshedExtraOrgs);
+            }
+
             if (!resultData) return;
+            // 느린 roster 조회/transaction 사이 로그아웃·계정 전환이 일어나면
+            // 이미 커밋된 원래 계정의 결과를 새 화면 상태에 적용하지 않는다.
+            if (auth.currentUser?.uid !== uid) return;
             const {
                 updateData,
                 newLevel,
@@ -201,7 +240,13 @@ export const useUserBibleActions = (
             }).catch(() => {});
 
             const updatedUser = { ...currentUser, ...updateData };
-            setCurrentUser(updatedUser);
+            setCurrentUser(previous => previous?.uid === uid
+                ? {
+                    ...previous,
+                    ...updateData,
+                    ...(shouldRefreshExtraOrgs ? { extraOrgs: refreshedExtraOrgs } : {}),
+                }
+                : previous);
             setViewingDay(nextViewingDay);
             setHasReadToday(true);
             setReadHistory(prev => [historyItem, ...prev]);
@@ -237,7 +282,13 @@ export const useUserBibleActions = (
             if (onReadComplete) onReadComplete(resultData);
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (e) {
-            if (e.message !== 'USER_NOT_FOUND') console.error("읽기 처리 실패:", e);
+            if (e.message !== 'USER_NOT_FOUND') {
+                console.error("읽기 처리 실패:", e);
+                if (auth.currentUser?.uid === uid) {
+                    setBonusToast('읽기 저장에 실패했습니다. 잠시 후 다시 눌러주세요.');
+                    setTimeout(() => setBonusToast(null), 4000);
+                }
+            }
         } finally {
             readSubmittingRef.current = false;
             setReadSubmitting(false);
