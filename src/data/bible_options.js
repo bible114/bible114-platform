@@ -4,8 +4,10 @@ export const PLAN_TYPES = [
     { id: 'nt', title: '신약 일독', desc: '1년 동안 신약 1독을 합니다.' }
 ];
 
-export const ALL_VERSION_ALLOWED_CHURCH_IDS = ['xDiqdgaKKPCTd0tYIkdm'];
-export const ALL_VERSION_ALLOWED_CHURCH_NAMES = ['성경읽는 사람들'];
+// 전체 버전(쉬운성경·새한글·메시지) 노출 허용 교회 — 2026-07-11 사용자 결정으로 전부 회수
+// (개역개정·새번역만 노출). 다시 열려면 교회 ID/이름을 배열에 추가.
+export const ALL_VERSION_ALLOWED_CHURCH_IDS = [];
+export const ALL_VERSION_ALLOWED_CHURCH_NAMES = [];
 
 export const isBibleVersionVisibleForUser = (version, user) => {
     if (!version?.allowedChurchIds) return true;
