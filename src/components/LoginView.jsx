@@ -98,7 +98,19 @@ const AdminContactModal = ({ onClose }) => {
 const inputCls = "w-full bg-cream border border-hairline rounded-lg px-3.5 py-3 text-sm text-ink placeholder-ink/40 focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent/60 transition-all font-sans";
 
 // ─── Main LoginView ────────────────────────────────────────────────────────────
-const LoginView = ({ onMemberLogin, onChurchAdminLogin, onGoogleAdminLogin, onMemberSignup, onChurchAdminSignup, errorMsg, setErrorMsg, presetChurchId, initialTab = 'member' }) => {
+const LoginView = ({
+    onMemberLogin,
+    onChurchAdminLogin,
+    onGoogleAdminLogin,
+    onMemberSignup,
+    onChurchAdminSignup,
+    onGoogleAdminSignupStart,
+    onGoogleAdminSignupCancel,
+    errorMsg,
+    setErrorMsg,
+    presetChurchId,
+    initialTab = 'member',
+}) => {
     // Tab: 'member' | 'admin' | 'memberSignup' | 'adminSignup'
     const [activeTab, setActiveTab] = useState(initialTab);
     const [signupStep, setSignupStep] = useState(1);
@@ -170,6 +182,8 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onGoogleAdminLogin, onMe
 
     const [loading, setLoading] = useState(false);
     const [googleAdminLoading, setGoogleAdminLoading] = useState(false);
+    const [googleAdminSignupLoading, setGoogleAdminSignupLoading] = useState(false);
+    const [googleAdminSignupProfile, setGoogleAdminSignupProfile] = useState(null);
     const [guestMigrationPreview, setGuestMigrationPreview] = useState(null);
 
     // 첫 화면 입구 선택: 'entry'(교회와 함께 / 혼자 읽기 카드) → 'form'(로그인 폼).
@@ -179,9 +193,14 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onGoogleAdminLogin, onMe
 
     const verse = todayVerse();
     const isKakaoTalkBrowser = typeof navigator !== 'undefined' && navigator.userAgent.includes('KAKAOTALK');
+    const activeTabRef = useRef(activeTab);
+    const googleAdminSignupCancelRef = useRef(null);
+    activeTabRef.current = activeTab;
 
     useEffect(() => {
-        setActiveTab(initialTab || 'member');
+        const nextTab = initialTab || 'member';
+        activeTabRef.current = nextTab;
+        setActiveTab(nextTab);
     }, [initialTab]);
 
     useEffect(() => {
@@ -220,6 +239,55 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onGoogleAdminLogin, onMe
     }, [presetChurchId]);
 
     const clearError = () => setErrorMsg('');
+
+    const resetGoogleAdminSignupLocalState = () => {
+        setGoogleAdminSignupProfile(null);
+        setAName('');
+        setAEmail('');
+        setAPw('');
+        setAPwConfirm('');
+    };
+
+    const cancelGoogleAdminSignupAndClear = async ({ allowWithoutProfile = false } = {}) => {
+        if (googleAdminSignupCancelRef.current) {
+            return googleAdminSignupCancelRef.current;
+        }
+        if (!allowWithoutProfile && !googleAdminSignupProfile) return;
+
+        const cancellation = (async () => {
+            setLoading(true);
+            setGoogleAdminSignupLoading(true);
+            try {
+                if (typeof onGoogleAdminSignupCancel === 'function') {
+                    await onGoogleAdminSignupCancel();
+                }
+            } catch (err) {
+                console.error('구글 교회 등록 취소 처리 실패:', err);
+            } finally {
+                resetGoogleAdminSignupLocalState();
+                setGoogleAdminSignupLoading(false);
+                setLoading(false);
+            }
+        })();
+        googleAdminSignupCancelRef.current = cancellation;
+        try {
+            return await cancellation;
+        } finally {
+            if (googleAdminSignupCancelRef.current === cancellation) {
+                googleAdminSignupCancelRef.current = null;
+            }
+        }
+    };
+
+    // 탭을 먼저 벗어난 뒤 늦게 Google profile이 도착해도 즉시 가입 흐름을 취소한다.
+    // 최종 가입 성공으로 LoginView가 언마운트되는 경우에는 cleanup을 두지 않고 백엔드가 종료한다.
+    useEffect(() => {
+        if (activeTab !== 'adminSignup' && googleAdminSignupProfile) {
+            void cancelGoogleAdminSignupAndClear();
+        }
+        // cancel ref가 activeTab/profile의 연속 변경에서 중복 취소를 막는다.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, googleAdminSignupProfile]);
 
     const selectUnaffiliatedChurch = () => {
         const church = { id: UNAFFILIATED_CHURCH_ID, name: UNAFFILIATED_CHURCH_NAME };
@@ -287,6 +355,38 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onGoogleAdminLogin, onMe
         }
     };
 
+    const handleGoogleAdminSignupStart = async () => {
+        clearError();
+        setLoading(true);
+        setGoogleAdminSignupLoading(true);
+        try {
+            const profile = await onGoogleAdminSignupStart();
+            if (!profile) return;
+            if (activeTabRef.current !== 'adminSignup') {
+                await cancelGoogleAdminSignupAndClear({ allowWithoutProfile: true });
+                return;
+            }
+            if (!profile.uid || !profile.email) {
+                await cancelGoogleAdminSignupAndClear({ allowWithoutProfile: true });
+                setErrorMsg('구글 계정 정보를 확인하지 못했습니다. 다시 시도해주세요.');
+                return;
+            }
+            const normalizedProfile = {
+                uid: String(profile.uid),
+                email: String(profile.email),
+                name: String(profile.name || ''),
+            };
+            setGoogleAdminSignupProfile(normalizedProfile);
+            setAName(normalizedProfile.name);
+            setAEmail(normalizedProfile.email);
+            setAPw('');
+            setAPwConfirm('');
+        } finally {
+            setGoogleAdminSignupLoading(false);
+            setLoading(false);
+        }
+    };
+
     const handleMemberSignup = async (e) => {
         e.preventDefault();
         if (!mName.trim() || !mBirthdate.trim() || !mPw || !mChurchId || (!isSignupUnaffiliated && !mChurchCode.trim())) { setErrorMsg('모든 항목을 입력해주세요.'); return; }
@@ -325,10 +425,15 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onGoogleAdminLogin, onMe
 
     const handleAdminStep1 = (e) => {
         e.preventDefault();
-        if (!aName.trim() || !aEmail.trim() || !aPw || !aChurchName.trim() || !aPastorName.trim() || !aChurchCode.trim()) { setErrorMsg('모든 항목을 입력해주세요.'); return; }
-        if (aPw !== aPwConfirm) { setErrorMsg('비밀번호가 일치하지 않습니다.'); return; }
-        if (aPw.length < 6) { setErrorMsg('비밀번호는 6자리 이상이어야 합니다.'); return; }
-        if (aChurchCode.length < 4) { setErrorMsg('교회 입장코드는 4자리 이상이어야 합니다.'); return; }
+        const isGoogleSignup = !!googleAdminSignupProfile;
+        if (!aName.trim() || !aChurchName.trim() || !aPastorName.trim() || !aChurchCode.trim()
+            || (isGoogleSignup ? (!googleAdminSignupProfile.uid || !googleAdminSignupProfile.email) : (!aEmail.trim() || !aPw))) {
+            setErrorMsg('모든 항목을 입력해주세요.');
+            return;
+        }
+        if (!isGoogleSignup && aPw !== aPwConfirm) { setErrorMsg('비밀번호가 일치하지 않습니다.'); return; }
+        if (!isGoogleSignup && aPw.length < 6) { setErrorMsg('비밀번호는 6자리 이상이어야 합니다.'); return; }
+        if (aChurchCode.trim().length < 4) { setErrorMsg('교회 입장코드는 4자리 이상이어야 합니다.'); return; }
         clearError(); setSignupStep(2);
     };
 
@@ -343,11 +448,34 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onGoogleAdminLogin, onMe
         }));
         if (validComms.length === 0) { setErrorMsg('최소 하나의 부서를 추가해주세요.'); return; }
         setLoading(true);
-        await onChurchAdminSignup({ name: aName.trim(), email: aEmail.trim(), password: aPw, churchName: aChurchName.trim(), pastorName: aPastorName.trim(), denomination: aDenomination.trim(), churchCode: aChurchCode.trim(), departments: validComms });
-        setLoading(false);
+        try {
+            const result = await onChurchAdminSignup({
+                name: aName.trim(),
+                email: googleAdminSignupProfile?.email || aEmail.trim(),
+                password: googleAdminSignupProfile ? null : aPw,
+                churchName: aChurchName.trim(),
+                pastorName: aPastorName.trim(),
+                denomination: aDenomination.trim(),
+                churchCode: aChurchCode.trim(),
+                departments: validComms,
+                googleProfile: googleAdminSignupProfile,
+            });
+            if (result?.resetGoogleProfile) {
+                // 백엔드가 이미 해당 Google 흐름을 종료했다. cancel callback은 오류문구까지 지우므로 호출하지 않는다.
+                resetGoogleAdminSignupLocalState();
+                setSignupStep(1);
+            }
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const resetAdminSignup = () => { setSignupStep(1); setOrgComms([{ id: 'comm_0', name: '', subgroups: [{ id: 'sub_0', name: '' }] }]); clearError(); };
+    const resetAdminSignup = async () => {
+        await cancelGoogleAdminSignupAndClear();
+        setSignupStep(1);
+        setOrgComms([{ id: 'comm_0', name: '', subgroups: [{ id: 'sub_0', name: '' }] }]);
+        clearError();
+    };
 
     // ── 선택 컨텍스트 뱃지: 폼 상단에 "어디로 들어와 있는지"를 항상 보여준다 ───
     const renderContextBadge = (id, onReset = resetEntryChoice) => {
@@ -548,17 +676,71 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onGoogleAdminLogin, onMe
         // ── Admin Signup Step 1 ──
         if (activeTab === 'adminSignup' && signupStep === 1) return (
             <form onSubmit={handleAdminStep1} className="space-y-3">
-                <button type="button" onClick={() => { setActiveTab('admin'); resetAdminSignup(); clearError(); }}
-                    className="text-[12px] text-ink/50 hover:text-ink flex items-center gap-1 mb-1 transition-colors">← 뒤로</button>
+                <button type="button" disabled={loading} onClick={async () => { await resetAdminSignup(); setActiveTab('admin'); }}
+                    className="text-[12px] text-ink/50 hover:text-ink flex items-center gap-1 mb-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50">← 뒤로</button>
                 <div className="flex items-center justify-between mb-1">
                     <span className="text-[11px] font-bold text-accent bg-accent/10 px-2 py-1 rounded-full">1단계 / 2단계</span>
                     <span className="text-[11px] text-ink/40">기본 정보 입력</span>
                 </div>
+                {!googleAdminSignupProfile && (
+                    <>
+                        {isKakaoTalkBrowser ? (
+                            <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12px] leading-relaxed text-amber-800">
+                                카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 우측 하단 ⋯ 메뉴에서 '다른 브라우저로 열기'를 눌러주세요.
+                            </p>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={handleGoogleAdminSignupStart}
+                                disabled={loading}
+                                aria-label="구글 계정으로 교회 등록 시작"
+                                className="w-full rounded-full border border-hairline bg-white py-3.5 text-sm font-semibold text-ink transition-colors hover:bg-cream disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {googleAdminSignupLoading ? '구글 계정 확인 중...' : 'G 구글 계정으로 시작'}
+                            </button>
+                        )}
+                        <div className="flex items-center gap-3 py-1" aria-hidden="true">
+                            <span className="h-px flex-1 bg-hairline" />
+                            <span className="text-[11px] font-semibold text-ink/35">또는 이메일과 비밀번호로 등록</span>
+                            <span className="h-px flex-1 bg-hairline" />
+                        </div>
+                    </>
+                )}
+                {googleAdminSignupProfile && (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <p className="text-[11px] font-bold text-blue-700">G 구글 계정으로 시작</p>
+                                <p className="mt-1 truncate text-[13px] font-semibold text-ink">{googleAdminSignupProfile.email}</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => { void cancelGoogleAdminSignupAndClear(); }}
+                                disabled={loading}
+                                className="shrink-0 text-[11px] font-semibold text-blue-700 underline underline-offset-2 disabled:opacity-50"
+                            >
+                                {googleAdminSignupLoading ? '전환 중...' : '이메일 방식으로 변경'}
+                            </button>
+                        </div>
+                    </div>
+                )}
                 <input type="text" value={aName} onChange={e => setAName(e.target.value)} placeholder="이름" className={inputCls} />
-                <input type="email" value={aEmail} onChange={e => setAEmail(e.target.value)} placeholder="이메일" className={inputCls} />
-                <input type="password" value={aPw} onChange={e => setAPw(e.target.value)} placeholder="비밀번호 (6자리 이상)" className={inputCls} />
-                <input type="password" value={aPwConfirm} onChange={e => setAPwConfirm(e.target.value)} placeholder="비밀번호 확인"
-                    className={`w-full bg-cream border rounded-lg px-3.5 py-3 text-sm placeholder-ink/40 focus:outline-none focus:ring-2 transition-all font-sans ${aPwConfirm && aPw !== aPwConfirm ? 'border-red-400 focus:ring-red-400/40' : 'border-hairline focus:ring-accent/40 focus:border-accent/60'}`} />
+                {googleAdminSignupProfile ? (
+                    <input
+                        type="email"
+                        readOnly
+                        value={googleAdminSignupProfile.email}
+                        aria-label="구글 계정 이메일"
+                        className={`${inputCls} cursor-not-allowed bg-slate-100 text-ink/60`}
+                    />
+                ) : (
+                    <>
+                        <input type="email" value={aEmail} onChange={e => setAEmail(e.target.value)} placeholder="이메일" className={inputCls} />
+                        <input type="password" value={aPw} onChange={e => setAPw(e.target.value)} placeholder="비밀번호 (6자리 이상)" className={inputCls} />
+                        <input type="password" value={aPwConfirm} onChange={e => setAPwConfirm(e.target.value)} placeholder="비밀번호 확인"
+                            className={`w-full bg-cream border rounded-lg px-3.5 py-3 text-sm placeholder-ink/40 focus:outline-none focus:ring-2 transition-all font-sans ${aPwConfirm && aPw !== aPwConfirm ? 'border-red-400 focus:ring-red-400/40' : 'border-hairline focus:ring-accent/40 focus:border-accent/60'}`} />
+                    </>
+                )}
                 <div className="border-t border-hairline pt-3 space-y-2">
                     <p className="text-[11px] text-ink/55 font-semibold uppercase tracking-wide">교회 정보</p>
                     <input type="text" value={aChurchName} onChange={e => setAChurchName(e.target.value)} placeholder="교회 이름 (예: ○○교회)" className={inputCls} />
@@ -568,9 +750,9 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onGoogleAdminLogin, onMe
                     <p className="text-[10px] text-ink/40 ml-1">입장코드는 교인들이 가입할 때 사용합니다. 나중에 변경 가능합니다.</p>
                 </div>
                 {errorMsg && <p className="text-red-500 text-xs text-center py-1 bg-red-50 rounded-lg px-3">{errorMsg}</p>}
-                <button type="submit"
-                    className="w-full bg-accent text-cream font-semibold py-3.5 rounded-full text-sm flex items-center justify-center gap-2 hover:bg-accent/90 transition-colors">
-                    다음: 조직 구성 →
+                <button type="submit" disabled={loading}
+                    className="w-full bg-accent text-cream font-semibold py-3.5 rounded-full text-sm flex items-center justify-center gap-2 hover:bg-accent/90 transition-colors disabled:opacity-50">
+                    {loading ? '확인 중...' : '다음: 조직 구성 →'}
                 </button>
             </form>
         );
@@ -578,8 +760,8 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onGoogleAdminLogin, onMe
         // ── Admin Signup Step 2 ──
         if (activeTab === 'adminSignup' && signupStep === 2) return (
             <div className="space-y-4">
-                <button type="button" onClick={() => { setSignupStep(1); clearError(); }}
-                    className="text-[12px] text-ink/50 hover:text-ink flex items-center gap-1 transition-colors">← 뒤로</button>
+                <button type="button" disabled={loading} onClick={() => { setSignupStep(1); clearError(); }}
+                    className="text-[12px] text-ink/50 hover:text-ink flex items-center gap-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50">← 뒤로</button>
                 <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-accent bg-accent/10 px-2 py-1 rounded-full">2단계 / 2단계</span>
                     <span className="text-[11px] text-ink/40">조직 구성</span>

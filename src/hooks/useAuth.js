@@ -1,8 +1,13 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { auth, authReady, db, firebase } from '../utils/firebase';
 import { makePseudoEmail, makeUnaffiliatedIdentity, userDocToState, migrateTalentIfNeeded } from '../utils/helpers';
 import { sha256 } from '../utils/crypto';
-import { getChurchDirectory, addChurchToDirectory, saveLastChurch } from '../utils/churchDirectory';
+import {
+    getChurchDirectory,
+    addChurchToDirectory,
+    invalidateChurchDirectoryCache,
+    saveLastChurch,
+} from '../utils/churchDirectory';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
 import { getGuestState, saveGuestState } from '../utils/guestStorage';
 import { writeMemberCredentials, migrateCredentialsIfNeeded } from '../utils/memberCredentials';
@@ -10,6 +15,9 @@ import { beginInteractiveAuthFlow, endInteractiveAuthFlow } from '../utils/authF
 
 const GOOGLE_ADMIN_ROLES = new Set(['churchAdmin', 'platformAdmin', 'superAdmin']);
 const GOOGLE_ADMIN_NOT_FOUND_MESSAGE = "이 구글 계정으로 등록된 관리자가 없습니다. 기존 관리자는 이메일·비밀번호로 로그인하시고, 새 교회는 '교회 등록'을 이용하세요.";
+const GOOGLE_ADMIN_SIGNUP_FLOW_NAME = 'googleAdminSignup';
+const GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE = '이미 등록된 계정입니다. 관리자 로그인에서 구글로 로그인해주세요.';
+const KAKAO_GOOGLE_AUTH_MESSAGE = "카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 우측 하단 ⋯ 메뉴에서 '다른 브라우저로 열기'를 눌러주세요.";
 
 export const useAuth = ({
     setCurrentUser,
@@ -22,6 +30,65 @@ export const useAuth = ({
     onAdminProviderNotice,
 }) => {
     const [errorMsg, setErrorMsg] = useState('');
+    const googleAdminSignupFlowRef = useRef(null);
+    const googleAdminSignupAttemptRef = useRef(0);
+    const googleAdminSignupStartingRef = useRef(false);
+    const googleAdminSignupSubmittingRef = useRef(null);
+
+    const beginGoogleAdminSignupFlow = () => {
+        if (!googleAdminSignupFlowRef.current) {
+            googleAdminSignupFlowRef.current = beginInteractiveAuthFlow(GOOGLE_ADMIN_SIGNUP_FLOW_NAME);
+        }
+    };
+
+    const endGoogleAdminSignupFlow = () => {
+        const flowName = googleAdminSignupFlowRef.current;
+        if (!flowName) return;
+        googleAdminSignupFlowRef.current = null;
+        endInteractiveAuthFlow(flowName);
+    };
+
+    const isKakaoTalkBrowser = () => (
+        typeof navigator !== 'undefined' && navigator.userAgent.includes('KAKAOTALK')
+    );
+
+    const applyGooglePopupError = (err) => {
+        if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') return;
+        if (err?.code === 'auth/operation-not-allowed') {
+            setErrorMsg('구글 로그인이 아직 활성화되지 않았습니다. 관리자에게 문의하세요.');
+            return;
+        }
+        if (err?.code === 'auth/popup-blocked') {
+            setErrorMsg('팝업이 차단되었습니다. 브라우저 설정을 확인해주세요.');
+            return;
+        }
+        if (err?.code === 'auth/account-exists-with-different-credential') {
+            setErrorMsg('이미 이메일·비밀번호로 등록된 계정입니다. 기존 관리자는 이메일·비밀번호로 로그인해주세요.');
+            return;
+        }
+        if (err?.code === 'auth/unauthorized-domain') {
+            setErrorMsg('현재 접속한 주소에서는 구글 로그인을 사용할 수 없습니다. 관리자에게 승인된 도메인 설정을 문의하세요.');
+            return;
+        }
+        console.error('구글 인증 실패:', err);
+        setErrorMsg('구글 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    };
+
+    const matchesGoogleAdminSignupProfile = (googleUser, googleProfile) => {
+        const profileUid = String(googleProfile?.uid || '').trim();
+        const profileEmail = String(googleProfile?.email || '').trim().toLowerCase();
+        const authEmail = String(googleUser?.email || '').trim().toLowerCase();
+        const hasGoogleProvider = (googleUser?.providerData || [])
+            .some(providerData => providerData?.providerId === firebase.auth.GoogleAuthProvider.PROVIDER_ID);
+        return Boolean(
+            googleUser
+            && profileUid
+            && googleUser.uid === profileUid
+            && profileEmail
+            && authEmail === profileEmail
+            && hasGoogleProvider
+        );
+    };
 
     const shouldMigrateGuestState = () => {
         const guest = getGuestState();
@@ -243,6 +310,10 @@ export const useAuth = ({
 
     const handleGoogleAdminLogin = async () => {
         setErrorMsg('');
+        if (isKakaoTalkBrowser()) {
+            setErrorMsg(KAKAO_GOOGLE_AUTH_MESSAGE);
+            return;
+        }
         const authFlowName = 'googleAdminLogin';
         beginInteractiveAuthFlow(authFlowName);
         try {
@@ -267,29 +338,107 @@ export const useAuth = ({
                 }
             }
         } catch (err) {
-            if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
-                return;
-            }
-            if (err?.code === 'auth/operation-not-allowed') {
-                setErrorMsg('구글 로그인이 아직 활성화되지 않았습니다. 관리자에게 문의하세요.');
-                return;
-            }
-            if (err?.code === 'auth/popup-blocked') {
-                setErrorMsg('팝업이 차단되었습니다. 브라우저 설정을 확인해주세요.');
-                return;
-            }
-            if (err?.code === 'auth/account-exists-with-different-credential') {
-                setErrorMsg('이미 이메일·비밀번호로 등록된 계정입니다. 기존 관리자는 이메일·비밀번호로 로그인해주세요.');
-                return;
-            }
-            if (err?.code === 'auth/unauthorized-domain') {
-                setErrorMsg('현재 접속한 주소에서는 구글 로그인을 사용할 수 없습니다. 관리자에게 승인된 도메인 설정을 문의하세요.');
-                return;
-            }
-            console.error('구글 관리자 로그인 실패:', err);
-            setErrorMsg('구글 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.');
+            applyGooglePopupError(err);
         } finally {
             endInteractiveAuthFlow(authFlowName);
+        }
+    };
+
+    const handleGoogleAdminSignupStart = async () => {
+        setErrorMsg('');
+        if (isKakaoTalkBrowser()) {
+            setErrorMsg(KAKAO_GOOGLE_AUTH_MESSAGE);
+            return null;
+        }
+        if (googleAdminSignupStartingRef.current) return googleAdminSignupStartingRef.current;
+        let resolveGoogleStart = null;
+        googleAdminSignupStartingRef.current = new Promise(resolve => {
+            resolveGoogleStart = resolve;
+        });
+        const attemptId = ++googleAdminSignupAttemptRef.current;
+
+        beginGoogleAdminSignupFlow();
+        let keepFlowActive = false;
+        let popupUser = null;
+        let startResult = null;
+        try {
+            await authReady;
+            const provider = new firebase.auth.GoogleAuthProvider();
+            const cred = await auth.signInWithPopup(provider);
+            if (!cred?.user) {
+                setErrorMsg('구글 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.');
+                return null;
+            }
+            popupUser = cred.user;
+
+            if (googleAdminSignupAttemptRef.current !== attemptId) {
+                setCurrentUser(null);
+                await auth.signOut().catch(() => {});
+                return null;
+            }
+
+            const popupEmail = String(cred.user.email || '').trim();
+            const hasGoogleProvider = (cred.user.providerData || [])
+                .some(providerData => providerData?.providerId === firebase.auth.GoogleAuthProvider.PROVIDER_ID);
+            if (!popupEmail || !hasGoogleProvider) {
+                setCurrentUser(null);
+                await auth.signOut().catch(signOutError => {
+                    console.error('구글 관리자 가입 시작 계정 검증 실패 후 로그아웃 실패:', signOutError);
+                });
+                setErrorMsg('구글 계정 정보를 확인할 수 없습니다. 다시 구글 계정으로 시작해주세요.');
+                return null;
+            }
+
+            const existingDoc = await db.collection('users').doc(cred.user.uid).get();
+            if (googleAdminSignupAttemptRef.current !== attemptId) {
+                setCurrentUser(null);
+                await auth.signOut().catch(() => {});
+                return null;
+            }
+            if (existingDoc.exists) {
+                setCurrentUser(null);
+                await auth.signOut().catch(signOutError => {
+                    console.error('기존 구글 관리자 가입 시작 로그아웃 실패:', signOutError);
+                });
+                setErrorMsg(GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE);
+                return null;
+            }
+
+            keepFlowActive = true;
+            startResult = {
+                uid: cred.user.uid,
+                email: popupEmail,
+                name: cred.user.displayName || '',
+            };
+            return startResult;
+        } catch (err) {
+            if (popupUser) {
+                setCurrentUser(null);
+                await auth.signOut().catch(signOutError => {
+                    console.error('구글 관리자 가입 시작 실패 후 로그아웃 실패:', signOutError);
+                });
+            }
+            applyGooglePopupError(err);
+            return null;
+        } finally {
+            googleAdminSignupStartingRef.current = null;
+            resolveGoogleStart?.(startResult);
+            if (!keepFlowActive) endGoogleAdminSignupFlow();
+        }
+    };
+
+    const cancelGoogleAdminSignup = async () => {
+        setErrorMsg('');
+        googleAdminSignupAttemptRef.current += 1;
+        setCurrentUser(null);
+        try {
+            await auth.signOut();
+        } catch (signOutError) {
+            console.error('구글 관리자 가입 취소 로그아웃 실패:', signOutError);
+        } finally {
+            if (!googleAdminSignupStartingRef.current && !googleAdminSignupSubmittingRef.current) {
+                endGoogleAdminSignupFlow();
+            }
         }
     };
 
@@ -370,17 +519,125 @@ export const useAuth = ({
     };
 
     // ── 교회 관리자 가입 ──
-    const handleChurchAdminSignup = async ({ name, email, password, churchName, pastorName, denomination, churchCode, departments }) => {
+    const handleChurchAdminSignup = async ({ name, email, password, churchName, pastorName, denomination, churchCode, departments, googleProfile = null }) => {
         setErrorMsg('');
+        const isGoogleSignup = Boolean(googleProfile);
+        if (isGoogleSignup && googleAdminSignupSubmittingRef.current) {
+            return googleAdminSignupSubmittingRef.current;
+        }
+        let resolveGoogleSubmission = null;
+        let finalResult = { ok: false, retryable: true };
+        if (isGoogleSignup) {
+            beginGoogleAdminSignupFlow();
+            googleAdminSignupSubmittingRef.current = new Promise(resolve => {
+                resolveGoogleSubmission = resolve;
+            });
+        }
+
+        const finishGoogleSignupTerminal = async (message, logLabel) => {
+            setCurrentUser(null);
+            await auth.signOut().catch(signOutError => {
+                console.error(`${logLabel} 로그아웃 실패:`, signOutError);
+            });
+            setErrorMsg(message);
+            finalResult = { ok: false, resetGoogleProfile: true };
+            return finalResult;
+        };
+
         try {
             await authReady;
+
+            if (isGoogleSignup) {
+                const profileUid = String(googleProfile?.uid || '').trim();
+                if (!profileUid || !matchesGoogleAdminSignupProfile(auth.currentUser, googleProfile)) {
+                    return await finishGoogleSignupTerminal(
+                        '구글 계정 정보를 확인할 수 없습니다. 다시 구글 계정으로 시작해주세요.',
+                        '구글 관리자 가입 계정 검증 실패 후'
+                    );
+                }
+
+                const userRef = db.collection('users').doc(profileUid);
+                const churchRef = db.collection('churches').doc();
+                const directoryRef = db.collection('settings').doc('churchDirectory');
+                const churchCodeHash = await sha256(churchCode);
+
+                const transactionResult = await db.runTransaction(async transaction => {
+                    // 동시 제출이 같은 Google uid를 선점했는지 transaction 안에서 판정한다.
+                    const existingDoc = await transaction.get(userRef);
+                    if (existingDoc.exists) return { terminal: 'existing' };
+
+                    // transaction은 재시도될 수 있으므로 매 시도에서 read 직후 현재 Auth를 다시 검증한다.
+                    const googleUser = auth.currentUser;
+                    if (!matchesGoogleAdminSignupProfile(googleUser, googleProfile)) {
+                        return { terminal: 'invalid-profile' };
+                    }
+
+                    const resolvedEmail = String(googleUser.email || '').trim();
+                    const newUser = {
+                        name, email: resolvedEmail, password: null, birthdate: null,
+                        role: 'churchAdmin', churchId: churchRef.id, churchName,
+                        startDate: new Date().toDateString(),
+                        currentDay: 1, streak: 0, score: 0, talent: 0, talentMigrated: true, readCount: 1,
+                        lastReadDate: null, gender: 'male', planId: '1year_revised',
+                        departmentId: null, departmentName: null, subgroupId: null,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    };
+
+                    transaction.set(churchRef, {
+                        name: churchName, pastorName: pastorName || '', denomination: denomination || '',
+                        churchCodeHash, adminUid: googleUser.uid, adminEmail: resolvedEmail,
+                        departments: departments || [],
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    });
+                    transaction.set(userRef, newUser);
+                    transaction.set(directoryRef, {
+                        churches: firebase.firestore.FieldValue.arrayUnion({
+                            id: churchRef.id,
+                            name: churchName,
+                            codeHash: churchCodeHash,
+                        }),
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    }, { merge: true });
+
+                    return { ok: true, newUser };
+                });
+
+                if (transactionResult?.terminal === 'existing') {
+                    return await finishGoogleSignupTerminal(
+                        GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE,
+                        '기존 구글 관리자 최종 가입'
+                    );
+                }
+                if (transactionResult?.terminal === 'invalid-profile') {
+                    return await finishGoogleSignupTerminal(
+                        '구글 계정 정보를 확인할 수 없습니다. 다시 구글 계정으로 시작해주세요.',
+                        '구글 관리자 최종 가입 계정 검증 실패 후'
+                    );
+                }
+                if (!transactionResult?.ok) throw new Error('구글 관리자 가입 트랜잭션 결과가 올바르지 않습니다.');
+
+                // 세 문서 commit 뒤에만 캐시·통계·온보딩 상태를 갱신한다.
+                invalidateChurchDirectoryCache();
+                db.collection('settings').doc('platformStats').set({
+                    total_churches: firebase.firestore.FieldValue.increment(1),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                }, { merge: true }).catch(() => {});
+                setChurchCommunities(departments || []);
+                setTempUser({ ...transactionResult.newUser, uid: profileUid });
+                setView('plan_type_select');
+                finalResult = { ok: true };
+                return finalResult;
+            }
+
+            // 이메일 가입은 기존 Auth 생성 + 순차 Firestore 쓰기 흐름을 유지한다.
             const cred = await auth.createUserWithEmailAndPassword(email, password).catch(err => {
                 if (err?.code === 'auth/email-already-in-use') setErrorMsg('이미 사용 중인 이메일입니다.');
                 else if (err?.code === 'auth/weak-password') setErrorMsg('비밀번호는 6자리 이상이어야 합니다.');
                 else setErrorMsg('가입 실패. 잠시 후 다시 시도해주세요.');
                 return null;
             });
-            if (!cred) return;
+            if (!cred) return finalResult;
 
             // 교회 문서 생성
             const churchRef = db.collection('churches').doc();
@@ -415,9 +672,21 @@ export const useAuth = ({
             }, { merge: true }).catch(() => {});
             setTempUser({ ...newUser, uid: cred.user.uid });
             setView('plan_type_select');
+            finalResult = { ok: true };
+            return finalResult;
         } catch (err) {
             console.error(err);
             setErrorMsg('가입 처리 중 오류가 발생했습니다.');
+            finalResult = { ok: false, retryable: true };
+            return finalResult;
+        } finally {
+            if (isGoogleSignup) {
+                googleAdminSignupSubmittingRef.current = null;
+                resolveGoogleSubmission?.(finalResult);
+                if (finalResult.ok || finalResult.resetGoogleProfile) {
+                    endGoogleAdminSignupFlow();
+                }
+            }
         }
     };
 
@@ -428,6 +697,8 @@ export const useAuth = ({
         handleMemberSignup,
         handleChurchAdminLogin,
         handleGoogleAdminLogin,
+        handleGoogleAdminSignupStart,
+        cancelGoogleAdminSignup,
         handleChurchAdminSignup,
     };
 };

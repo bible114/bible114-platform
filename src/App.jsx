@@ -382,6 +382,8 @@ const App = () => {
         handleChurchAdminLogin,
         handleChurchAdminSignup,
         handleGoogleAdminLogin,
+        handleGoogleAdminSignupStart,
+        cancelGoogleAdminSignup,
     } = useAuth({
         setCurrentUser,
         setTempUser,
@@ -553,6 +555,8 @@ const App = () => {
                 onMemberLogin={handleMemberLogin}
                 onChurchAdminLogin={handleChurchAdminLogin}
                 onGoogleAdminLogin={handleGoogleAdminLogin}
+                onGoogleAdminSignupStart={handleGoogleAdminSignupStart}
+                onGoogleAdminSignupCancel={cancelGoogleAdminSignup}
                 onMemberSignup={handleMemberSignup}
                 onChurchAdminSignup={handleChurchAdminSignup}
                 errorMsg={errorMsg}
