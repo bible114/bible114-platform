@@ -220,6 +220,10 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-11 | T28 부분 — 누가복음 12-13장 초반 문항 | `src/data/quiz/luke.json`, `HANDOFF_CODEX.md` | 신약일독 세그먼트 기준 누가복음 12:1-13:17 범위 3세그먼트, 15문항 추가(`luke.json` 총 139문항). Day 212-214가 각각 pool 5/5로 확인됨. `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. T28 전체 90일 커버리지는 아직 미완료. |
 | 2026-07-11 | T28 부분 — 누가복음 13장 후반 문항 | `src/data/quiz/luke.json`, `HANDOFF_CODEX.md` | 신약일독 세그먼트 기준 누가복음 13:18-35 범위 5문항 추가(`luke.json` 총 144문항). Day 215 pool 5/5 확인 필요. `node scripts/validate-quiz.mjs`, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. T28 전체 90일 커버리지는 아직 미완료. |
 | 2026-07-11 | T28 부분 — 누가복음 14장 문항 | `src/data/quiz/luke.json`, `HANDOFF_CODEX.md` | 신약일독 세그먼트 기준 누가복음 14:1-14 범위 6문항, 14:15-35 범위 5문항(총 11문항) 추가(`luke.json` 총 155문항). Day 216-217 pool 6/5, 5/5 확인. `node scripts/validate-quiz.mjs`, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. T28 전체 90일 커버리지는 아직 미완료. |
+| 2026-07-11 | T28 부분 — 누가복음 15-22장 문항 | `src/data/quiz/luke.json`, `HANDOFF_CODEX.md` | 신약일독 Day 218-233의 누가복음 15:1-22:46, 16개 세그먼트에 86문항 추가(`luke.json` 총 241문항). 모든 해당 세그먼트 pool 5개 이상 확인. `node scripts/validate-quiz.mjs`, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. |
+| 2026-07-11 | T28 부분 — 사도행전 14-20장 문항 | `src/data/quiz/acts.json`, `HANDOFF_CODEX.md` | 신약일독 Day 239-250의 사도행전 14-20장, 12개 세그먼트에 60문항 추가. 모든 해당 세그먼트 pool 5/5 확인. `node scripts/validate-quiz.mjs`, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. |
+| 2026-07-11 | T28 부분 — 에스겔 전권 문항 | `src/data/quiz/ezekiel.json`, `HANDOFF_CODEX.md` | 에스겔 1-48장 장당 3문항, 총 144문항 추가. 일년일독 Day 236-250 구간을 포함해 장별 pool을 확보. `node scripts/validate-quiz.mjs`, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. |
+| 2026-07-11 | T28 부분 — 에베소·빌립보·골로새 문항 | `src/data/quiz/ephesians.json`, `src/data/quiz/philippians.json`, `src/data/quiz/colossians.json`, `HANDOFF_CODEX.md` | 신약일독 Day 251-264 세그먼트용 70문항 추가(에베소 30, 빌립보 20, 골로새 20). 장 경계 세그먼트의 ref 범위를 분리해 각 day pool 5개 이상 확보. `node scripts/validate-quiz.mjs`, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. |
 
 ---
 
@@ -264,6 +268,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T28 진행 중. 누가복음 12:1-13:17 범위 3세그먼트에 15문항을 추가해 `luke.json`은 총 139문항이 됐다. Day 212-214는 각각 pool 5/5이며 검증/빌드는 통과했다. 다음 우선순위는 누가복음 13:18-35 이후 세그먼트 계속 저작이다. 퀴즈 문항 신학적 검수는 사용자 몫이다.
 - T28 진행 중. 누가복음 13:18-35 세그먼트에 5문항을 추가해 `luke.json`은 총 144문항이 됐다. 다음 우선순위는 누가복음 14:1-14 이후 세그먼트 계속 저작이다. 퀴즈 문항 신학적 검수는 사용자 몫이다.
 - T28 진행 중. 누가복음 14:1-14, 14:15-35 세그먼트에 각각 6문항·5문항을 추가해 `luke.json`은 총 155문항이 됐다. 다음 우선순위는 누가복음 15장 세그먼트 계속 저작이다. 퀴즈 문항 신학적 검수는 사용자 몫이다.
+- T28 진행 중. 병렬 저작으로 누가복음 15:1-22:46(86문항), 사도행전 14-20장(60문항), 에스겔 1-48장(144문항), 에베소·빌립보·골로새(Day 251-264, 70문항)를 추가했다. 전체 형식·커버리지 검증과 빌드는 통과했다. 90일 구간의 남은 우선순위는 누가복음 22:47-24장, 사도행전 21-28장, 벧전·벧후·계시록, 창세기·신명기 및 소선지서다. 퀴즈 문항 신학적 검수는 사용자 몫이다.
 
 ---
 
