@@ -24,6 +24,12 @@ service cloud.firestore {
     function sameChurch(churchId) {
       return isSignedIn() && myData().churchId == churchId;
     }
+    // [라운드 10] 조직 명부 멤버 — 개인 계정(churchId null)·타 교회 소속이라도
+    // 그 조직 roster에 올라 있으면 공동체 콘텐츠(공지·상점 설정·구매)를 쓸 수 있다.
+    function isRosterMember(churchId) {
+      return isRealUser() &&
+        exists(/databases/$(database)/documents/churches/$(churchId)/roster/$(request.auth.uid));
+    }
     // dailyVideos의 adult/kids 항목 검증: 없거나(null), url 필드가 없거나, url이 빈 문자열이면
     // 통과(자동 채움 실패 시 그런 형태로 기록됨). url이 있으면 반드시 유튜브 도메인이어야 한다.
     // RE2 정규식이라 리터럴 마침표는 [.]로 이스케이프한다.
@@ -63,16 +69,30 @@ service cloud.firestore {
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'churchId'])) ||
         (isSignedIn() && isChurchAdmin(resource.data.churchId)) ||
         isPlatformAdmin();
+      // [라운드 10] 개인 계정 전환(일방향, 본인만): 교회 교인 → accountType 'personal' + churchId null.
+      // 전환 전에 자기 roster 행(구 교회)이 먼저 만들어져 있어야 한다 — 소속이 명부 원장으로
+      // 보존됨을 규칙 수준에서 강제. 다른 교회로의 churchId 변경이나 personal → 교회 복귀는
+      // 이 분기로 열리지 않는다 (역방향은 라운드 후보).
+      allow update: if request.auth.uid == uid &&
+        resource.data.role == 'member' &&
+        request.resource.data.role == 'member' &&
+        resource.data.churchId is string &&
+        request.resource.data.churchId == null &&
+        request.resource.data.accountType == 'personal' &&
+        exists(/databases/$(database)/documents/churches/$(resource.data.churchId)/roster/$(request.auth.uid));
       // 무료 플랜에서는 실제 삭제 대신 isDeleted로 숨긴다.
       // seed_ 테스트 문서만 플랫폼 관리자가 클라이언트에서 직접 지울 수 있다.
       allow delete: if isPlatformAdmin() && uid.matches('^seed_.*');
 
       // 자격증명 하위문서 (평문 비밀번호·phone4) — 본인, 같은 교회 관리자, 플랫폼 관리자만.
       // users 본문서 read가 같은 교회 교인에게 열려도 이 문서는 절대 열리지 않는다.
+      // [라운드 10] 개인 계정 전환 교인은 churchId가 null이 되므로, 기준 공동체(primaryOrgId)
+      // 관리자에게도 열어 어르신 비밀번호 지원이 전환 후에도 유지되게 한다.
       match /private/{privateId} {
         allow read, write: if isRealUser() && (
           request.auth.uid == uid ||
           isChurchAdmin(get(/databases/$(database)/documents/users/$(uid)).data.churchId) ||
+          isChurchAdmin(get(/databases/$(database)/documents/users/$(uid)).data.get('primaryOrgId', null)) ||
           isPlatformAdmin());
       }
 
@@ -96,7 +116,9 @@ service cloud.firestore {
       allow delete: if false;
 
       match /settings/{settingId} {
-        allow read: if sameChurch(churchId) || isPlatformAdmin();
+        // [라운드 10] roster 멤버도 읽기 허용 — 개인 계정이 소속 공동체의
+        // 공지·카카오 링크·달란트 상점 설정을 읽을 수 있어야 한다 (라운드 9 공백 보완).
+        allow read: if sameChurch(churchId) || isRosterMember(churchId) || isPlatformAdmin();
         allow write: if isChurchAdmin(churchId) || isPlatformAdmin();
       }
 
@@ -138,7 +160,7 @@ service cloud.firestore {
         allow read: if isChurchAdmin(churchId) || isPlatformAdmin() ||
           (isSignedIn() && resource.data.uid == request.auth.uid);
         allow create: if isRealUser() &&
-          sameChurch(churchId) &&
+          (sameChurch(churchId) || isRosterMember(churchId)) &&
           request.resource.data.uid == request.auth.uid &&
           request.resource.data.status == 'pending' &&
           request.resource.data.keys().hasOnly(
