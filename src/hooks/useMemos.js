@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { db, firebase } from '../utils/firebase';
 
 // 메모 키 생성: "readCount_day" (예: "3_0" = 3독 Day 1)
@@ -14,19 +14,66 @@ export const parseMemoKey = (key) => {
 
 export const useMemos = (currentUser) => {
     const [memos, setMemos] = useState({});
+    const [memoLoadError, setMemoLoadError] = useState(null);
+    const currentUid = currentUser?.uid || null;
+    const currentUidRef = useRef(currentUid);
+    const loadRequestRef = useRef(0);
+    currentUidRef.current = currentUid;
+
+    useEffect(() => {
+        // 계정 전환/로그아웃 시 이전 사용자의 메모와 진행 중인 조회를 즉시 폐기한다.
+        loadRequestRef.current += 1;
+        setMemos({});
+        setMemoLoadError(null);
+
+        return () => {
+            loadRequestRef.current += 1;
+        };
+    }, [currentUid]);
 
     const loadMemos = useCallback(async (uid) => {
-        if (!db || !uid) return {};
-        try {
-            const doc = await db.collection('users').doc(uid).get();
-            if (doc.exists && doc.data().memos) {
-                setMemos(doc.data().memos);
-                return doc.data().memos;
+        if (!uid) {
+            loadRequestRef.current += 1;
+            if (!currentUidRef.current) {
+                setMemos({});
+                setMemoLoadError(null);
             }
+            return {};
+        }
+
+        // 이미 다른 계정으로 전환된 뒤 도착한 호출은 현재 상태에 관여하지 않는다.
+        if (uid !== currentUidRef.current) return {};
+
+        const requestId = ++loadRequestRef.current;
+        const isCurrentRequest = () => (
+            requestId === loadRequestRef.current &&
+            uid === currentUidRef.current
+        );
+
+        setMemos({});
+        setMemoLoadError(null);
+
+        try {
+            if (!db) throw new Error('메모 저장소를 사용할 수 없습니다.');
+
+            const doc = await db.collection('users').doc(uid).get();
+            const data = doc.exists ? doc.data() : null;
+            const loadedMemos = data?.memos || {};
+
+            if (isCurrentRequest()) {
+                setMemos(loadedMemos);
+                setMemoLoadError(null);
+            }
+
+            return loadedMemos;
         } catch (e) {
             console.error("메모 불러오기 실패:", e);
+            if (isCurrentRequest()) {
+                setMemos({});
+                setMemoLoadError(e);
+            }
+            throw e;
         }
-        return {};
     }, []);
 
     const saveMemo = useCallback(async (readCount, day, memoText, verseSubtitle, checkAchievements, onComplete) => {
@@ -43,6 +90,7 @@ export const useMemos = (currentUser) => {
         }
         texts.push(memoText);
 
+        const previousMemos = memos;
         const newMemos = {
             ...memos,
             [key]: {
@@ -55,22 +103,27 @@ export const useMemos = (currentUser) => {
             }
         };
         setMemos(newMemos);
-        if (typeof onComplete === 'function') onComplete();
 
         try {
             await db.collection('users').doc(uid).set({
                 memos: newMemos,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
-            if (checkAchievements) checkAchievements(currentUser, newMemos);
         } catch (e) {
             console.error("메모 저장 실패:", e);
+            if (currentUidRef.current === uid) setMemos(previousMemos);
+            throw e;
         }
+
+        if (currentUidRef.current !== uid) return;
+        if (checkAchievements) checkAchievements(currentUser, newMemos);
+        if (typeof onComplete === 'function') onComplete();
     }, [currentUser, memos]);
 
     return {
         memos,
         setMemos,
+        memoLoadError,
         loadMemos,
         saveMemo
     };

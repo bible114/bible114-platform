@@ -64,7 +64,7 @@ const App = () => {
         subgroupStats, setSubgroupStats,
         departmentMembers, setDepartmentMembers,
         allMembersForRace, setAllMembersForRace,
-        memos, setMemos,
+        memos, setMemos, memoLoadError,
         readHistory, setReadHistory,
         announcement, setAnnouncement,
         viewingDay, setViewingDay,
@@ -110,6 +110,13 @@ const App = () => {
     const [calendarDate, setCalendarDate] = useState(new Date());
     const [dateSettingsDate, setDateSettingsDate] = useState(new Date());
     const [currentMemo, setCurrentMemo] = useState('');
+
+    const resetReaderSessionState = useCallback(() => {
+        setCurrentMemo('');
+        setMemos({});
+        setViewingDay(null);
+        setReadHistory([]);
+    }, [setMemos, setViewingDay, setReadHistory]);
 
     // --- 관리자 관련 상태 ---
     const [selectedPlanType, setSelectedPlanType] = useState(null); // 선택된 플랜 타입
@@ -191,9 +198,10 @@ const App = () => {
                 }
             }
         } else {
+            resetReaderSessionState();
             if (view !== 'login') setView('login');
         }
-    }, [currentUser, authLoading]);
+    }, [currentUser, authLoading, resetReaderSessionState]);
 
     // getLevelInfo는 data/levels에서 import됨
 
@@ -426,6 +434,7 @@ const App = () => {
 
     const handleLogout = () => {
         if (auth) auth.signOut();
+        resetReaderSessionState();
         setCurrentUser(null); setTempUser(null); setChurchCommunities([]);
         setLoginInitialTab('member');
         setErrorMsg(''); setView('login'); setHasReadToday(false); setEditingUser(null); setDepartmentMembers([]);
@@ -434,6 +443,7 @@ const App = () => {
     const handleGuestSignupStart = () => {
         setLoginInitialTab('memberSignup');
         if (auth) auth.signOut();
+        resetReaderSessionState();
         setCurrentUser(null); setTempUser(null); setChurchCommunities([]);
         setErrorMsg(''); setView('login'); setHasReadToday(false); setEditingUser(null); setDepartmentMembers([]);
     };
@@ -561,6 +571,7 @@ const App = () => {
                 departmentMembers={departmentMembers}
                 allMembersForRace={allMembersForRace}
                 memos={memos}
+                memoLoadError={memoLoadError}
                 currentMemo={currentMemo}
                 setCurrentMemo={setCurrentMemo}
                 readHistory={readHistory}

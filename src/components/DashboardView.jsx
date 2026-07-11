@@ -41,6 +41,7 @@ const DashboardView = ({
     departmentMembers,
     allMembersForRace,
     memos,
+    memoLoadError,
     currentMemo,
     setCurrentMemo,
     readHistory,
@@ -402,6 +403,7 @@ const DashboardView = ({
                             currentDay={currentDay}
                             readCount={currentUser?.readCount || 1}
                             memos={memos}
+                            memoLoadError={memoLoadError}
                         />
 
                         <SubgroupRankingCard

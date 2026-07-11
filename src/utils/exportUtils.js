@@ -92,7 +92,7 @@ export const generateMemosHTML = (userName, userMemos, userStats = {}) => {
     </div>
     
     <!-- 묵상 목록 -->
-    ${sortedMemos.length > 0 ? `
+    ${entries.length > 0 ? `
         <h2 style="font-size: 24px; color: #1e293b; margin-bottom: 20px; padding-left: 10px;">✍️ 나의 묵상</h2>
         ${memosHTML}
     ` : `

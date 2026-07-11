@@ -39,7 +39,7 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
     );
 
     // 4. Memos Hook
-    const { memos, setMemos, loadMemos, saveMemo } = useMemos(currentUser);
+    const { memos, setMemos, memoLoadError, loadMemos, saveMemo } = useMemos(currentUser);
 
     // [Effect 1] Load Bible Content when viewingDay changes
     useEffect(() => {
@@ -71,7 +71,12 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
             }
 
             // 2. Load User Specific Data (Memos & History)
-            await loadMemos(uid);
+            try {
+                await loadMemos(uid);
+            } catch {
+                // useMemos가 빈 상태로 복구하고 memoLoadError를 노출한다.
+                // 메모 한 항목의 조회 실패가 나머지 대시보드 로딩을 막지 않게 한다.
+            }
 
             // readHistory: 서브컬렉션만 사용 (배열 필드는 문서 크기 무한 증가 문제로 폐기)
             const historySnap = await db.collection('users').doc(uid).collection('history')
@@ -115,6 +120,7 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
         departmentMembers, setDepartmentMembers,
         allMembersForRace, setAllMembersForRace,
         memos, setMemos,
+        memoLoadError,
         readHistory, setReadHistory,
         announcement,
         kakaoLink,
