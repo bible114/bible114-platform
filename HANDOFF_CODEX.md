@@ -651,7 +651,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
 > - **달란트/상점**: 지갑은 개인 소유이므로 가입한 모든 조직의 상점 사용 가능(7일 해금 동일). 구매 내역은 해당 조직에 쌓임.
 > - **규칙(Claude 선행 배포)**: roster read = 그 조직 구성원(`myData().churchId == orgId || exists(내 roster 행)`), create/update = 본인(필드 화이트리스트) + 그 조직 관리자, delete = 본인 + 그 조직 관리자. collectionGroup 자기 행 조회 규칙 + 인덱스 포함. **Codex는 firestore.rules 수정 금지 — 규칙·인덱스는 Claude가 라운드 8 시작 전에 배포한다.**
 
-- [ ] **T44. (Claude 담당) roster 규칙 + collectionGroup 인덱스 설계·배포** — Codex 착수 전 완료 조건. Codex는 이 항목이 `[x]`가 되기 전에 T45 이하를 시작하지 말 것.
+- [x] **T44. (Claude 담당) roster 규칙 + collectionGroup 인덱스 설계·배포** — Codex 착수 전 완료 조건. Codex는 이 항목이 `[x]`가 되기 전에 T45 이하를 시작하지 말 것.
 - [ ] **T45. 로그인 시 내 조직 파악** — collectionGroup('roster').where('uid','==',내uid) 조회 → currentUser.extraOrgs. 실패해도 로그인은 진행(조용히 빈 배열).
 - [ ] **T46. 공동체 추가/탈퇴 흐름 (성도)** — 대시보드 설정 영역 "내 공동체": 현재 조직 목록 + "공동체 추가"(검색+입장코드) + 탈퇴(자기 행 삭제, confirm). 최대 3개.
 - [ ] **T47. handleRead 진도 동기화** — 트랜잭션에 extraOrgs roster 행 갱신 포함. 행이 삭제된 경우(제명) 조용히 스킵.
@@ -670,7 +670,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
 >
 > **비밀번호 찾기 한계(설계상 수용)**: 개인 계정은 특정 교회 관리자가 없으므로 비밀번호 조회 지원은 플랫폼 관리자만 가능. 구글 계정은 해당 없음. 안내 문구에 반영할 것.
 
-- [ ] **T49. (Claude 담당) 규칙 확장 — 개인 계정의 조직 멤버 읽기** — users read에 "조회자가 그 교회 roster에 있으면 허용" 분기(`exists(/churches/$(resource.data.churchId)/roster/$(request.auth.uid))`, 목록 쿼리 증명 가능) 추가·배포. T44와 함께 처리. Codex는 이 항목 `[x]` 전에 T50 이하 착수 금지.
+- [x] **T49. (Claude 담당) 규칙 확장 — 개인 계정의 조직 멤버 읽기** — users read에 "조회자가 그 교회 roster에 있으면 허용" 분기(`exists(/churches/$(resource.data.churchId)/roster/$(request.auth.uid))`, 목록 쿼리 증명 가능) 추가·배포. T44와 함께 처리. Codex는 이 항목 `[x]` 전에 T50 이하 착수 금지.
 - [ ] **T50. 개인 가입 화면** — 첫 화면에 "처음이세요? 시작하기" 경로: [구글로 시작] / [이름·생일·전화4·비밀번호로 시작]. 게스트 진도 이관(T10 로직) 재사용. 기존 "교인 로그인"(교회 선택 방식)은 그대로 병존 — 문구로 구분: "이미 교회에서 가입하셨나요? 교인 로그인".
 - [ ] **T51. 가입 직후 공동체 온보딩** — 플랜 선택 → "공동체에 참여하시겠어요?" (교회 검색+입장코드 → 부서/소그룹 → roster 행 + primaryOrgId 지정) 또는 "나중에 할게요"(혼자 읽기 시작). T46 컴포넌트 재사용.
 - [ ] **T52. 개인 계정 대시보드** — 커뮤니티 뷰(랭킹·달리기·MVP)는 primaryOrgId 기준(loadAllMembers(primaryOrgId) 병합 경로 재사용). 공동체 2개 이상이면 헤더에 조직 전환 드롭다운(= primaryOrgId 변경, users 문서 update). 공동체 0개면 커뮤니티 카드 숨김(현 무소속 화면 스타일).
