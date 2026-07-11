@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: "🔁 라운드 4" 체크리스트 (T22~T28) → "🔁 라운드 5" (T29~T36) → "🔁 라운드 6" (T37~T38, 구글 로그인).** 라운드 1(T1~T11)·라운드 2(T12~T16)·라운드 3(T17~T21)은 완료·리뷰 통과됨.
+> **현재 활성 작업: "🔁 라운드 4" 체크리스트 (T22~T28) → "🔁 라운드 5" (T29~T36) → "🔁 라운드 6" (T37~T39, 구글 로그인) → "🔁 라운드 7" (T40~T43, 교회 내 다중 소속) → "🔁 라운드 8" (T44~T48, 조직 간 소속 — T44는 Claude 선행).** 라운드 1(T1~T11)·라운드 2(T12~T16)·라운드 3(T17~T21)은 완료·리뷰 통과됨.
 > 라운드 1의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -533,6 +533,49 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
   - 이미 연결된 상태(`auth.currentUser.providerData`에 google.com 존재)면 버튼 대신: 연결된 구글 이메일 표시 + **"비밀번호 로그인 제거"** 버튼(더블 confirm — "제거하면 이 계정은 구글로만 로그인할 수 있습니다") → `auth.currentUser.unlink('password')`. 제거 성공 시 users 문서의 `password` 필드도 null 확인(이미 null 마커 체계).
   - 같은 UI를 `ChurchAdminView.jsx` 설정 탭에도 재사용 가능하게 컴포넌트로 분리(`src/components/admin/GoogleLinkCard.jsx`) — 기존 교회 관리자도 원하면 스스로 연결할 수 있게. 단 어디서도 연결을 강요하는 문구는 쓰지 말 것.
   - 완료 기준: 빌드 통과. 실계정 연결 검증은 사용자 몫(수동 M9: 플랫폼 관리자 로그인 → 구글 연결 → 구글 재로그인 확인 → 비밀번호 로그인 제거).
+
+---
+
+## 🔁 라운드 7 — 교회 내 다중 소속 (2026-07-11 사용자 확정, 라운드 6 완료 후 진행)
+
+> 배경: 한 사람이 "여전도회이면서 1구역"처럼 교회 안에서 여러 공동체에 속할 수 있다. 읽기 기록은 이미 사람(users 문서)에 붙어 있으므로 **데이터를 복제하지 않는다** — 집계·표시에서 한 사람을 여러 그룹에 세는 방식. 규칙 변경 불필요(같은 교회 안).
+> 설계 원칙: 기존 `departmentId/subgroupId`는 **주 소속으로 유지**(마이그레이션 없음, 온보딩도 그대로 주 소속 1개 선택). 추가 소속은 새 배열 필드.
+
+- [ ] **T40. 데이터 필드 + 공용 헬퍼**
+  - users 문서에 `extraMemberships: [{departmentId, departmentName, subgroupId, subgroupName}]` (기본 없음/빈 배열, 최대 3개). `userDocToState`에 `extraMemberships: d.extraMemberships ?? []` 매핑.
+  - 신규 `src/utils/memberships.js`: `getMembershipList(user)` → 주 소속 + extraMemberships를 합쳐 (departmentId+subgroupId) 기준 중복 제거한 배열 반환. **모든 소비자는 반드시 이 헬퍼만 사용** (직접 필드 조합 금지 — 소비자마다 어긋나면 집계 불일치 사고).
+  - `belongsToDepartment(user, deptId)` / `belongsToSubgroup(user, deptId, subId)` 헬퍼도 함께.
+- [ ] **T41. 집계·랭킹에 다중 소속 반영**
+  - `calculateSubgroupStats`: 멤버를 getMembershipList의 모든 그룹에 집계 (그룹 내에서는 1회).
+  - DashboardView의 racers/departmentMembers 필터, RankingModal, `getWeeklyMVP`: `belongsToDepartment/Subgroup` 헬퍼로 교체 — 여전도회 화면에도, 1구역 화면에도 그 사람이 나타난다.
+  - **중복 집계 금지 지점(중요)**: 교회 단위 명단(관심 필요 명단, 스트릭 Top5, 완독자 수, 오늘 읽음 카운트)은 **uid 기준 1회만** — 그룹 단위 뷰만 다중 표시. computeAtRisk 등에 uid dedupe 확인.
+  - 본인 대시보드는 주 소속 공동체 기준 유지 (뷰 전환 드롭다운은 이번 범위 밖 — 백로그).
+- [ ] **T42. 교회 관리자 — 추가 소속 관리**
+  - 교인 상세 SlideOver에 "소속" 섹션 확장: 주 소속 표시 + 추가 소속 목록(각각 제거 버튼) + "소속 추가" (부서→소그룹 선택, 최대 3, 주 소속과 중복 선택 방지). 저장은 users 문서 update (관리자 권한 기존 규칙으로 충분).
+  - 부서별 현황·교인 목록에 겸직 소속 뱃지 표시 (예: "1구역 +여전도회"). CSV 내보내기의 소속 칸은 쉼표로 병기.
+  - 기존 "소그룹 변경"은 주 소속 변경으로 유지(문구만 "주 소속 변경"으로).
+- [ ] **T43. 성도 화면 표시**
+  - 대시보드 헤더/랭킹에서 본인 소속 표기에 추가 소속을 작게 병기. 어르신 혼동 방지를 위해 화면 구조는 바꾸지 말고 뱃지 수준으로만.
+  - 무소속(unaffiliated_v1)은 대상 아님 — extraMemberships UI 미노출.
+
+---
+
+## 🔁 라운드 8 — 조직 간 소속 (A교회 + B동아리) (2026-07-11 설계 확정 — ⚠️ 착수 전 Claude 규칙 선행 필요)
+
+> **아키텍처 확정 (변경 금지)**: 계정·로그인·users 문서·기존 교회 랭킹 경로는 **일절 건드리지 않는다**. 조직 간 소속은 각 조직의 **명부 하위컬렉션** `churches/{orgId}/roster/{uid}`로만 표현한다:
+> `{ uid, name, score, currentDay, streak, readCount, lastReadDate, departmentId, departmentName, subgroupId, subgroupName, joinedAt, updatedAt }`
+> - **가입(공동체 추가)**: 성도가 대시보드 "공동체 추가" → 교회 검색(디렉토리) + 입장코드 검증(기존 가입과 동일한 codeHash 방식, 본인 주 교회는 선택 불가) → 자기 roster 문서 self-create → 그 조직의 부서/소그룹 선택(기존 온보딩 화면 재사용, 결과는 roster 문서에).
+> - **진도 동기화**: `handleRead` 트랜잭션에서 내 roster 문서들(로그인 시 collectionGroup 쿼리로 파악, 최대 3개)을 같은 트랜잭션으로 갱신 — 한 곳에서 읽으면 모든 조직에 즉시 반영.
+> - **조직 쪽 랭킹**: 그 조직의 `loadAllMembers` = 자체 교인(users where churchId==org) + roster 행 병합 (uid 중복 시 자체 교인 우선). 달리기 지도·소그룹 랭킹에 그대로 등장.
+> - **B 조직 관리자 권한**: 자기 조직 roster 행만 관리(소그룹 배정·제명=행 삭제). **다른 교회 소속인 그 사람의 users 본문서·비밀번호에는 접근 불가** (개인정보 분리 — 이 설계의 핵심 이점).
+> - **달란트/상점**: 지갑은 개인 소유이므로 가입한 모든 조직의 상점 사용 가능(7일 해금 동일). 구매 내역은 해당 조직에 쌓임.
+> - **규칙(Claude 선행 배포)**: roster read = 그 조직 구성원(`myData().churchId == orgId || exists(내 roster 행)`), create/update = 본인(필드 화이트리스트) + 그 조직 관리자, delete = 본인 + 그 조직 관리자. collectionGroup 자기 행 조회 규칙 + 인덱스 포함. **Codex는 firestore.rules 수정 금지 — 규칙·인덱스는 Claude가 라운드 8 시작 전에 배포한다.**
+
+- [ ] **T44. (Claude 담당) roster 규칙 + collectionGroup 인덱스 설계·배포** — Codex 착수 전 완료 조건. Codex는 이 항목이 `[x]`가 되기 전에 T45 이하를 시작하지 말 것.
+- [ ] **T45. 로그인 시 내 조직 파악** — collectionGroup('roster').where('uid','==',내uid) 조회 → currentUser.extraOrgs. 실패해도 로그인은 진행(조용히 빈 배열).
+- [ ] **T46. 공동체 추가/탈퇴 흐름 (성도)** — 대시보드 설정 영역 "내 공동체": 현재 조직 목록 + "공동체 추가"(검색+입장코드) + 탈퇴(자기 행 삭제, confirm). 최대 3개.
+- [ ] **T47. handleRead 진도 동기화** — 트랜잭션에 extraOrgs roster 행 갱신 포함. 행이 삭제된 경우(제명) 조용히 스킵.
+- [ ] **T48. 조직 랭킹 병합 + 관리자 명부 관리** — loadAllMembers 병합(uid dedupe), ChurchAdminView에 "외부 공동체 멤버" 구분 뱃지 + 소그룹 배정/제명(roster 행만). 관심 명단·통계에 roster 멤버 포함.
 
 ---
 
