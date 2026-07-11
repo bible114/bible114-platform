@@ -974,8 +974,8 @@ const PlatformAdminView = ({
                                             return (
                                                 <tr key={idx} className={`border-b hover:bg-slate-50 ${readToday ? 'bg-green-50' : ''}`}>
                                                     <td className="px-3 py-3 text-center text-xs text-slate-400 font-mono italic">{idx + 1}</td>
-                                                    <td className="px-3 py-3 font-medium text-slate-900">{u.name}{readToday && <span className="ml-1 text-green-500">✓</span>}</td>
-                                                    <td className="px-3 py-3 text-xs text-slate-500">{churchName}</td>
+                                                    <td className="px-3 py-3 font-medium text-slate-900">{u.name}{u.accountType === 'personal' && <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600">개인</span>}{readToday && <span className="ml-1 text-green-500">✓</span>}</td>
+                                                    <td className="px-3 py-3 text-xs text-slate-500">{u.accountType === 'personal' ? '개인 계정' : churchName}</td>
                                                     <td className="px-3 py-3">
                                                         <span className="font-bold text-slate-700 text-xs">{u.departmentName || '-'}</span>
                                                         <span className="text-xs text-slate-400 block">{u.subgroupId || ''}</span>
@@ -992,7 +992,9 @@ const PlatformAdminView = ({
                                                     <td className="px-3 py-3 text-center text-xs text-slate-400">{u.lastReadDate ? new Date(u.lastReadDate).toLocaleDateString('ko-KR') : '-'}</td>
                                                     <td className="px-3 py-3 text-center">
                                                         <div className="flex justify-center gap-1">
-                                                            <button onClick={() => setChangingPassword(u)} className="text-purple-500 p-1 bg-purple-50 rounded" title="암호 변경"><Icon name="refresh" size={14} /></button>
+                                                            {u.accountType !== 'personal' || String(u.email || '').endsWith('@bible.local')
+                                                                ? <button onClick={() => setChangingPassword(u)} className="text-purple-500 p-1 bg-purple-50 rounded" title="암호 확인 및 변경"><Icon name="refresh" size={14} /></button>
+                                                                : <span className="rounded bg-slate-100 px-1.5 py-1 text-[10px] font-bold text-slate-400" title="구글 개인 계정은 비밀번호가 없습니다">Google</span>}
                                                             <button onClick={() => startEditUser(u)} className="text-blue-500 p-1 bg-blue-50 rounded" title="정보 수정"><Icon name="edit" size={14} /></button>
                                                             <button onClick={() => setDeleteUserConfirm({ uid: u.uid, name: u.name })} className="text-red-500 p-1 bg-red-50 rounded" title="삭제"><Icon name="trash" size={14} /></button>
                                                         </div>
@@ -1451,7 +1453,7 @@ const PlatformAdminView = ({
                 <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
                         <h3 className="font-bold text-lg border-b pb-2">회원 정보 수정 ({editingUser.name})</h3>
-                        <div>
+                        {editingUser.accountType !== 'personal' && <div>
                             <label className="block text-xs font-bold text-slate-500 mb-1">소속 교회</label>
                             <select value={editingUser.churchId || ''} onChange={e => {
                                 const church = churches.find(c => c.id === e.target.value);
@@ -1473,8 +1475,8 @@ const PlatformAdminView = ({
                                     .map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
                             <p className="text-[11px] text-slate-400 mt-1">교회를 변경하면 부서와 소그룹은 다시 선택하도록 비워집니다.</p>
-                        </div>
-                        <div>
+                        </div>}
+                        {editingUser.accountType !== 'personal' && <div>
                             <label className="block text-xs font-bold text-slate-500 mb-1">소속 공동체</label>
                             <select value={editingUser.departmentId || ''} onChange={e => {
                                 const comm = departments.find(c => c.id === e.target.value);
@@ -1482,8 +1484,8 @@ const PlatformAdminView = ({
                             }} className="w-full border rounded p-2 text-sm">
                                 {departments.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
-                        </div>
-                        <div>
+                        </div>}
+                        {editingUser.accountType !== 'personal' && <div>
                             <label className="block text-xs font-bold text-slate-500 mb-1">소그룹</label>
                             <select value={editingUser.subgroupId || ''} onChange={e => setEditingUser({ ...editingUser, subgroupId: e.target.value })} className="w-full border rounded p-2 text-sm">
                                 {(() => {
@@ -1491,7 +1493,8 @@ const PlatformAdminView = ({
                                     return comm ? comm.subgroups.map(s => <option key={s} value={s}>{s}</option>) : null;
                                 })()}
                             </select>
-                        </div>
+                        </div>}
+                        {editingUser.accountType === 'personal' && <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-700">개인 계정의 공동체 소속은 roster에서 관리됩니다. 이 화면에서는 읽기 진도만 수정합니다.</div>}
                         <div className="grid grid-cols-2 gap-3">
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 mb-1">현재 Day</label>

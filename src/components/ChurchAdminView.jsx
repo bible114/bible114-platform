@@ -584,7 +584,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const resetPasswordsForMembers = async (targetMembers) => {
         const externalCount = targetMembers.filter(member => member?.isExternalOrgMember).length;
         if (externalCount > 0) {
-            toast.warning('외부 공동체 멤버의 비밀번호는 소속 교회 관리자만 변경할 수 있습니다.');
+            toast.warning('외부 공동체 멤버의 비밀번호는 플랫폼 관리자에게 문의해주세요.');
             return;
         }
         const updates = targetMembers.map(member => ({ member, password: generatePassword() }));
@@ -2246,7 +2246,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     <div className="space-y-5">
                         {selectedMember.isExternalOrgMember && (
                             <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-sm font-bold text-violet-800">
-                                외부 공동체 멤버 · 계정과 비밀번호 등 개인정보는 원 소속 교회에서만 관리합니다.
+                                외부 공동체 멤버 · 계정과 비밀번호 등 개인정보는 플랫폼 관리자 지원 범위입니다.
                             </div>
                         )}
                         <div className="grid grid-cols-2 gap-3">
