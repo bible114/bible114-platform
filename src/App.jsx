@@ -19,6 +19,7 @@ import PlanSelectionView from './components/PlanSelectionView';
 import DashboardView from './components/DashboardView';
 import GuestReaderView from './components/GuestReaderView';
 import { CommunityMembershipCard } from './components/dashboard';
+import { getPendingPersonalMigration, migrateChurchMemberToPersonal } from './utils/personalAccountMigration';
 import { ToastContainer, useToast } from './components/admin';
 import { useTTS } from './hooks/useTTS';
 
@@ -521,6 +522,25 @@ const App = () => {
         }
     };
 
+    const handlePersonalAccountMigrate = async (phone4) => {
+        if (!currentUser) return;
+        try {
+            const migratedUser = await migrateChurchMemberToPersonal({ currentUser, phone4 });
+            setCurrentUser(migratedUser);
+            alert("전환 완료! 다음 로그인부터는 '시작하기'에서 이름+생년월일+전화 뒤 4자리로 로그인해주세요.");
+        } catch (error) {
+            console.error('개인 계정 전환 실패:', error);
+            alert(error?.message || '전환을 완료하지 못했습니다. 잠시 후 다시 시도해주세요.');
+        }
+    };
+
+    useEffect(() => {
+        if (!currentUser?.uid || currentUser.accountType === 'personal') return;
+        const pending = getPendingPersonalMigration(currentUser.uid);
+        if (!pending?.phone4) return;
+        handlePersonalAccountMigrate(pending.phone4);
+    }, [currentUser?.uid]);
+
     // ----------------------------------------------------------------------
     // [섹션 H] 데이터 페칭 - 대시보드 진입 시 말씀 로딩
     // ----------------------------------------------------------------------
@@ -751,6 +771,7 @@ const App = () => {
                 setCompletionCelebration={setCompletionCelebration}
                 personalOrganizations={personalOrgs.map(org => ({ ...org, name: personalOrgNames[org.orgId] || org.orgId }))}
                 onPrimaryOrgChange={handlePrimaryOrgChange}
+                onPersonalAccountMigrate={handlePersonalAccountMigrate}
             />
         );
     } else if (view === 'guest' && currentUser?.role === 'guest') {
