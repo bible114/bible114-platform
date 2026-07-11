@@ -237,6 +237,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-11 | T34 오늘 받은 달란트 표시 | `src/hooks/useUserBibleActions.js`, `src/App.jsx`, `src/components/DashboardView.jsx`, `src/components/dashboard/CompletionCelebration.jsx`, `HANDOFF_CODEX.md` | 트랜잭션 최신 퀴즈 상태로 읽기·퀴즈 획득량과 보유 달란트를 계산해 첫 읽기 토스트에 표시. 완독일에는 토스트를 지우고 오버레이에 동일 정보 표시, 같은 날 한 장 더 읽기(a=0)는 달란트 줄 생략. 새 Firestore 필드 없음. `npm run build`, `git diff --check`, 독립 재감사 통과. 실제 읽기/퀴즈 제출은 운영 데이터 변경 때문에 미검증. |
 | 2026-07-11 | T35 묵상 저장·조회 점검 및 수정 | `src/hooks/useMemos.js`, `src/hooks/useBibleLogic.js`, `src/App.jsx`, `src/components/DashboardView.jsx`, `src/components/dashboard/MemoSection.jsx`, `src/utils/exportUtils.js`, `HANDOFF_CODEX.md` | 저장 실패 낙관 상태 롤백·입력 유지·사용자 오류·중복 제출 방지, 조회 실패 표시, 계정 전환 상태/비동기 응답 격리, 1독 전용 레거시 키 fallback, 내보내기 `sortedMemos` ReferenceError 수정. 게스트 미노출·규칙상 본인 저장 허용 확인. `npm run build`, `git diff --check`, 독립 전체 경로 재감사 통과. 실제 Firestore 실패 주입은 미검증. |
 | 2026-07-11 | T36 전체 기능 점검 패스 | `src/components/ChurchAdminView.jsx`, `src/components/PlatformAdminView.jsx`, `src/components/dashboard/BibleQuizCard.jsx`, `src/components/dashboard/BibleReader.jsx`, `src/components/dashboard/DailyVideoCard.jsx`, `src/components/dashboard/TalentShop.jsx`, `HANDOFF_CODEX.md` | 로컬 브라우저에서 로그인 4화면·무소속 선택, 게스트 진입→영상·본문→새번역 변경→읽기 완료(DAY 192→193)→새로고침 진도·버전 복원을 확인했고 콘솔 오류·경고 0건. 관리자/A4 인쇄 3종·상점·퀴즈 경로는 정적 감사해 QR 인쇄 팝업 선점, 미리보기 구매 차단, guest 퀴즈 게이트 제외, 비정상 배열·quizKey·계정 전환 상태 방어를 보강. `npm run build`, `node scripts/validate-quiz.mjs`, Babel 115파일 parse, `git diff --check`, 독립 코드리뷰 통과. 게스트 검증에는 익명 Auth 세션과 localStorage만 사용했으며 users/구매/admin 쓰기는 하지 않음. 실제 가입·구매·관리자 Firestore 조작, 인증 필요 관리자 실화면·A4 실제 인쇄 대화상자, 회원 퀴즈 제출, 실 YouTube API·Google OAuth는 미검증. |
+| 2026-07-11 | T37 관리자 Google 로그인 | `src/utils/authFlowGuard.js`, `src/hooks/useUserAuth.js`, `src/hooks/useAuth.js`, `src/components/LoginView.jsx`, `src/App.jsx`, `HANDOFF_CODEX.md` | 관리자 탭에만 compat `signInWithPopup` Google 로그인과 오류·카카오톡 인앱 안내를 추가하고 기존 관리자 후처리를 공유. users 문서가 없거나 관리자 역할이 아니면 즉시 로그아웃하며 `churchAdmin`/`platformAdmin`과 레거시 플랫폼 역할 `superAdmin`만 허용. password provider 소실 안내 토스트와 Auth 리스너 대화형 흐름·stale UID 경합 방어 추가. 브라우저에서 관리자 버튼 1개, member/memberSignup/adminSignup/guest 비노출, 콘솔 오류 0건 확인. `npm run build`, Auth flow 중첩 테스트, `git diff --check`, 독립 계약 감사·코드리뷰 통과. M8 미실행으로 실 Google 팝업·실제 관리자 로그인·계정 병합은 미검증. |
 
 ---
 
@@ -296,6 +297,10 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T36 완료. 로그인 4화면과 무소속 선택, 게스트 진입→영상·본문→버전 변경→읽기 완료→새로고침 진도·버전 복원을 로컬 브라우저에서 확인했고 콘솔 오류·경고는 0건이었다. 점검 중 게스트가 T33 퀴즈 게이트에 잠기지만 퀴즈 카드는 렌더링되지 않는 교착을 발견해, 확정 설계대로 게스트를 게이트에서 명시적으로 제외했다.
 - T36의 나머지 수정은 QR 비동기 생성 전 인쇄창 선점, 관리자 상점 미리보기의 실제 uid 제거, 관리자·영상·퀴즈·상점의 비정상 배열/null/계정 전환 상태 방어다. `npm run build`, 퀴즈 검증, Babel 전수 parse, `git diff --check`, 독립 코드리뷰를 통과했다. 게스트 검증에는 익명 Auth 세션과 localStorage만 사용했고 users/구매/admin 쓰기는 하지 않았다.
 - T36 미검증: 실제 가입·구매·관리자 Firestore 조작, 인증이 필요한 교회/플랫폼 관리자 실화면과 A4 실제 인쇄 대화상자, 회원 퀴즈 제출, 실 YouTube API. Google OAuth는 라운드6(T37~T39) 및 M8 전제라 아직 실검증하지 않았다. 질문/막힌 것은 없으며 다음 작업은 T37 관리자 Google 로그인이다.
+- T37 완료. Google 로그인 버튼은 관리자 로그인 탭에만 추가했고 member/memberSignup/adminSignup/guest에는 노출하지 않았다. compat `GoogleAuthProvider` + `signInWithPopup`을 사용하며, 기존 이메일 관리자와 Google 관리자가 문서 로드·자격증명/talent 마이그레이션·화면 전환 후처리를 공유한다.
+- T37 권한·경합 방어: users 문서가 없거나 관리자 역할이 아니면 `setCurrentUser(null)` 후 즉시 `auth.signOut()`한다. 대화형 Auth 흐름 동안 `onAuthStateChanged`의 자동 사용자 적용을 막고, Firestore와 각 마이그레이션 await 뒤 이벤트 uid와 현재 Auth uid를 재검사해 거절된 일반 회원 화면이 잠깐 나타나는 경합을 차단했다.
+- T37 설계 보완: 기존 코드에서 `superAdmin`은 `platformAdmin`과 같은 레거시 플랫폼 관리자 역할이므로 Google 관리자 allowlist에 함께 포함했다. 새 권한을 확장한 것이 아니라 기존 플랫폼 관리자 로그인 호환을 유지한 것이다.
+- T37 검증: 로컬 브라우저에서 관리자 탭 Google 버튼 표시, member/memberSignup/adminSignup/guest 비노출, 콘솔 오류 0건을 확인했다. 빌드·Auth flow 중첩 테스트·diff 검사·독립 계약 감사와 코드리뷰를 통과했다. M8을 실행하지 않아 실 Google 팝업, 실제 관리자 로그인, 기존 Gmail 계정 자동 병합과 password provider 소실 안내는 미검증이다. 막힌 점은 없으며 다음 작업은 T38 교회 등록 Google 계정 흐름이다.
 
 ---
 
@@ -555,7 +560,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
 > 사용자 결정 2가지 (변경 금지): ① 구글 로그인은 **교회 관리자에게만** 제공 — 성도/무소속/게스트 화면에는 구글 버튼이 일절 없다. ② **기존 가입 관리자는 제외** — 계정 연결·마이그레이션 흐름을 만들지 않는다. 기존 관리자는 지금처럼 이메일+비밀번호로만 로그인.
 > 전제 수동 작업 **M8**: Firebase 콘솔 → Authentication → Sign-in method → **Google 활성화** (지원 이메일 지정), Settings → 승인된 도메인에 `www.bible114.net` 확인. (M8 전에 코드가 배포되면 버튼 클릭 시 `auth/operation-not-allowed` — 에러 문구 처리 필수.)
 
-- [ ] **T37. 관리자 로그인 탭에 "구글로 로그인"**
+- [x] **T37. 관리자 로그인 탭에 "구글로 로그인"**
   - `LoginView.jsx` admin 탭 하단에 구분선 + "G 구글로 로그인" 버튼. compat API: `auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())` (modular import 금지).
   - 성공 후 users 문서 조회(`users/{uid}`): ① role이 churchAdmin/platformAdmin이면 기존 관리자 로그인 후처리 재사용(useAuth의 문서 로드→talent 마이그레이션→뷰 전환 경로를 함수로 추출해 공유) ② **문서가 없거나 role이 관리자가 아니면 즉시 `auth.signOut()` + 에러**: "이 구글 계정으로 등록된 관리자가 없습니다. 기존 관리자는 이메일·비밀번호로 로그인하시고, 새 교회는 '교회 등록'을 이용하세요."
   - **주의(중요)**: gmail 주소로 가입한 기존 관리자가 이 버튼을 누르면 Firebase가 이메일·비밀번호 계정을 구글 provider로 **자동 병합/탈취**할 수 있다(One account per email 정책). 병합되면 uid가 유지되고 users 문서도 있으므로 ①경로로 정상 로그인되지만, **비밀번호 provider가 unlink될 수 있음** — 이 경우를 감지해(`cred.user.providerData`에 password 없음) 안내 토스트 "이제부터 이 계정은 구글로 로그인됩니다"를 표시할 것. 이것은 사용자가 스스로 누른 경우의 안전망이며, 유도하지는 말 것.

@@ -3,6 +3,7 @@ import { auth, authReady, db } from '../utils/firebase';
 import { userDocToState, migrateTalentIfNeeded } from '../utils/helpers';
 import { getGuestState } from '../utils/guestStorage';
 import { migrateCredentialsIfNeeded } from '../utils/memberCredentials';
+import { isInteractiveAuthFlowActive } from '../utils/authFlowGuard';
 
 export const useUserAuth = () => {
     const [currentUser, setCurrentUser] = useState(null);
@@ -31,11 +32,28 @@ export const useUserAuth = () => {
 
             unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
                 console.log('🔐 Auth state changed:', firebaseUser ? firebaseUser.uid : null);
+
+                // Google 로그인처럼 권한 판정을 별도 후처리가 독점하는 동안에는
+                // Auth 이벤트가 먼저 도착해도 사용자 상태를 자동 적용하지 않는다.
+                if (isInteractiveAuthFlowActive()) {
+                    setAuthLoading(false);
+                    return;
+                }
+
                 setAuthError('');
+
+                const discardStaleEvent = () => {
+                    if (cancelled) return true;
+                    const stale = isInteractiveAuthFlowActive()
+                        || auth.currentUser?.uid !== firebaseUser?.uid;
+                    if (stale) setAuthLoading(false);
+                    return stale;
+                };
 
                 if (firebaseUser) {
                     try {
                         if (firebaseUser.isAnonymous) {
+                            if (discardStaleEvent()) return;
                             const guest = getGuestState();
                             setCurrentUser({
                                 uid: firebaseUser.uid,
@@ -54,7 +72,9 @@ export const useUserAuth = () => {
                         }
 
                         // Firestore에서 사용자 데이터 불러오기
+                        if (discardStaleEvent()) return;
                         const userDoc = await db.collection('users').doc(firebaseUser.uid).get();
+                        if (discardStaleEvent()) return;
 
                         if (userDoc.exists) {
                             const user = userDocToState(userDoc);
@@ -62,7 +82,9 @@ export const useUserAuth = () => {
 
                             // [랭킹] 자격증명 지연 이관 — 재로그인 없이 세션 복원만 하는
                             // 상시 사용자가 가장 많으므로 이 경로가 핵심 이관 지점이다.
-                            if (await migrateCredentialsIfNeeded(firebaseUser.uid, userDoc.data())) {
+                            const credentialsMigrated = await migrateCredentialsIfNeeded(firebaseUser.uid, userDoc.data());
+                            if (discardStaleEvent()) return;
+                            if (credentialsMigrated) {
                                 user.password = null;
                             }
 
@@ -70,6 +92,7 @@ export const useUserAuth = () => {
                             // 마이그레이션이 끝나기 전에는 talent가 undefined이므로,
                             // score로 대체 표시하지 않고 완료를 기다린다 (구매 화면에서 잔액 0 오표시 방지).
                             const migrated = await migrateTalentIfNeeded(firebaseUser.uid, userDoc.data());
+                            if (discardStaleEvent()) return;
                             if (migrated) {
                                 user.talent = migrated.talent;
                                 user.score = migrated.score;
@@ -97,13 +120,16 @@ export const useUserAuth = () => {
                                 db.collection('users').doc(firebaseUser.uid).update(needsUpdate);
                             }
 
+                            if (discardStaleEvent()) return;
                             setCurrentUser(user);
                         } else {
                             // Firestore에 데이터가 없으면 로그인 화면으로/초기화
                             console.log('⚠️ Firestore 데이터 없음');
+                            if (discardStaleEvent()) return;
                             setCurrentUser(null);
                         }
                     } catch (e) {
+                        if (discardStaleEvent()) return;
                         console.error('사용자 데이터 로딩 실패:', e);
                         setAuthError('로그인은 유지되어 있지만 사용자 정보를 불러오지 못했습니다. 네트워크를 확인한 뒤 다시 시도해주세요.');
                     }

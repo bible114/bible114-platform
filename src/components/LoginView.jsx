@@ -98,7 +98,7 @@ const AdminContactModal = ({ onClose }) => {
 const inputCls = "w-full bg-cream border border-hairline rounded-lg px-3.5 py-3 text-sm text-ink placeholder-ink/40 focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent/60 transition-all font-sans";
 
 // ─── Main LoginView ────────────────────────────────────────────────────────────
-const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurchAdminSignup, errorMsg, setErrorMsg, presetChurchId, initialTab = 'member' }) => {
+const LoginView = ({ onMemberLogin, onChurchAdminLogin, onGoogleAdminLogin, onMemberSignup, onChurchAdminSignup, errorMsg, setErrorMsg, presetChurchId, initialTab = 'member' }) => {
     // Tab: 'member' | 'admin' | 'memberSignup' | 'adminSignup'
     const [activeTab, setActiveTab] = useState(initialTab);
     const [signupStep, setSignupStep] = useState(1);
@@ -169,6 +169,7 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
     const [orgComms, setOrgComms] = useState([{ id: 'comm_0', name: '', subgroups: [{ id: 'sub_0', name: '' }] }]);
 
     const [loading, setLoading] = useState(false);
+    const [googleAdminLoading, setGoogleAdminLoading] = useState(false);
     const [guestMigrationPreview, setGuestMigrationPreview] = useState(null);
 
     // 첫 화면 입구 선택: 'entry'(교회와 함께 / 혼자 읽기 카드) → 'form'(로그인 폼).
@@ -177,6 +178,7 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
     const [directory, setDirectory] = useState([]);
 
     const verse = todayVerse();
+    const isKakaoTalkBrowser = typeof navigator !== 'undefined' && navigator.userAgent.includes('KAKAOTALK');
 
     useEffect(() => {
         setActiveTab(initialTab || 'member');
@@ -271,6 +273,18 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
         setLoading(true);
         await onChurchAdminLogin(loginEmail.trim(), loginPw);
         setLoading(false);
+    };
+
+    const handleGoogleAdminLogin = async () => {
+        clearError();
+        setLoading(true);
+        setGoogleAdminLoading(true);
+        try {
+            await onGoogleAdminLogin();
+        } finally {
+            setGoogleAdminLoading(false);
+            setLoading(false);
+        }
     };
 
     const handleMemberSignup = async (e) => {
@@ -455,6 +469,26 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
                     className="w-full bg-accent text-cream font-semibold py-3.5 rounded-full text-sm flex items-center justify-center gap-2 hover:bg-accent/90 transition-colors disabled:opacity-50 mt-1">
                     {loading ? '로그인 중...' : <>관리자 대시보드 열기 <span className="opacity-70">→</span></>}
                 </button>
+                <div className="flex items-center gap-3 py-1" aria-hidden="true">
+                    <span className="h-px flex-1 bg-hairline" />
+                    <span className="text-[11px] font-semibold text-ink/35">또는</span>
+                    <span className="h-px flex-1 bg-hairline" />
+                </div>
+                {isKakaoTalkBrowser ? (
+                    <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12px] leading-relaxed text-amber-800">
+                        카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 우측 하단 ⋯ 메뉴에서 '다른 브라우저로 열기'를 눌러주세요.
+                    </p>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={handleGoogleAdminLogin}
+                        disabled={loading}
+                        aria-label="구글 계정으로 관리자 로그인"
+                        className="w-full rounded-full border border-hairline bg-white py-3.5 text-sm font-semibold text-ink transition-colors hover:bg-cream disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        {googleAdminLoading ? '구글 로그인 중...' : 'G 구글로 로그인'}
+                    </button>
+                )}
                 <div className="pt-1 text-center">
                     <span className="text-[12px] text-ink/50">교회 코드가 없으신가요?{' '}</span>
                     <button type="button" onClick={() => { setActiveTab('adminSignup'); clearError(); }}

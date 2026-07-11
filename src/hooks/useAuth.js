@@ -6,6 +6,10 @@ import { getChurchDirectory, addChurchToDirectory, saveLastChurch } from '../uti
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
 import { getGuestState, saveGuestState } from '../utils/guestStorage';
 import { writeMemberCredentials, migrateCredentialsIfNeeded } from '../utils/memberCredentials';
+import { beginInteractiveAuthFlow, endInteractiveAuthFlow } from '../utils/authFlowGuard';
+
+const GOOGLE_ADMIN_ROLES = new Set(['churchAdmin', 'platformAdmin', 'superAdmin']);
+const GOOGLE_ADMIN_NOT_FOUND_MESSAGE = "이 구글 계정으로 등록된 관리자가 없습니다. 기존 관리자는 이메일·비밀번호로 로그인하시고, 새 교회는 '교회 등록'을 이용하세요.";
 
 export const useAuth = ({
     setCurrentUser,
@@ -15,6 +19,7 @@ export const useAuth = ({
     setChurchCommunities,
     loadChurchCommunities,
     loadSuperAdminData,
+    onAdminProviderNotice,
 }) => {
     const [errorMsg, setErrorMsg] = useState('');
 
@@ -158,6 +163,61 @@ export const useAuth = ({
         }
     };
 
+    const rejectUnregisteredGoogleAdmin = async () => {
+        // Auth 상태 리스너가 일반 회원을 화면에 복원하기 전에 즉시 로컬 상태부터 비운다.
+        setCurrentUser(null);
+        try {
+            await auth.signOut();
+        } catch (signOutError) {
+            console.error('등록되지 않은 구글 관리자 로그아웃 실패:', signOutError);
+        }
+        setErrorMsg(GOOGLE_ADMIN_NOT_FOUND_MESSAGE);
+    };
+
+    // 이메일/비밀번호와 Google 관리자가 공유하는 문서 로드·마이그레이션·화면 전환 경로.
+    // requireRegisteredAdmin은 Google 로그인에만 적용해 기존 이메일 로그인 동작을 보존한다.
+    const finishAdminLogin = async (cred, { requireRegisteredAdmin = false } = {}) => {
+        const doc = await db.collection('users').doc(cred.user.uid).get();
+        if (!doc.exists) {
+            if (requireRegisteredAdmin) {
+                await rejectUnregisteredGoogleAdmin();
+            } else {
+                setErrorMsg('사용자 정보를 찾을 수 없습니다.');
+            }
+            return false;
+        }
+
+        const data = doc.data();
+        // Google은 관리자 역할을 확인한 뒤에만 자격증명·달란트 마이그레이션을 실행한다.
+        if (requireRegisteredAdmin && !GOOGLE_ADMIN_ROLES.has(data.role)) {
+            await rejectUnregisteredGoogleAdmin();
+            return false;
+        }
+
+        const user = userDocToState(doc);
+        // [랭킹] 자격증명 지연 이관 (관리자 계정 문서도 랭킹 쿼리에 걸린다)
+        if (await migrateCredentialsIfNeeded(cred.user.uid, data)) user.password = null;
+        // [점수 이중화] talent 지갑 지연 마이그레이션 (1회성)
+        const migrated = await migrateTalentIfNeeded(cred.user.uid, data);
+        if (migrated) {
+            user.talent = migrated.talent;
+            user.score = migrated.score;
+            user.talentMigrated = true;
+        }
+
+        if (user.role === 'superAdmin' || user.role === 'platformAdmin') {
+            setCurrentUser(user);
+            await loadSuperAdminData();
+            return true;
+        }
+
+        setCurrentUser(user);
+        setHasReadToday(user.lastReadDate === new Date().toDateString());
+        if (user.churchId) await loadChurchCommunities(user.churchId);
+        setView('dashboard');
+        return true;
+    };
+
     // ── 교회 관리자 / 슈퍼 관리자 로그인 ──
     const handleChurchAdminLogin = async (email, pw) => {
         setErrorMsg('');
@@ -174,32 +234,62 @@ export const useAuth = ({
                 return null;
             });
             if (!cred) return;
-            const doc = await db.collection('users').doc(cred.user.uid).get();
-            if (!doc.exists) { setErrorMsg('사용자 정보를 찾을 수 없습니다.'); return; }
-            const user = userDocToState(doc);
-            // [랭킹] 자격증명 지연 이관 (관리자 계정 문서도 랭킹 쿼리에 걸린다)
-            if (await migrateCredentialsIfNeeded(cred.user.uid, doc.data())) user.password = null;
-            // [점수 이중화] talent 지갑 지연 마이그레이션 (1회성)
-            const migrated = await migrateTalentIfNeeded(cred.user.uid, doc.data());
-            if (migrated) {
-                user.talent = migrated.talent;
-                user.score = migrated.score;
-                user.talentMigrated = true;
-            }
-
-            if (user.role === 'superAdmin' || user.role === 'platformAdmin') {
-                setCurrentUser(user);
-                await loadSuperAdminData();
-                return;
-            }
-
-            setCurrentUser(user);
-            setHasReadToday(user.lastReadDate === new Date().toDateString());
-            if (user.churchId) await loadChurchCommunities(user.churchId);
-            setView('dashboard');
+            await finishAdminLogin(cred);
         } catch (err) {
             console.error(err);
             setErrorMsg('로그인 처리 중 오류가 발생했습니다.');
+        }
+    };
+
+    const handleGoogleAdminLogin = async () => {
+        setErrorMsg('');
+        const authFlowName = 'googleAdminLogin';
+        beginInteractiveAuthFlow(authFlowName);
+        try {
+            await authReady;
+            const provider = new firebase.auth.GoogleAuthProvider();
+            const cred = await auth.signInWithPopup(provider);
+            if (!cred?.user) {
+                setErrorMsg('구글 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.');
+                return;
+            }
+
+            const didLogin = await finishAdminLogin(cred, { requireRegisteredAdmin: true });
+            if (!didLogin) return;
+
+            const hasPasswordProvider = (cred.user.providerData || [])
+                .some(providerData => providerData?.providerId === firebase.auth.EmailAuthProvider.PROVIDER_ID);
+            if (!hasPasswordProvider && typeof onAdminProviderNotice === 'function') {
+                try {
+                    onAdminProviderNotice('이제부터 이 계정은 구글로 로그인됩니다');
+                } catch (noticeError) {
+                    console.error('관리자 로그인 제공자 안내 표시 실패:', noticeError);
+                }
+            }
+        } catch (err) {
+            if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+                return;
+            }
+            if (err?.code === 'auth/operation-not-allowed') {
+                setErrorMsg('구글 로그인이 아직 활성화되지 않았습니다. 관리자에게 문의하세요.');
+                return;
+            }
+            if (err?.code === 'auth/popup-blocked') {
+                setErrorMsg('팝업이 차단되었습니다. 브라우저 설정을 확인해주세요.');
+                return;
+            }
+            if (err?.code === 'auth/account-exists-with-different-credential') {
+                setErrorMsg('이미 이메일·비밀번호로 등록된 계정입니다. 기존 관리자는 이메일·비밀번호로 로그인해주세요.');
+                return;
+            }
+            if (err?.code === 'auth/unauthorized-domain') {
+                setErrorMsg('현재 접속한 주소에서는 구글 로그인을 사용할 수 없습니다. 관리자에게 승인된 도메인 설정을 문의하세요.');
+                return;
+            }
+            console.error('구글 관리자 로그인 실패:', err);
+            setErrorMsg('구글 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.');
+        } finally {
+            endInteractiveAuthFlow(authFlowName);
         }
     };
 
@@ -337,6 +427,7 @@ export const useAuth = ({
         handleMemberLogin,
         handleMemberSignup,
         handleChurchAdminLogin,
+        handleGoogleAdminLogin,
         handleChurchAdminSignup,
     };
 };

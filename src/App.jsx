@@ -18,6 +18,7 @@ import PlatformAdminView from './components/PlatformAdminView';
 import PlanSelectionView from './components/PlanSelectionView';
 import DashboardView from './components/DashboardView';
 import GuestReaderView from './components/GuestReaderView';
+import { ToastContainer, useToast } from './components/admin';
 import { useTTS } from './hooks/useTTS';
 
 
@@ -38,6 +39,7 @@ const App = () => {
     // [Phase 3] 교회 전용 링크(?church=ID) — 로그인 화면 교회 preselect용. 최초 마운트 시 1회만 읽는다.
     const [presetChurchId] = useState(() => new URLSearchParams(window.location.search).get('church') || null);
     const { currentUser, setCurrentUser, authLoading, authError, retryAuthCheck } = useUserAuth();
+    const adminAuthToasts = useToast();
     const handleReadComplete = useCallback((resultData) => {
         if (typeof window !== 'undefined' && window.refreshKakaoAdBanner) {
             window.refreshKakaoAdBanner();
@@ -372,7 +374,15 @@ const App = () => {
         setAllChurches(churchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(c => !c.isDeleted));
     };
 
-    const { errorMsg, setErrorMsg, handleMemberLogin, handleMemberSignup, handleChurchAdminLogin, handleChurchAdminSignup } = useAuth({
+    const {
+        errorMsg,
+        setErrorMsg,
+        handleMemberLogin,
+        handleMemberSignup,
+        handleChurchAdminLogin,
+        handleChurchAdminSignup,
+        handleGoogleAdminLogin,
+    } = useAuth({
         setCurrentUser,
         setTempUser,
         setView,
@@ -380,6 +390,7 @@ const App = () => {
         setChurchCommunities,
         loadChurchCommunities,
         loadSuperAdminData,
+        onAdminProviderNotice: adminAuthToasts.info,
     });
 
     const handlePlanTypeSelect = (typeId) => { setSelectedPlanType(typeId); setView('bible_version_select'); };
@@ -529,6 +540,7 @@ const App = () => {
                     downloadPeriodStatsCSV={downloadPeriodStatsCSV}
                     db={db}
                 />
+                <ToastContainer toasts={adminAuthToasts.toasts} onClose={adminAuthToasts.removeToast} />
             </>
         );
     }
@@ -540,6 +552,7 @@ const App = () => {
             <LoginView
                 onMemberLogin={handleMemberLogin}
                 onChurchAdminLogin={handleChurchAdminLogin}
+                onGoogleAdminLogin={handleGoogleAdminLogin}
                 onMemberSignup={handleMemberSignup}
                 onChurchAdminSignup={handleChurchAdminSignup}
                 errorMsg={errorMsg}
@@ -658,6 +671,7 @@ const App = () => {
     return (
         <>
             {pageContent}
+            <ToastContainer toasts={adminAuthToasts.toasts} onClose={adminAuthToasts.removeToast} />
         </>
     );
 };
