@@ -12,6 +12,7 @@ import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/consta
 import { getGuestState, saveGuestState } from '../utils/guestStorage';
 import { writeMemberCredentials, migrateCredentialsIfNeeded } from '../utils/memberCredentials';
 import { beginInteractiveAuthFlow, endInteractiveAuthFlow } from '../utils/authFlowGuard';
+import { loadUserExtraOrgs } from '../utils/roster';
 
 const GOOGLE_ADMIN_ROLES = new Set(['churchAdmin', 'platformAdmin', 'superAdmin']);
 const GOOGLE_ADMIN_NOT_FOUND_MESSAGE = "이 구글 계정으로 등록된 관리자가 없습니다. 기존 관리자는 이메일·비밀번호로 로그인하시고, 새 교회는 '교회 등록'을 이용하세요.";
@@ -207,6 +208,7 @@ export const useAuth = ({
             if (!doc.exists) { setErrorMsg('사용자 정보를 찾을 수 없습니다.'); return; }
             if (doc.data().isDeleted) { setErrorMsg('삭제 처리된 계정입니다. 교회 관리자에게 복원을 요청해주세요.'); return; }
             const user = userDocToState(doc);
+            const extraOrgsPromise = loadUserExtraOrgs(cred.user.uid);
             // [랭킹] 자격증명 지연 이관 — 본문서에 평문이 남아 있으면 private로 옮긴다.
             if (await migrateCredentialsIfNeeded(cred.user.uid, doc.data())) user.password = null;
             // [점수 이중화] talent 지갑 지연 마이그레이션 (1회성) — 대시보드 진입 전에 완료해 잔액 미표시 방지
@@ -216,6 +218,8 @@ export const useAuth = ({
                 user.score = migrated.score;
                 user.talentMigrated = true;
             }
+            user.extraOrgs = await extraOrgsPromise;
+            if (auth.currentUser?.uid !== cred.user.uid) return;
             setCurrentUser(user);
             setHasReadToday(user.lastReadDate === new Date().toDateString());
             if (user.churchId) await loadChurchCommunities(user.churchId);
@@ -263,6 +267,7 @@ export const useAuth = ({
         }
 
         const user = userDocToState(doc);
+        const extraOrgsPromise = loadUserExtraOrgs(cred.user.uid);
         // [랭킹] 자격증명 지연 이관 (관리자 계정 문서도 랭킹 쿼리에 걸린다)
         if (await migrateCredentialsIfNeeded(cred.user.uid, data)) user.password = null;
         // [점수 이중화] talent 지갑 지연 마이그레이션 (1회성)
@@ -272,6 +277,9 @@ export const useAuth = ({
             user.score = migrated.score;
             user.talentMigrated = true;
         }
+
+        user.extraOrgs = await extraOrgsPromise;
+        if (auth.currentUser?.uid !== cred.user.uid) return false;
 
         if (user.role === 'superAdmin' || user.role === 'platformAdmin') {
             setCurrentUser(user);

@@ -425,10 +425,12 @@ const App = () => {
         const subgroupId = typeof subgroup === 'string' ? subgroup : subgroup.id;
         const subgroupName = typeof subgroup === 'string' ? subgroup : subgroup.name;
         const finalUser = { ...tempUser, subgroupId, subgroupName };
-        setCurrentUser(finalUser); setTempUser(null); setView('dashboard');
+        const runtimeExtraOrgs = Array.isArray(finalUser.extraOrgs) ? finalUser.extraOrgs : [];
+        const { extraOrgs: _transientExtraOrgs, ...persistedUser } = finalUser;
+        setCurrentUser({ ...persistedUser, extraOrgs: runtimeExtraOrgs }); setTempUser(null); setView('dashboard');
         try {
             const uid = (auth.currentUser ? auth.currentUser.uid : null) || finalUser.uid;
-            if (uid) await db.collection('users').doc(uid).set({ ...finalUser, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+            if (uid) await db.collection('users').doc(uid).set({ ...persistedUser, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
         } catch (e) { console.error(e); alert("서버 저장 실패"); }
     };
 

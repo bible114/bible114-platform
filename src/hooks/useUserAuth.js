@@ -4,6 +4,7 @@ import { userDocToState, migrateTalentIfNeeded } from '../utils/helpers';
 import { getGuestState } from '../utils/guestStorage';
 import { migrateCredentialsIfNeeded } from '../utils/memberCredentials';
 import { isInteractiveAuthFlowActive } from '../utils/authFlowGuard';
+import { loadUserExtraOrgs } from '../utils/roster';
 
 export const useUserAuth = () => {
     const [currentUser, setCurrentUser] = useState(null);
@@ -66,6 +67,7 @@ export const useUserAuth = () => {
                                 lastReadDate: guest.lastReadDate,
                                 readCount: 1,
                                 videoType: guest.videoType || 'adult',
+                                extraOrgs: [],
                             });
                             setAuthLoading(false);
                             return;
@@ -78,6 +80,7 @@ export const useUserAuth = () => {
 
                         if (userDoc.exists) {
                             const user = userDocToState(userDoc);
+                            const extraOrgsPromise = loadUserExtraOrgs(firebaseUser.uid);
                             console.log('✅ 사용자 데이터 복원:', user.name);
 
                             // [랭킹] 자격증명 지연 이관 — 재로그인 없이 세션 복원만 하는
@@ -120,6 +123,7 @@ export const useUserAuth = () => {
                                 db.collection('users').doc(firebaseUser.uid).update(needsUpdate);
                             }
 
+                            user.extraOrgs = await extraOrgsPromise;
                             if (discardStaleEvent()) return;
                             setCurrentUser(user);
                         } else {
