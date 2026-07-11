@@ -214,6 +214,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-10 | T28 부분 — 열왕기하 문항 | `src/data/quiz/2kings.json`, `HANDOFF_CODEX.md` | 열왕기하 1-25장 장당 3문항(총 75문항) 추가. `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. T28 전체 90일 커버리지는 아직 미완료. |
 | 2026-07-11 | T27b 파서 장 경계 수정 + 커버리지 검증기 | `src/utils/quizParsing.js`, `src/utils/quizEngine.js`, `scripts/validate-quiz.mjs`, `HANDOFF_CODEX.md` | 장 경계 절 범위(`A:B-C:D`)를 시작/중간/끝 장 아이템으로 전개하도록 파서 분리·수정. 검증기에 365일 스케줄 파싱, 저작 완료 범위 pool 검사, 미저작 집계, 신약 세그먼트 출력 추가. `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. |
 | 2026-07-11 | T28 부분 — 누가복음 1-4장 문항 | `src/data/quiz/luke.json`, `HANDOFF_CODEX.md` | 신약일독 세그먼트 기준 누가복음 1:1-4:44 범위 9세그먼트, 총 47문항 추가. `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. T28 전체 90일 커버리지는 아직 미완료. |
+| 2026-07-11 | T28 부분 — 누가복음 5-8장 문항 | `src/data/quiz/luke.json`, `HANDOFF_CODEX.md` | 신약일독 세그먼트 기준 누가복음 5:1-8:56 범위 8세그먼트, 47문항 추가(`luke.json` 총 94문항). `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. T28 전체 90일 커버리지는 아직 미완료. |
 
 ---
 
@@ -252,6 +253,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T28 진행 중. 열왕기하 1-25장 75문항을 추가했고 검증/빌드는 통과했다. 다음 우선순위는 신약일독 구간의 누가복음 1-24장 또는 에스겔 1-48장이다.
 - T27b 완료. 파서는 `quizParsing.js`로 분리해 앱과 검증기가 같은 `parseReadingRange`를 사용한다. `마 10:26-11:1`, `갈 4:1-5:1`, `고전 10:1-11:1`, `눅 3:21-4:13`, `렘 26:1-29:23` 장 경계 범위가 여러 아이템으로 전개됨을 확인했다. 검증기는 신약 세그먼트 목록과 미저작 집계를 출력한다.
 - T28 진행 중. 누가복음 1:1-4:44까지 신약일독 세그먼트 기준 47문항을 추가했고 검증/빌드는 통과했다. 다음 우선순위는 누가복음 5장 이후 세그먼트 계속 저작이다.
+- T28 진행 중. 누가복음 5:1-8:56 범위 8세그먼트 47문항을 추가해 `luke.json`은 총 94문항이 됐다. 검증/빌드는 통과했다. 다음 우선순위는 누가복음 9장 이후 세그먼트 계속 저작이다.
 
 ---
 
