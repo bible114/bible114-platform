@@ -32,7 +32,8 @@ import {
     KakaoChannelButton,
     BibleQuizCard,
     TalentShop,
-    CompletionCelebration
+    CompletionCelebration,
+    CommunityMembershipCard
 } from './dashboard';
 import TutorialOverlay from './TutorialOverlay';
 
@@ -455,6 +456,10 @@ const DashboardView = ({
                         showUnlockModal={showSecretShopUnlocked}
                         onCloseUnlockModal={() => setShowSecretShopUnlocked(false)}
                     />
+
+                    {currentUser.role === 'member' && (
+                        <CommunityMembershipCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
+                    )}
                 </main>
             </div>
 

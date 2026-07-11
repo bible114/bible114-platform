@@ -3,7 +3,7 @@ const ROSTER_FIELDS = [
     'joinedAt', 'updatedAt',
 ];
 
-export const rosterSnapshotToExtraOrgs = (snapshot, uid) => {
+export const rosterSnapshotToExtraOrgs = (snapshot, uid, maxOrgs = 3) => {
     const normalizedUid = String(uid || '').trim();
     if (!normalizedUid || !Array.isArray(snapshot?.docs)) return [];
 
@@ -38,5 +38,5 @@ export const rosterSnapshotToExtraOrgs = (snapshot, uid) => {
             if (data[field] !== undefined) row[field] = data[field];
         });
         return [row];
-    }).sort((left, right) => left.orgId.localeCompare(right.orgId)).slice(0, 3);
+    }).sort((left, right) => left.orgId.localeCompare(right.orgId)).slice(0, maxOrgs);
 };
