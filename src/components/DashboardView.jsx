@@ -232,6 +232,9 @@ const DashboardView = ({
                 <CompletionCelebration
                     completedRound={completionCelebration.completedRound}
                     newReadCount={completionCelebration.newReadCount}
+                    talentEarned={completionCelebration.talentEarned}
+                    quizTalentEarned={completionCelebration.quizTalentEarned}
+                    totalTalent={completionCelebration.totalTalent}
                     onClose={() => setCompletionCelebration(null)}
                 />
             )}

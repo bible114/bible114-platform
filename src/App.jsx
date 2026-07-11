@@ -49,6 +49,9 @@ const App = () => {
             setCompletionCelebration({
                 completedRound: Math.max(1, (resultData.newReadCount || 2) - 1),
                 newReadCount: resultData.newReadCount || 2,
+                talentEarned: resultData.talentEarned,
+                quizTalentEarned: resultData.quizTalentEarned,
+                totalTalent: resultData.totalTalent,
             });
         }
     }, []);

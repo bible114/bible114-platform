@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { db, firebase } from '../utils/firebase';
 import { ACHIEVEMENTS } from '../data/achievements';
+import { getKstDateString } from '../data/bibleQuiz';
 import { calculateSubgroupStats } from '../utils/statsUtils';
 
 export const useUserBibleActions = (
@@ -100,6 +101,10 @@ export const useUserBibleActions = (
                 }
                 const talentEarned = isFirstReadToday ? 10 + Math.min(newStreak, 7) : 0;
                 const newTalent = (data.talent || 0) + talentEarned;
+                const quizTodayKey = getKstDateString();
+                const quizTalentEarned = data.quizDate === quizTodayKey && data.quizSolved === true
+                    ? (data.quizAttempts === 1 ? 10 : 5)
+                    : 0;
                 const secretShopJustUnlocked = !data.secretShopUnlocked && newStreak >= 7;
                 const today = new Date(todayStr);
                 today.setHours(0, 0, 0, 0);
@@ -147,11 +152,38 @@ export const useUserBibleActions = (
                 const histRef = db.collection('users').doc(uid).collection('history').doc();
                 transaction.set(histRef, historyItem);
 
-                return { updateData, newLevel, oldLevel, streakBonus, newStreak, newReadCount, nextViewingDay, historyItem, newProgressDay, talentEarned, secretShopJustUnlocked, completedRound };
+                return {
+                    updateData,
+                    newLevel,
+                    oldLevel,
+                    streakBonus,
+                    newStreak,
+                    newReadCount,
+                    nextViewingDay,
+                    historyItem,
+                    newProgressDay,
+                    talentEarned,
+                    quizTalentEarned,
+                    totalTalent: newTalent,
+                    secretShopJustUnlocked,
+                    completedRound
+                };
             });
 
             if (!resultData) return;
-            const { updateData, newLevel, oldLevel, streakBonus, newStreak, newReadCount, nextViewingDay, historyItem, newProgressDay, talentEarned, completedRound } = resultData;
+            const {
+                updateData,
+                newLevel,
+                oldLevel,
+                streakBonus,
+                newStreak,
+                nextViewingDay,
+                historyItem,
+                talentEarned,
+                quizTalentEarned,
+                totalTalent,
+                completedRound
+            } = resultData;
 
             // 플랫폼 통계 업데이트 (fire & forget) — 날짜가 바뀌면 readers_today 리셋
             db.collection('settings').doc('platformStats').get().then(snap => {
@@ -177,10 +209,15 @@ export const useUserBibleActions = (
                 setLevelUpToast(true);
                 setTimeout(() => setLevelUpToast(false), 5000);
             }
-            if (streakBonus > 0 || talentEarned > 0) {
+            if (completedRound) {
+                setBonusToast(null);
+            } else if (talentEarned > 0) {
+                const todayTalentEarned = talentEarned + quizTalentEarned;
+                setBonusToast(`오늘 +${todayTalentEarned}달란트! (읽기 ⭐${talentEarned} · 퀴즈 ⭐${quizTalentEarned}) · 보유 ⭐${totalTalent}`);
+                setTimeout(() => setBonusToast(null), 3000);
+            } else if (streakBonus > 0) {
                 const scoreText = streakBonus > 0 ? `${newStreak}일 연속 보너스 +${streakBonus}pt` : `${newStreak}일 연속`;
-                const talentText = talentEarned > 0 ? ` · ⭐ +${talentEarned}달란트` : '';
-                setBonusToast(`${scoreText}${talentText}!`);
+                setBonusToast(`${scoreText}!`);
                 setTimeout(() => setBonusToast(null), 3000);
             }
 

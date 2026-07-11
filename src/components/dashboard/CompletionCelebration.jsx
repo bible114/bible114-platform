@@ -21,9 +21,25 @@ const toPositiveInteger = (value, fallback) => {
     return Number.isFinite(number) && number >= 1 ? Math.floor(number) : fallback;
 };
 
-const CompletionCelebration = ({ completedRound, newReadCount, onClose }) => {
+const toNonNegativeInteger = (value) => {
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? Math.floor(number) : 0;
+};
+
+const CompletionCelebration = ({
+    completedRound,
+    newReadCount,
+    talentEarned,
+    quizTalentEarned,
+    totalTalent,
+    onClose,
+}) => {
     const round = toPositiveInteger(completedRound, 1);
     const nextRound = toPositiveInteger(newReadCount, round + 1);
+    const readingTalent = toNonNegativeInteger(talentEarned);
+    const quizTalent = toNonNegativeInteger(quizTalentEarned);
+    const earnedToday = readingTalent + quizTalent;
+    const talentBalance = toNonNegativeInteger(totalTalent);
     const closeButtonRef = useRef(null);
 
     useEffect(() => {
@@ -88,6 +104,15 @@ const CompletionCelebration = ({ completedRound, newReadCount, onClose }) => {
                     <p className="mt-2 text-sm leading-relaxed text-slate-500">
                         말씀과 함께한 귀한 걸음을 응원합니다.
                     </p>
+
+                    {readingTalent > 0 && (
+                        <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
+                            <p className="text-lg font-black">오늘 +{earnedToday}달란트!</p>
+                            <p className="mt-1 text-sm font-bold">
+                                (읽기 ⭐{readingTalent} · 퀴즈 ⭐{quizTalent}) · 보유 ⭐{talentBalance}
+                            </p>
+                        </div>
+                    )}
 
                     <button
                         ref={closeButtonRef}
