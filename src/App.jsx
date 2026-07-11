@@ -379,6 +379,8 @@ const App = () => {
         setErrorMsg,
         handleMemberLogin,
         handleMemberSignup,
+        handlePersonalSignup,
+        handleGooglePersonalSignup,
         handleChurchAdminLogin,
         handleChurchAdminSignup,
         handleGoogleAdminLogin,
@@ -561,6 +563,8 @@ const App = () => {
                 onGoogleAdminSignupStart={handleGoogleAdminSignupStart}
                 onGoogleAdminSignupCancel={cancelGoogleAdminSignup}
                 onMemberSignup={handleMemberSignup}
+                onPersonalSignup={handlePersonalSignup}
+                onGooglePersonalSignup={handleGooglePersonalSignup}
                 onChurchAdminSignup={handleChurchAdminSignup}
                 errorMsg={errorMsg}
                 setErrorMsg={setErrorMsg}

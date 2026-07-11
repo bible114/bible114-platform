@@ -103,6 +103,8 @@ const LoginView = ({
     onChurchAdminLogin,
     onGoogleAdminLogin,
     onMemberSignup,
+    onPersonalSignup,
+    onGooglePersonalSignup,
     onChurchAdminSignup,
     onGoogleAdminSignupStart,
     onGoogleAdminSignupCancel,
@@ -169,6 +171,14 @@ const LoginView = ({
     const [mChurchCode, setMChurchCode] = useState('');
     const [mPhone4, setMPhone4] = useState('');
 
+    const [personalMethod, setPersonalMethod] = useState('choice');
+    const [pName, setPName] = useState('');
+    const [pBirthdate, setPBirthdate] = useState('');
+    const [pPhone4, setPPhone4] = useState('');
+    const [pPw, setPPw] = useState('');
+    const [pPwConfirm, setPPwConfirm] = useState('');
+    const [googlePersonalLoading, setGooglePersonalLoading] = useState(false);
+
     // Admin signup state
     const [aName, setAName] = useState('');
     const [aEmail, setAEmail] = useState('');
@@ -204,7 +214,7 @@ const LoginView = ({
     }, [initialTab]);
 
     useEffect(() => {
-        if (activeTab !== 'memberSignup') return;
+        if (activeTab !== 'memberSignup' && activeTab !== 'personalSignup') return;
         const guest = getGuestState();
         setGuestMigrationPreview(!guest.migratedAt && guest.readDates.length > 0 ? guest : null);
     }, [activeTab]);
@@ -405,6 +415,33 @@ const LoginView = ({
         setLoading(false);
     };
 
+    const isValidBirthdate = value => {
+        if (!/^\d{8}$/.test(value)) return false;
+        const year = Number(value.slice(0, 4));
+        const month = Number(value.slice(4, 6));
+        const day = Number(value.slice(6, 8));
+        const date = new Date(year, month - 1, day);
+        return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+    };
+
+    const handlePersonalSignup = async (e) => {
+        e.preventDefault();
+        if (!pName.trim() || !isValidBirthdate(pBirthdate) || !/^\d{4}$/.test(pPhone4) || !pPw) {
+            setErrorMsg('이름, 생년월일 8자리, 전화번호 뒤 4자리를 정확히 입력해주세요.'); return;
+        }
+        if (pPw.length < 6) { setErrorMsg('비밀번호는 6자리 이상이어야 합니다.'); return; }
+        if (pPw !== pPwConfirm) { setErrorMsg('비밀번호가 일치하지 않습니다.'); return; }
+        setLoading(true);
+        try { await onPersonalSignup({ name: pName.trim(), birthdate: pBirthdate, phone4: pPhone4, password: pPw }); }
+        finally { setLoading(false); }
+    };
+
+    const handleGooglePersonalSignup = async () => {
+        clearError(); setLoading(true); setGooglePersonalLoading(true);
+        try { await onGooglePersonalSignup(); }
+        finally { setGooglePersonalLoading(false); setLoading(false); }
+    };
+
     const handleGuestLogin = async () => {
         setLoading(true);
         clearError();
@@ -497,6 +534,11 @@ const LoginView = ({
     // ── 첫 화면 입구: "우리 교회와 함께 / 혼자 읽어요" 두 카드 + 게스트 ───────
     const renderEntryChoice = () => (
         <div className="space-y-3.5">
+            <button type="button" onClick={() => { setActiveTab('personalSignup'); setPersonalMethod('choice'); clearError(); }} className="w-full rounded-xl border border-blue-200 bg-blue-50 p-4 text-left transition-colors hover:border-blue-400">
+                <p className="text-[16px] font-bold text-blue-950">처음이세요? 시작하기 →</p>
+                <p className="mt-1 text-[11px] text-blue-700">개인 계정을 만들고 공동체는 나중에 선택할 수 있어요.</p>
+            </button>
+            <div className="flex items-center gap-3 py-1"><span className="h-px flex-1 bg-hairline" /><span className="text-[11px] font-semibold text-ink/45">이미 교회에서 가입하셨나요? 교인 로그인</span><span className="h-px flex-1 bg-hairline" /></div>
             <div className="border border-hairline rounded-xl p-4 bg-cream-card">
                 <p className="text-[15px] font-bold text-ink mb-0.5">⛪ 우리 교회와 함께 읽어요</p>
                 <p className="text-[11px] text-ink/55 mb-2.5">교회 이름을 한 글자만 입력해도 바로 찾아드려요.</p>
@@ -533,6 +575,34 @@ const LoginView = ({
         if (activeTab === 'member' && (memberStep === 'entry' || !loginChurchId)) {
             return renderEntryChoice();
         }
+
+        if (activeTab === 'personalSignup') return (
+            <div className="space-y-3.5">
+                <button type="button" onClick={() => { setActiveTab('member'); setMemberStep('entry'); setPersonalMethod('choice'); clearError(); }} className="text-[12px] text-ink/50 hover:text-ink">← 처음 화면으로</button>
+                {personalMethod === 'choice' ? (
+                    <>
+                        <p className="text-sm font-bold text-ink">개인 계정으로 시작하세요</p>
+                        {isKakaoTalkBrowser ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12px] text-amber-800">카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 다른 브라우저로 열어주세요.</p> : <button type="button" onClick={handleGooglePersonalSignup} disabled={loading} className="w-full rounded-full border border-hairline bg-white py-3.5 text-sm font-semibold text-ink disabled:opacity-50">{googlePersonalLoading ? '구글 계정 확인 중...' : 'G 구글로 시작'}</button>}
+                        <button type="button" onClick={() => { setPersonalMethod('manual'); clearError(); }} className="w-full rounded-full bg-ink py-3.5 text-sm font-semibold text-cream">이름·생일·전화번호로 시작</button>
+                        {guestMigrationPreview && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-[12px] font-semibold text-emerald-800">지금까지 읽은 {guestMigrationPreview.currentDay}일차 진도를 가져옵니다.</div>}
+                        {errorMsg && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-center text-xs text-red-500">{errorMsg}</p>}
+                    </>
+                ) : (
+                    <form onSubmit={handlePersonalSignup} className="space-y-3">
+                        <button type="button" onClick={() => { setPersonalMethod('choice'); clearError(); }} className="text-[12px] text-ink/50">← 방법 다시 선택</button>
+                        <input value={pName} onChange={e => setPName(e.target.value)} placeholder="이름" className={inputCls} />
+                        <input inputMode="numeric" value={pBirthdate} onChange={e => setPBirthdate(e.target.value.replace(/\D/g, ''))} placeholder="생년월일 8자리 (예: 19900101)" maxLength={8} className={inputCls} />
+                        <input inputMode="numeric" value={pPhone4} onChange={e => setPPhone4(e.target.value.replace(/\D/g, ''))} placeholder="전화번호 뒤 4자리" maxLength={4} className={inputCls} />
+                        <input type="password" value={pPw} onChange={e => setPPw(e.target.value)} placeholder="비밀번호 (6자리 이상)" className={inputCls} />
+                        <input type="password" value={pPwConfirm} onChange={e => setPPwConfirm(e.target.value)} placeholder="비밀번호 확인" className={inputCls} />
+                        {guestMigrationPreview && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-[12px] font-semibold text-emerald-800">지금까지 읽은 {guestMigrationPreview.currentDay}일차 진도를 가져옵니다.</div>}
+                        <p className="text-[11px] text-ink/50">개인 계정 비밀번호 지원은 플랫폼 관리자에게 문의해주세요.</p>
+                        {errorMsg && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-center text-xs text-red-500">{errorMsg}</p>}
+                        <button type="submit" disabled={loading} className="w-full rounded-full bg-ink py-3.5 text-sm font-semibold text-cream disabled:opacity-50">{loading ? '확인 중...' : '개인 계정으로 시작'}</button>
+                    </form>
+                )}
+            </div>
+        );
 
         // ── Member Login ──
         if (activeTab === 'member') return (
@@ -783,13 +853,14 @@ const LoginView = ({
         return null;
     };
 
-    const isSignupTab = activeTab === 'memberSignup' || activeTab === 'adminSignup';
+    const isSignupTab = activeTab === 'memberSignup' || activeTab === 'adminSignup' || activeTab === 'personalSignup';
     const isEntryStep = activeTab === 'member' && (memberStep === 'entry' || !loginChurchId);
     const cardTitle = {
         member: isEntryStep ? '어떻게 읽으실래요?' : '로그인',
         admin: '관리자 로그인',
         memberSignup: '성도 회원가입',
         adminSignup: '교회 등록',
+        personalSignup: '개인 계정 시작',
     }[activeTab] || '로그인';
 
     // ── DESKTOP Layout (md+) / MOBILE Layout ──────────────────────────────────

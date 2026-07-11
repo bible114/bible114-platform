@@ -67,6 +67,8 @@ export const userDocToState = (doc) => {
         birthdate: d.birthdate || null,
         password: d.password,
         role: d.role || 'member',
+        accountType: d.accountType || null,
+        primaryOrgId: d.primaryOrgId || null,
         churchId: d.churchId || null,
         churchName: d.churchName || null,
         extraMemberships: Array.isArray(d.extraMemberships) ? d.extraMemberships : [],

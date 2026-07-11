@@ -35,6 +35,8 @@ export const useAuth = ({
     const googleAdminSignupAttemptRef = useRef(0);
     const googleAdminSignupStartingRef = useRef(false);
     const googleAdminSignupSubmittingRef = useRef(null);
+    const personalSignupRef = useRef(null);
+    const passwordPersonalSignupRef = useRef(false);
 
     const beginGoogleAdminSignupFlow = () => {
         if (!googleAdminSignupFlowRef.current) {
@@ -146,6 +148,143 @@ export const useAuth = ({
             saveGuestState({ migratedAt: new Date().toISOString() });
         }
         setView('plan_type_select');
+    };
+
+    const buildPersonalUser = ({ name, birthdate = null, email, google = false }) => {
+        const user = {
+            ...buildNewMember({ name, birthdate, email, churchId: null, churchName: null }),
+            accountType: 'personal',
+            primaryOrgId: null,
+        };
+        if (google) delete user.password;
+        return user;
+    };
+
+    const finishPersonalSignup = async ({ user, newUser, credentials }) => {
+        if (credentials) {
+            await writeMemberCredentials(user.uid, credentials);
+        }
+        await db.collection('users').doc(user.uid).set(newUser);
+        db.collection('settings').doc('platformStats').set({
+            total_readers: firebase.firestore.FieldValue.increment(1),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true }).catch(() => {});
+        setTempUser({ ...newUser, uid: user.uid, extraOrgs: [] });
+        if (shouldMigrateGuestState()) saveGuestState({ migratedAt: new Date().toISOString() });
+        setView('plan_type_select');
+    };
+
+    const openExistingPersonalUser = async (firebaseUser, doc) => {
+        const data = doc.data();
+        if (data.accountType !== 'personal') throw new Error('NOT_PERSONAL_ACCOUNT');
+        const user = userDocToState(doc);
+        user.extraOrgs = await loadUserExtraOrgs(firebaseUser.uid);
+        setCurrentUser(user);
+        setTempUser(null);
+        setView('dashboard');
+    };
+
+    const handlePersonalSignup = async ({ name, birthdate, phone4, password }) => {
+        if (passwordPersonalSignupRef.current) return;
+        passwordPersonalSignupRef.current = true;
+        setErrorMsg('');
+        const normalizedPhone4 = String(phone4 || '').trim();
+        const email = makePseudoEmail(name, makeUnaffiliatedIdentity(birthdate, normalizedPhone4));
+        let completed = false;
+        try {
+            beginInteractiveAuthFlow('passwordPersonalSignup');
+            await authReady;
+            let cred;
+            try {
+                cred = await auth.createUserWithEmailAndPassword(email, password);
+            } catch (error) {
+                if (error?.code !== 'auth/email-already-in-use') throw error;
+                cred = await auth.signInWithEmailAndPassword(email, password);
+                const existingDoc = await db.collection('users').doc(cred.user.uid).get();
+                if (existingDoc.exists) {
+                    await openExistingPersonalUser(cred.user, existingDoc);
+                    completed = true;
+                    return;
+                }
+                await finishPersonalSignup({
+                    user: cred.user,
+                    newUser: buildPersonalUser({ name, birthdate, email }),
+                    credentials: { password, phone4: normalizedPhone4 },
+                });
+                completed = true;
+                return;
+            }
+            await finishPersonalSignup({
+                user: cred.user,
+                newUser: buildPersonalUser({ name, birthdate, email }),
+                credentials: { password, phone4: normalizedPhone4 },
+            });
+            completed = true;
+        } catch (error) {
+            console.error('개인 계정 시작 실패:', error);
+            if (error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential') setErrorMsg('이미 등록된 정보입니다. 기존 비밀번호를 확인해주세요.');
+            else if (error?.code === 'auth/weak-password') setErrorMsg('비밀번호는 6자리 이상이어야 합니다.');
+            else if (error?.message === 'NOT_PERSONAL_ACCOUNT') setErrorMsg('기존 교인 계정은 아래 교인 로그인으로 들어가주세요.');
+            else setErrorMsg('개인 계정을 시작하지 못했습니다. 잠시 후 다시 시도해주세요.');
+        } finally {
+            if (!completed && auth.currentUser) await auth.signOut().catch(() => {});
+            endInteractiveAuthFlow('passwordPersonalSignup');
+            passwordPersonalSignupRef.current = false;
+        }
+    };
+
+    const handleGooglePersonalSignup = async () => {
+        setErrorMsg('');
+        if (personalSignupRef.current) return personalSignupRef.current;
+        const request = (async () => {
+            const flowName = 'googlePersonalSignup';
+            beginInteractiveAuthFlow(flowName);
+            try {
+                await authReady;
+                if (isKakaoTalkBrowser()) { setErrorMsg(KAKAO_GOOGLE_AUTH_MESSAGE); return; }
+                const provider = new firebase.auth.GoogleAuthProvider();
+                const cred = await auth.signInWithPopup(provider);
+                const hasGoogleProvider = (cred.user.providerData || []).some(item => item?.providerId === 'google.com');
+                if (!cred.user.uid || !cred.user.email || !hasGoogleProvider || auth.currentUser?.uid !== cred.user.uid) {
+                    throw new Error('INVALID_GOOGLE_PERSONAL_PROFILE');
+                }
+                const userRef = db.collection('users').doc(cred.user.uid);
+                const existingDoc = await userRef.get();
+                if (existingDoc.exists) {
+                    await openExistingPersonalUser(cred.user, existingDoc);
+                    return;
+                }
+                const newUser = buildPersonalUser({ name: cred.user.displayName || '성도', email: cred.user.email, google: true });
+                await db.runTransaction(async transaction => {
+                    const latest = await transaction.get(userRef);
+                    if (latest.exists) throw new Error('PERSONAL_USER_RACE');
+                    if (auth.currentUser?.uid !== cred.user.uid) throw new Error('PERSONAL_AUTH_CHANGED');
+                    transaction.set(userRef, newUser);
+                });
+                db.collection('settings').doc('platformStats').set({
+                    total_readers: firebase.firestore.FieldValue.increment(1),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                }, { merge: true }).catch(() => {});
+                setTempUser({ ...newUser, uid: cred.user.uid, extraOrgs: [] });
+                if (shouldMigrateGuestState()) saveGuestState({ migratedAt: new Date().toISOString() });
+                setView('plan_type_select');
+            } catch (error) {
+                if (error?.message === 'NOT_PERSONAL_ACCOUNT') {
+                    setErrorMsg('이미 다른 방식으로 등록된 계정입니다. 기존 로그인 방법을 이용해주세요.');
+                    await auth.signOut().catch(() => {});
+                } else {
+                    applyGooglePopupError(error);
+                    if (!['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(error?.code)) {
+                        await auth.signOut().catch(() => {});
+                    }
+                }
+            } finally {
+                endInteractiveAuthFlow(flowName);
+                personalSignupRef.current = null;
+            }
+        })();
+        personalSignupRef.current = request;
+        return request;
     };
 
     const makeMemberEmail = (name, birthdate, churchId, phone4) => {
@@ -706,6 +845,8 @@ export const useAuth = ({
         setErrorMsg,
         handleMemberLogin,
         handleMemberSignup,
+        handlePersonalSignup,
+        handleGooglePersonalSignup,
         handleChurchAdminLogin,
         handleGoogleAdminLogin,
         handleGoogleAdminSignupStart,
