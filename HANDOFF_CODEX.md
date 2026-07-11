@@ -212,6 +212,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-10 | T28 부분 — 잠언 문항 | `src/data/quiz/proverbs.json`, `HANDOFF_CODEX.md` | 잠언 1-31장 장당 3문항(총 93문항) 추가. `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. T28 전체 90일 커버리지는 아직 미완료. |
 | 2026-07-10 | T28 부분 — 전도서/아가 문항 | `src/data/quiz/ecclesiastes.json`, `src/data/quiz/songofsongs.json`, `HANDOFF_CODEX.md` | 전도서 1-12장 장당 3문항(총 36문항), 아가 1-8장 장당 3문항(총 24문항) 추가. `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. T28 전체 90일 커버리지는 아직 미완료. |
 | 2026-07-10 | T28 부분 — 열왕기하 문항 | `src/data/quiz/2kings.json`, `HANDOFF_CODEX.md` | 열왕기하 1-25장 장당 3문항(총 75문항) 추가. `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. T28 전체 90일 커버리지는 아직 미완료. |
+| 2026-07-11 | T27b 파서 장 경계 수정 + 커버리지 검증기 | `src/utils/quizParsing.js`, `src/utils/quizEngine.js`, `scripts/validate-quiz.mjs`, `HANDOFF_CODEX.md` | 장 경계 절 범위(`A:B-C:D`)를 시작/중간/끝 장 아이템으로 전개하도록 파서 분리·수정. 검증기에 365일 스케줄 파싱, 저작 완료 범위 pool 검사, 미저작 집계, 신약 세그먼트 출력 추가. `node scripts/validate-quiz.mjs` 통과, `npm run build` 통과. |
 
 ---
 
@@ -248,6 +249,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T28 진행 중. 잠언 1-31장 93문항을 추가했고 검증/빌드는 통과했다. 다음 우선순위는 전도서/아가/열왕기하 또는 신약일독 구간의 누가복음 1-24장이다.
 - T28 진행 중. 전도서 1-12장 36문항과 아가 1-8장 24문항을 추가했고 검증/빌드는 통과했다. 다음 우선순위는 열왕기하 또는 신약일독 구간의 누가복음 1-24장이다.
 - T28 진행 중. 열왕기하 1-25장 75문항을 추가했고 검증/빌드는 통과했다. 다음 우선순위는 신약일독 구간의 누가복음 1-24장 또는 에스겔 1-48장이다.
+- T27b 완료. 파서는 `quizParsing.js`로 분리해 앱과 검증기가 같은 `parseReadingRange`를 사용한다. `마 10:26-11:1`, `갈 4:1-5:1`, `고전 10:1-11:1`, `눅 3:21-4:13`, `렘 26:1-29:23` 장 경계 범위가 여러 아이템으로 전개됨을 확인했다. 검증기는 신약 세그먼트 목록과 미저작 집계를 출력한다.
 
 ---
 
@@ -428,7 +430,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
   - 게스트는 기존대로 렌더링하지 않음.
 - [x] **T27. 문항 검증 스크립트** (신규 `scripts/validate-quiz.mjs`)
   - `node scripts/validate-quiz.mjs`: src/data/quiz/*.json 전체를 검사 — ① 필수 필드 `{ch, q, choices[정확히 4], answerIndex 0-3, ref}` ② ref의 책이 파일의 책과 일치 ③ 같은 장 안에서 q 중복 금지 ④ choices 내 중복 금지 ⑤ 장당 문항 수 리포트(구약 3개·신약 5개 미만이면 경고 목록 출력). 실패 시 exit 1.
-- [ ] **T27b. 파서 장 경계 수정 + 커버리지 검증기** (⚠️ T28보다 먼저 — 저작의 전제조건)
+- [x] **T27b. 파서 장 경계 수정 + 커버리지 검증기** (⚠️ T28보다 먼저 — 저작의 전제조건)
   - **파서 버그 수정** (`src/utils/quizEngine.js` `parseChapterBody`): 장 경계를 걸치는 절 범위가 실제 스케줄에 13일 존재 — 신약 10일("마 10:26-11:1", "갈 4:1-5:1", "고전 10:1-11:1", "눅 3:21-4:13", "눅 9:51-10:20" 등) + 일년일독 3일("시 118:1-119:80", "시 119:81-120:7", "렘 26:1-29:23"). 현재 정규식이 끝 장 번호(그룹 3)를 캡처만 하고 버려서 `vEnd < vStart`가 되어 파싱이 빈다 → **그날 본문 퀴즈가 아예 안 나옴**. 수정: `A:B-C:D` 형태를 여러 아이템으로 전개 — 시작 장 `{ch:A, vStart:B, vEnd:999}`, 중간 장들은 절 제한 없는 `{ch}`, 끝 장 `{ch:C, vStart:1, vEnd:D}`. `isInReadingItem`이 vStart만 비교하므로 999 상한은 기존 필터와 호환.
   - **검증기에 커버리지 검사 추가** (`scripts/validate-quiz.mjs`): 두 플랜(whole_bible·new_testament)의 365일 range를 **실제 엔진 파서로** 파싱해 ① 파싱 결과가 빈 날 = 실패 ② 저작 완료된 책이 포함된 날의 문항 풀을 계산해 신약일독 5개 미만 / 일년일독 3개 미만 = 실패 ③ 미저작 책의 날은 "미저작"으로 집계만. 출력에 **신약 세그먼트 목록(책·장·절범위별 필요 문항 수)**을 포함해 T28의 작업 지시서가 되게 할 것.
 - [ ] **T28. 문항 은행 저작 — 1차분** (신규 `src/data/quiz/*.json`)

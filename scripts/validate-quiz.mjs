@@ -1,42 +1,21 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import { BOOKS, getBookBySlug, parseReadingRange } from '../src/utils/quizParsing.js';
 
 const ROOT = process.cwd();
 const QUIZ_DIR = path.join(ROOT, 'src/data/quiz');
-
-const BOOKS = [
-    ['genesis', '창세기', 'old'], ['exodus', '출애굽기', 'old'], ['leviticus', '레위기', 'old'], ['numbers', '민수기', 'old'],
-    ['deuteronomy', '신명기', 'old'], ['joshua', '여호수아', 'old'], ['judges', '사사기', 'old'], ['ruth', '룻기', 'old'],
-    ['1samuel', '사무엘상', 'old'], ['2samuel', '사무엘하', 'old'], ['1kings', '열왕기상', 'old'], ['2kings', '열왕기하', 'old'],
-    ['1chronicles', '역대상', 'old'], ['2chronicles', '역대하', 'old'], ['ezra', '에스라', 'old'], ['nehemiah', '느헤미야', 'old'],
-    ['esther', '에스더', 'old'], ['job', '욥기', 'old'], ['psalms', '시편', 'old'], ['proverbs', '잠언', 'old'],
-    ['ecclesiastes', '전도서', 'old'], ['songofsongs', '아가', 'old'], ['isaiah', '이사야', 'old'], ['jeremiah', '예레미야', 'old'],
-    ['lamentations', '예레미야애가', 'old'], ['ezekiel', '에스겔', 'old'], ['daniel', '다니엘', 'old'], ['hosea', '호세아', 'old'],
-    ['joel', '요엘', 'old'], ['amos', '아모스', 'old'], ['obadiah', '오바댜', 'old'], ['jonah', '요나', 'old'],
-    ['micah', '미가', 'old'], ['nahum', '나훔', 'old'], ['habakkuk', '하박국', 'old'], ['zephaniah', '스바냐', 'old'],
-    ['haggai', '학개', 'old'], ['zechariah', '스가랴', 'old'], ['malachi', '말라기', 'old'],
-    ['matthew', '마태복음', 'new'], ['mark', '마가복음', 'new'], ['luke', '누가복음', 'new'], ['john', '요한복음', 'new'],
-    ['acts', '사도행전', 'new'], ['romans', '로마서', 'new'], ['1corinthians', '고린도전서', 'new'], ['2corinthians', '고린도후서', 'new'],
-    ['galatians', '갈라디아서', 'new'], ['ephesians', '에베소서', 'new'], ['philippians', '빌립보서', 'new'], ['colossians', '골로새서', 'new'],
-    ['1thessalonians', '데살로니가전서', 'new'], ['2thessalonians', '데살로니가후서', 'new'], ['1timothy', '디모데전서', 'new'],
-    ['2timothy', '디모데후서', 'new'], ['titus', '디도서', 'new'], ['philemon', '빌레몬서', 'new'], ['hebrews', '히브리서', 'new'],
-    ['james', '야고보서', 'new'], ['1peter', '베드로전서', 'new'], ['2peter', '베드로후서', 'new'], ['1john', '요한일서', 'new'],
-    ['2john', '요한이서', 'new'], ['3john', '요한삼서', 'new'], ['jude', '유다서', 'new'], ['revelation', '요한계시록', 'new'],
-];
-
-const BOOK_BY_SLUG = new Map(BOOKS.map(([slug, full, testament]) => [slug, { full, testament }]));
-const REF_BOOK_PATTERN = new RegExp(`^(${BOOKS.map(([, full]) => full).sort((a, b) => b.length - a.length).join('|')})\\s+\\d+:\\d+`);
+const SCHEDULE_PATH = path.join(ROOT, 'src/data/read_schedules.json');
+const BOOK_BY_SLUG = new Map(BOOKS.map(book => [book.slug, book]));
+const BOOK_BY_FULL = new Map(BOOKS.map(book => [book.full, book]));
+const REF_BOOK_PATTERN = new RegExp(`^(${BOOKS.map(book => book.full).sort((a, b) => b.length - a.length).join('|')})\\s+\\d+:\\d+`);
 
 const add = (list, file, index, message) => {
     const loc = Number.isInteger(index) ? `${file}[${index}]` : file;
     list.push(`${loc}: ${message}`);
 };
 
-const readJsonFile = async (filePath) => {
-    const raw = await fs.readFile(filePath, 'utf8');
-    return JSON.parse(raw);
-};
+const readJsonFile = async (filePath) => JSON.parse(await fs.readFile(filePath, 'utf8'));
 
 const validateQuestion = (question, index, file, book, errors) => {
     if (!question || typeof question !== 'object' || Array.isArray(question)) {
@@ -70,28 +49,38 @@ const validateQuestion = (question, index, file, book, errors) => {
     return Number.isInteger(question.ch) ? question.ch : null;
 };
 
-const main = async () => {
+const parseRef = (ref) => parseReadingRange(ref)[0] || null;
+
+const isInReadingItem = (question, item) => {
+    if (!question || question.book !== item.book || Number(question.ch) !== Number(item.ch)) return false;
+    if (!item.vStart || !item.vEnd) return true;
+    const ref = parseRef(question.ref);
+    if (!ref || !ref.vStart) return false;
+    return ref.vStart >= item.vStart && ref.vStart <= item.vEnd;
+};
+
+const formatItem = (item) => {
+    if (item.vStart && item.vEnd) return `${item.book} ${item.ch}:${item.vStart}-${item.vEnd}`;
+    return `${item.book} ${item.ch}장`;
+};
+
+const loadQuizFiles = async () => {
     let dirEntries = [];
     try {
         dirEntries = await fs.readdir(QUIZ_DIR);
     } catch {
-        console.log('src/data/quiz 디렉터리가 없습니다.');
-        return;
+        return { jsonFiles: [], quizBySlug: new Map(), errors: ['src/data/quiz 디렉터리가 없습니다.'], warnings: [], report: [] };
     }
 
     const jsonFiles = dirEntries.filter(name => name.endsWith('.json')).sort();
-    if (jsonFiles.length === 0) {
-        console.log('검증할 퀴즈 JSON 파일이 없습니다. T28 문항 추가 후 다시 실행하세요.');
-        return;
-    }
-
     const errors = [];
     const warnings = [];
     const report = [];
+    const quizBySlug = new Map();
 
     for (const fileName of jsonFiles) {
         const slug = fileName.replace(/\.json$/, '');
-        const book = BOOK_BY_SLUG.get(slug);
+        const book = getBookBySlug(slug);
         if (!book) {
             add(errors, fileName, null, '알 수 없는 책 파일명입니다. 66권 영문 소문자 slug를 사용하세요.');
             continue;
@@ -111,9 +100,9 @@ const main = async () => {
 
         const seenByChapter = new Map();
         const countByChapter = new Map();
-        data.forEach((question, index) => {
+        const enriched = data.map((question, index) => {
             const ch = validateQuestion(question, index, fileName, book, errors);
-            if (!ch) return;
+            if (!ch) return null;
 
             const key = String(question.q || '').trim();
             if (!seenByChapter.has(ch)) seenByChapter.set(ch, new Set());
@@ -121,7 +110,9 @@ const main = async () => {
             if (seen.has(key)) add(errors, fileName, index, `${ch}장 안에서 q가 중복됩니다.`);
             seen.add(key);
             countByChapter.set(ch, (countByChapter.get(ch) || 0) + 1);
-        });
+
+            return { ...question, book: book.full, slug, order: index };
+        }).filter(Boolean);
 
         const minimum = book.testament === 'new' ? 5 : 3;
         const lowChapters = [...countByChapter.entries()]
@@ -131,10 +122,92 @@ const main = async () => {
             warnings.push(`${fileName}: ${book.testament === 'new' ? '신약' : '구약'} 기준 장당 ${minimum}문항 미만 - ${lowChapters.join(', ')}`);
         }
         report.push(`${fileName}: ${data.length}문항, ${countByChapter.size}개 장`);
+        quizBySlug.set(slug, enriched);
     }
+
+    return { jsonFiles, quizBySlug, errors, warnings, report };
+};
+
+const getPoolForItems = (items, quizBySlug) => items.flatMap(item => {
+    const questions = quizBySlug.get(item.slug) || [];
+    return questions.filter(question => isInReadingItem(question, item));
+});
+
+const getMissingItems = (items, quizBySlug) => items.filter(item => {
+    const questions = quizBySlug.get(item.slug) || [];
+    return questions.filter(question => isInReadingItem(question, item)).length === 0;
+});
+
+const validateScheduleCoverage = async (quizBySlug) => {
+    const schedules = await readJsonFile(SCHEDULE_PATH);
+    const errors = [];
+    const missingSummary = new Map();
+    const ntSegments = [];
+
+    for (const [planName, minPool] of [['whole_bible', 3], ['new_testament', 5]]) {
+        const days = schedules[planName] || [];
+        days.forEach((day, index) => {
+            const dayNo = index + 1;
+            const items = parseReadingRange(day.range);
+            if (items.length === 0) {
+                errors.push(`${planName} Day ${dayNo} (${day.date}, ${day.range}): 범위 파싱 결과가 비었습니다.`);
+                return;
+            }
+
+            const missingItems = getMissingItems(items, quizBySlug);
+            missingItems.forEach(item => {
+                const key = `${item.slug}:${formatItem(item)}`;
+                missingSummary.set(key, (missingSummary.get(key) || 0) + 1);
+            });
+
+            const pool = getPoolForItems(items, quizBySlug);
+            if (planName === 'new_testament') {
+                ntSegments.push({
+                    day: dayNo,
+                    date: day.date,
+                    range: day.range,
+                    items: items.map(formatItem).join(', '),
+                    pool: pool.length,
+                    missing: missingItems.map(formatItem).join(', '),
+                    need: minPool,
+                });
+            }
+
+            if (missingItems.length === 0 && pool.length < minPool) {
+                errors.push(`${planName} Day ${dayNo} (${day.date}, ${day.range}): 문항 pool ${pool.length}개, 최소 ${minPool}개 필요.`);
+            }
+        });
+    }
+
+    return { errors, missingSummary, ntSegments };
+};
+
+const main = async () => {
+    const { jsonFiles, quizBySlug, errors, warnings, report } = await loadQuizFiles();
+    if (jsonFiles.length === 0) {
+        console.log('검증할 퀴즈 JSON 파일이 없습니다. T28 문항 추가 후 다시 실행하세요.');
+        return;
+    }
+
+    const coverage = await validateScheduleCoverage(quizBySlug);
+    errors.push(...coverage.errors);
 
     console.log('퀴즈 문항 수 리포트');
     report.forEach(line => console.log(`- ${line}`));
+
+    console.log('\n신약 세그먼트 목록');
+    coverage.ntSegments.forEach(segment => {
+        const suffix = segment.missing ? ` | 미저작: ${segment.missing}` : ` | pool ${segment.pool}/${segment.need}`;
+        console.log(`- Day ${segment.day} (${segment.date}) ${segment.range} => ${segment.items}${suffix}`);
+    });
+
+    if (coverage.missingSummary.size > 0) {
+        console.log('\n미저작 세그먼트 집계');
+        [...coverage.missingSummary.entries()]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .forEach(([key, count]) => console.log(`- ${key} (${count}일)`));
+    }
+
     if (warnings.length > 0) {
         console.log('\n경고');
         warnings.forEach(line => console.log(`- ${line}`));
