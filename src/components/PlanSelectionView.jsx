@@ -45,7 +45,10 @@ const PlanSelectionView = ({
 
     if (view === 'plan_type_select') {
         return (
-            <div className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-center">
+            <div
+                className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-center"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}
+            >
                 <div className="w-full max-w-2xl mb-6">
                     {currentUser && !tempUser && (
                         <button onClick={() => setView('dashboard')} className="text-sm text-slate-400 flex items-center hover:text-slate-600 mb-4">
@@ -76,7 +79,10 @@ const PlanSelectionView = ({
             .filter(version => isBibleVersionVisibleForUser(version, versionUser));
         const planTypeData = PLAN_TYPES.find(t => t.id === selectedPlanType);
         return (
-            <div className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-center">
+            <div
+                className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-center"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}
+            >
                 <div className="w-full max-w-2xl">
                     <button onClick={() => setView('plan_type_select')} className="text-sm text-slate-400 flex items-center hover:text-slate-600 mb-4">
                         <Icon name="back" size={16} className="mr-1" /> 뒤로가기
@@ -106,7 +112,10 @@ const PlanSelectionView = ({
 
     if (view === 'community_select') {
         return (
-            <div className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-center">
+            <div
+                className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-center"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}
+            >
                 <div className="text-center mb-6">
                     <h2 className="text-xl font-bold text-slate-800">소속 공동체 선택</h2>
                     <p className="text-slate-500 text-sm">어느 부서에 소속되어 계신가요?</p>
@@ -146,7 +155,10 @@ const PlanSelectionView = ({
     if (view === 'subgroup_select') {
         const selectedComm = communities.find(c => c.id === (tempUser ? tempUser.departmentId : null));
         return (
-            <div className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-center">
+            <div
+                className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-center"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}
+            >
                 <div className="w-full max-w-2xl mb-4">
                     <button onClick={() => setView('community_select')} className="text-sm text-slate-400 flex items-center hover:text-slate-600">
                         <Icon name="back" size={16} className="mr-1" /> 뒤로가기

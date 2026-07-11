@@ -231,6 +231,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-11 | T28 완료 — 90일 커버리지 마무리 | `src/data/quiz/genesis.json`, `src/data/quiz/jonah.json`, `src/data/quiz/amos.json`, `src/data/quiz/hosea.json`, `src/data/quiz/zephaniah.json`, `HANDOFF_CODEX.md` | 창세기 37-50장 42문항과 요나 12·아모스 27·호세아 42·스바냐 9문항 추가. 독립 감사에서 Day 191-280 기준 whole_bible 구약 215장 모두 장당 3문항, whole_bible 신약 포함 23일 및 new_testament 90일 모두 일일 pool 최소 5문항(실패 0) 확인. `node scripts/validate-quiz.mjs`, `npm run build` 통과. 퀴즈 문항 신학적 검수는 사용자 몫. |
 | 2026-07-11 | T29 읽기 완료 중복 제출 방지 | `src/hooks/useUserBibleActions.js`, `src/hooks/useBibleLogic.js`, `src/App.jsx`, `src/components/DashboardView.jsx`, `src/components/dashboard/BibleReader.jsx`, `src/components/GuestReaderView.jsx`, `src/utils/guestStorage.js`, `HANDOFF_CODEX.md` | 로그인 경로에 state+ref UI 가드와 트랜잭션 `(readCount, day)` 중복 판정·최종 반환값 처리를 추가하고, 게스트에 동일 가드와 `didRecord` 부수효과 차단을 적용. 일반 중복·한 장 더 읽기·365→1 순환 판정 재검토 및 `npm run build`, `git diff --check` 통과. 실제 Firebase 더블클릭은 운영 데이터 변경 때문에 미검증. |
 | 2026-07-11 | T30 주간 읽기왕 수리 | `src/hooks/useUserBibleActions.js`, `src/utils/helpers.js`, `src/utils/statsUtils.js`, `src/components/dashboard/ReadingChampionSection.jsx`, `HANDOFF_CODEX.md` | 읽기 트랜잭션에 `recentReadDates` 최근 14일 롤링 필드 저장, 상태 매핑, 레거시 `readHistory` 병합·날짜 중복/invalid/미래 제거, 화면 `weeklyCount` 직접 표시를 적용. N회 Firestore 조회 없음. `npm run build`, `git diff --check`, 독립 diff 재검토 통과. 기존 사용자는 다음 읽기부터 쌓여 최대 1주 후 랭킹이 채워질 수 있음. |
+| 2026-07-11 | T31 광고 하단 여백 | `src/components/LoginView.jsx`, `src/components/PlanSelectionView.jsx`, `HANDOFF_CODEX.md` | LoginView 공통 루트 1곳과 PlanSelectionView 4개 분기 루트에 `safe-area-inset-bottom + 72px` 하단 여백 적용. 적용 위치 5곳 독립 감사, `npm run build`, `git diff --check` 통과. |
 
 ---
 
@@ -281,6 +282,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T28 완료. 마지막 병렬 배치로 창세기 37-50장, 요나·아모스·호세아·스바냐 문항을 추가했다. 독립 커버리지 감사 결과 두 플랜 Day 191-280의 T28 기준 실패가 0건이며 검증기와 빌드도 통과했다. `philippians.json`·`colossians.json` 3장의 장당 경고는 4:1 장 경계 세그먼트 배치 때문이며 실제 일일 pool은 5개 이상이다. 퀴즈 문항 신학적 검수는 사용자 몫이다. 다음 작업은 T29 읽기 완료 중복 제출 방지다.
 - T29 완료. 로그인 사용자는 `readSubmitting` state+ref와 트랜잭션의 `(readCount, day)` 진행 위치 비교로 일반 중복·한 장 더 읽기·365→1 순환을 구분한다. `runTransaction` 최종 반환값만 후속 통계·history·confetti에 사용해 재시도 중 폐기된 계산이 새지 않게 했다. 게스트는 `didRecord: false`면 UI 부수효과도 생략한다. 빌드와 독립 diff 재검토는 통과했고 실제 Firebase 더블클릭은 운영 데이터 변경 때문에 미검증이다. 다음 작업은 T30 주간 읽기왕 수리다.
 - T30 완료. 사용자 문서에 최근 14일의 고유 날짜만 `recentReadDates`로 저장하고, 주간 읽기왕은 신형 필드와 레거시 `readHistory`를 날짜 단위로 병합해 계산한다. 화면도 계산된 `weeklyCount`를 직접 표시하도록 수정했다. 추가 Firestore 조회는 없으며 빌드·diff 재검토를 통과했다. 기존 사용자는 다음 읽기부터 필드가 쌓이므로 랭킹이 채워지는 데 최대 1주 걸릴 수 있다. 다음 작업은 T31 광고 하단 여백이다.
+- T31 완료. 로그인 화면 공통 루트와 버전·플랜·공동체 선택 4개 분기 루트에 고정 광고를 피하는 safe-area 포함 72px 하단 여백을 적용했다. 적용 위치 5곳을 독립 감사했고 빌드·diff 검사를 통과했다. 다음 작업은 T32 완독 축하 개선이다.
 
 ---
 
@@ -502,7 +504,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
   - 해결(경량 롤링 필드): `handleRead` 트랜잭션의 updateData에 `recentReadDates` 추가 — `[...(data.recentReadDates || []).filter(최근 14일 이내), todayStr]` (중복 제거, 최대 14개). 하위 컬렉션 조회 N회 방식은 금지(비용).
   - `src/utils/helpers.js` `userDocToState`에 `recentReadDates: d.recentReadDates ?? []` 매핑 추가. `getWeeklyMVP`는 `readHistory` 대신 `recentReadDates` 사용(레거시 `readHistory`가 비어있지 않으면 병합 폴백).
   - 알려진 한계(수용): 기존 사용자는 다음 읽기부터 데이터가 쌓이므로 주간 랭킹이 채워지는 데 최대 1주 걸린다 — 작업 로그에 명시.
-- [ ] **T31. 로그인·버전선택 화면 광고 하단 여백**
+- [x] **T31. 로그인·버전선택 화면 광고 하단 여백**
   - `src/components/LoginView.jsx`와 `src/components/PlanSelectionView.jsx`의 각 화면 루트 컨테이너에 `style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}` 추가 (ChurchAdminView 957행 부근과 동일 패턴). 하단 고정 광고(50px)가 마지막 버튼/목록을 가리는 문제.
   - 주의: PlanSelectionView는 화면이 4개(view 분기)라 루트가 4곳이다 — 전부.
 - [ ] **T32. 완독 축하 개선**

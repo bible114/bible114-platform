@@ -578,7 +578,10 @@ const LoginView = ({ onMemberLogin, onChurchAdminLogin, onMemberSignup, onChurch
 
     // ── DESKTOP Layout (md+) / MOBILE Layout ──────────────────────────────────
     return (
-        <div className="min-h-screen bg-cream relative md:grid md:grid-cols-[1.15fr_1fr]">
+        <div
+            className="min-h-screen bg-cream relative md:grid md:grid-cols-[1.15fr_1fr]"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}
+        >
 
             {/* paper warmth gradient overlay */}
             <div className="absolute inset-0 pointer-events-none opacity-55"
