@@ -193,13 +193,15 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
     // 이관 완료된 회원은 본문서의 password가 null이므로, 필요할 때만 private 하위문서를 조회한다.
     const revealPassword = async (uid) => {
-        if (members.find(member => member.uid === uid)?.isExternalOrgMember) return;
         setRevealedPasswords(prev => ({ ...prev, [uid]: '__loading__' }));
         try {
             const data = await fetchMemberCredentials(uid);
             setRevealedPasswords(prev => ({ ...prev, [uid]: data?.password || '알 수 없음' }));
         } catch (e) {
             setRevealedPasswords(prev => ({ ...prev, [uid]: '__error__' }));
+            if (members.find(member => member.uid === uid)?.isExternalOrgMember) {
+                toast.warning('기준 공동체 관리자만 이 개인 계정의 비밀번호를 확인할 수 있습니다.');
+            }
         }
     };
 
@@ -582,15 +584,14 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     };
 
     const resetPasswordsForMembers = async (targetMembers) => {
-        const externalCount = targetMembers.filter(member => member?.isExternalOrgMember).length;
-        if (externalCount > 0) {
-            toast.warning('외부 공동체 멤버의 비밀번호는 플랫폼 관리자에게 문의해주세요.');
-            return;
-        }
         const updates = targetMembers.map(member => ({ member, password: generatePassword() }));
         // 평문 암호는 private 하위문서에 먼저 기록하고, 본문서에는 null 마커만 남긴다
         // (같은 교회 교인 랭킹 조회를 열어주는 firestore.rules 조건 유지 — memberCredentials.js 참고)
         const resetOne = async ({ member, password }) => {
+            if (member.isExternalOrgMember) {
+                await writeMemberCredentials(member.uid, { password });
+                return;
+            }
             try {
                 await writeMemberCredentials(member.uid, { password });
                 await db.collection('users').doc(member.uid).set({
@@ -1251,7 +1252,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             header: '이름',
             render: m => (
                 <div>
-                    <p className="font-black text-slate-800">{m.name} {m.isExternalOrgMember && <span className="ml-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] text-violet-700">외부 공동체 멤버</span>}</p>
+                    <p className="font-black text-slate-800">{m.name} {m.isExternalOrgMember && <span className="ml-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] text-violet-700">개인·외부 멤버</span>}</p>
                     <p className="text-xs text-slate-400">{m.birthdate || '-'}</p>
                 </div>
             ),
@@ -1339,7 +1340,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 ) : items.slice(0, 5).map(member => (
                     <div key={member.uid} className="px-4 py-3 flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                            <p className="text-sm font-bold text-slate-800 truncate">{member.name} {member.isExternalOrgMember && <span className="ml-1 rounded-full bg-violet-50 px-1.5 py-0.5 text-[9px] text-violet-700">외부</span>}</p>
+                            <p className="text-sm font-bold text-slate-800 truncate">{member.name} {member.isExternalOrgMember && <span className="ml-1 rounded-full bg-violet-50 px-1.5 py-0.5 text-[9px] text-violet-700">개인·외부</span>}</p>
                             <p className="text-xs text-slate-400 truncate">{getMemberMembershipText(member)}</p>
                         </div>
                         <span className="shrink-0 text-xs font-black text-slate-500">{getMeta(member)}</span>
@@ -1767,8 +1768,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                             onChange={e => setDeductForm(prev => ({ ...prev, uid: e.target.value }))}
                                             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700">
                                             <option value="">교인 선택</option>
-                                            {[...members].filter(m => !m.isExternalOrgMember).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR')).map(m => (
-                                                <option key={m.uid} value={m.uid}>{m.name} (⭐{m.talent || 0})</option>
+                                            {[...members].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR')).map(m => (
+                                                <option key={m.uid} value={m.uid} disabled={m.isExternalOrgMember} title={m.isExternalOrgMember ? '개인·외부 멤버는 창구 판매 직접 차감이 불가합니다.' : ''}>{m.name} {m.isExternalOrgMember ? '(개인·외부 — 직접 차감 불가)' : `(⭐${m.talent || 0})`}</option>
                                             ))}
                                         </select>
                                         <input
@@ -2218,7 +2219,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                         >
                             닫기
                         </button>
-                        {!selectedMember.isExternalOrgMember && <button
+                        <button
                             type="button"
                             onClick={() => setConfirmAction({
                                 type: 'singlePassword',
@@ -2231,7 +2232,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                             className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white"
                         >
                             비밀번호 초기화
-                        </button>}
+                        </button>
                         <button
                             type="button"
                             onClick={() => deleteMember(selectedMember)}
@@ -2246,7 +2247,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     <div className="space-y-5">
                         {selectedMember.isExternalOrgMember && (
                             <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-sm font-bold text-violet-800">
-                                외부 공동체 멤버 · 계정과 비밀번호 등 개인정보는 플랫폼 관리자 지원 범위입니다.
+                                외부 공동체 멤버 · 소그룹 배정과 제명만 가능합니다. 개인 계정의 기준 공동체라면 비밀번호 지원도 가능합니다.
                             </div>
                         )}
                         <div className="grid grid-cols-2 gap-3">
@@ -2276,7 +2277,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
                         {/* 비밀번호 조회 — 이관 후 평문은 private 하위문서에 있으므로 필요할 때만 조회한다.
                             초기화 직후에도 이 버튼으로 새로 발급된 비밀번호를 확인해 전달할 수 있다. */}
-                        {!selectedMember.isExternalOrgMember && <div className="rounded-2xl border border-slate-100 p-4">
+                        <div className="rounded-2xl border border-slate-100 p-4">
                             <div className="flex items-center justify-between gap-3">
                                 <div>
                                     <p className="text-sm font-black text-slate-800">비밀번호</p>
@@ -2300,7 +2301,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                     </button>
                                 )}
                             </div>
-                        </div>}
+                        </div>
 
                         <div className="rounded-2xl border border-slate-100 p-4">
                             <div className="mb-3 flex items-center justify-between gap-3">
@@ -2489,7 +2490,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                 className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3"
                             >
                                 <div className="min-w-0">
-                                    <p className="text-sm font-black text-slate-800 truncate">{index + 1}. {member.name} {member.isExternalOrgMember && <span className="ml-1 rounded-full bg-violet-50 px-1.5 py-0.5 text-[9px] text-violet-700">외부</span>}</p>
+                                    <p className="text-sm font-black text-slate-800 truncate">{index + 1}. {member.name} {member.isExternalOrgMember && <span className="ml-1 rounded-full bg-violet-50 px-1.5 py-0.5 text-[9px] text-violet-700">개인·외부</span>}</p>
                                     <p className="mt-0.5 text-xs font-bold text-slate-400 truncate">
                                         {getMemberMembershipText(member)}
                                     </p>

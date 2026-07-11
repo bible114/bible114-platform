@@ -255,6 +255,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-12 | T55 개인 계정 전환 진입점 | `src/components/dashboard/PersonalAccountMigrationCard.jsx`, `src/components/dashboard/index.js`, `src/components/DashboardView.jsx`, `HANDOFF_CODEX.md` | 일반 교회 소속 기존 member에게만 조용한 전환 카드와 안내 모달을 표시. 장점 2개·로그인 변경 주의·전화번호 뒤 4자리 필수 검증을 제공하고 닫기 시 localStorage 타임스탬프로 7일간 숨김. 게스트·관리자·개인 계정·무소속은 비노출. `npm run build`, `git diff --check` 통과. 실행 로직은 다음 순번 T56에서 연결. |
 | 2026-07-12 | T56 개인 계정 전환 상태머신 | `src/utils/personalAccountMigration.js`, `src/App.jsx`, `HANDOFF_CODEX.md` | T50 공용 식별자로 Auth 이메일 변경→private/auth phone4 병합→구 교회 roster 존재 확인/생성→users personal 전환을 규칙 요구대로 별개 쓰기로 순차 실행. `b114_migration_v1`에 단계·원소속 snapshot을 저장해 reload 시 같은 uid에서 자동 재개하고, 단계별 멱등·uid 단일 in-flight를 적용. 이메일 충돌·recent login 안내와 완료 후 extraOrgs 재조회/T52 상태 전환 연결. `npm run build`, `git diff --check` 통과. 실계정 전환은 미검증. |
 | 2026-07-12 | T57 개인 로그인 흐름 보완 | `src/components/LoginView.jsx`, `src/hooks/useAuth.js`, `HANDOFF_CODEX.md` | 첫 화면·개인 폼을 "시작하기 · 개인 계정 로그인"으로 명확화하고 교회 로그인 계정 없음 안내에 전환 사용자 경로 추가. 기존 email-already-in-use→signIn 로그인 겸용 동작 유지. Auth 이메일 변경 후 users 전환 전 중단된 uid는 localStorage pending 상태를 확인해 개인 로그인으로 복원하고 T56 자동 재개 허용. `npm run build`, `git diff --check` 통과. |
+| 2026-07-12 | T58 관리자·개인 공동체 회귀 | `src/components/ChurchAdminView.jsx`, `HANDOFF_CODEX.md` | roster 병합 멤버를 개인·외부 뱃지로 표시하고 기준 공동체 관리자는 T54 private/auth 규칙을 통해 비밀번호 확인·재설정을 시도하도록 허용(보조 공동체는 권한 오류 안내). 소그룹 배정·제명 유지, users/history/달란트 직접 변경 차단 유지. 창구 판매 선택에는 개인·외부 멤버를 disabled 옵션과 사유로 표시. T52가 active primaryOrgId를 churchId로 투영해 공지/settings read·상점 설정 read·구매 create 기존 경로를 재사용함을 확인. `npm run build`, `git diff --check` 통과. |
 
 ---
 
@@ -361,6 +362,8 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T55 완료. 일반 교회 소속 기존 member에게만 개인 계정 전환 카드를 표시하고, 게스트·관리자·이미 개인 계정·무소속 가상 교회는 제외했다. 닫기는 localStorage 만료 타임스탬프로 7일간 억제하며 모달은 전화번호 뒤 4자리 형식, 전환 장점 2개, 다음 로그인 경로 주의를 안내한다. `npm run build`, `git diff --check` 통과. 실행 콜백은 T56에서 연결할 예정이며 다음 순번은 전환 상태머신이다.
 - T56 완료. 공용 `makePseudoEmail`+`makeUnaffiliatedIdentity`로 개인 이메일을 만들고 Auth 이메일, private/auth phone4, 구 교회 roster, users personal 전환을 문서 지정 순서의 별개 쓰기로 실행한다. 각 성공 단계와 원소속 snapshot을 `b114_migration_v1`에 저장해 reload 후 동일 uid에서 자동 재개하며, 이미 바뀐 이메일과 이미 존재하는 roster는 no-op 처리한다. 이메일 충돌·recent-login은 사용자 문구로 구분하고 완료 후 users/extraOrgs를 다시 읽어 T52 경로로 전환한다. `npm run build`, `git diff --check` 통과. 실제 계정 전환은 운영 데이터 변경 때문에 미검증이며 다음 순번은 T57 로그인 흐름 보완이다.
 - T57 완료. 첫 화면과 개인 폼 문구를 "시작하기 · 개인 계정 로그인"으로 바꾸고 전환 사용자 안내를 명시했다. 교회 선택 로그인에서 계정을 찾지 못하면 개인 전환 사용자는 시작하기 경로를 쓰도록 안내한다. 개인 경로의 email-already-in-use→signIn 동작을 유지하며, Auth 이메일 변경 뒤 users 전환 전 실패한 동일 uid는 `b114_migration_v1`을 확인해 NOT_PERSONAL_ACCOUNT로 거절하지 않고 대시보드에서 T56 자동 재개를 허용한다. `npm run build`, `git diff --check` 통과. 다음 순번은 T58 관리자·라운드9 공백 회귀다.
+- T58 완료. 교회 관리자 명부의 roster 멤버를 `개인·외부`로 표시하고, 기준 공동체 관리자는 T54의 `primaryOrgId` private/auth 분기를 통해 비밀번호 확인·재설정을 시도할 수 있게 했다. 보조 공동체는 권한 실패 안내를 표시한다. 소그룹 배정·제명은 유지하고 계정 삭제·읽기기록·달란트 직접 변경은 계속 차단했다. 창구 판매에는 개인·외부 멤버를 disabled 옵션으로 보이되 직접 차감 불가 사유를 명시했다.
+- T58 회귀/설계 메모: T52가 개인 계정의 active `primaryOrgId`를 runtime `churchId`로 투영하므로 공지 settings read, 상점 settings read, talentPurchases create는 기존 경로 그대로 T54 규칙을 사용한다. roster 허용 필드에는 accountType이 없고 `churchId:null` 개인 users를 교회 관리자 명부에서 읽어 판별할 근거도 없어, 전환 개인과 다른 교회 외부 멤버를 정확히 분리한 `개인` 단독 뱃지는 불가능하다. 스키마를 임의 확장하지 않고 `개인·외부` 중립 뱃지를 사용했다. 창구 판매 직접 차감은 문서대로 서버 함수 후속 과제다. `npm run build`, `git diff --check` 통과. 다음 순번은 T59 검증이다.
 
 ---
 
@@ -764,7 +767,7 @@ Codex가 요청한 후속 2건에 대한 조치:
   - 교회 선택 로그인 실패(`user-not-found`류) 메시지에 한 줄 추가: "개인 계정으로 전환하셨다면 '시작하기'에서 로그인해주세요."
   - '시작하기'의 개인 경로가 이미 로그인 겸용(email-already-in-use → signIn)임을 확인하고, 버튼/문구를 "시작하기 · 개인 계정 로그인"으로 보완.
   - `openExistingPersonalUser`가 전환 교인(accountType personal)을 정상 통과시키는지 확인 (T50 코드 재사용 — NOT_PERSONAL_ACCOUNT 분기와 충돌 없어야 함).
-- [ ] **T58. 관리자 화면 + 라운드 9 공백 회귀 확인**
+- [x] **T58. 관리자 화면 + 라운드 9 공백 회귀 확인**
   - 교회 관리자 교인 목록: 전환 교인이 roster 병합(T48)으로 계속 보이는지 확인, `개인 계정` 뱃지 표시(T53 뱃지 재사용). 전환 교인에게 가능한 작업: 소그룹 배정·제명 + **비밀번호 확인/재설정(T54의 primaryOrgId private 규칙로 가능해짐 — fetchMemberCredentials/writeMemberCredentials가 전환 교인에게도 동작하는지 확인)**. 계정 삭제·달란트 직접 수정은 차단 유지.
   - 창구 판매(대리 차감): 전환 교인은 users 문서 talent 차감이 관리자에게 거부됨(churchId null → isChurchAdmin(resource.data.churchId) false). **이 한계를 창구 판매 교인 선택 목록에서 전환 교인 비활성+툴팁으로 표기**하고 메모란에 기록 (해결은 서버 함수 과제).
   - 라운드 9 공백 보완 회귀: 기존 개인 계정으로 공동체 공지·상점 설정 read와 구매 create가 이제 통과하는지 코드 경로 확인 (T52의 조용한 실패 처리 때문에 숨어 있었음).
