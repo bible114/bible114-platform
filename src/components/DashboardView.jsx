@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { TOTAL_DAYS } from '../data/constants';
 import { BIBLE_VERSIONS, PLAN_TYPES } from '../data/bible_options';
 import { getLevelInfo } from '../data/levels';
@@ -107,6 +107,12 @@ const DashboardView = ({
     setCompletionCelebration,
 }) => {
     const [showTutorial, setShowTutorial] = useState(false);
+    const [quizGate, setQuizGate] = useState({
+        loading: true,
+        hasQuestion: false,
+        gateOpen: false,
+    });
+    const quizSectionRef = useRef(null);
 
     if (!currentUser) return null;
 
@@ -216,6 +222,9 @@ const DashboardView = ({
     const racers = combinedRacers.sort((a, b) => a.day - b.day);
     const progressRanking = getProgressRanking();
     const topProgressGroups = progressRanking.slice(0, 3);
+    const handleQuizGateLocked = () => {
+        quizSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
 
     return (
         <div className="min-h-screen bg-slate-50 overflow-hidden relative font-sans">
@@ -345,7 +354,12 @@ const DashboardView = ({
 
                     <DailyVideoCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
 
-                    <BibleQuizCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
+                    <BibleQuizCard
+                        currentUser={currentUser}
+                        setCurrentUser={setCurrentUser}
+                        onGateStateChange={setQuizGate}
+                        sectionRef={quizSectionRef}
+                    />
 
                     <BibleReader
                         verseData={verseData}
@@ -371,6 +385,8 @@ const DashboardView = ({
                         hasReadToday={hasReadToday}
                         readSubmitting={readSubmitting}
                         handleRead={handleRead}
+                        quizGateOpen={quizGate.gateOpen}
+                        onQuizGateLocked={handleQuizGateLocked}
                     />
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

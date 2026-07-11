@@ -233,6 +233,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-11 | T30 주간 읽기왕 수리 | `src/hooks/useUserBibleActions.js`, `src/utils/helpers.js`, `src/utils/statsUtils.js`, `src/components/dashboard/ReadingChampionSection.jsx`, `HANDOFF_CODEX.md` | 읽기 트랜잭션에 `recentReadDates` 최근 14일 롤링 필드 저장, 상태 매핑, 레거시 `readHistory` 병합·날짜 중복/invalid/미래 제거, 화면 `weeklyCount` 직접 표시를 적용. N회 Firestore 조회 없음. `npm run build`, `git diff --check`, 독립 diff 재검토 통과. 기존 사용자는 다음 읽기부터 쌓여 최대 1주 후 랭킹이 채워질 수 있음. |
 | 2026-07-11 | T31 광고 하단 여백 | `src/components/LoginView.jsx`, `src/components/PlanSelectionView.jsx`, `HANDOFF_CODEX.md` | LoginView 공통 루트 1곳과 PlanSelectionView 4개 분기 루트에 `safe-area-inset-bottom + 72px` 하단 여백 적용. 적용 위치 5곳 독립 감사, `npm run build`, `git diff --check` 통과. |
 | 2026-07-11 | T32 완독 축하 개선 | `src/components/dashboard/CompletionCelebration.jsx`, `src/components/dashboard/index.js`, `src/App.jsx`, `src/components/DashboardView.jsx`, `src/hooks/useUserBibleActions.js`, `src/components/ChurchAdminView.jsx`, `HANDOFF_CODEX.md` | 완독 alert를 전체화면 축하 오버레이로 교체하고 완주 회차·다음 회차 표시, 고우선 z-index·초점 트랩·ESC/복원 적용. 교회 관리자 대시보드에 활성 교인 기준 완독자 StatCard와 명단 패널 추가. 랜딩 `finished_total` 기존 연결 확인. `npm run build`, `git diff --check`, 독립 재검토 통과. 실제 365일 완주/관리자 인증 화면은 운영 데이터 변경 없이 미검증. |
+| 2026-07-11 | T33 퀴즈 우선 게이트 | `src/utils/quizEngine.js`, `src/components/dashboard/BibleQuizCard.jsx`, `src/components/DashboardView.jsx`, `src/components/dashboard/BibleReader.jsx`, `HANDOFF_CODEX.md` | 첫 읽기 완료 전 현재 진행일 본문 퀴즈를 로드하고 정답/2회 소진/오늘 건너뛰기/문항 없음·오류에서 게이트 개방. 첫 오늘 완료만 잠그고 한 장 더 읽기·과거 본문은 제외, 잠금 영역 클릭 시 퀴즈로 스크롤. skip 날짜·사용자 재조회와 깨진 저장 quizKey 교정 추가. T33의 문항 없음 fail-open 요구를 T26의 일반 상식 폴백보다 우선 적용. `npm run build`, `git diff --check`, 독립 재감사 통과. 실제 퀴즈 제출은 운영 데이터 변경 때문에 미검증. |
 
 ---
 
@@ -285,6 +286,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T30 완료. 사용자 문서에 최근 14일의 고유 날짜만 `recentReadDates`로 저장하고, 주간 읽기왕은 신형 필드와 레거시 `readHistory`를 날짜 단위로 병합해 계산한다. 화면도 계산된 `weeklyCount`를 직접 표시하도록 수정했다. 추가 Firestore 조회는 없으며 빌드·diff 재검토를 통과했다. 기존 사용자는 다음 읽기부터 필드가 쌓이므로 랭킹이 채워지는 데 최대 1주 걸릴 수 있다. 다음 작업은 T31 광고 하단 여백이다.
 - T31 완료. 로그인 화면 공통 루트와 버전·플랜·공동체 선택 4개 분기 루트에 고정 광고를 피하는 safe-area 포함 72px 하단 여백을 적용했다. 적용 위치 5곳을 독립 감사했고 빌드·diff 검사를 통과했다. 다음 작업은 T32 완독 축하 개선이다.
 - T32 완료. 365일 완주 alert를 접근성 있는 전체화면 오버레이로 교체하고, 완독 회차와 다음 회차를 표시한다. 관리자 대시보드에는 활성 교인 `readCount > 1` 기준 완독자 카드·명단을 추가했다. 랜딩의 올해 완독자는 이미 `platformStats.finished_total`에 연결되어 있어 유지했다. 빌드·레이어/키보드 재검토를 통과했으며 실제 완주와 관리자 인증 진입은 운영 데이터 변경 때문에 미검증이다. 다음 작업은 T33 퀴즈 우선 게이트다.
+- T33 완료. 퀴즈는 첫 읽기 완료 전 현재 `currentDay` 본문에서 출제하며, 정답·2회 소진·오늘 건너뛰기·문항 없음/로드 실패일 때만 첫 완료 버튼이 열린다. 잠김 영역은 퀴즈로 스크롤하고 한 장 더 읽기와 과거 본문은 게이트 대상이 아니다. 문항 없음 시 T33의 교착 방지 요구를 우선해 T26의 일반 상식 폴백 대신 카드 숨김+fail-open으로 변경했으며 기존 저장 `bank-*` 키 복원 호환은 유지했다. 빌드·독립 재감사를 통과했고 실제 제출은 운영 데이터 변경 때문에 미검증이다. 다음 작업은 T34 완료 피드백 달란트 표시다.
 
 ---
 
@@ -515,7 +517,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
   - (b) 교회 관리자 대시보드 탭에 StatCard "완독자" 추가 — 로드된 members 중 `readCount > 1`인 인원 수 + 클릭 시 명단(이름·N독).
   - (c) 랜딩의 "올해 완독자" 통계는 `platformStats.finished_total`을 이미 읽는지 확인하고, 안 읽고 있으면 연결 (LoginView 랜딩 통계 부분).
 
-- [ ] **T33. 퀴즈 우선 게이트 — 퀴즈를 확인해야 "오늘 읽기 완료" 활성화** (T29 완료 후 착수 — 같은 버튼 영역)
+- [x] **T33. 퀴즈 우선 게이트 — 퀴즈를 확인해야 "오늘 읽기 완료" 활성화** (T29 완료 후 착수 — 같은 버튼 영역)
   - 목적(사용자 요구): 오늘 첫 "읽기 완료"를 누르기 전에 성경퀴즈를 먼저 만나게 한다. 카드 배치는 이미 버튼 위로 이동됨(e948c1b) — 이 작업은 **강제 순서**를 만드는 것.
   - 게이트 열림 조건(하나라도 충족 시 버튼 활성): ① 오늘 퀴즈 확정 — `quizDate === 오늘` 이고 (`quizSolved` 이거나 시도 소진) ② 오늘 본문 범위에 출제 가능한 문항이 없음(quizEngine이 문항을 못 찾는 날 — T28 미저작 책 포함, 이때 퀴즈 카드 자체가 안 뜨므로 게이트도 없어야 함) ③ 퀴즈 카드의 **"오늘은 건너뛰기"** 링크 클릭(신규 — localStorage `b114_quiz_skip_{toDateString}` 저장, 새로고침에도 유지).
   - 게이트 적용 범위: **오늘 첫 완료**(`isCurrentProgressDay && !hasReadToday`)에만. "한 장 더 읽기"(미리 읽기)와 게스트 모드는 게이트 없음.

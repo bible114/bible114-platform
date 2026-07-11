@@ -22,10 +22,9 @@ const getCachedTitle = (planId, actualDay) => {
     }
 };
 
-export const getTodayReadingRange = (user) => {
+const getReadingRangeForDay = (user, readingDay) => {
     const planId = user?.planId || '1year_revised';
-    const lastCompletedDay = getLastCompletedDay(user?.currentDay);
-    const actualDay = getActualDay(lastCompletedDay, user?.dayOffset || 0);
+    const actualDay = getActualDay(readingDay, user?.dayOffset || 0);
     const cachedTitle = getCachedTitle(planId, actualDay);
     const cachedRange = parseReadingRange(cachedTitle);
     if (cachedRange.length > 0) {
@@ -46,6 +45,18 @@ export const getTodayReadingRange = (user) => {
         sourceText: scheduleRange,
         displayText: scheduleRange,
     };
+};
+
+// 기존 호출부는 마지막으로 완료한 본문을 조회한다.
+export const getTodayReadingRange = (user) => {
+    const lastCompletedDay = getLastCompletedDay(user?.currentDay);
+    return getReadingRangeForDay(user, lastCompletedDay);
+};
+
+// 첫 읽기 완료 전에 풀 퀴즈는 현재 읽을 차례인 본문을 사용한다.
+export const getCurrentReadingRange = (user) => {
+    const currentDay = Number(user?.currentDay || 1);
+    return getReadingRangeForDay(user, currentDay);
 };
 
 const parseRef = (ref) => {
