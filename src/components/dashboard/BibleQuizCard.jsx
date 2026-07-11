@@ -16,7 +16,7 @@ const getRewardForAttempts = (attempts) => {
 };
 
 const resolveQuizKey = async (quizKey) => {
-    if (!quizKey) return null;
+    if (typeof quizKey !== 'string' || !quizKey) return null;
     if (quizKey.startsWith('bank-')) {
         const index = Number(quizKey.replace('bank-', ''));
         if (!Number.isInteger(index) || !QUIZ_BANK[index]) return null;
@@ -84,6 +84,26 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
         return { type: 'done', message: '오늘의 두 번 시도가 끝났습니다.' };
     });
     const [submitting, setSubmitting] = useState(false);
+
+    // 사용자/날짜/진행 본문이 바뀌면 이전 문항에서 고른 답과 피드백이 새 문항에 남지 않게 한다.
+    // quizState.quizKey는 제출 후 재조회 중 잠시 null이 되므로 의존성에서 제외한다.
+    useEffect(() => {
+        setSelectedIndex(null);
+        if (!finished) {
+            setFeedback(null);
+        } else if (solved) {
+            setFeedback({ type: 'success', message: `오늘 퀴즈 완료! ⭐ +${earnedReward}달란트` });
+        } else {
+            setFeedback({ type: 'done', message: '오늘의 두 번 시도가 끝났습니다.' });
+        }
+    }, [
+        currentUser?.uid,
+        currentUser?.currentDay,
+        currentUser?.dayOffset,
+        currentUser?.planId,
+        currentUser?.readCount,
+        todayKey,
+    ]);
 
     useEffect(() => {
         let cancelled = false;

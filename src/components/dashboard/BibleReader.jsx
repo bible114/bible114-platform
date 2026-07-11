@@ -31,7 +31,10 @@ const BibleReader = ({
     const hasContentError = !!verseData.error;
     const isCurrentProgressDay = viewingDay === currentUser.currentDay;
     const isAdvanceRead = hasReadToday && isCurrentProgressDay;
-    const isQuizGateLocked = isCurrentProgressDay && !hasReadToday && !quizGateOpen;
+    const isQuizGateLocked = currentUser.role !== 'guest'
+        && isCurrentProgressDay
+        && !hasReadToday
+        && !quizGateOpen;
     const readButtonLabel = isAdvanceRead
         ? '한 장 더 읽기'
         : (!hasReadToday && isCurrentProgressDay ? '오늘 읽기 완료' : '읽기 완료');

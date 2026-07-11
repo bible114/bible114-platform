@@ -53,7 +53,8 @@ const PlatformAdminView = ({
     const [talentResetting, setTalentResetting] = React.useState(false);
     const [talentResetProgress, setTalentResetProgress] = React.useState({ done: 0, total: 0 });
     const pendingCredentialMigration = React.useMemo(() => (
-        (allUsers || []).filter(u => typeof u.password === 'string' && u.password.length > 0).length
+        (Array.isArray(allUsers) ? allUsers : [])
+            .filter(u => typeof u?.password === 'string' && u.password.length > 0).length
     ), [allUsers]);
 
     // 매일 영상 관리
@@ -549,11 +550,13 @@ const PlatformAdminView = ({
         }
     };
 
-    const churches = allChurches || [];
+    const users = Array.isArray(allUsers) ? allUsers : [];
+    const churches = Array.isArray(allChurches) ? allChurches : [];
+    const departments = Array.isArray(DEFAULT_DEPARTMENTS) ? DEFAULT_DEPARTMENTS : [];
     const todayStr = new Date().toDateString();
 
     const churchStats = churches.map(church => {
-        const members = allUsers.filter(u => u.churchId === church.id && u.role !== 'churchAdmin');
+        const members = users.filter(u => u.churchId === church.id && u.role !== 'churchAdmin');
         const readToday = members.filter(u => u.lastReadDate === todayStr).length;
         const avgDay = members.length > 0
             ? Math.round(members.reduce((sum, u) => sum + (u.currentDay || 1), 0) / members.length)
@@ -569,7 +572,7 @@ const PlatformAdminView = ({
 
     const selectedChurch = selectedChurchId ? churchStats.find(c => c.id === selectedChurchId) : null;
     const selectedChurchMembers = selectedChurchId
-        ? allUsers.filter(u => u.churchId === selectedChurchId && u.role !== 'churchAdmin')
+        ? users.filter(u => u.churchId === selectedChurchId && u.role !== 'churchAdmin')
         : [];
 
     const TABS = [
@@ -646,10 +649,10 @@ const PlatformAdminView = ({
             <div className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-30 shadow-sm">
                 <div>
                     <h1 className="font-extrabold text-slate-800">🛠️ 슈퍼 관리자</h1>
-                    <p className="text-xs text-slate-400">{churches.length}개 교회 · {allUsers.length}명</p>
+                    <p className="text-xs text-slate-400">{churches.length}개 교회 · {users.length}명</p>
                 </div>
                 <div className="flex gap-2">
-                    <button onClick={() => downloadCSV(allUsers)}
+                    <button onClick={() => downloadCSV(users)}
                         className="text-xs bg-green-50 text-green-600 px-3 py-2 rounded-lg font-bold flex items-center gap-1 border border-green-100">
                         <Icon name="download" size={13} /> CSV
                     </button>
@@ -684,15 +687,15 @@ const PlatformAdminView = ({
                                     <div className="text-xs text-slate-500">등록 교회</div>
                                 </div>
                                 <div className="bg-blue-50 p-4 rounded-xl text-center">
-                                    <div className="text-3xl font-bold text-blue-600">{adminStats.totalUsers}</div>
+                                    <div className="text-3xl font-bold text-blue-600">{adminStats?.totalUsers || 0}</div>
                                     <div className="text-xs text-slate-500">전체 회원</div>
                                 </div>
                                 <div className="bg-green-50 p-4 rounded-xl text-center">
-                                    <div className="text-3xl font-bold text-green-600">{adminStats.readToday}</div>
+                                    <div className="text-3xl font-bold text-green-600">{adminStats?.readToday || 0}</div>
                                     <div className="text-xs text-slate-500">오늘 읽은 사람</div>
                                 </div>
                                 <div className="bg-orange-50 p-4 rounded-xl text-center">
-                                    <div className="text-3xl font-bold text-orange-600">{adminStats.readRate}%</div>
+                                    <div className="text-3xl font-bold text-orange-600">{adminStats?.readRate || 0}%</div>
                                     <div className="text-xs text-slate-500">오늘 참여율</div>
                                 </div>
                             </div>
@@ -724,7 +727,7 @@ const PlatformAdminView = ({
                                 <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-slate-300 rounded p-2 text-sm" />
                                 <span className="text-slate-400 font-bold">~</span>
                                 <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-slate-300 rounded p-2 text-sm" />
-                                <button onClick={() => downloadPeriodStatsCSV(db, allUsers, startDate, endDate)}
+                                <button onClick={() => downloadPeriodStatsCSV(db, users, startDate, endDate)}
                                     className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-700">
                                     <Icon name="download" size={16} /> 다운로드
                                 </button>
@@ -797,7 +800,7 @@ const PlatformAdminView = ({
                                             </thead>
                                             <tbody>
                                                 {selectedChurchMembers
-                                                    .sort((a, b) => a.name.localeCompare(b.name, 'ko-KR'))
+                                                    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR'))
                                                     .map(u => {
                                                         const readToday = u.lastReadDate === todayStr;
                                                         const rc = u.readCount || 1;
@@ -950,8 +953,8 @@ const PlatformAdminView = ({
                                 </thead>
                                 <tbody>
                                     {(() => {
-                                        const sorted = [...allUsers].sort((a, b) => {
-                                            if (adminSortBy === 'name') return a.name.localeCompare(b.name);
+                                        const sorted = [...users].sort((a, b) => {
+                                            if (adminSortBy === 'name') return (a.name || '').localeCompare(b.name || '', 'ko-KR');
                                             if (adminSortBy === 'day') return (((b.readCount || 1) - 1) * 365 + (b.currentDay || 1)) - (((a.readCount || 1) - 1) * 365 + (a.currentDay || 1));
                                             if (adminSortBy === 'score') return (b.score || 0) - (a.score || 0);
                                             if (adminSortBy === 'subgroup') {
@@ -1444,7 +1447,7 @@ const PlatformAdminView = ({
                         <div>
                             <label className="block text-xs font-bold text-slate-500 mb-1">소속 교회</label>
                             <select value={editingUser.churchId || ''} onChange={e => {
-                                const church = allChurches.find(c => c.id === e.target.value);
+                                const church = churches.find(c => c.id === e.target.value);
                                 if (!church) return;
                                 setEditingUser({
                                     ...editingUser,
@@ -1457,7 +1460,7 @@ const PlatformAdminView = ({
                                 });
                             }} className="w-full border rounded p-2 text-sm">
                                 <option value="">교회를 선택하세요</option>
-                                {allChurches
+                                {churches
                                     .filter(c => !c.isDeleted)
                                     .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR'))
                                     .map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -1467,17 +1470,17 @@ const PlatformAdminView = ({
                         <div>
                             <label className="block text-xs font-bold text-slate-500 mb-1">소속 공동체</label>
                             <select value={editingUser.departmentId || ''} onChange={e => {
-                                const comm = DEFAULT_DEPARTMENTS.find(c => c.id === e.target.value);
+                                const comm = departments.find(c => c.id === e.target.value);
                                 if (comm) setEditingUser({ ...editingUser, departmentId: comm.id, departmentName: comm.name, subgroupId: comm.subgroups[0] });
                             }} className="w-full border rounded p-2 text-sm">
-                                {DEFAULT_DEPARTMENTS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                {departments.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-slate-500 mb-1">소그룹</label>
                             <select value={editingUser.subgroupId || ''} onChange={e => setEditingUser({ ...editingUser, subgroupId: e.target.value })} className="w-full border rounded p-2 text-sm">
                                 {(() => {
-                                    const comm = DEFAULT_DEPARTMENTS.find(c => c.id === editingUser.departmentId);
+                                    const comm = departments.find(c => c.id === editingUser.departmentId);
                                     return comm ? comm.subgroups.map(s => <option key={s} value={s}>{s}</option>) : null;
                                 })()}
                             </select>

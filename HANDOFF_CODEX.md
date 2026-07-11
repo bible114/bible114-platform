@@ -236,6 +236,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-11 | T33 퀴즈 우선 게이트 | `src/utils/quizEngine.js`, `src/components/dashboard/BibleQuizCard.jsx`, `src/components/DashboardView.jsx`, `src/components/dashboard/BibleReader.jsx`, `HANDOFF_CODEX.md` | 첫 읽기 완료 전 현재 진행일 본문 퀴즈를 로드하고 정답/2회 소진/오늘 건너뛰기/문항 없음·오류에서 게이트 개방. 첫 오늘 완료만 잠그고 한 장 더 읽기·과거 본문은 제외, 잠금 영역 클릭 시 퀴즈로 스크롤. skip 날짜·사용자 재조회와 깨진 저장 quizKey 교정 추가. T33의 문항 없음 fail-open 요구를 T26의 일반 상식 폴백보다 우선 적용. `npm run build`, `git diff --check`, 독립 재감사 통과. 실제 퀴즈 제출은 운영 데이터 변경 때문에 미검증. |
 | 2026-07-11 | T34 오늘 받은 달란트 표시 | `src/hooks/useUserBibleActions.js`, `src/App.jsx`, `src/components/DashboardView.jsx`, `src/components/dashboard/CompletionCelebration.jsx`, `HANDOFF_CODEX.md` | 트랜잭션 최신 퀴즈 상태로 읽기·퀴즈 획득량과 보유 달란트를 계산해 첫 읽기 토스트에 표시. 완독일에는 토스트를 지우고 오버레이에 동일 정보 표시, 같은 날 한 장 더 읽기(a=0)는 달란트 줄 생략. 새 Firestore 필드 없음. `npm run build`, `git diff --check`, 독립 재감사 통과. 실제 읽기/퀴즈 제출은 운영 데이터 변경 때문에 미검증. |
 | 2026-07-11 | T35 묵상 저장·조회 점검 및 수정 | `src/hooks/useMemos.js`, `src/hooks/useBibleLogic.js`, `src/App.jsx`, `src/components/DashboardView.jsx`, `src/components/dashboard/MemoSection.jsx`, `src/utils/exportUtils.js`, `HANDOFF_CODEX.md` | 저장 실패 낙관 상태 롤백·입력 유지·사용자 오류·중복 제출 방지, 조회 실패 표시, 계정 전환 상태/비동기 응답 격리, 1독 전용 레거시 키 fallback, 내보내기 `sortedMemos` ReferenceError 수정. 게스트 미노출·규칙상 본인 저장 허용 확인. `npm run build`, `git diff --check`, 독립 전체 경로 재감사 통과. 실제 Firestore 실패 주입은 미검증. |
+| 2026-07-11 | T36 전체 기능 점검 패스 | `src/components/ChurchAdminView.jsx`, `src/components/PlatformAdminView.jsx`, `src/components/dashboard/BibleQuizCard.jsx`, `src/components/dashboard/BibleReader.jsx`, `src/components/dashboard/DailyVideoCard.jsx`, `src/components/dashboard/TalentShop.jsx`, `HANDOFF_CODEX.md` | 로컬 브라우저에서 로그인 4화면·무소속 선택, 게스트 진입→영상·본문→새번역 변경→읽기 완료(DAY 192→193)→새로고침 진도·버전 복원을 확인했고 콘솔 오류·경고 0건. 관리자/A4 인쇄 3종·상점·퀴즈 경로는 정적 감사해 QR 인쇄 팝업 선점, 미리보기 구매 차단, guest 퀴즈 게이트 제외, 비정상 배열·quizKey·계정 전환 상태 방어를 보강. `npm run build`, `node scripts/validate-quiz.mjs`, Babel 115파일 parse, `git diff --check`, 독립 코드리뷰 통과. 게스트 검증에는 익명 Auth 세션과 localStorage만 사용했으며 users/구매/admin 쓰기는 하지 않음. 실제 가입·구매·관리자 Firestore 조작, 인증 필요 관리자 실화면·A4 실제 인쇄 대화상자, 회원 퀴즈 제출, 실 YouTube API·Google OAuth는 미검증. |
 
 ---
 
@@ -292,6 +293,9 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T34 완료. 읽기 트랜잭션의 최신 상태에서 오늘 읽기 보상(a), 이미 받은 퀴즈 보상(b), 갱신 보유액(M)을 계산해 `오늘 +N달란트! (읽기 ⭐a · 퀴즈 ⭐b) · 보유 ⭐M`으로 표시한다. 완독 시 이전 토스트를 지우고 오버레이에만 표시하며, 같은 날 한 장 더 읽기로 a=0이면 달란트 줄을 생략한다. 새 Firestore 필드는 추가하지 않았고 빌드·독립 재감사를 통과했다. 다음 작업은 T35 묵상 저장 실패 롤백이다.
 - T35 완료. 저장 실패 시 로컬 낙관 상태를 롤백하고 입력을 보존한 채 오류를 표시한다. 계정 전환/빈 문서/느린 이전 조회를 격리해 다른 사용자의 메모가 섞이지 않게 했고, 조회 실패 표시·1독 전용 레거시 키·묵상 내보내기 ReferenceError도 함께 수정했다. 게스트에는 묵상 UI/조회/쓰기가 없음을 확인했고 빌드·전체 경로 재감사를 통과했다. 실제 Firestore 실패 주입은 미검증이다.
 - T35 설계 질문/후속 필요: 메모가 `users/{uid}.memos` 본문서에 있어 현재 같은 교회 users read 규칙을 통과하는 회원에게 네트워크상 노출될 수 있다. firestore.rules 수정 금지이므로 이번 작업에서는 손대지 않았다. 메모 하위 컬렉션 분리 여부를 Claude가 설계해야 한다. 또한 날짜별 미저장 초안 분리와 users 문서 용량 한계 대응도 별도 설계가 필요하다.
+- T36 완료. 로그인 4화면과 무소속 선택, 게스트 진입→영상·본문→버전 변경→읽기 완료→새로고침 진도·버전 복원을 로컬 브라우저에서 확인했고 콘솔 오류·경고는 0건이었다. 점검 중 게스트가 T33 퀴즈 게이트에 잠기지만 퀴즈 카드는 렌더링되지 않는 교착을 발견해, 확정 설계대로 게스트를 게이트에서 명시적으로 제외했다.
+- T36의 나머지 수정은 QR 비동기 생성 전 인쇄창 선점, 관리자 상점 미리보기의 실제 uid 제거, 관리자·영상·퀴즈·상점의 비정상 배열/null/계정 전환 상태 방어다. `npm run build`, 퀴즈 검증, Babel 전수 parse, `git diff --check`, 독립 코드리뷰를 통과했다. 게스트 검증에는 익명 Auth 세션과 localStorage만 사용했고 users/구매/admin 쓰기는 하지 않았다.
+- T36 미검증: 실제 가입·구매·관리자 Firestore 조작, 인증이 필요한 교회/플랫폼 관리자 실화면과 A4 실제 인쇄 대화상자, 회원 퀴즈 제출, 실 YouTube API. Google OAuth는 라운드6(T37~T39) 및 M8 전제라 아직 실검증하지 않았다. 질문/막힌 것은 없으며 다음 작업은 T37 관리자 Google 로그인이다.
 
 ---
 
@@ -537,7 +541,7 @@ T17~T21 5개 커밋 검토 완료. score 로직 무변경, talent 하루 1회 `1
   - 묵상 기능의 전체 경로를 추적: 어디서 쓰고(컴포넌트·훅), 어디에 저장되며(users 문서 필드 vs 하위 컬렉션), 규칙을 통과하는지, 다시 열었을 때·다른 날짜로 이동했을 때 제대로 표시되는지.
   - 점검 항목: 저장 실패가 조용히 삼켜지는 catch 없는지 / 날짜 키 불일치(KST vs toDateString) 없는지 / 긴 텍스트·이모지 입력 시 깨짐 없는지 / 게스트 모드에서 묵상 UI가 노출되어 서버 쓰기를 시도하지 않는지.
   - 발견된 버그는 이 작업 안에서 수정. 문제가 없으면 작업 로그에 "점검 완료·이상 없음"과 확인한 경로(file:line)를 기록.
-- [ ] **T36. 전체 기능 점검 패스 (로컬 dev)**
+- [x] **T36. 전체 기능 점검 패스 (로컬 dev)** (2026-07-11 완료 — 로그인 4화면과 게스트 전체 흐름·콘솔 0건을 브라우저 확인하고, 관리자/A4·상점·퀴즈 경로를 정적 감사해 사소한 방어를 보강. 운영 쓰기·인증 필요 실화면은 미검증으로 기록)
   - `npm run dev`로 프로덕션 자격증명 없이 가능한 범위를 전부 확인: 로그인 4탭 렌더링·전환, 무소속 토글, 게스트 전체 흐름(진입→본문→버전 변경→읽기 완료→새로고침 진도 유지), 영상 카드, 퀴즈 카드(문항 있는 날 기준), 달란트 상점 UI, 관리자 화면들 렌더링, A4 인쇄물 프리뷰, 콘솔 에러 0.
   - 사소한 문제(오타, 스타일 깨짐, null 가드)는 즉시 수정·커밋. 로직 설계가 필요한 문제는 고치지 말고 "Codex → Claude 메모"에 기록.
   - 실제 가입·구매·관리자 조작 등 운영 데이터를 만드는 검증은 하지 말고 "미검증" 목록으로 정리해 로그에 남길 것.

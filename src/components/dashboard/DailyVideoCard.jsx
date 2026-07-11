@@ -220,6 +220,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
 
     const videoId = extractYouTubeId(activeEntry.url);
     if (!videoId) return null;
+    const activeChapters = Array.isArray(activeEntry.chapters) ? activeEntry.chapters : [];
 
     const handleModeChange = async (newMode) => {
         setMode(newMode);
@@ -253,7 +254,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
     };
 
     const handlePlayClick = () => {
-        const commentary = (activeEntry.chapters || []).find(ch => ch.label === '해설');
+        const commentary = activeChapters.find(ch => ch?.label === '해설');
         setStartSec(commentary?.sec > 0 ? commentary.sec : 0);
         setPlaying(true);
     };
@@ -273,7 +274,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
     };
 
     const availableChapters = CHAPTER_ORDER
-        .map(c => ({ ...c, chapter: (activeEntry.chapters || []).find(ch => ch.label === c.key) }))
+        .map(c => ({ ...c, chapter: activeChapters.find(ch => ch?.label === c.key) }))
         .filter(c => c.chapter);
 
     return (

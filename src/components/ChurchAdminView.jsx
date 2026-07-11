@@ -35,8 +35,8 @@ const formatAnyDate = (value) => {
 };
 
 // subgroups는 레거시 string("1구역") 또는 신 포맷({id, name}) 둘 다 지원
-const getSubId = (s) => (typeof s === 'string' ? s : s.id);
-const getSubName = (s) => (typeof s === 'string' ? s : s.name);
+const getSubId = (s) => (typeof s === 'string' ? s : s?.id || '');
+const getSubName = (s) => (typeof s === 'string' ? s : s?.name || '');
 const genSubId = () => 'sub_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 // 상품 이모지 프리셋 — 부서 특성별 그룹 (어린이부: 장난감·학용품 / 어르신 교회: 생필품)
 const SHOP_EMOJI_GROUPS = [
@@ -129,16 +129,34 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             const activeMembers = loadedMembers.filter(m => !m.isDeleted);
             setMembers(loadedMembers.filter(m => !m.isDeleted));
             setDeletedMembers(loadedMembers.filter(m => m.isDeleted));
-            if (announcementDoc.exists) setAnnouncement(announcementDoc.data());
+            if (announcementDoc.exists) {
+                const data = announcementDoc.data() || {};
+                setAnnouncement({
+                    ...data,
+                    text: typeof data.text === 'string' ? data.text : '',
+                    links: Array.isArray(data.links) ? data.links.filter(Boolean) : [],
+                    enabled: data.enabled === true,
+                });
+            }
             if (churchDoc.exists) {
                 const data = churchDoc.data();
                 setChurchInfo(data);
                 setNewChurchCode(data.churchCode || '');
-                setOrgComms(data.departments || data.communities || []);
+                const storedOrg = data.departments || data.communities;
+                setOrgComms(Array.isArray(storedOrg) ? storedOrg.filter(Boolean) : []);
             }
             if (kakaoDoc.exists) setKakaoLink(kakaoDoc.data().url || '');
             if (platformDoc.exists) setPlatformKakaoUrl(platformDoc.data().kakaoUrl || '');
-            setTalentShop(talentShopDoc.exists ? { enabled: false, items: [], ...talentShopDoc.data() } : { enabled: false, items: [] });
+            if (talentShopDoc.exists) {
+                const data = talentShopDoc.data() || {};
+                setTalentShop({
+                    ...data,
+                    enabled: data.enabled === true,
+                    items: Array.isArray(data.items) ? data.items.filter(Boolean) : [],
+                });
+            } else {
+                setTalentShop({ enabled: false, items: [] });
+            }
             try {
                 const memberIds = new Set(activeMembers.map(m => m.uid));
                 const purchaseSnap = await db.collection('churches').doc(currentUser.churchId)
@@ -398,11 +416,11 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
     const saveOrg = async () => {
         const valid = orgComms
-            .filter(c => c.name.trim())
+            .filter(c => String(c?.name || '').trim())
             .map(c => ({
                 id: c.id,
-                name: c.name.trim(),
-                subgroups: c.subgroups
+                name: String(c.name || '').trim(),
+                subgroups: (c.subgroups || [])
                     .filter(s => getSubName(s).trim())
                     .map(s => ({
                         id: (typeof s === 'string' ? null : s.id) || genSubId(),
@@ -561,15 +579,34 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     };
 
     // ── 인쇄 공통: 새 창에 A4 인쇄용 HTML을 띄우고 자동으로 인쇄 대화상자 열기 ──
-    const openPrintWindow = (html) => {
-        const w = window.open('', '_blank');
-        if (!w) { toast.error('팝업이 차단되었습니다. 브라우저에서 팝업을 허용한 뒤 다시 시도해주세요.'); return; }
-        w.document.write(html);
-        w.document.close();
+    const openPrintWindow = (html, reservedWindow = null) => {
+        const w = reservedWindow || window.open('', '_blank');
+        if (!w || w.closed) {
+            toast.error('팝업이 차단되었습니다. 브라우저에서 팝업을 허용한 뒤 다시 시도해주세요.');
+            return null;
+        }
+        try {
+            w.document.open();
+            w.document.write(html);
+            w.document.close();
+            return w;
+        } catch (e) {
+            console.error('인쇄 미리보기 열기 실패:', e);
+            w.close();
+            toast.error('인쇄 미리보기를 열지 못했습니다. 다시 시도해주세요.');
+            return null;
+        }
     };
 
     // ── 성도용 가입 안내문 A4 인쇄 (교회 QR + 가입/로그인 방법, 어르신 큰 글씨) ──
     const printMemberGuide = async () => {
+        // QR 생성은 비동기라 완료 후 window.open()을 호출하면 브라우저가 팝업으로 차단할 수 있다.
+        // 사용자 클릭이 살아 있을 때 빈 창을 먼저 확보한 뒤 생성된 인쇄물을 채운다.
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            toast.error('팝업이 차단되었습니다. 브라우저에서 팝업을 허용한 뒤 다시 시도해주세요.');
+            return;
+        }
         // 인쇄물은 교회별 자동선택 링크가 아니라 대표 주소로 통일한다 —
         // 성도는 QR로 접속한 뒤 앱에서 교회 이름을 검색해 들어간다.
         let qrDataUrl = '';
@@ -577,6 +614,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             qrDataUrl = await QRCode.toDataURL(SITE_URL, { width: 560, margin: 1 });
         } catch (e) {
             console.error('QR 생성 실패:', e);
+            printWindow.close();
             toast.error('QR 코드 생성에 실패했습니다.');
             return;
         }
@@ -631,7 +669,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
   <div class="footer">막히는 부분이 있으면 언제든 관리자에게 말씀해주세요 😊</div>
   <script>window.onload = function(){ window.print(); };<\/script>
 </body></html>`;
-        openPrintWindow(html);
+        openPrintWindow(html, printWindow);
     };
 
     // ── 관리자 매뉴얼 A4 인쇄 (책상 비치용) ──
@@ -735,10 +773,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
   <div class="footer">성경 읽기로 달란트를 모아보세요 — 매일 첫 읽기마다 적립됩니다</div>
   <script>window.onload = function(){ window.print(); };<\/script>
 </body></html>`;
-        const w = window.open('', '_blank');
-        if (!w) { toast.error('팝업이 차단되었습니다. 브라우저에서 팝업을 허용한 뒤 다시 시도해주세요.'); return; }
-        w.document.write(html);
-        w.document.close();
+        openPrintWindow(html);
     };
 
     const updatePurchaseStatus = async (purchase, mode) => {
@@ -921,6 +956,10 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const filteredPurchases = talentPurchases.filter(purchase => (
         purchaseFilter === 'all' || purchase.status === purchaseFilter
     ));
+    const shopPreviewTalent = (talentShop.items || []).reduce(
+        (max, item) => Math.max(max, Number(item?.price) || 0),
+        0
+    );
 
     const TABS = [
         ['dashboard', '📊 대시보드'],
@@ -1343,7 +1382,12 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                             </div>
                                             <div className="rounded-2xl bg-slate-100 p-4">
                                                 <TalentShop
-                                                    currentUser={currentUser}
+                                                    currentUser={{
+                                                        ...currentUser,
+                                                        uid: null,
+                                                        name: '미리보기 성도',
+                                                        talent: shopPreviewTalent,
+                                                    }}
                                                     setCurrentUser={() => {}}
                                                     showUnlockModal={false}
                                                     onCloseUnlockModal={() => {}}
@@ -1365,7 +1409,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                             onChange={e => setDeductForm(prev => ({ ...prev, uid: e.target.value }))}
                                             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700">
                                             <option value="">교인 선택</option>
-                                            {[...members].sort((a, b) => a.name.localeCompare(b.name, 'ko-KR')).map(m => (
+                                            {[...members].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR')).map(m => (
                                                 <option key={m.uid} value={m.uid}>{m.name} (⭐{m.talent || 0})</option>
                                             ))}
                                         </select>
@@ -1633,17 +1677,17 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                         )}
                                     </div>
                                 </div>
-                                {orgComms.filter(c => c.name.trim()).length > 0 && (
+                                {orgComms.filter(c => String(c?.name || '').trim()).length > 0 && (
                                     <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
                                         <p className="text-xs font-bold text-slate-500 mb-3">현재 조직 미리보기</p>
                                         <div className="space-y-2">
-                                            {orgComms.filter(c => c.name.trim()).map(comm => (
+                                            {orgComms.filter(c => String(c?.name || '').trim()).map(comm => (
                                                 <div key={comm.id} className="flex items-start gap-2">
                                                     <span className="text-sm shrink-0">🏛️</span>
                                                     <div>
                                                         <span className="font-bold text-slate-700 text-sm">{comm.name}</span>
                                                         <div className="flex flex-wrap gap-1 mt-1">
-                                                            {comm.subgroups.filter(s => getSubName(s).trim()).map((sub, i) => (
+                                                            {(comm.subgroups || []).filter(s => getSubName(s).trim()).map((sub, i) => (
                                                                 <span key={i} className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{getSubName(sub)}</span>
                                                             ))}
                                                         </div>

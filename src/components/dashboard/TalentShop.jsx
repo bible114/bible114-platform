@@ -41,7 +41,7 @@ const TalentShop = ({
     const [buyingId, setBuyingId] = useState(null);
 
     useEffect(() => {
-        if (!currentUser?.churchId || currentUser.role === 'guest') {
+        if (!db || !currentUser?.churchId || currentUser.role === 'guest') {
             setShop(null);
             setLoading(false);
             return undefined;
@@ -66,7 +66,8 @@ const TalentShop = ({
     }, [currentUser?.churchId, currentUser?.role]);
 
     useEffect(() => {
-        if (!open || !currentUser?.uid) return undefined;
+        setPurchases([]);
+        if (!db || !open || !currentUser?.uid || !currentUser?.churchId) return undefined;
         let alive = true;
         db.collection('churches').doc(currentUser.churchId).collection('talentPurchases')
             .where('uid', '==', currentUser.uid).get()
@@ -82,11 +83,11 @@ const TalentShop = ({
                 if (alive) setPurchases([]);
             });
         return () => { alive = false; };
-    }, [open, currentUser?.uid]);
+    }, [open, currentUser?.churchId, currentUser?.uid]);
 
     const enabled = shop?.enabled === true;
     const activeItems = useMemo(() => {
-        return (shop?.items || []).filter(item => item && item.active !== false);
+        return (Array.isArray(shop?.items) ? shop.items : []).filter(item => item && item.active !== false);
     }, [shop?.items]);
 
     if (loading || !enabled) return null;
@@ -135,7 +136,9 @@ const TalentShop = ({
                 return nextTalent;
             });
 
-            setCurrentUser(prev => ({ ...prev, talent: result }));
+            if (typeof setCurrentUser === 'function') {
+                setCurrentUser(prev => prev?.uid === currentUser.uid ? { ...prev, talent: result } : prev);
+            }
             setMessage({ type: 'success', text: '구매 완료! 교회에서 상품을 받아가세요.' });
             setPurchases(prev => [{
                 id: purchaseRef.id,
