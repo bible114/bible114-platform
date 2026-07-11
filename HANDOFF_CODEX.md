@@ -256,6 +256,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-12 | T56 개인 계정 전환 상태머신 | `src/utils/personalAccountMigration.js`, `src/App.jsx`, `HANDOFF_CODEX.md` | T50 공용 식별자로 Auth 이메일 변경→private/auth phone4 병합→구 교회 roster 존재 확인/생성→users personal 전환을 규칙 요구대로 별개 쓰기로 순차 실행. `b114_migration_v1`에 단계·원소속 snapshot을 저장해 reload 시 같은 uid에서 자동 재개하고, 단계별 멱등·uid 단일 in-flight를 적용. 이메일 충돌·recent login 안내와 완료 후 extraOrgs 재조회/T52 상태 전환 연결. `npm run build`, `git diff --check` 통과. 실계정 전환은 미검증. |
 | 2026-07-12 | T57 개인 로그인 흐름 보완 | `src/components/LoginView.jsx`, `src/hooks/useAuth.js`, `HANDOFF_CODEX.md` | 첫 화면·개인 폼을 "시작하기 · 개인 계정 로그인"으로 명확화하고 교회 로그인 계정 없음 안내에 전환 사용자 경로 추가. 기존 email-already-in-use→signIn 로그인 겸용 동작 유지. Auth 이메일 변경 후 users 전환 전 중단된 uid는 localStorage pending 상태를 확인해 개인 로그인으로 복원하고 T56 자동 재개 허용. `npm run build`, `git diff --check` 통과. |
 | 2026-07-12 | T58 관리자·개인 공동체 회귀 | `src/components/ChurchAdminView.jsx`, `HANDOFF_CODEX.md` | roster 병합 멤버를 개인·외부 뱃지로 표시하고 기준 공동체 관리자는 T54 private/auth 규칙을 통해 비밀번호 확인·재설정을 시도하도록 허용(보조 공동체는 권한 오류 안내). 소그룹 배정·제명 유지, users/history/달란트 직접 변경 차단 유지. 창구 판매 선택에는 개인·외부 멤버를 disabled 옵션과 사유로 표시. T52가 active primaryOrgId를 churchId로 투영해 공지/settings read·상점 설정 read·구매 create 기존 경로를 재사용함을 확인. `npm run build`, `git diff --check` 통과. |
+| 2026-07-12 | T59 라운드 10 검증 | `src/utils/personalMigrationSteps.js`, `src/utils/personalAccountMigration.js`, `scripts/validate-personal-migration.mjs`, `HANDOFF_CODEX.md` | 순수 단계 정의를 상태머신과 검증기가 공유. start/email/credentials/roster 각 단계 실패 시 단계 보존→재개 완료 fixture, 개인 이메일 공용 조합, 이메일 충돌·recent login, roster 멱등, users 전환 필드, 무소속·관리자·게스트 비노출 조건, 개인 로그인 겸용/pending 복원 계약 검사 통과. `node scripts/validate-personal-migration.mjs`, `npm run build`, `git diff --check` 통과. 실계정 전환은 운영 데이터 변경 때문에 미검증. |
 
 ---
 
@@ -364,6 +365,8 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T57 완료. 첫 화면과 개인 폼 문구를 "시작하기 · 개인 계정 로그인"으로 바꾸고 전환 사용자 안내를 명시했다. 교회 선택 로그인에서 계정을 찾지 못하면 개인 전환 사용자는 시작하기 경로를 쓰도록 안내한다. 개인 경로의 email-already-in-use→signIn 동작을 유지하며, Auth 이메일 변경 뒤 users 전환 전 실패한 동일 uid는 `b114_migration_v1`을 확인해 NOT_PERSONAL_ACCOUNT로 거절하지 않고 대시보드에서 T56 자동 재개를 허용한다. `npm run build`, `git diff --check` 통과. 다음 순번은 T58 관리자·라운드9 공백 회귀다.
 - T58 완료. 교회 관리자 명부의 roster 멤버를 `개인·외부`로 표시하고, 기준 공동체 관리자는 T54의 `primaryOrgId` private/auth 분기를 통해 비밀번호 확인·재설정을 시도할 수 있게 했다. 보조 공동체는 권한 실패 안내를 표시한다. 소그룹 배정·제명은 유지하고 계정 삭제·읽기기록·달란트 직접 변경은 계속 차단했다. 창구 판매에는 개인·외부 멤버를 disabled 옵션으로 보이되 직접 차감 불가 사유를 명시했다.
 - T58 회귀/설계 메모: T52가 개인 계정의 active `primaryOrgId`를 runtime `churchId`로 투영하므로 공지 settings read, 상점 settings read, talentPurchases create는 기존 경로 그대로 T54 규칙을 사용한다. roster 허용 필드에는 accountType이 없고 `churchId:null` 개인 users를 교회 관리자 명부에서 읽어 판별할 근거도 없어, 전환 개인과 다른 교회 외부 멤버를 정확히 분리한 `개인` 단독 뱃지는 불가능하다. 스키마를 임의 확장하지 않고 `개인·외부` 중립 뱃지를 사용했다. 창구 판매 직접 차감은 문서대로 서버 함수 후속 과제다. `npm run build`, `git diff --check` 통과. 다음 순번은 T59 검증이다.
+- T59 완료. 상태 단계 정의를 순수 모듈로 분리하고 검증 스크립트에서 start/email/credentials/roster 각 실패 지점의 단계 보존과 재개 완료, 개인 이메일 공용 조합, 이메일 충돌·recent-login, roster/users 전환 계약, 무소속·관리자·게스트 비노출, 개인 로그인 겸용과 pending 복원을 검사했다. `node scripts/validate-personal-migration.mjs`, `npm run build`, `git diff --check` 모두 통과했다. 실계정 전환은 운영 데이터 변경 때문에 실행하지 않았다.
+- 사용자 실검증 시나리오: 테스트 성도 계정으로 로그인→개인 전환(전화4 입력)→로그아웃→첫 화면 `시작하기 · 개인 계정 로그인`으로 재로그인→기존 진도·랭킹·공지·상점 확인→구매 1건 생성 확인→기준 교회 관리자에서 `개인·외부` 명부·소그룹·비밀번호 확인→보조 공동체 관리자는 비밀번호 권한 거부 확인→기준 공동체 전환/탈퇴 확인. 라운드 10 T54~T59 완료. 역방향·무소속 전환·창구 판매 서버 함수·일괄 전환은 문서대로 착수 금지다.
 
 ---
 
@@ -771,7 +774,7 @@ Codex가 요청한 후속 2건에 대한 조치:
   - 교회 관리자 교인 목록: 전환 교인이 roster 병합(T48)으로 계속 보이는지 확인, `개인 계정` 뱃지 표시(T53 뱃지 재사용). 전환 교인에게 가능한 작업: 소그룹 배정·제명 + **비밀번호 확인/재설정(T54의 primaryOrgId private 규칙로 가능해짐 — fetchMemberCredentials/writeMemberCredentials가 전환 교인에게도 동작하는지 확인)**. 계정 삭제·달란트 직접 수정은 차단 유지.
   - 창구 판매(대리 차감): 전환 교인은 users 문서 talent 차감이 관리자에게 거부됨(churchId null → isChurchAdmin(resource.data.churchId) false). **이 한계를 창구 판매 교인 선택 목록에서 전환 교인 비활성+툴팁으로 표기**하고 메모란에 기록 (해결은 서버 함수 과제).
   - 라운드 9 공백 보완 회귀: 기존 개인 계정으로 공동체 공지·상점 설정 read와 구매 create가 이제 통과하는지 코드 경로 확인 (T52의 조용한 실패 처리 때문에 숨어 있었음).
-- [ ] **T59. 검증**
+- [x] **T59. 검증**
   - 빌드 + 전환 상태머신 픽스처(각 단계 실패→재개), 이메일 충돌, 무소속·관리자·게스트 비노출, 로그인 겸용 경로.
   - 실계정 전환은 운영 데이터 변경이라 미검증 명시. 사용자 실검증 시나리오를 메모란에 정리해줄 것 (테스트성도 계정으로: 전환 → 재로그인 → 랭킹·상점·공지 확인 → 관리자 화면에서 뱃지·비밀번호 확인).
 

@@ -2,6 +2,7 @@ import { auth, db, firebase } from './firebase';
 import { makePseudoEmail, makeUnaffiliatedIdentity, userDocToState } from './helpers';
 import { writeMemberCredentials } from './memberCredentials';
 import { loadUserExtraOrgs } from './roster';
+import { nextPersonalMigrationStep } from './personalMigrationSteps';
 
 export const PERSONAL_MIGRATION_KEY = 'b114_migration_v1';
 
@@ -70,13 +71,13 @@ const runMigration = async ({ currentUser, phone4 }) => {
                 throw error;
             }
         }
-        state = { ...state, step: 'email' };
+        state = { ...state, step: nextPersonalMigrationStep(state.step) };
         writeState(state);
     }
 
     if (state.step === 'email') {
         await writeMemberCredentials(currentUser.uid, { phone4: normalizedPhone4 });
-        state = { ...state, step: 'credentials' };
+        state = { ...state, step: nextPersonalMigrationStep(state.step) };
         writeState(state);
     }
 
@@ -101,7 +102,7 @@ const runMigration = async ({ currentUser, phone4 }) => {
                 updatedAt: now,
             });
         }
-        state = { ...state, step: 'roster' };
+        state = { ...state, step: nextPersonalMigrationStep(state.step) };
         writeState(state);
     }
 
@@ -114,7 +115,7 @@ const runMigration = async ({ currentUser, phone4 }) => {
             primaryOrgId: source.churchId,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
         });
-        state = { ...state, step: 'user' };
+        state = { ...state, step: nextPersonalMigrationStep(state.step) };
         writeState(state);
     }
 
