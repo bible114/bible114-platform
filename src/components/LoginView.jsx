@@ -52,17 +52,20 @@ const PulseIndicator = ({ color = '#b8702a', size = 7 }) => (
     </span>
 );
 
+// 비밀번호 문의 안내 모달.
+// 주의: 비로그인 화면이라 users 컬렉션 쿼리는 규칙상 항상 거부된다 (관리자 이름 표시 불가).
+// 공개 문서인 settings/churchDirectory에서 교회 목록만 보여주고 관리자 문의를 안내한다.
 const AdminContactModal = ({ onClose }) => {
-    const [admins, setAdmins] = useState([]);
+    const [churches, setChurches] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        db.collection('users').where('role', '==', 'churchAdmin').get()
-            .then(snap => {
-                setAdmins(snap.docs.map(d => d.data())
-                    .filter(d => !d.isDeleted)
-                    .map(d => ({ name: d.name, churchName: d.churchName }))
-                    .sort((a, b) => (a.churchName || '').localeCompare(b.churchName || '', 'ko-KR')));
+        getChurchDirectory()
+            .then(list => {
+                setChurches(list
+                    .filter(c => !c.hidden && c.name)
+                    .map(c => c.name)
+                    .sort((a, b) => a.localeCompare(b, 'ko-KR')));
             })
             .catch(() => {})
             .finally(() => setLoading(false));
@@ -71,23 +74,29 @@ const AdminContactModal = ({ onClose }) => {
     return (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
             <div className="bg-cream-card rounded-t-3xl w-full max-w-md p-6 pb-8 shadow-2xl border border-hairline" onClick={e => e.stopPropagation()}>
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-serif font-semibold text-ink text-base">교회별 관리자</h3>
+                <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-serif font-semibold text-ink text-base">비밀번호 문의</h3>
                     <button onClick={onClose} className="text-ink/40 text-xl leading-none hover:text-ink/70 transition-colors">✕</button>
                 </div>
+                <p className="text-[13px] text-ink/60 leading-relaxed mb-4">
+                    비밀번호를 잊으셨다면 <span className="font-semibold text-ink/80">소속 교회의 관리자(담당 선생님)</span>에게
+                    문의해주세요. 관리자가 비밀번호를 확인해 드릴 수 있어요.
+                </p>
                 {loading ? (
                     <p className="text-center text-ink/40 text-sm py-4">불러오는 중...</p>
-                ) : admins.length === 0 ? (
-                    <p className="text-center text-ink/40 text-sm py-4">등록된 관리자가 없습니다.</p>
+                ) : churches.length === 0 ? (
+                    <p className="text-center text-ink/40 text-sm py-4">등록된 교회가 없습니다.</p>
                 ) : (
-                    <ul className="space-y-2 max-h-64 overflow-y-auto">
-                        {admins.map((a, i) => (
-                            <li key={i} className="flex items-center justify-between bg-cream border border-hairline rounded-xl px-4 py-3">
-                                <span className="text-sm font-semibold text-ink">{a.churchName || '(교회명 없음)'}</span>
-                                <span className="text-sm text-ink/55">{a.name}</span>
-                            </li>
-                        ))}
-                    </ul>
+                    <>
+                        <p className="text-[11px] text-ink/40 mb-2">함께하고 있는 교회</p>
+                        <ul className="space-y-2 max-h-56 overflow-y-auto">
+                            {churches.map((name, i) => (
+                                <li key={i} className="bg-cream border border-hairline rounded-xl px-4 py-3">
+                                    <span className="text-sm font-semibold text-ink">{name}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    </>
                 )}
             </div>
         </div>
