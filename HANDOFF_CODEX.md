@@ -263,6 +263,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-12 | T63 헤더 소속 관리 | `src/components/dashboard/DashboardHeader.jsx`, `src/components/DashboardView.jsx`, `src/components/dashboard/CommunityMembershipCard.jsx`, `HANDOFF_CODEX.md` | personal 성도 헤더에 현재 기준 단체명 버튼 추가, 클릭 시 내 단체 관리 시트 제공. CommunityMembershipCard를 재사용해 기준 ★·기준 전환·탈퇴·단체 추가를 연결하고 기존 메인 카드는 개인 계정에서 제거. unaffiliated_v1 코드 없는 재가입 버튼과 최대 3개·첫 소속 primary transaction 적용. 기존 비개인 교회 계정 헤더는 유지. `npm run build`, `git diff --check` 통과. 실제 roster 변경은 미검증. |
 | 2026-07-12 | T64 성경 읽는 사람들 정식 단체화 | `src/hooks/useDepartment.js`, `src/hooks/useBibleLogic.js`, `src/components/DashboardView.jsx`, `HANDOFF_CODEX.md` | personal+unaffiliated_v1 기준 화면은 users 쿼리를 Promise 빈 결과로 대체하고 roster만 병합. 부서 없는 roster 전체를 달리기·주간 집계 대상으로 사용하고 상위 10명 평면 랭킹 카드 제공, 소그룹 랭킹/빈 헤더 랭킹은 숨김. unaffiliated 추가 소속 hard-hide 제거. 공지·상점은 기존 active churchId 경로 유지. `npm run build`, `git diff --check` 통과. 구 무소속 users는 알려진 비포함 한계. |
 | 2026-07-12 | T65 소셜 provider 관리자 표시 | `src/utils/helpers.js`, `src/components/PlatformAdminView.jsx`, `HANDOFF_CODEX.md` | userDocToState에 authProvider 매핑. 플랫폼 회원 목록 personal 옆 카카오/Google provider 뱃지 표시, 카카오·구글은 암호 변경 대신 해당 소셜 로그인 안내. 레거시 Google personal은 non-bible 이메일로 호환 판정, 비밀번호 personal은 기존 private/auth 지원 유지. `npm run build`, `git diff --check` 통과. |
+| 2026-07-12 | T66 라운드 11 검증 | `scripts/validate-round11.mjs`, `HANDOFF_CODEX.md` | 첫 화면 4항목·기존 경로·카카오 popup/redirect·구글 신규 온보딩·3단계·users/roster 최종 생성·소속 관리·unaffiliated roster-only 계약 자동 검사 통과. `node scripts/validate-round11.mjs`, `npm run build`, `git diff --check` 통과. 인앱 브라우저 스킬 파일과 Playwright 런타임 부재로 로컬 클릭 검증은 미실행. M10 미완료로 실 카카오 인증·계정 생성 미검증. |
 
 ---
 
@@ -379,6 +380,8 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T63 완료. personal 성도 헤더 우상단에 `⛪ 기준 단체명 ▾` 버튼을 표시하고 내 단체 관리 시트를 연결했다. 시트는 기존 CommunityMembershipCard를 재사용해 단체 목록·기준 ★·기준으로 보기·탈퇴·최대 3개 추가를 제공한다. `성경 읽는 사람들`이 목록에 없으면 입장코드 없이 돌아가기 버튼으로 roster를 만들고, 첫 소속이면 primaryOrgId도 같은 transaction에서 지정한다. 개인 계정의 기존 본문 하단 공동체 카드는 제거했으며 비개인 교회 계정은 기존 헤더/카드를 유지한다. `npm run build`, `git diff --check` 통과. 실제 roster 추가·전환·탈퇴는 미검증이며 다음 순번은 T64 정식 단체화다.
 - T64 완료. personal 계정이 `unaffiliated_v1`을 기준으로 볼 때 users 목록 쿼리는 아예 만들지 않고 roster만 읽어 병합한다. 부서가 없는 roster 전체를 달리기·주간 집계 대상으로 사용하고 상위 10명 평면 랭킹을 별도 표시하며, 빈 소그룹/헤더 랭킹은 숨긴다. T43의 unaffiliated 추가 소속 hard-hide도 제거했고 공지·상점은 기존 active churchId 경로를 유지한다. `npm run build`, `git diff --check` 통과. roster가 없는 구 무소속 users는 랭킹에 포함되지 않는 알려진 점진 수렴 한계이며 다음 순번은 T65 관리자 provider 표시다.
 - T65 완료. users의 `authProvider`를 관리자 상태에 매핑하고 플랫폼 전체 회원 목록의 personal 뱃지 옆에 카카오/Google provider 뱃지를 표시한다. 카카오·구글 personal은 비밀번호 없음으로 처리해 각 소셜 로그인 안내를 표시하고, `@bible.local` 비밀번호 personal은 기존 private/auth 확인·변경을 유지한다. authProvider 도입 전 Google personal은 non-bible 이메일로 호환 판정한다. `npm run build`, `git diff --check` 통과. 다음 순번은 T66 전체 검증이다.
+- T66 완료. `scripts/validate-round11.mjs`에서 첫 화면 4항목, 기존 관리자/이름 가입 경로, 카카오 popup·redirect, 구글 신규 온보딩, 이름→소속→버전 3단계, 최종 users+roster 생성, 소속 관리 패널, unaffiliated users 쿼리 금지/roster-only 계약을 검사했다. `node scripts/validate-round11.mjs`, `npm run build`, `git diff --check` 모두 통과했다. 인앱 브라우저 스킬 파일이 설치 경로에 없고 Playwright 런타임도 없어 로컬 브라우저 클릭 검증은 수행하지 못했다.
+- 사용자 실검증 시나리오(M10 후): 첫 화면 카카오/구글/기존 회원/게스트 4항목 확인→신규 카카오 이름 수정→단체 검색·코드·부서/소그룹→버전 선택→대시보드→헤더 단체 관리에서 추가·기준 전환·탈퇴→혼자 읽기 모임 재가입→평면 랭킹·공지·상점 확인→플랫폼 관리자 카카오 뱃지/비밀번호 없음 확인. 실 카카오 popup/redirect와 users/roster 생성은 M10 및 운영 데이터 변경 때문에 미검증이다. 라운드 11 T60~T66 완료, 보류 항목은 착수 금지다.
 
 ---
 
@@ -858,7 +861,7 @@ T55~T59 5개 커밋 검토 완료 — **병합 가능, 코드 수정 없음**. �
   - 구 무소속 회원(users.churchId == unaffiliated_v1, roster 없음)은 이 랭킹에 안 보임 — 알려진 점진 수렴 한계로 메모만.
 - [x] **T65. 관리자·지원 표시**
   - 플랫폼 관리자 회원 목록: 카카오 personal 계정 provider 뱃지("카카오"), 비밀번호 없음(카카오로 로그인 안내) 표시 — Google personal(T53)과 동일 취급.
-- [ ] **T66. 검증**
+- [x] **T66. 검증**
   - 빌드 + 첫 화면 4항목/기존 경로 보존/온보딩 3단계 상태머신(중도 이탈 포함)/소속 관리 패널 픽스처 + 로컬 브라우저 확인. 실 카카오 팝업·계정 생성은 M10 전제라 미검증 명시. 사용자 실검증 시나리오를 메모란에 정리.
 
 ### 사용자 수동 작업 — M10 (카카오·Firebase 콘솔 설정, T60 실테스트 전제)
