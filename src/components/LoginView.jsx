@@ -52,6 +52,29 @@ const PulseIndicator = ({ color = '#b8702a', size = 7 }) => (
     </span>
 );
 
+const SocialLoginButton = ({ provider, loading, loadingText, children, ...props }) => {
+    const isKakao = provider === 'kakao';
+    return (
+        <button
+            type="button"
+            className={`relative flex w-full items-center justify-center rounded-full border px-4 py-3.5 text-sm font-bold shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${isKakao
+                ? 'border-[#FEE500] bg-[#FEE500] text-[#191919] hover:bg-[#F5DC00]'
+                : 'border-hairline bg-white text-ink hover:bg-cream'}`}
+            {...props}
+        >
+            <span
+                aria-hidden="true"
+                className={`absolute left-4 flex h-7 w-7 items-center justify-center rounded-full text-sm font-black ${isKakao
+                    ? 'bg-[#191919] text-[#FEE500]'
+                    : 'border border-slate-200 bg-white text-[#4285F4]'}`}
+            >
+                {isKakao ? '💬' : 'G'}
+            </span>
+            {loading ? loadingText : children}
+        </button>
+    );
+};
+
 // 비밀번호 문의 안내 모달.
 // 주의: 비로그인 화면이라 users 컬렉션 쿼리는 규칙상 항상 거부된다 (관리자 이름 표시 불가).
 // 공개 문서인 settings/churchDirectory에서 교회 목록만 보여주고 관리자 문의를 안내한다.
@@ -588,15 +611,15 @@ const LoginView = ({
 
     const renderEntryChoice = () => (
         <div className="space-y-3.5">
-            <button type="button" onClick={handleKakaoStart} disabled={loading} className="w-full rounded-xl bg-[#FEE500] px-4 py-4 text-[15px] font-bold text-[#191919] shadow-sm disabled:opacity-50">
-                {kakaoLoading ? '카카오 계정 확인 중...' : '💬 카카오로 시작하기'}
-            </button>
+            <SocialLoginButton provider="kakao" onClick={handleKakaoStart} disabled={loading} loading={kakaoLoading} loadingText="카카오 계정 확인 중...">
+                카카오톡으로 로그인
+            </SocialLoginButton>
             {isKakaoTalkBrowser ? (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12px] text-amber-800">구글 로그인은 다른 브라우저에서 이용해주세요. 카카오 로그인은 이 화면에서 사용할 수 있어요.</p>
             ) : (
-                <button type="button" onClick={handleGooglePersonalSignup} disabled={loading} className="w-full rounded-xl border border-hairline bg-white px-4 py-3.5 text-sm font-bold text-ink disabled:opacity-50">
-                    {googlePersonalLoading ? '구글 계정 확인 중...' : 'G 구글로 시작하기'}
-                </button>
+                <SocialLoginButton provider="google" onClick={handleGooglePersonalSignup} disabled={loading} loading={googlePersonalLoading} loadingText="Google 계정 확인 중...">
+                    Google로 로그인
+                </SocialLoginButton>
             )}
             <button type="button" onClick={() => { setMemberStep('legacy'); clearError(); }} className="w-full py-2 text-sm font-semibold text-ink/65 underline underline-offset-4">기존 회원 로그인 (이름·생년월일로)</button>
             <button type="button" onClick={handleGuestLogin} disabled={loading} className="w-full rounded-full border border-hairline bg-cream-card py-3 text-sm font-semibold text-ink disabled:opacity-50">로그인 없이 둘러보기</button>
