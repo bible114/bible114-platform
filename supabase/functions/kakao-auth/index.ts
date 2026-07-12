@@ -9,7 +9,7 @@ const ALLOWED_ORIGINS = new Set([
 ]);
 
 const json = (origin: string, status: number, body: Record<string, unknown>) => new Response(
-  JSON.stringify(body),
+  status === 204 ? null : JSON.stringify(body),
   {
     status,
     headers: {

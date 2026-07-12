@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-13 | M10R 무료 카카오 로그인 실연동 | `.gitignore`, `.env.example`, `supabase/functions/kakao-auth/index.ts`, `HANDOFF_CODEX.md` | Supabase `bible114's Project` 연결, 카카오/Firebase 시크릿 3종 등록, `kakao-auth --no-verify-jwt` 배포. 카카오 REST 키에 운영·localhost redirect URI 등록. CORS OPTIONS 204 수정·실응답 확인. 프로덕션 빌드에서 카카오 동의→Firebase `kakao:` UID 생성→이름 온보딩 1/3 진입 확인. 운영 배포와 최종 온보딩 완료(users/roster 쓰기)는 미실행. |
 | 2026-07-13 | T69 모바일 헤더 칩 겹침 수정 | `src/components/dashboard/DashboardHeader.jsx`, `scripts/validate-round11.mjs`, `HANDOFF_CODEX.md` | 모바일 칩 영역을 가로 스크롤에서 flex-wrap으로 전환하고 로그아웃을 같은 흐름의 마지막 요소로 편입. divider는 모바일 숨김, md 이상 한 줄 우측 정렬 유지. 소속/버전 버튼은 별도 flex 항목 유지. 정적 계약 검사·빌드·diff 검사 통과. 인증된 시드 세션이 없어 375/390 실화면 클릭은 미검증. |
 | 2026-07-13 | T60R 무료 카카오 커스텀 토큰 전환 | `supabase/functions/kakao-auth/*`, `src/utils/kakaoAuth.js`, `src/hooks/useAuth.js`, `src/data/constants.js`, `src/components/PlatformAdminView.jsx`, `scripts/validate-kakao-custom-auth.mjs`, `scripts/validate-round11.mjs`, `package.json`, `HANDOFF_CODEX.md` | Supabase 함수의 카카오 코드 교환·프로필 조회·Firebase RS256 커스텀 토큰 발급과 클라이언트 state/취소/URL 정리/로그인을 연결. 레거시 `oidc.kakao` 관리자 표시 호환은 유지. Node 계약 검사, Deno 픽스처 2건, 라운드 11 검사, 빌드, diff 검사 통과. 실연동과 함수 배포는 M10R 사용자 수동 단계로 미실행. |
 | 2026-07-09 | T1 상수 + 가상 교회 생성 버튼 | `src/data/constants.js`, `src/components/PlatformAdminView.jsx`, `src/utils/churchDirectory.js`, `HANDOFF_CODEX.md` | `npm run build` 통과. 수동 M1(플랫폼 관리자 버튼 클릭)은 미실행. |
@@ -274,6 +275,12 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ## 📮 Codex → Claude 메모
 
 > Codex: 작업을 마치거나 중단할 때 여기에 남겨라 — ① 완료/미완 상태 요약, ② 설계와 다르게 한 것과 이유, ③ 질문/막힌 것, ④ Claude가 리뷰할 때 봐야 할 지점.
+
+2026-07-13 Codex M10R 실연동:
+- 완료: Supabase 신규 로그인·기존 `bible114's Project` 연결, 시크릿 3종 등록, Edge Function 배포, 카카오 운영/localhost redirect URI 등록, 실제 커스텀 Firebase 사용자 생성 및 이름 온보딩 1/3 진입 확인.
+- 실검증 중 발견·수정: 204 응답에 JSON body를 넣어 OPTIONS가 500이 되던 문제를 null body로 수정하고 재배포했다. 허용 origin OPTIONS 204, 비허용 origin 403을 확인했다.
+- 보안: Firebase 서비스 계정 JSON은 Supabase secret 등록 후 다운로드 폴더에서 삭제한다. 저장소에는 공개 프런트 변수 이름만 `.env.example`로 남기고 실제 공개값은 gitignored `.env.local`에 둔다.
+- 남은 작업: 저장소 지침상 `npm run deploy`는 실행하지 않았다. 실제 테스트 계정의 온보딩 완료도 users/roster 운영 쓰기이므로 1단계에서 멈췄다. 코드상 다음 미완료 체크리스트는 없음.
 
 2026-07-13 Codex T69:
 - 완료: 모바일 상태 칩을 `flex-wrap` 흐름으로 바꾸고 로그아웃을 마지막 칩으로 편입했다. 모바일 divider는 숨기고 md 이상은 `flex-nowrap`+우측 정렬로 유지했다.
@@ -1075,6 +1082,8 @@ T60~T66 7개 커밋 검토 완료 — **조건부: 블로커 2건 수정 후 병
 1. 카카오 개발자 콘솔: 앱 생성 → Web 플랫폼 도메인 등록 → 카카오 로그인 활성화 → **Redirect URI = `https://www.bible114.net/` 와 `http://localhost:5173/`** → 동의항목 닉네임 필수(이메일 선택) → 보안 Client Secret 생성·활성화. (**OpenID Connect 활성화 불필요**, Firebase 콘솔 OIDC 공급자 등록도 **불필요** — 기존 M10의 해당 단계 폐기.)
 2. Firebase 콘솔 → 프로젝트 설정 → 서비스 계정 → **새 비공개 키 생성**(JSON 다운로드 — 이 파일은 절대 저장소에 넣지 않기).
 3. Supabase(기존 프로젝트, 노션 동기화 쓰던 곳): `supabase login` → `supabase secrets set KAKAO_REST_KEY=… KAKAO_CLIENT_SECRET=… FIREBASE_SERVICE_ACCOUNT="$(cat 키.json)"` → `supabase functions deploy kakao-auth --no-verify-jwt`. (명령은 Codex가 복붙용으로 안내.)
+
+**M10R 실행 상태(2026-07-13):** 위 1~3 완료. Supabase 프로젝트 ref `ejqnwajcvkvpcxechwzl`의 함수 배포 및 실제 카카오 로그인→Firebase 커스텀 사용자→온보딩 1단계 진입까지 통과. 남은 것은 사용자 승인 대상인 운영 사이트 배포와 신규 계정 온보딩 최종 저장 확인이다.
 
 ## 📮 Claude → Codex 메모
 
