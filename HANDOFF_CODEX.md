@@ -277,6 +277,14 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 > Codex: 작업을 마치거나 중단할 때 여기에 남겨라 — ① 완료/미완 상태 요약, ② 설계와 다르게 한 것과 이유, ③ 질문/막힌 것, ④ Claude가 리뷰할 때 봐야 할 지점.
 
+2026-07-13 Codex 사이트 점검 발견:
+- ① 증상: 신규 가입 직후 랭킹/누적 읽기가 `총 1일`로 보이고, 첫 읽기 완료 뒤에는 실제 1일 읽었는데 `총 2일`로 보인다. ② 재현 경로: 카카오 신규 로그인 → 혼자 읽기 → 일년일독·개역개정114 가입 완료 → 대시보드 랭킹 확인 → 퀴즈 정답 후 첫 본문 읽기 완료 → 랭킹 재확인. ③ 관련 파일(추정): `src/hooks/useAuth.js`, `src/hooks/useUserBibleActions.js`, `src/utils/statsUtils.js`, `src/utils/rosterMembers.js`.
+- ① 증상: 퀴즈를 풀기 전에는 본문을 다 읽어도 `오늘 읽기 완료` 버튼이 비활성이고, 퀴즈 선행이 필요하다는 안내가 본문 하단에만 나타나 흐름을 처음 쓰는 사용자가 이해하기 어렵다. ② 재현 경로: 신규 가입 후 DAY 1 본문 화면에서 퀴즈를 건너뛰고 본문 하단의 읽기 완료 버튼 확인. ③ 관련 파일(추정): `src/components/dashboard/BibleQuizCard.jsx`, `src/components/dashboard/BibleReader.jsx`, `src/hooks/useUserBibleActions.js`.
+- ① 증상: DAY 1 읽기 완료 후 화면은 DAY 2 본문으로 전환되지만, 상단의 오늘 퀴즈는 DAY 1 문제와 `오늘 퀴즈 완료` 상태를 그대로 유지해 현재 읽는 본문과 퀴즈의 기준일이 달라 보인다. ② 재현 경로: DAY 1 퀴즈 정답 → DAY 1 읽기 완료 → 자동 전환된 DAY 2 본문과 퀴즈 카드 비교 → 새로고침 후 재확인. ③ 관련 파일(추정): `src/components/dashboard/BibleQuizCard.jsx`, `src/components/dashboard/BibleReader.jsx`, `src/components/DashboardView.jsx`, `src/hooks/useUserBibleActions.js`.
+- ① 증상: 헤더의 읽기 도움말 아이콘 버튼이 접근성 트리에서 이름 없는 `button`으로 노출된다. ② 재현 경로: 로그인 후 대시보드 헤더를 Chrome 접근성 구조로 확인. ③ 관련 파일(추정): `src/components/dashboard/DashboardHeader.jsx`.
+- ① 증상: 긴 본문에서 퀴즈는 상단, 읽기 완료 버튼은 본문 맨 아래에 있어 두 행동을 오가려면 긴 스크롤이 필요하다. ② 재현 경로: DAY 1(창세기 1-2장) 신규 사용자 화면에서 퀴즈 카드와 `오늘 읽기 완료` 버튼의 위치 비교. ③ 관련 파일(추정): `src/components/dashboard/BibleQuizCard.jsx`, `src/components/dashboard/BibleReader.jsx`, `src/components/DashboardView.jsx`.
+- 검증 공백: 실제 Chrome 모바일 기기 폭(375px·390px) 전환은 아직 수행하지 못했다. 현재 상태 칩 줄바꿈은 정적 계약과 일반 Chrome 화면에서만 확인했으므로, 모바일 Chrome 기기 모드 또는 실기기에서 헤더 칩·로그아웃·소속 관리 버튼의 탭/겹침을 재검증해야 한다. 관련 파일(추정): `src/components/dashboard/DashboardHeader.jsx`.
+
 2026-07-13 Codex M10R 실연동:
 - 완료: Supabase 신규 로그인·기존 `bible114's Project` 연결, 시크릿 3종 등록, Edge Function 배포, 카카오 운영/localhost redirect URI 등록, 실제 커스텀 Firebase 사용자 생성 및 이름 온보딩 1/3 진입 확인.
 - 실검증 중 발견·수정: 204 응답에 JSON body를 넣어 OPTIONS가 500이 되던 문제를 null body로 수정하고 재배포했다. 허용 origin OPTIONS 204, 비허용 origin 403을 확인했다.
