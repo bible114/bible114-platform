@@ -974,7 +974,7 @@ const PlatformAdminView = ({
                                             return (
                                                 <tr key={idx} className={`border-b hover:bg-slate-50 ${readToday ? 'bg-green-50' : ''}`}>
                                                     <td className="px-3 py-3 text-center text-xs text-slate-400 font-mono italic">{idx + 1}</td>
-                                                    <td className="px-3 py-3 font-medium text-slate-900">{u.name}{u.accountType === 'personal' && <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600">개인</span>}{readToday && <span className="ml-1 text-green-500">✓</span>}</td>
+                                                    <td className="px-3 py-3 font-medium text-slate-900">{u.name}{u.accountType === 'personal' && <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600">개인</span>}{u.authProvider === 'oidc.kakao' && <span className="ml-1 rounded-full bg-[#FEE500] px-2 py-0.5 text-[10px] font-bold text-[#191919]">카카오</span>}{u.accountType === 'personal' && (u.authProvider === 'google.com' || (!u.authProvider && !String(u.email || '').endsWith('@bible.local'))) && <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">Google</span>}{readToday && <span className="ml-1 text-green-500">✓</span>}</td>
                                                     <td className="px-3 py-3 text-xs text-slate-500">{u.accountType === 'personal' ? '개인 계정' : churchName}</td>
                                                     <td className="px-3 py-3">
                                                         <span className="font-bold text-slate-700 text-xs">{u.departmentName || '-'}</span>
@@ -992,9 +992,9 @@ const PlatformAdminView = ({
                                                     <td className="px-3 py-3 text-center text-xs text-slate-400">{u.lastReadDate ? new Date(u.lastReadDate).toLocaleDateString('ko-KR') : '-'}</td>
                                                     <td className="px-3 py-3 text-center">
                                                         <div className="flex justify-center gap-1">
-                                                            {u.accountType !== 'personal' || String(u.email || '').endsWith('@bible.local')
+                                                            {u.accountType !== 'personal' || (!u.authProvider && String(u.email || '').endsWith('@bible.local'))
                                                                 ? <button onClick={() => setChangingPassword(u)} className="text-purple-500 p-1 bg-purple-50 rounded" title="암호 확인 및 변경"><Icon name="refresh" size={14} /></button>
-                                                                : <span className="rounded bg-slate-100 px-1.5 py-1 text-[10px] font-bold text-slate-400" title="구글 개인 계정은 비밀번호가 없습니다">Google</span>}
+                                                                : <span className="rounded bg-slate-100 px-1.5 py-1 text-[10px] font-bold text-slate-400" title="소셜 개인 계정은 비밀번호가 없습니다">{u.authProvider === 'oidc.kakao' ? '카카오 로그인' : 'Google 로그인'}</span>}
                                                             <button onClick={() => startEditUser(u)} className="text-blue-500 p-1 bg-blue-50 rounded" title="정보 수정"><Icon name="edit" size={14} /></button>
                                                             <button onClick={() => setDeleteUserConfirm({ uid: u.uid, name: u.name })} className="text-red-500 p-1 bg-red-50 rounded" title="삭제"><Icon name="trash" size={14} /></button>
                                                         </div>

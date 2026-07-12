@@ -262,6 +262,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-12 | T62 소셜 신규 3단계 온보딩 | `src/components/SocialOnboardingView.jsx`, `src/components/dashboard/CommunityMembershipCard.jsx`, `src/hooks/useAuth.js`, `src/App.jsx`, `HANDOFF_CODEX.md` | 신규 소셜 계정에 이름→소속→플랜/버전 3단계 제공. 닉네임 prefill·빈 이름 차단, CommunityMembershipCard selectionOnly 재사용, 혼자 읽기는 unaffiliated_v1 자동 선택. 선택 단계는 무쓰기이며 최종 완료 transaction에서 첫 roster와 personal users 문서를 함께 생성해 중도 이탈 users 고아 문서 방지. provider 저장·게스트 진도 반영·완료 후 T52 상태 연결. `npm run build`, `git diff --check` 통과. 실 소셜 계정 생성은 미검증. |
 | 2026-07-12 | T63 헤더 소속 관리 | `src/components/dashboard/DashboardHeader.jsx`, `src/components/DashboardView.jsx`, `src/components/dashboard/CommunityMembershipCard.jsx`, `HANDOFF_CODEX.md` | personal 성도 헤더에 현재 기준 단체명 버튼 추가, 클릭 시 내 단체 관리 시트 제공. CommunityMembershipCard를 재사용해 기준 ★·기준 전환·탈퇴·단체 추가를 연결하고 기존 메인 카드는 개인 계정에서 제거. unaffiliated_v1 코드 없는 재가입 버튼과 최대 3개·첫 소속 primary transaction 적용. 기존 비개인 교회 계정 헤더는 유지. `npm run build`, `git diff --check` 통과. 실제 roster 변경은 미검증. |
 | 2026-07-12 | T64 성경 읽는 사람들 정식 단체화 | `src/hooks/useDepartment.js`, `src/hooks/useBibleLogic.js`, `src/components/DashboardView.jsx`, `HANDOFF_CODEX.md` | personal+unaffiliated_v1 기준 화면은 users 쿼리를 Promise 빈 결과로 대체하고 roster만 병합. 부서 없는 roster 전체를 달리기·주간 집계 대상으로 사용하고 상위 10명 평면 랭킹 카드 제공, 소그룹 랭킹/빈 헤더 랭킹은 숨김. unaffiliated 추가 소속 hard-hide 제거. 공지·상점은 기존 active churchId 경로 유지. `npm run build`, `git diff --check` 통과. 구 무소속 users는 알려진 비포함 한계. |
+| 2026-07-12 | T65 소셜 provider 관리자 표시 | `src/utils/helpers.js`, `src/components/PlatformAdminView.jsx`, `HANDOFF_CODEX.md` | userDocToState에 authProvider 매핑. 플랫폼 회원 목록 personal 옆 카카오/Google provider 뱃지 표시, 카카오·구글은 암호 변경 대신 해당 소셜 로그인 안내. 레거시 Google personal은 non-bible 이메일로 호환 판정, 비밀번호 personal은 기존 private/auth 지원 유지. `npm run build`, `git diff --check` 통과. |
 
 ---
 
@@ -377,6 +378,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T62 완료. 소셜 신규 사용자만 이름→소속→플랜/버전의 3단계를 거친다. 이름은 소셜 닉네임을 prefill하고 빈 값을 막는다. 소속은 `CommunityMembershipCard` selection-only 모드로 검색·입장코드·부서/소그룹을 재사용하며, 혼자 읽기는 `unaffiliated_v1` roster를 자동 선택한다. 이전 `나중에 할게요`는 신규 소셜 흐름에서 제거했다. 선택 중에는 Firestore를 쓰지 않고 마지막 버전 선택 시 첫 roster와 personal users를 transaction으로 함께 생성해 중도 이탈 users 고아 문서를 남기지 않는다. provider와 게스트 진도를 반영하고 T52 대시보드로 연결한다. `npm run build`, `git diff --check` 통과. 실제 소셜 계정 생성은 M10/운영 데이터 때문에 미검증이며 다음 순번은 T63 헤더 소속 관리다.
 - T63 완료. personal 성도 헤더 우상단에 `⛪ 기준 단체명 ▾` 버튼을 표시하고 내 단체 관리 시트를 연결했다. 시트는 기존 CommunityMembershipCard를 재사용해 단체 목록·기준 ★·기준으로 보기·탈퇴·최대 3개 추가를 제공한다. `성경 읽는 사람들`이 목록에 없으면 입장코드 없이 돌아가기 버튼으로 roster를 만들고, 첫 소속이면 primaryOrgId도 같은 transaction에서 지정한다. 개인 계정의 기존 본문 하단 공동체 카드는 제거했으며 비개인 교회 계정은 기존 헤더/카드를 유지한다. `npm run build`, `git diff --check` 통과. 실제 roster 추가·전환·탈퇴는 미검증이며 다음 순번은 T64 정식 단체화다.
 - T64 완료. personal 계정이 `unaffiliated_v1`을 기준으로 볼 때 users 목록 쿼리는 아예 만들지 않고 roster만 읽어 병합한다. 부서가 없는 roster 전체를 달리기·주간 집계 대상으로 사용하고 상위 10명 평면 랭킹을 별도 표시하며, 빈 소그룹/헤더 랭킹은 숨긴다. T43의 unaffiliated 추가 소속 hard-hide도 제거했고 공지·상점은 기존 active churchId 경로를 유지한다. `npm run build`, `git diff --check` 통과. roster가 없는 구 무소속 users는 랭킹에 포함되지 않는 알려진 점진 수렴 한계이며 다음 순번은 T65 관리자 provider 표시다.
+- T65 완료. users의 `authProvider`를 관리자 상태에 매핑하고 플랫폼 전체 회원 목록의 personal 뱃지 옆에 카카오/Google provider 뱃지를 표시한다. 카카오·구글 personal은 비밀번호 없음으로 처리해 각 소셜 로그인 안내를 표시하고, `@bible.local` 비밀번호 personal은 기존 private/auth 확인·변경을 유지한다. authProvider 도입 전 Google personal은 non-bible 이메일로 호환 판정한다. `npm run build`, `git diff --check` 통과. 다음 순번은 T66 전체 검증이다.
 
 ---
 
@@ -854,7 +856,7 @@ T55~T59 5개 커밋 검토 완료 — **병합 가능, 코드 수정 없음**. �
   - T43의 unaffiliated extraOrgs 하드 숨김 해제 — 이제 정식 소속으로 표시.
   - 기준 단체가 unaffiliated_v1일 때: 랭킹·달리기·주간MVP를 **roster 병합 멤버만으로** 구성(users 쿼리 시도 금지 — 제약 참조). 부서/소그룹 개념 없는 평면 랭킹으로 표시. 공지·상점은 settings read가 이미 허용되므로 기존 경로 그대로 (관리는 플랫폼 관리자 몫).
   - 구 무소속 회원(users.churchId == unaffiliated_v1, roster 없음)은 이 랭킹에 안 보임 — 알려진 점진 수렴 한계로 메모만.
-- [ ] **T65. 관리자·지원 표시**
+- [x] **T65. 관리자·지원 표시**
   - 플랫폼 관리자 회원 목록: 카카오 personal 계정 provider 뱃지("카카오"), 비밀번호 없음(카카오로 로그인 안내) 표시 — Google personal(T53)과 동일 취급.
 - [ ] **T66. 검증**
   - 빌드 + 첫 화면 4항목/기존 경로 보존/온보딩 3단계 상태머신(중도 이탈 포함)/소속 관리 패널 픽스처 + 로컬 브라우저 확인. 실 카카오 팝업·계정 생성은 M10 전제라 미검증 명시. 사용자 실검증 시나리오를 메모란에 정리.

@@ -68,6 +68,7 @@ export const userDocToState = (doc) => {
         password: d.password,
         role: d.role || 'member',
         accountType: d.accountType || null,
+        authProvider: d.authProvider || null,
         primaryOrgId: d.primaryOrgId || null,
         churchId: d.churchId || null,
         churchName: d.churchName || null,
