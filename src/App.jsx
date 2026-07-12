@@ -18,6 +18,7 @@ import PlatformAdminView from './components/PlatformAdminView';
 import PlanSelectionView from './components/PlanSelectionView';
 import DashboardView from './components/DashboardView';
 import GuestReaderView from './components/GuestReaderView';
+import SocialOnboardingView from './components/SocialOnboardingView';
 import { CommunityMembershipCard } from './components/dashboard';
 import { getPendingPersonalMigration, migrateChurchMemberToPersonal } from './utils/personalAccountMigration';
 import { ToastContainer, useToast } from './components/admin';
@@ -236,10 +237,11 @@ const App = () => {
                 }
             }
         } else {
+            if (view === 'social_onboarding' && tempUser?.uid) return;
             resetReaderSessionState();
             if (view !== 'login') setView('login');
         }
-    }, [currentUser, authLoading, resetReaderSessionState]);
+    }, [currentUser, authLoading, resetReaderSessionState, view, tempUser?.uid]);
 
     // getLevelInfo는 data/levels에서 import됨
 
@@ -424,6 +426,7 @@ const App = () => {
         handlePersonalSignup,
         handleGooglePersonalSignup,
         handleKakaoStart,
+        handleSocialOnboardingComplete,
         handleChurchAdminLogin,
         handleChurchAdminSignup,
         handleGoogleAdminLogin,
@@ -679,6 +682,8 @@ const App = () => {
                 initialTab={loginInitialTab}
             />
         );
+    } else if (view === 'social_onboarding' && tempUser?.uid) {
+        pageContent = <SocialOnboardingView tempUser={tempUser} onComplete={handleSocialOnboardingComplete} />;
     } else if (view === 'personal_community_onboarding' && tempUser?.accountType === 'personal') {
         pageContent = (
             <div className="min-h-screen bg-slate-50 p-6 flex items-center justify-center" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>

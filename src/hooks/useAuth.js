@@ -335,6 +335,53 @@ export const useAuth = ({
         return request;
     };
 
+    const handleSocialOnboardingComplete = async ({ name, organization, planId }) => {
+        const socialUser = auth.currentUser;
+        if (!socialUser?.uid || !name?.trim() || !organization?.orgId || !planId) throw new Error('온보딩 정보를 확인할 수 없습니다.');
+        const userRef = db.collection('users').doc(socialUser.uid);
+        const rosterRef = db.collection('churches').doc(organization.orgId).collection('roster').doc(socialUser.uid);
+        const providerId = (socialUser.providerData || [])[0]?.providerId || 'social';
+        const newUser = {
+            ...buildPersonalUser({ name: name.trim(), email: socialUser.email || null, google: true }),
+            planId,
+            primaryOrgId: organization.orgId,
+            authProvider: providerId,
+        };
+        const now = firebase.firestore.FieldValue.serverTimestamp();
+        await db.runTransaction(async transaction => {
+            const existing = await transaction.get(userRef);
+            if (existing.exists) throw new Error('이미 등록된 계정입니다. 다시 로그인해주세요.');
+            if (auth.currentUser?.uid !== socialUser.uid) throw new Error('로그인 상태가 변경되었습니다.');
+            transaction.set(rosterRef, {
+                uid: socialUser.uid, name: name.trim(),
+                score: newUser.score || 0, currentDay: newUser.currentDay || 1,
+                streak: newUser.streak || 0, readCount: newUser.readCount || 1,
+                lastReadDate: newUser.lastReadDate || null,
+                departmentId: organization.departmentId || null,
+                departmentName: organization.departmentName || null,
+                subgroupId: organization.subgroupId || null,
+                subgroupName: organization.subgroupName || null,
+                joinedAt: now, updatedAt: now,
+            });
+            transaction.set(userRef, newUser);
+        });
+        db.collection('settings').doc('platformStats').set({
+            total_readers: firebase.firestore.FieldValue.increment(1),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true }).catch(() => {});
+        if (shouldMigrateGuestState()) saveGuestState({ migratedAt: new Date().toISOString() });
+        setCurrentUser({
+            ...newUser, uid: socialUser.uid,
+            extraOrgs: [{
+                uid: socialUser.uid, orgId: organization.orgId, rosterPath: rosterRef.path,
+                departmentId: organization.departmentId || null, departmentName: organization.departmentName || null,
+                subgroupId: organization.subgroupId || null, subgroupName: organization.subgroupName || null,
+            }],
+        });
+        setTempUser(null);
+        setView('dashboard');
+    };
+
     useEffect(() => {
         let alive = true;
         authReady.then(() => auth.getRedirectResult()).then(async cred => {
@@ -917,6 +964,7 @@ export const useAuth = ({
         handlePersonalSignup,
         handleGooglePersonalSignup,
         handleKakaoStart,
+        handleSocialOnboardingComplete,
         handleChurchAdminLogin,
         handleGoogleAdminLogin,
         handleGoogleAdminSignupStart,

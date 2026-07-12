@@ -8,7 +8,7 @@ import { loadUserExtraOrgsStrict } from '../../utils/roster';
 
 const emptySelection = { departmentId: '', departmentName: '', subgroupId: '', subgroupName: '' };
 
-const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = false, onJoinComplete, onSkip }) => {
+const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = false, onJoinComplete, onSkip, selectionOnly = false, skipLabel = '나중에 할게요' }) => {
     const [directory, setDirectory] = useState([]);
     const [showJoin, setShowJoin] = useState(false);
     const [orgId, setOrgId] = useState('');
@@ -37,8 +37,8 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
     }, []);
 
     useEffect(() => {
-        if (onboarding) setShowJoin(true);
-    }, [onboarding]);
+        if (onboarding && !selectionOnly) setShowJoin(true);
+    }, [onboarding, selectionOnly]);
 
     useEffect(() => {
         if (!showJoin) return undefined;
@@ -136,6 +136,11 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
         const selectedDepartment = departments.find(dept => (dept.id || dept.name) === selection.departmentId);
         if ((selectedDepartment?.subgroups || []).length > 0 && !selection.subgroupId) {
             setNotice({ type: 'error', text: '소그룹을 선택해주세요.' });
+            return;
+        }
+        if (selectionOnly) {
+            onJoinComplete?.({ orgId, orgName: orgName(orgId), ...selection });
+            setShowJoin(false);
             return;
         }
         setBusy(true);
@@ -246,7 +251,7 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
                 <h2 className="text-xl font-bold text-slate-800">공동체에 참여하시겠어요?</h2>
                 <p className="mt-2 text-sm text-slate-500">교회나 공동체와 함께 읽으면 랭킹과 응원을 나눌 수 있어요.</p>
                 <button type="button" onClick={() => setShowJoin(true)} className="mt-5 w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white">공동체 찾아보기</button>
-                <button type="button" onClick={onSkip} disabled={busy} className="mt-2 w-full rounded-xl py-3 text-sm font-bold text-slate-500 disabled:opacity-40">나중에 할게요</button>
+                <button type="button" onClick={onSkip} disabled={busy} className="mt-2 w-full rounded-xl py-3 text-sm font-bold text-slate-500 disabled:opacity-40">{skipLabel}</button>
             </div>
             {showJoin && <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onMouseDown={e => { if (e.target === e.currentTarget) closeJoin(); }}>
                 <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="공동체 참여" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
