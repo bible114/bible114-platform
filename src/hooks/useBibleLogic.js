@@ -70,7 +70,7 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
                 if (currentUser.departmentId) {
                     const myCommMembers = allMembers.filter(m => belongsToDepartment(m, currentUser.departmentId));
                     setDepartmentMembers(myCommMembers);
-                }
+                } else setDepartmentMembers(allMembers);
             }
 
             // 2. Load User Specific Data (Memos & History)

@@ -261,6 +261,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-12 | T61 첫 화면 단순화 | `src/components/LoginView.jsx`, `HANDOFF_CODEX.md` | 기본 로그인 카드를 카카오·구글·기존 회원 로그인·게스트 4항목으로 단순화하고 성도/관리자 탭 제거. 관리자 로그인·비밀번호 문의는 하단 미세 링크로 이동. 기존 교회/무소속/개인 수동 로그인·가입은 legacy 화면 안에 보존. 최근 교회와 `?church=` preselect는 기존 form 우선, 변경 시 소셜 첫 화면 복귀. 카톡 인앱에서는 카카오 유지·구글 제한 안내. `npm run build`, `git diff --check` 통과. |
 | 2026-07-12 | T62 소셜 신규 3단계 온보딩 | `src/components/SocialOnboardingView.jsx`, `src/components/dashboard/CommunityMembershipCard.jsx`, `src/hooks/useAuth.js`, `src/App.jsx`, `HANDOFF_CODEX.md` | 신규 소셜 계정에 이름→소속→플랜/버전 3단계 제공. 닉네임 prefill·빈 이름 차단, CommunityMembershipCard selectionOnly 재사용, 혼자 읽기는 unaffiliated_v1 자동 선택. 선택 단계는 무쓰기이며 최종 완료 transaction에서 첫 roster와 personal users 문서를 함께 생성해 중도 이탈 users 고아 문서 방지. provider 저장·게스트 진도 반영·완료 후 T52 상태 연결. `npm run build`, `git diff --check` 통과. 실 소셜 계정 생성은 미검증. |
 | 2026-07-12 | T63 헤더 소속 관리 | `src/components/dashboard/DashboardHeader.jsx`, `src/components/DashboardView.jsx`, `src/components/dashboard/CommunityMembershipCard.jsx`, `HANDOFF_CODEX.md` | personal 성도 헤더에 현재 기준 단체명 버튼 추가, 클릭 시 내 단체 관리 시트 제공. CommunityMembershipCard를 재사용해 기준 ★·기준 전환·탈퇴·단체 추가를 연결하고 기존 메인 카드는 개인 계정에서 제거. unaffiliated_v1 코드 없는 재가입 버튼과 최대 3개·첫 소속 primary transaction 적용. 기존 비개인 교회 계정 헤더는 유지. `npm run build`, `git diff --check` 통과. 실제 roster 변경은 미검증. |
+| 2026-07-12 | T64 성경 읽는 사람들 정식 단체화 | `src/hooks/useDepartment.js`, `src/hooks/useBibleLogic.js`, `src/components/DashboardView.jsx`, `HANDOFF_CODEX.md` | personal+unaffiliated_v1 기준 화면은 users 쿼리를 Promise 빈 결과로 대체하고 roster만 병합. 부서 없는 roster 전체를 달리기·주간 집계 대상으로 사용하고 상위 10명 평면 랭킹 카드 제공, 소그룹 랭킹/빈 헤더 랭킹은 숨김. unaffiliated 추가 소속 hard-hide 제거. 공지·상점은 기존 active churchId 경로 유지. `npm run build`, `git diff --check` 통과. 구 무소속 users는 알려진 비포함 한계. |
 
 ---
 
@@ -375,6 +376,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T61 완료. 기본 카드는 카카오·구글·기존 회원 로그인·게스트 4항목만 표시하고 성도/교회 관리자 탭은 제거했다. 관리자 로그인과 비밀번호 문의는 하단 미세 링크로 이동했으며, 기존 교회 검색·무소속·개인 수동 로그인/가입은 `기존 회원 로그인` 내부에 그대로 보존했다. 최근 교회 또는 `?church=`가 있으면 기존 form을 우선하고 `변경/다른 방법`으로 소셜 화면에 돌아간다. 카카오톡 인앱은 카카오 버튼을 유지하고 구글만 제한 안내한다. `npm run build`, `git diff --check` 통과. 다음 순번은 T62 신규 3단계 온보딩이다.
 - T62 완료. 소셜 신규 사용자만 이름→소속→플랜/버전의 3단계를 거친다. 이름은 소셜 닉네임을 prefill하고 빈 값을 막는다. 소속은 `CommunityMembershipCard` selection-only 모드로 검색·입장코드·부서/소그룹을 재사용하며, 혼자 읽기는 `unaffiliated_v1` roster를 자동 선택한다. 이전 `나중에 할게요`는 신규 소셜 흐름에서 제거했다. 선택 중에는 Firestore를 쓰지 않고 마지막 버전 선택 시 첫 roster와 personal users를 transaction으로 함께 생성해 중도 이탈 users 고아 문서를 남기지 않는다. provider와 게스트 진도를 반영하고 T52 대시보드로 연결한다. `npm run build`, `git diff --check` 통과. 실제 소셜 계정 생성은 M10/운영 데이터 때문에 미검증이며 다음 순번은 T63 헤더 소속 관리다.
 - T63 완료. personal 성도 헤더 우상단에 `⛪ 기준 단체명 ▾` 버튼을 표시하고 내 단체 관리 시트를 연결했다. 시트는 기존 CommunityMembershipCard를 재사용해 단체 목록·기준 ★·기준으로 보기·탈퇴·최대 3개 추가를 제공한다. `성경 읽는 사람들`이 목록에 없으면 입장코드 없이 돌아가기 버튼으로 roster를 만들고, 첫 소속이면 primaryOrgId도 같은 transaction에서 지정한다. 개인 계정의 기존 본문 하단 공동체 카드는 제거했으며 비개인 교회 계정은 기존 헤더/카드를 유지한다. `npm run build`, `git diff --check` 통과. 실제 roster 추가·전환·탈퇴는 미검증이며 다음 순번은 T64 정식 단체화다.
+- T64 완료. personal 계정이 `unaffiliated_v1`을 기준으로 볼 때 users 목록 쿼리는 아예 만들지 않고 roster만 읽어 병합한다. 부서가 없는 roster 전체를 달리기·주간 집계 대상으로 사용하고 상위 10명 평면 랭킹을 별도 표시하며, 빈 소그룹/헤더 랭킹은 숨긴다. T43의 unaffiliated 추가 소속 hard-hide도 제거했고 공지·상점은 기존 active churchId 경로를 유지한다. `npm run build`, `git diff --check` 통과. roster가 없는 구 무소속 users는 랭킹에 포함되지 않는 알려진 점진 수렴 한계이며 다음 순번은 T65 관리자 provider 표시다.
 
 ---
 
@@ -848,7 +850,7 @@ T55~T59 5개 커밋 검토 완료 — **병합 가능, 코드 수정 없음**. �
     - [+ 단체 추가] — `CommunityMembershipCard` 재사용 (검색+입장코드, 최대 3개 상한 유지 — 성경 읽는 사람들 포함 카운트)
     - 「성경 읽는 사람들」 재가입 항목도 제공 ("혼자 읽기 모임으로 돌아가기" — 코드 없음)
   - 기존 교회 계정(비개인)에는 이 버튼 대신 기존 헤더 유지 (roster 기반이 아니므로 — 개인 계정 전용 기능임을 명시).
-- [ ] **T64. 「성경 읽는 사람들」 정식 단체화**
+- [x] **T64. 「성경 읽는 사람들」 정식 단체화**
   - T43의 unaffiliated extraOrgs 하드 숨김 해제 — 이제 정식 소속으로 표시.
   - 기준 단체가 unaffiliated_v1일 때: 랭킹·달리기·주간MVP를 **roster 병합 멤버만으로** 구성(users 쿼리 시도 금지 — 제약 참조). 부서/소그룹 개념 없는 평면 랭킹으로 표시. 공지·상점은 settings read가 이미 허용되므로 기존 경로 그대로 (관리는 플랫폼 관리자 몫).
   - 구 무소속 회원(users.churchId == unaffiliated_v1, roster 없음)은 이 랭킹에 안 보임 — 알려진 점진 수렴 한계로 메모만.

@@ -136,9 +136,7 @@ const DashboardView = ({
 
     const { currentDay, score, talent, subgroupId, departmentName, planId, streak } = currentUser;
     const primaryMembership = getMembershipList({ ...currentUser, extraMemberships: [] })[0] || null;
-    const additionalMemberships = currentUser.churchId === UNAFFILIATED_CHURCH_ID
-        ? []
-        : getMembershipList(currentUser)
+    const additionalMemberships = getMembershipList(currentUser)
             .filter(membership => !sameMembershipPair(membership, primaryMembership))
             .slice(0, 3)
             .map(membership => {
@@ -157,6 +155,7 @@ const DashboardView = ({
                     subgroupName: subgroupName || membership.subgroupName || membership.subgroupId,
                 };
             });
+    const isReadingPeople = currentUser.accountType === 'personal' && currentUser.churchId === UNAFFILIATED_CHURCH_ID;
     const [planType, version] = (planId || '1year_revised').split('_');
     const planTypeDataDashboard = PLAN_TYPES.find(p => p.id === planType);
     const planTypeName = planTypeDataDashboard ? planTypeDataDashboard.title : '성경 통독';
@@ -384,7 +383,7 @@ const DashboardView = ({
                 handleChangeVersionStart={handleChangeVersionStart}
                 setView={setView}
                 isChurchAdmin={isChurchAdmin}
-                hasCommunity={hasCommunity}
+                hasCommunity={hasCommunity && !isReadingPeople}
                 personalOrganizations={personalOrganizations}
                 primaryOrgId={currentUser.primaryOrgId}
                 onPrimaryOrgChange={onPrimaryOrgChange}
@@ -402,6 +401,8 @@ const DashboardView = ({
                     {hasCommunity && <AnnouncementBanner announcement={announcement} />}
 
                     <DailyVideoCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
+
+                    {isReadingPeople && <section className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm"><div className="mb-3 flex items-center justify-between"><div><h2 className="font-black text-slate-800">성경 읽는 사람들</h2><p className="mt-1 text-xs text-slate-500">전국에서 혼자 읽는 분들의 평면 랭킹이에요.</p></div><span className="text-xs font-bold text-emerald-600">{allRacersSorted.length}명</span></div><div className="space-y-2">{allRacersSorted.slice(0, 10).map((member, index) => <div key={member.uid} className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm ${member.isMe ? 'bg-emerald-50' : 'bg-slate-50'}`}><span className="w-6 font-black text-slate-400">{index + 1}</span><span className="min-w-0 flex-1 truncate font-bold text-slate-700">{member.name}</span><span className="font-black text-emerald-700">DAY {member.day}</span></div>)}</div></section>}
 
                     <BibleQuizCard
                         currentUser={currentUser}
@@ -451,7 +452,7 @@ const DashboardView = ({
                             memoLoadError={memoLoadError}
                         />
 
-                        {hasCommunity && <SubgroupRankingCard
+                        {hasCommunity && !isReadingPeople && <SubgroupRankingCard
                             departmentName={departmentName}
                             getSubgroupRanking={getSubgroupRanking}
                             subgroupId={subgroupId}

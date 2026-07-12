@@ -16,15 +16,19 @@ export const useDepartment = (currentUser, setCurrentUser) => {
     const loadAllMembers = useCallback(async () => {
         // 무소속 가상 교회는 규칙상 교인 간 read를 열지 않는다 (전국 단위 익명 집단) —
         // 쿼리해봐야 거부되므로 호출 자체를 건너뛴다.
-        if (!currentUser?.churchId || currentUser.churchId === UNAFFILIATED_CHURCH_ID) return [];
+        if (!currentUser?.churchId) return [];
+        if (currentUser.churchId === UNAFFILIATED_CHURCH_ID && currentUser.accountType !== 'personal') return [];
         try {
             // password == null 필터는 firestore.rules의 같은 교회 read 허용 조건과 쌍이다 —
             // 자격증명이 private로 이관 완료된 문서만 목록 조회가 규칙 증명을 통과한다.
-            const [usersResult, rosterResult] = await Promise.allSettled([
-                db.collection('users')
+            const usersRequest = currentUser.churchId === UNAFFILIATED_CHURCH_ID
+                ? Promise.resolve({ docs: [] })
+                : db.collection('users')
                     .where('churchId', '==', currentUser.churchId)
                     .where('password', '==', null)
-                    .get(),
+                    .get();
+            const [usersResult, rosterResult] = await Promise.allSettled([
+                usersRequest,
                 db.collection('churches').doc(currentUser.churchId).collection('roster').get(),
             ]);
             const primaryMembers = usersResult.status === 'fulfilled'
@@ -40,7 +44,7 @@ export const useDepartment = (currentUser, setCurrentUser) => {
             console.error("멤버 로딩 실패:", e);
             return [];
         }
-    }, [currentUser?.churchId]);
+    }, [currentUser?.churchId, currentUser?.accountType]);
 
     const loadAnnouncement = useCallback(async () => {
         if (!currentUser?.churchId) { setAnnouncement(null); return; }
