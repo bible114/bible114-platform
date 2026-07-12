@@ -123,6 +123,7 @@ const DashboardView = ({
     onPersonalAccountMigrate,
 }) => {
     const [showTutorial, setShowTutorial] = useState(false);
+    const [showMemberships, setShowMemberships] = useState(false);
     const [quizGate, setQuizGate] = useState({
         loading: true,
         hasQuestion: false,
@@ -387,6 +388,8 @@ const DashboardView = ({
                 personalOrganizations={personalOrganizations}
                 primaryOrgId={currentUser.primaryOrgId}
                 onPrimaryOrgChange={onPrimaryOrgChange}
+                onOpenMemberships={currentUser.accountType === 'personal' ? () => setShowMemberships(true) : null}
+                currentOrganizationName={currentUser.churchName}
             />
 
             <div
@@ -466,7 +469,7 @@ const DashboardView = ({
                         onCloseUnlockModal={() => setShowSecretShopUnlocked(false)}
                     />}
 
-                    {currentUser.role === 'member' && (
+                    {currentUser.role === 'member' && currentUser.accountType !== 'personal' && (
                         <CommunityMembershipCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
                     )}
                     <PersonalAccountMigrationCard currentUser={currentUser} onMigrate={onPersonalAccountMigrate} />
@@ -489,6 +492,8 @@ const DashboardView = ({
                 </div>
             )}
             <KakaoChannelButton kakaoLink={kakaoLink} />
+
+            {showMemberships && currentUser.accountType === 'personal' && <div className="fixed inset-0 z-[125] flex items-end justify-center bg-black/45 sm:items-center sm:p-4" onMouseDown={event => { if (event.target === event.currentTarget) setShowMemberships(false); }}><div role="dialog" aria-modal="true" aria-label="내 단체 관리" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-slate-50 p-5 sm:rounded-3xl"><div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-black text-slate-900">내 단체 관리</h2><button type="button" onClick={() => setShowMemberships(false)} className="p-2 text-slate-400" aria-label="닫기">✕</button></div><CommunityMembershipCard currentUser={currentUser} setCurrentUser={setCurrentUser} onPrimaryOrgChange={onPrimaryOrgChange} /></div></div>}
 
         </div>
     );

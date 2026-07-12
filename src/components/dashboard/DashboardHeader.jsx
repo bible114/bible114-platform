@@ -46,6 +46,8 @@ const DashboardHeader = ({
     personalOrganizations = [],
     primaryOrgId,
     onPrimaryOrgChange,
+    onOpenMemberships,
+    currentOrganizationName,
 }) => {
     const primaryMembership = { departmentId, departmentName, subgroupId, subgroupName: null };
     const normalizedExtraMemberships = getMembershipList({ extraMemberships })
@@ -102,14 +104,7 @@ const DashboardHeader = ({
                             <Icon name="refresh" size={10} className="text-slate-400 group-hover:rotate-180 transition-transform duration-500" />
                         </div>
                     </button>
-                    {personalOrganizations.length > 1 && (
-                        <label className="flex items-center gap-2 self-start md:self-center md:order-1">
-                            <span className="text-[11px] font-bold text-slate-500">공동체</span>
-                            <select value={primaryOrgId || ''} onChange={event => onPrimaryOrgChange?.(event.target.value)} className="max-w-[180px] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-bold text-slate-700">
-                                {personalOrganizations.map(org => <option key={org.orgId} value={org.orgId}>{org.name}</option>)}
-                            </select>
-                        </label>
-                    )}
+                    {onOpenMemberships && <button type="button" onClick={onOpenMemberships} className="flex max-w-[210px] items-center gap-1 self-start rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 md:order-1 md:self-center" title="내 단체 관리"><span>⛪</span><span className="truncate">{currentOrganizationName || '소속 관리'}</span><span>▾</span></button>}
                 </div>
             </div>
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ChurchPicker from '../ChurchPicker';
-import { UNAFFILIATED_CHURCH_ID } from '../../data/constants';
+import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../../data/constants';
 import { sha256 } from '../../utils/crypto';
 import { db, firebase } from '../../utils/firebase';
 import { getChurchDirectory } from '../../utils/churchDirectory';
@@ -8,7 +8,7 @@ import { loadUserExtraOrgsStrict } from '../../utils/roster';
 
 const emptySelection = { departmentId: '', departmentName: '', subgroupId: '', subgroupName: '' };
 
-const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = false, onJoinComplete, onSkip, selectionOnly = false, skipLabel = '나중에 할게요' }) => {
+const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = false, onJoinComplete, onSkip, selectionOnly = false, skipLabel = '나중에 할게요', onPrimaryOrgChange }) => {
     const [directory, setDirectory] = useState([]);
     const [showJoin, setShowJoin] = useState(false);
     const [orgId, setOrgId] = useState('');
@@ -64,7 +64,7 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
         };
     }, [showJoin]);
 
-    const orgName = (id) => directory.find(org => org.id === id)?.name || '공동체';
+    const orgName = (id) => id === UNAFFILIATED_CHURCH_ID ? UNAFFILIATED_CHURCH_NAME : (directory.find(org => org.id === id)?.name || '공동체');
     const closeJoin = () => {
         if (busy) return;
         setShowJoin(false);
@@ -245,6 +245,30 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
         }
     };
 
+    const joinSoloCommunity = async () => {
+        if (busy || extraOrgs.some(org => org.orgId === UNAFFILIATED_CHURCH_ID)) return;
+        setBusy(true); setNotice(null);
+        try {
+            const latest = await loadUserExtraOrgsStrict(currentUser.uid);
+            if (latest.length >= 3) throw new Error('max');
+            if (latest.some(org => org.orgId === UNAFFILIATED_CHURCH_ID)) return;
+            const rosterRef = db.collection('churches').doc(UNAFFILIATED_CHURCH_ID).collection('roster').doc(currentUser.uid);
+            const now = firebase.firestore.FieldValue.serverTimestamp();
+            const runtimeOrg = { uid: currentUser.uid, orgId: UNAFFILIATED_CHURCH_ID, rosterPath: rosterRef.path, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null };
+            if (!currentUser.primaryOrgId) {
+                await db.runTransaction(async transaction => {
+                    transaction.set(rosterRef, { uid: currentUser.uid, name: currentUser.name || '', score: currentUser.score || 0, currentDay: currentUser.currentDay || 1, streak: currentUser.streak || 0, readCount: currentUser.readCount || 1, lastReadDate: currentUser.lastReadDate || null, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null, joinedAt: now, updatedAt: now });
+                    transaction.update(db.collection('users').doc(currentUser.uid), { primaryOrgId: UNAFFILIATED_CHURCH_ID, updatedAt: now });
+                });
+            } else {
+                await rosterRef.set({ uid: currentUser.uid, name: currentUser.name || '', score: currentUser.score || 0, currentDay: currentUser.currentDay || 1, streak: currentUser.streak || 0, readCount: currentUser.readCount || 1, lastReadDate: currentUser.lastReadDate || null, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null, joinedAt: now, updatedAt: now });
+            }
+            setCurrentUser(user => user?.uid === currentUser.uid ? { ...user, primaryOrgId: user.primaryOrgId || UNAFFILIATED_CHURCH_ID, extraOrgs: [...latest, runtimeOrg].sort((a, b) => a.orgId.localeCompare(b.orgId)) } : user);
+        } catch (error) {
+            setNotice({ type: 'error', text: error?.message === 'max' ? '공동체는 최대 3개까지 추가할 수 있습니다.' : '혼자 읽기 모임에 참여하지 못했습니다.' });
+        } finally { setBusy(false); }
+    };
+
     if (onboarding) return (
         <section className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="text-center">
@@ -272,8 +296,9 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
             </div>
             <div className="space-y-2">
                 {currentUser.accountType !== 'personal' && <div className="rounded-xl bg-slate-50 px-3 py-3 text-sm"><span className="font-bold text-slate-700">{currentUser.churchName || '주 소속 공동체'}</span><span className="ml-2 text-[11px] text-blue-600">주 소속</span></div>}
-                {extraOrgs.map(org => <div key={org.orgId} className="flex items-center gap-3 rounded-xl border border-slate-100 px-3 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-700">{orgName(org.orgId)}{currentUser.accountType === 'personal' && currentUser.primaryOrgId === org.orgId && <span className="ml-2 text-[11px] text-blue-600">기준 공동체</span>}</p><p className="truncate text-xs text-slate-400">{[org.departmentName, org.subgroupName].filter(Boolean).join(' · ') || '소속 미배정'}</p></div><button type="button" disabled={busy} onClick={() => leaveCommunity(org)} className="text-xs font-bold text-red-500 disabled:opacity-40">탈퇴</button></div>)}
+                {extraOrgs.map(org => <div key={org.orgId} className="flex items-center gap-3 rounded-xl border border-slate-100 px-3 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-700">{orgName(org.orgId)}{currentUser.accountType === 'personal' && currentUser.primaryOrgId === org.orgId && <span className="ml-2 text-[11px] text-blue-600">★ 기준</span>}</p><p className="truncate text-xs text-slate-400">{[org.departmentName, org.subgroupName].filter(Boolean).join(' · ') || '소속 미배정'}</p></div>{currentUser.accountType === 'personal' && currentUser.primaryOrgId !== org.orgId && <button type="button" disabled={busy} onClick={() => onPrimaryOrgChange?.(org.orgId)} className="text-xs font-bold text-blue-600">기준으로 보기</button>}<button type="button" disabled={busy} onClick={() => leaveCommunity(org)} className="text-xs font-bold text-red-500 disabled:opacity-40">탈퇴</button></div>)}
                 {extraOrgs.length === 0 && <p className="py-2 text-center text-xs text-slate-400">참여 중인 공동체가 없습니다. 혼자 읽는 기록은 계속 안전하게 저장됩니다.</p>}
+                {currentUser.accountType === 'personal' && !extraOrgs.some(org => org.orgId === UNAFFILIATED_CHURCH_ID) && <button type="button" disabled={busy || extraOrgs.length >= 3} onClick={joinSoloCommunity} className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs font-bold text-emerald-700 disabled:opacity-40">혼자 읽기 모임으로 돌아가기</button>}
             </div>
             {notice && !showJoin && <p className="mt-3 text-xs text-red-600">{notice.text}</p>}
 

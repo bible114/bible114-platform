@@ -260,6 +260,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-12 | T60 카카오 로그인 코어 | `src/hooks/useAuth.js`, `src/App.jsx`, `HANDOFF_CODEX.md` | Firebase compat `OAuthProvider('oidc.kakao')`로 일반 브라우저 popup·카카오톡 인앱 redirect를 분기하고 앱 로드 시 redirect 결과 처리. users 문서가 있는 personal은 기존 즉시 로그인, 신규 카카오·구글은 users 문서를 만들지 않고 `social_onboarding` 임시 상태로 전달. uid 재검사·in-flight·Auth flow guard·공급자 오류 문구 적용. `npm run build`, `git diff --check` 통과. M10 미실행으로 실 카카오 인증은 미검증. |
 | 2026-07-12 | T61 첫 화면 단순화 | `src/components/LoginView.jsx`, `HANDOFF_CODEX.md` | 기본 로그인 카드를 카카오·구글·기존 회원 로그인·게스트 4항목으로 단순화하고 성도/관리자 탭 제거. 관리자 로그인·비밀번호 문의는 하단 미세 링크로 이동. 기존 교회/무소속/개인 수동 로그인·가입은 legacy 화면 안에 보존. 최근 교회와 `?church=` preselect는 기존 form 우선, 변경 시 소셜 첫 화면 복귀. 카톡 인앱에서는 카카오 유지·구글 제한 안내. `npm run build`, `git diff --check` 통과. |
 | 2026-07-12 | T62 소셜 신규 3단계 온보딩 | `src/components/SocialOnboardingView.jsx`, `src/components/dashboard/CommunityMembershipCard.jsx`, `src/hooks/useAuth.js`, `src/App.jsx`, `HANDOFF_CODEX.md` | 신규 소셜 계정에 이름→소속→플랜/버전 3단계 제공. 닉네임 prefill·빈 이름 차단, CommunityMembershipCard selectionOnly 재사용, 혼자 읽기는 unaffiliated_v1 자동 선택. 선택 단계는 무쓰기이며 최종 완료 transaction에서 첫 roster와 personal users 문서를 함께 생성해 중도 이탈 users 고아 문서 방지. provider 저장·게스트 진도 반영·완료 후 T52 상태 연결. `npm run build`, `git diff --check` 통과. 실 소셜 계정 생성은 미검증. |
+| 2026-07-12 | T63 헤더 소속 관리 | `src/components/dashboard/DashboardHeader.jsx`, `src/components/DashboardView.jsx`, `src/components/dashboard/CommunityMembershipCard.jsx`, `HANDOFF_CODEX.md` | personal 성도 헤더에 현재 기준 단체명 버튼 추가, 클릭 시 내 단체 관리 시트 제공. CommunityMembershipCard를 재사용해 기준 ★·기준 전환·탈퇴·단체 추가를 연결하고 기존 메인 카드는 개인 계정에서 제거. unaffiliated_v1 코드 없는 재가입 버튼과 최대 3개·첫 소속 primary transaction 적용. 기존 비개인 교회 계정 헤더는 유지. `npm run build`, `git diff --check` 통과. 실제 roster 변경은 미검증. |
 
 ---
 
@@ -373,6 +374,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T60 완료. 카카오는 compat `OAuthProvider('oidc.kakao')`를 사용하고 일반 브라우저는 popup, 카카오톡 인앱은 redirect로 인증하며 앱 재로드에서 `getRedirectResult`를 처리한다. 기존 personal users 문서는 `openExistingPersonalUser`로 즉시 입장시키고 신규 카카오·구글 계정은 문서를 만들지 않은 채 이름이 포함된 `social_onboarding` 임시 상태로 보낸다. uid 재검사·중복 실행 방어·Auth flow guard를 적용했다. `npm run build`, `git diff --check` 통과. M10 전제 미완료로 실 카카오 popup/redirect는 미검증이며 다음 순번은 T61 첫 화면 단순화다.
 - T61 완료. 기본 카드는 카카오·구글·기존 회원 로그인·게스트 4항목만 표시하고 성도/교회 관리자 탭은 제거했다. 관리자 로그인과 비밀번호 문의는 하단 미세 링크로 이동했으며, 기존 교회 검색·무소속·개인 수동 로그인/가입은 `기존 회원 로그인` 내부에 그대로 보존했다. 최근 교회 또는 `?church=`가 있으면 기존 form을 우선하고 `변경/다른 방법`으로 소셜 화면에 돌아간다. 카카오톡 인앱은 카카오 버튼을 유지하고 구글만 제한 안내한다. `npm run build`, `git diff --check` 통과. 다음 순번은 T62 신규 3단계 온보딩이다.
 - T62 완료. 소셜 신규 사용자만 이름→소속→플랜/버전의 3단계를 거친다. 이름은 소셜 닉네임을 prefill하고 빈 값을 막는다. 소속은 `CommunityMembershipCard` selection-only 모드로 검색·입장코드·부서/소그룹을 재사용하며, 혼자 읽기는 `unaffiliated_v1` roster를 자동 선택한다. 이전 `나중에 할게요`는 신규 소셜 흐름에서 제거했다. 선택 중에는 Firestore를 쓰지 않고 마지막 버전 선택 시 첫 roster와 personal users를 transaction으로 함께 생성해 중도 이탈 users 고아 문서를 남기지 않는다. provider와 게스트 진도를 반영하고 T52 대시보드로 연결한다. `npm run build`, `git diff --check` 통과. 실제 소셜 계정 생성은 M10/운영 데이터 때문에 미검증이며 다음 순번은 T63 헤더 소속 관리다.
+- T63 완료. personal 성도 헤더 우상단에 `⛪ 기준 단체명 ▾` 버튼을 표시하고 내 단체 관리 시트를 연결했다. 시트는 기존 CommunityMembershipCard를 재사용해 단체 목록·기준 ★·기준으로 보기·탈퇴·최대 3개 추가를 제공한다. `성경 읽는 사람들`이 목록에 없으면 입장코드 없이 돌아가기 버튼으로 roster를 만들고, 첫 소속이면 primaryOrgId도 같은 transaction에서 지정한다. 개인 계정의 기존 본문 하단 공동체 카드는 제거했으며 비개인 교회 계정은 기존 헤더/카드를 유지한다. `npm run build`, `git diff --check` 통과. 실제 roster 추가·전환·탈퇴는 미검증이며 다음 순번은 T64 정식 단체화다.
 
 ---
 
@@ -839,7 +841,7 @@ T55~T59 5개 커밋 검토 완료 — **병합 가능, 코드 수정 없음**. �
     - [🙋 아니요, 혼자 읽어요] — **「성경 읽는 사람들」 자동 소속**: `churches/unaffiliated_v1/roster/{uid}` 생성(departmentId/subgroupId null, 이름+진도 초기값) + `primaryOrgId: 'unaffiliated_v1'`. 입장코드·부서 선택 없음. 안내: "전국에서 혼자 읽는 분들의 모임이에요".
     - 기존 T51의 "나중에 할게요"(소속 0개) 옵션은 신규 흐름에서 제거 — 모든 신규는 소속 1개로 시작. (탈퇴로 0개가 되는 경우의 기존 T52 처리 로직은 유지.)
   - **STEP 3 버전 선택** → 대시보드. users 문서 생성(accountType personal)은 이 온보딩 완료 시점에 단계 데이터와 함께 — 중도 이탈 시 고아 계정 문서가 남지 않게 T38의 지연 생성 패턴 참고. 게스트 진도 이관(T10)도 이 시점 적용.
-- [ ] **T63. 성도 헤더 소속 관리 버튼** (`DashboardHeader` 우상단)
+- [x] **T63. 성도 헤더 소속 관리 버튼** (`DashboardHeader` 우상단)
   - 버튼 라벨 = 현재 기준 단체명: `⛪ {기준 단체명} ▾` (길면 말줄임). 게스트·관리자에는 비노출.
   - 클릭 → 소속 관리 패널(모달/시트):
     - 내 단체 목록 — 기준 단체 ★ 표시, 각 항목 [기준으로 보기](T52 전환 재사용) / [탈퇴](기존 leave 로직, 기준 탈퇴 시 자동 재지정 로직 재사용)
