@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-13 | T60R 무료 카카오 커스텀 토큰 전환 | `supabase/functions/kakao-auth/*`, `src/utils/kakaoAuth.js`, `src/hooks/useAuth.js`, `src/data/constants.js`, `src/components/PlatformAdminView.jsx`, `scripts/validate-kakao-custom-auth.mjs`, `scripts/validate-round11.mjs`, `package.json`, `HANDOFF_CODEX.md` | Supabase 함수의 카카오 코드 교환·프로필 조회·Firebase RS256 커스텀 토큰 발급과 클라이언트 state/취소/URL 정리/로그인을 연결. 레거시 `oidc.kakao` 관리자 표시 호환은 유지. Node 계약 검사, Deno 픽스처 2건, 라운드 11 검사, 빌드, diff 검사 통과. 실연동과 함수 배포는 M10R 사용자 수동 단계로 미실행. |
 | 2026-07-09 | T1 상수 + 가상 교회 생성 버튼 | `src/data/constants.js`, `src/components/PlatformAdminView.jsx`, `src/utils/churchDirectory.js`, `HANDOFF_CODEX.md` | `npm run build` 통과. 수동 M1(플랫폼 관리자 버튼 클릭)은 미실행. |
 | 2026-07-09 | T2 가짜 이메일에 무소속 식별자 확장 | `src/utils/helpers.js`, `src/hooks/useAuth.js`, `HANDOFF_CODEX.md` | `makeUnaffiliatedIdentity(birthdate, phone4)` 추가 및 무소속 이메일 생성 호출부 연결. `npm run build` 통과. |
 | 2026-07-09 | T3 가입/로그인 로직 | `src/hooks/useAuth.js`, `HANDOFF_CODEX.md` | 무소속 가입 시 디렉토리/입장코드 검증 우회, 상수 교회명 사용, `phone4` 저장, 무소속 로그인 구포맷 재시도 제외. `npm run build` 통과. |
@@ -272,6 +273,12 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ## 📮 Codex → Claude 메모
 
 > Codex: 작업을 마치거나 중단할 때 여기에 남겨라 — ① 완료/미완 상태 요약, ② 설계와 다르게 한 것과 이유, ③ 질문/막힌 것, ④ Claude가 리뷰할 때 봐야 할 지점.
+
+2026-07-13 Codex T60R:
+- 완료: T60R-a~c. 기존 Firebase OIDC 실행 코드를 제거하고 Supabase Edge Function 기반 무료 커스텀 토큰 흐름으로 교체했다. `?church=` 등 비카카오 파라미터는 콜백 정리 후에도 보존한다.
+- 환경 설정: 프런트 빌드에는 공개값 `VITE_KAKAO_REST_KEY`와 배포된 함수의 전체 주소 `VITE_KAKAO_AUTH_URL`이 필요하다. 인수인계 문서에 Supabase 프로젝트 ref/함수 URL이 없어 실제 값은 M10R에서 사용자가 정해야 한다.
+- 검증: `npm run test:kakao-auth`, `deno test supabase/functions/kakao-auth/core_test.ts`(2건), `node scripts/validate-round11.mjs`, `npm run build`, `git diff --check` 통과. 시크릿·함수 배포·실 카카오 계정 연동은 M10R 전제라 실행하지 않았다.
+- 리뷰 포인트: 신규 계정은 `authProvider: 'kakao.com'`으로 저장한다. 관리자 화면은 신규값과 기존 `oidc.kakao` 문서 모두 카카오로 표시하도록 호환 처리했다. 다음 코드 작업은 T69 모바일 헤더 칩 줄바꿈이다.
 
 2026-07-09 Codex:
 - 완료: T1~T11 체크리스트 전체 구현 및 각 작업 단위 커밋 완료. 모든 커밋 전 `npm run build` 통과.
@@ -1046,16 +1053,16 @@ T60~T66 7개 커밋 검토 완료 — **조건부: 블로커 2건 수정 후 병
 
 ### T60R 체크리스트
 
-- [ ] **T60R-a. Supabase Edge Function** — 신규 `supabase/functions/kakao-auth/index.ts` (Deno)
+- [x] **T60R-a. Supabase Edge Function** — 신규 `supabase/functions/kakao-auth/index.ts` (Deno)
   - 입력 `{ code, redirectUri }`. ① `POST https://kauth.kakao.com/oauth/token` (grant_type=authorization_code, client_id=KAKAO_REST_KEY, client_secret=KAKAO_CLIENT_SECRET, redirect_uri, code) ② `GET https://kapi.kakao.com/v2/user/me` (Bearer access_token) → `id`(회원번호), `kakao_account.profile.nickname`, `kakao_account.email`(있으면).
   - ③ 커스텀 토큰: firebase-admin은 Deno 미지원 — **`jose` 라이브러리로 RS256 JWT 직접 서명**. 클레임: `{ iss: client_email, sub: client_email, aud: "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit", iat, exp: iat+3600, uid: "kakao:"+id }`. 서명키는 서비스 계정 JSON의 private_key.
   - 시크릿은 전부 Supabase secrets 환경변수(`KAKAO_REST_KEY`, `KAKAO_CLIENT_SECRET`, `FIREBASE_SERVICE_ACCOUNT` JSON 문자열)로만 — **코드·저장소에 커밋 절대 금지**.
   - CORS: `https://www.bible114.net`, `https://bible114.net`, `http://localhost:5173`(및 5177)만 허용. 실패 시 상태코드+한국어 오류 메시지 JSON.
-- [ ] **T60R-b. 클라이언트 교체** (`useAuth.js` 등 — 기존 `oidc.kakao` 코드 제거)
+- [x] **T60R-b. 클라이언트 교체** (`useAuth.js` 등 — 기존 `oidc.kakao` 코드 제거)
   - 시작: 랜덤 `state`를 sessionStorage에 저장 후 `location.href = https://kauth.kakao.com/oauth/authorize?client_id={REST_KEY}&redirect_uri={origin}/&response_type=code&state={state}` (REST_KEY는 공개값이라 constants.js에 둬도 됨).
   - 복귀 처리: 앱 부트 시 URL에 `code`+`state`가 있으면 → state 일치 검증(불일치 시 무시+정리) → 함수 호출 → `signInWithCustomToken` → `history.replaceState`로 URL의 code/state 제거 → 기존 T60 후속(문서 조회→입장 또는 온보딩). 실패·사용자 취소(error=access_denied)는 첫 화면 + 안내 문구.
   - in-flight 가드·중복 처리 방지(복귀 처리 1회성 — sessionStorage 플래그), `?church=` 전용 링크 파라미터와의 충돌 없는지 확인.
-- [ ] **T60R-c. 검증** — 함수 단위 픽스처(코드 교환·유저정보·JWT 클레임 모킹), 클라이언트 state 검증·URL 정리·취소 흐름 픽스처, 빌드. 실連동은 M10R 완료 후 가이드 모드로.
+- [x] **T60R-c. 검증** — 함수 단위 픽스처(코드 교환·유저정보·JWT 클레임 모킹), 클라이언트 state 검증·URL 정리·취소 흐름 픽스처, 빌드. 실連동은 M10R 완료 후 가이드 모드로.
 
 ### M10 개정 (M10R — 사용자 수동, Codex가 가이드 모드로 안내)
 

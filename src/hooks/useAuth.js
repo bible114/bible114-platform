@@ -9,6 +9,17 @@ import {
     saveLastChurch,
 } from '../utils/churchDirectory';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
+import {
+    KAKAO_RETURNING_KEY,
+    KAKAO_STATE_KEY,
+    buildKakaoAuthorizeUrl,
+    clearKakaoCallbackUrl,
+    createKakaoState,
+    exchangeKakaoCode,
+    getKakaoRedirectUri,
+    isValidKakaoState,
+    readKakaoCallback,
+} from '../utils/kakaoAuth';
 import { getGuestState, saveGuestState } from '../utils/guestStorage';
 import { writeMemberCredentials, migrateCredentialsIfNeeded } from '../utils/memberCredentials';
 import { beginInteractiveAuthFlow, endInteractiveAuthFlow } from '../utils/authFlowGuard';
@@ -38,6 +49,7 @@ export const useAuth = ({
     const googleAdminSignupSubmittingRef = useRef(null);
     const personalSignupRef = useRef(null);
     const kakaoStartRef = useRef(null);
+    const socialProviderRef = useRef(null);
     const passwordPersonalSignupRef = useRef(false);
 
     const beginGoogleAdminSignupFlow = () => {
@@ -187,13 +199,14 @@ export const useAuth = ({
         setView('dashboard');
     };
 
-    const openSocialOnboarding = (firebaseUser, provider) => {
+    const openSocialOnboarding = (firebaseUser, provider, profile = {}) => {
         if (!firebaseUser?.uid || auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
+        socialProviderRef.current = provider;
         setCurrentUser(null);
         setTempUser({
             uid: firebaseUser.uid,
-            email: firebaseUser.email || null,
-            name: firebaseUser.displayName || '',
+            email: profile.email || firebaseUser.email || null,
+            name: profile.nickname || firebaseUser.displayName || '',
             role: 'member',
             accountType: 'personal',
             socialProvider: provider,
@@ -202,7 +215,7 @@ export const useAuth = ({
         setView('social_onboarding');
     };
 
-    const finishSocialStart = async (cred, provider) => {
+    const finishSocialStart = async (cred, provider, profile = {}) => {
         const firebaseUser = cred?.user;
         if (!firebaseUser?.uid || auth.currentUser?.uid !== firebaseUser.uid) throw new Error('INVALID_SOCIAL_PROFILE');
         const doc = await db.collection('users').doc(firebaseUser.uid).get();
@@ -211,7 +224,7 @@ export const useAuth = ({
             await openExistingPersonalUser(firebaseUser, doc);
             return;
         }
-        openSocialOnboarding(firebaseUser, provider);
+        openSocialOnboarding(firebaseUser, provider, profile);
     };
 
     const handlePersonalSignup = async ({ name, birthdate, phone4, password }) => {
@@ -311,23 +324,18 @@ export const useAuth = ({
             const flowName = 'kakaoPersonalStart';
             beginInteractiveAuthFlow(flowName);
             try {
-                await authReady;
-                const provider = new firebase.auth.OAuthProvider('oidc.kakao');
-                if (isKakaoTalkBrowser()) {
-                    await auth.signInWithRedirect(provider);
-                    return;
-                }
-                const cred = await auth.signInWithPopup(provider);
-                await finishSocialStart(cred, 'oidc.kakao');
+                const state = createKakaoState();
+                sessionStorage.setItem(KAKAO_STATE_KEY, state);
+                sessionStorage.setItem(KAKAO_RETURNING_KEY, 'pending');
+                window.location.assign(buildKakaoAuthorizeUrl({ state }));
             } catch (error) {
-                if (!['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(error?.code)) {
-                    console.error('카카오 로그인 실패:', error);
-                    if (error?.code === 'auth/operation-not-allowed') setErrorMsg('카카오 로그인이 아직 활성화되지 않았습니다. 관리자에게 문의하세요.');
-                    else if (error?.code === 'auth/popup-blocked') setErrorMsg('팝업이 차단되었습니다. 브라우저 설정을 확인해주세요.');
-                    else setErrorMsg('카카오 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.');
-                }
-            } finally {
+                console.error('카카오 로그인 시작 실패:', error);
+                sessionStorage.removeItem(KAKAO_STATE_KEY);
+                sessionStorage.removeItem(KAKAO_RETURNING_KEY);
+                if (error?.message === 'KAKAO_REST_KEY_MISSING') setErrorMsg('카카오 로그인 설정이 아직 완료되지 않았습니다. 관리자에게 문의하세요.');
+                else setErrorMsg('카카오 로그인을 시작하지 못했습니다. 잠시 후 다시 시도해주세요.');
                 endInteractiveAuthFlow(flowName);
+            } finally {
                 kakaoStartRef.current = null;
             }
         })();
@@ -340,7 +348,7 @@ export const useAuth = ({
         if (!socialUser?.uid || !name?.trim() || !organization?.orgId || !planId) throw new Error('온보딩 정보를 확인할 수 없습니다.');
         const userRef = db.collection('users').doc(socialUser.uid);
         const rosterRef = db.collection('churches').doc(organization.orgId).collection('roster').doc(socialUser.uid);
-        const providerId = (socialUser.providerData || [])[0]?.providerId || 'social';
+        const providerId = (socialUser.providerData || [])[0]?.providerId || socialProviderRef.current || 'social';
         const newUser = {
             ...buildPersonalUser({ name: name.trim(), email: socialUser.email || null, google: true }),
             planId,
@@ -384,21 +392,46 @@ export const useAuth = ({
 
     useEffect(() => {
         let alive = true;
-        authReady.then(() => auth.getRedirectResult()).then(async cred => {
-            if (!alive || !cred?.user) return;
-            beginInteractiveAuthFlow('kakaoRedirectResult');
+        const callback = readKakaoCallback();
+        if (!callback.code && !callback.error) return () => { alive = false; };
+        const expectedState = sessionStorage.getItem(KAKAO_STATE_KEY);
+        const returnStatus = sessionStorage.getItem(KAKAO_RETURNING_KEY);
+        clearKakaoCallbackUrl();
+        if (callback.error) {
+            sessionStorage.removeItem(KAKAO_STATE_KEY);
+            sessionStorage.removeItem(KAKAO_RETURNING_KEY);
+            if (callback.error === 'access_denied') setErrorMsg('카카오 로그인이 취소되었습니다.');
+            else setErrorMsg('카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요.');
+            return () => { alive = false; };
+        }
+        if (!isValidKakaoState(callback.state, expectedState) || returnStatus === 'processing') {
+            sessionStorage.removeItem(KAKAO_STATE_KEY);
+            sessionStorage.removeItem(KAKAO_RETURNING_KEY);
+            setErrorMsg('카카오 로그인 요청을 확인할 수 없습니다. 다시 시도해주세요.');
+            return () => { alive = false; };
+        }
+        sessionStorage.setItem(KAKAO_RETURNING_KEY, 'processing');
+        beginInteractiveAuthFlow('kakaoCustomTokenResult');
+        authReady.then(async () => {
+            const profile = await exchangeKakaoCode({ code: callback.code, redirectUri: getKakaoRedirectUri() });
+            const cred = await auth.signInWithCustomToken(profile.token);
+            if (!alive) return;
             try {
-                await finishSocialStart(cred, 'oidc.kakao');
+                await finishSocialStart(cred, 'kakao.com', profile);
             } catch (error) {
-                console.error('카카오 redirect 처리 실패:', error);
+                console.error('카카오 커스텀 토큰 처리 실패:', error);
                 if (alive) setErrorMsg('카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요.');
-            } finally {
-                endInteractiveAuthFlow('kakaoRedirectResult');
             }
         }).catch(error => {
             if (!alive || !error) return;
-            console.error('카카오 redirect 결과 확인 실패:', error);
-            setErrorMsg('카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요.');
+            console.error('카카오 인증 코드 처리 실패:', error);
+            if (error?.message === 'KAKAO_AUTH_URL_MISSING') setErrorMsg('카카오 로그인 서버 설정이 아직 완료되지 않았습니다. 관리자에게 문의하세요.');
+            else setErrorMsg('카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요.');
+            auth.signOut().catch(() => {});
+        }).finally(() => {
+            sessionStorage.removeItem(KAKAO_STATE_KEY);
+            sessionStorage.removeItem(KAKAO_RETURNING_KEY);
+            endInteractiveAuthFlow('kakaoCustomTokenResult');
         });
         return () => { alive = false; };
     }, []);
