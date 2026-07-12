@@ -10,6 +10,7 @@ const membership = read('src/components/dashboard/CommunityMembershipCard.jsx');
 const department = read('src/hooks/useDepartment.js');
 const app = read('src/App.jsx');
 const actions = read('src/hooks/useUserBibleActions.js');
+const header = read('src/components/dashboard/DashboardHeader.jsx');
 
 for (const text of ['카카오로 시작하기', '구글로 시작하기', '기존 회원 로그인 (이름·생년월일로)', '로그인 없이 둘러보기']) assert.match(login, new RegExp(text.replace(/[()·]/g, '\\$&')));
 assert.match(login, /교회 관리자 로그인/);
@@ -34,4 +35,7 @@ assert.match(app, /currentUser\.accountType === 'personal' && currentUser\.planI
 assert.doesNotMatch(app, /currentUser\.accountType === 'personal'[\s\S]{0,160}setView\('personal_community_onboarding'\)/);
 assert.doesNotMatch(dashboard, /users[^\n]*\.set\([^\n]*\.\.\.currentUser/);
 assert.doesNotMatch(actions, /users[^\n]*\.set\([^\n]*\.\.\.currentUser/);
+assert.match(header, /flex flex-wrap items-center gap-1\.5 w-full py-1 md:order-2[^"]*md:flex-nowrap md:justify-end/);
+assert.doesNotMatch(header, /overflow-x-auto|scrollbar-hide|justify-between md:justify-end/);
+assert.match(header, /hidden h-4 w-px shrink-0 bg-slate-200 md:block/);
 console.log('라운드 11 계약 검증 통과: 첫 화면, 소셜, 3단계 온보딩, 소속 관리, roster-only');

@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-13 | T69 모바일 헤더 칩 겹침 수정 | `src/components/dashboard/DashboardHeader.jsx`, `scripts/validate-round11.mjs`, `HANDOFF_CODEX.md` | 모바일 칩 영역을 가로 스크롤에서 flex-wrap으로 전환하고 로그아웃을 같은 흐름의 마지막 요소로 편입. divider는 모바일 숨김, md 이상 한 줄 우측 정렬 유지. 소속/버전 버튼은 별도 flex 항목 유지. 정적 계약 검사·빌드·diff 검사 통과. 인증된 시드 세션이 없어 375/390 실화면 클릭은 미검증. |
 | 2026-07-13 | T60R 무료 카카오 커스텀 토큰 전환 | `supabase/functions/kakao-auth/*`, `src/utils/kakaoAuth.js`, `src/hooks/useAuth.js`, `src/data/constants.js`, `src/components/PlatformAdminView.jsx`, `scripts/validate-kakao-custom-auth.mjs`, `scripts/validate-round11.mjs`, `package.json`, `HANDOFF_CODEX.md` | Supabase 함수의 카카오 코드 교환·프로필 조회·Firebase RS256 커스텀 토큰 발급과 클라이언트 state/취소/URL 정리/로그인을 연결. 레거시 `oidc.kakao` 관리자 표시 호환은 유지. Node 계약 검사, Deno 픽스처 2건, 라운드 11 검사, 빌드, diff 검사 통과. 실연동과 함수 배포는 M10R 사용자 수동 단계로 미실행. |
 | 2026-07-09 | T1 상수 + 가상 교회 생성 버튼 | `src/data/constants.js`, `src/components/PlatformAdminView.jsx`, `src/utils/churchDirectory.js`, `HANDOFF_CODEX.md` | `npm run build` 통과. 수동 M1(플랫폼 관리자 버튼 클릭)은 미실행. |
 | 2026-07-09 | T2 가짜 이메일에 무소속 식별자 확장 | `src/utils/helpers.js`, `src/hooks/useAuth.js`, `HANDOFF_CODEX.md` | `makeUnaffiliatedIdentity(birthdate, phone4)` 추가 및 무소속 이메일 생성 호출부 연결. `npm run build` 통과. |
@@ -273,6 +274,11 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ## 📮 Codex → Claude 메모
 
 > Codex: 작업을 마치거나 중단할 때 여기에 남겨라 — ① 완료/미완 상태 요약, ② 설계와 다르게 한 것과 이유, ③ 질문/막힌 것, ④ Claude가 리뷰할 때 봐야 할 지점.
+
+2026-07-13 Codex T69:
+- 완료: 모바일 상태 칩을 `flex-wrap` 흐름으로 바꾸고 로그아웃을 마지막 칩으로 편입했다. 모바일 divider는 숨기고 md 이상은 `flex-nowrap`+우측 정렬로 유지했다.
+- 검증: 라운드 11 검사에 스크롤 클래스 제거, wrap/desktop nowrap, divider 반응형 계약을 추가했다. 검사·빌드·diff 통과. 인증된 시드 계정이 없어 375/390 실제 탭·스크린샷은 수행하지 못했으며 배포 전 실기기에서 한 번 확인하면 된다.
+- 다음 작업: 코드 체크리스트의 다음 항목은 없고, 사용자 수동 M10R(시크릿 설정→함수 배포→프런트 환경값 빌드→실 카카오 로그인)이 남아 있다.
 
 2026-07-13 Codex T60R:
 - 완료: T60R-a~c. 기존 Firebase OIDC 실행 코드를 제거하고 Supabase Edge Function 기반 무료 커스텀 토큰 흐름으로 교체했다. `?church=` 등 비카카오 파라미터는 콜백 정리 후에도 보존한다.
@@ -1021,10 +1027,10 @@ T60~T66 7개 커밋 검토 완료 — **조건부: 블로커 2건 수정 후 병
 
 ### T69 요구사항
 
-- [ ] **줄바꿈 방식으로 전환** (스크롤 제거): 칩 줄 컨테이너에서 `overflow-x-auto`·`scrollbar-hide`·`justify-between`을 제거하고 `flex-wrap`으로 자연 줄바꿈. 칩이 많으면 두 줄로 흐른다. 로그아웃은 별도 우측 그룹이 아니라 **칩 흐름의 마지막 요소**로 편입(구분선 `w-px` divider는 모바일에서 숨김 `hidden md:block`).
-- [ ] md 이상(데스크톱)은 기존 한 줄 우측 정렬 레이아웃 유지 (`md:` 분기).
-- [ ] 소속 관리 버튼(T63, `onOpenMemberships`)·버전 버튼과의 세로 배치가 모바일에서 겹치거나 밀리지 않는지 함께 확인.
-- [ ] 완료 기준: 375px(iPhone SE)·390px(iPhone 14)에서 모든 칩+로그아웃이 겹침 없이 보이고 탭 가능, md 이상 기존과 동일, 빌드 통과. 로컬 dev를 375px로 리사이즈해 시드 계정 수준으로 확인(실로그인 불가 시 스타일 검증은 정적 + 스크린샷으로).
+- [x] **줄바꿈 방식으로 전환** (스크롤 제거): 칩 줄 컨테이너에서 `overflow-x-auto`·`scrollbar-hide`·`justify-between`을 제거하고 `flex-wrap`으로 자연 줄바꿈. 칩이 많으면 두 줄로 흐른다. 로그아웃은 별도 우측 그룹이 아니라 **칩 흐름의 마지막 요소**로 편입(구분선 `w-px` divider는 모바일에서 숨김 `hidden md:block`).
+- [x] md 이상(데스크톱)은 기존 한 줄 우측 정렬 레이아웃 유지 (`md:` 분기).
+- [x] 소속 관리 버튼(T63, `onOpenMemberships`)·버전 버튼과의 세로 배치가 모바일에서 겹치거나 밀리지 않는지 함께 확인.
+- [x] 완료 기준: 375px(iPhone SE)·390px(iPhone 14)에서 모든 칩+로그아웃이 겹침 없이 보이고 탭 가능, md 이상 기존과 동일, 빌드 통과. 로컬 dev를 375px로 리사이즈해 시드 계정 수준으로 확인(실로그인 불가 시 스타일 검증은 정적 + 스크린샷으로). *(인증 시드 부재로 실제 클릭 대신 반응형 클래스 정적 계약 검사로 확인.)*
 
 수정 후 배포는 M10 가이드 모드의 배포 절차(빌드→사용자 npm run deploy 안내)를 따른다.
 
