@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: ① "🔁 라운드 12" T69(모바일 헤더 칩 겹침 — 코드 수정) ② 병행: "🎓 M10 가이드 모드"(사용자 콘솔 설정 안내).** 코드 작업은 T69만 허용. 라운드 1~11 체크리스트는 전부 완료·리뷰 통과됨.
+> **현재 활성 작업: ① "🔁 라운드 11-보완" T60R(카카오 무료 전환 — 기존 OIDC 코드 교체) ② "🔁 라운드 12" T69(모바일 헤더 칩 겹침) ③ 병행: M10R 가이드.** 라운드 1~11 체크리스트는 완료됐으나 T60의 OIDC 방식은 T60R로 대체된다.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -1020,6 +1020,48 @@ T60~T66 7개 커밋 검토 완료 — **조건부: 블로커 2건 수정 후 병
 - [ ] 완료 기준: 375px(iPhone SE)·390px(iPhone 14)에서 모든 칩+로그아웃이 겹침 없이 보이고 탭 가능, md 이상 기존과 동일, 빌드 통과. 로컬 dev를 375px로 리사이즈해 시드 계정 수준으로 확인(실로그인 불가 시 스타일 검증은 정적 + 스크린샷으로).
 
 수정 후 배포는 M10 가이드 모드의 배포 절차(빌드→사용자 npm run deploy 안내)를 따른다.
+
+## 🔁 라운드 11-보완 — 카카오 로그인 무료(커스텀 토큰) 전환 (2026-07-13 사용자 확정, T60R)
+
+> 배경: OIDC 방식은 Identity Platform Tier 2라 **월 50 MAU 초과 시 유료**(사용자가 무료 확정 요구).
+> 커스텀 토큰 방식은 Tier 1(월 5만 MAU 무료, 기본 Firebase는 과금 자체 없음)이라 완전 무료.
+> **기존 T60의 OIDC(`oidc.kakao`) 코드는 이 방식으로 교체**한다. 구글 로그인·온보딩(T61~T66)은 그대로.
+
+### 아키텍처 (설계 확정 — 임의 변경 금지)
+
+```
+[클라이언트] 카카오 버튼 → kauth.kakao.com/oauth/authorize 로 페이지 이동 (SDK 불필요)
+    → redirect_uri(사이트 루트)로 ?code=… 붙어 복귀
+[클라이언트] code + state 검증 → Supabase Edge Function 'kakao-auth' 호출
+[함수] ① code→토큰 교환(kauth/oauth/token, client_secret 사용)
+       ② kapi.kakao.com/v2/user/me 로 카카오 회원번호·닉네임(·이메일) 획득
+       ③ Firebase 서비스 계정으로 커스텀 토큰 서명 (uid = "kakao:{회원번호}")
+       ④ { token, nickname, email } 반환
+[클라이언트] auth.signInWithCustomToken(token) → 기존 흐름(문서 있으면 입장, 없으면 3단계 온보딩)
+```
+
+- **redirect 방식의 부수 이점**: 카카오톡 인앱 브라우저에서도 그대로 동작 — 기존 인앱 분기·팝업 처리 불필요(단순해짐).
+- `sign_in_provider`가 'custom'이라 익명이 아님 → firestore.rules `isRealUser()` 그대로 통과, **규칙 변경 불필요**.
+- uid가 `kakao:{회원번호}`로 영구 고정 → 재로그인 시 동일 계정 자동 연결.
+
+### T60R 체크리스트
+
+- [ ] **T60R-a. Supabase Edge Function** — 신규 `supabase/functions/kakao-auth/index.ts` (Deno)
+  - 입력 `{ code, redirectUri }`. ① `POST https://kauth.kakao.com/oauth/token` (grant_type=authorization_code, client_id=KAKAO_REST_KEY, client_secret=KAKAO_CLIENT_SECRET, redirect_uri, code) ② `GET https://kapi.kakao.com/v2/user/me` (Bearer access_token) → `id`(회원번호), `kakao_account.profile.nickname`, `kakao_account.email`(있으면).
+  - ③ 커스텀 토큰: firebase-admin은 Deno 미지원 — **`jose` 라이브러리로 RS256 JWT 직접 서명**. 클레임: `{ iss: client_email, sub: client_email, aud: "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit", iat, exp: iat+3600, uid: "kakao:"+id }`. 서명키는 서비스 계정 JSON의 private_key.
+  - 시크릿은 전부 Supabase secrets 환경변수(`KAKAO_REST_KEY`, `KAKAO_CLIENT_SECRET`, `FIREBASE_SERVICE_ACCOUNT` JSON 문자열)로만 — **코드·저장소에 커밋 절대 금지**.
+  - CORS: `https://www.bible114.net`, `https://bible114.net`, `http://localhost:5173`(및 5177)만 허용. 실패 시 상태코드+한국어 오류 메시지 JSON.
+- [ ] **T60R-b. 클라이언트 교체** (`useAuth.js` 등 — 기존 `oidc.kakao` 코드 제거)
+  - 시작: 랜덤 `state`를 sessionStorage에 저장 후 `location.href = https://kauth.kakao.com/oauth/authorize?client_id={REST_KEY}&redirect_uri={origin}/&response_type=code&state={state}` (REST_KEY는 공개값이라 constants.js에 둬도 됨).
+  - 복귀 처리: 앱 부트 시 URL에 `code`+`state`가 있으면 → state 일치 검증(불일치 시 무시+정리) → 함수 호출 → `signInWithCustomToken` → `history.replaceState`로 URL의 code/state 제거 → 기존 T60 후속(문서 조회→입장 또는 온보딩). 실패·사용자 취소(error=access_denied)는 첫 화면 + 안내 문구.
+  - in-flight 가드·중복 처리 방지(복귀 처리 1회성 — sessionStorage 플래그), `?church=` 전용 링크 파라미터와의 충돌 없는지 확인.
+- [ ] **T60R-c. 검증** — 함수 단위 픽스처(코드 교환·유저정보·JWT 클레임 모킹), 클라이언트 state 검증·URL 정리·취소 흐름 픽스처, 빌드. 실連동은 M10R 완료 후 가이드 모드로.
+
+### M10 개정 (M10R — 사용자 수동, Codex가 가이드 모드로 안내)
+
+1. 카카오 개발자 콘솔: 앱 생성 → Web 플랫폼 도메인 등록 → 카카오 로그인 활성화 → **Redirect URI = `https://www.bible114.net/` 와 `http://localhost:5173/`** → 동의항목 닉네임 필수(이메일 선택) → 보안 Client Secret 생성·활성화. (**OpenID Connect 활성화 불필요**, Firebase 콘솔 OIDC 공급자 등록도 **불필요** — 기존 M10의 해당 단계 폐기.)
+2. Firebase 콘솔 → 프로젝트 설정 → 서비스 계정 → **새 비공개 키 생성**(JSON 다운로드 — 이 파일은 절대 저장소에 넣지 않기).
+3. Supabase(기존 프로젝트, 노션 동기화 쓰던 곳): `supabase login` → `supabase secrets set KAKAO_REST_KEY=… KAKAO_CLIENT_SECRET=… FIREBASE_SERVICE_ACCOUNT="$(cat 키.json)"` → `supabase functions deploy kakao-auth --no-verify-jwt`. (명령은 Codex가 복붙용으로 안내.)
 
 ## 📮 Claude → Codex 메모
 
