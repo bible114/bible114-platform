@@ -105,6 +105,7 @@ const LoginView = ({
     onMemberSignup,
     onPersonalSignup,
     onGooglePersonalSignup,
+    onKakaoStart,
     onChurchAdminSignup,
     onGoogleAdminSignupStart,
     onGoogleAdminSignupCancel,
@@ -178,6 +179,7 @@ const LoginView = ({
     const [pPw, setPPw] = useState('');
     const [pPwConfirm, setPPwConfirm] = useState('');
     const [googlePersonalLoading, setGooglePersonalLoading] = useState(false);
+    const [kakaoLoading, setKakaoLoading] = useState(false);
 
     // Admin signup state
     const [aName, setAName] = useState('');
@@ -442,6 +444,12 @@ const LoginView = ({
         finally { setGooglePersonalLoading(false); setLoading(false); }
     };
 
+    const handleKakaoStart = async () => {
+        clearError(); setLoading(true); setKakaoLoading(true);
+        try { await onKakaoStart(); }
+        finally { setKakaoLoading(false); setLoading(false); }
+    };
+
     const handleGuestLogin = async () => {
         setLoading(true);
         clearError();
@@ -532,7 +540,7 @@ const LoginView = ({
     };
 
     // ── 첫 화면 입구: "우리 교회와 함께 / 혼자 읽어요" 두 카드 + 게스트 ───────
-    const renderEntryChoice = () => (
+    const renderLegacyEntryChoice = () => (
         <div className="space-y-3.5">
             <button type="button" onClick={() => { setActiveTab('personalSignup'); setPersonalMethod('choice'); clearError(); }} className="w-full rounded-xl border border-blue-200 bg-blue-50 p-4 text-left transition-colors hover:border-blue-400">
                 <p className="text-[16px] font-bold text-blue-950">시작하기 · 개인 계정 로그인 →</p>
@@ -569,12 +577,37 @@ const LoginView = ({
         </div>
     );
 
+    const renderEntryChoice = () => (
+        <div className="space-y-3.5">
+            <button type="button" onClick={handleKakaoStart} disabled={loading} className="w-full rounded-xl bg-[#FEE500] px-4 py-4 text-[15px] font-bold text-[#191919] shadow-sm disabled:opacity-50">
+                {kakaoLoading ? '카카오 계정 확인 중...' : '💬 카카오로 시작하기'}
+            </button>
+            {isKakaoTalkBrowser ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12px] text-amber-800">구글 로그인은 다른 브라우저에서 이용해주세요. 카카오 로그인은 이 화면에서 사용할 수 있어요.</p>
+            ) : (
+                <button type="button" onClick={handleGooglePersonalSignup} disabled={loading} className="w-full rounded-xl border border-hairline bg-white px-4 py-3.5 text-sm font-bold text-ink disabled:opacity-50">
+                    {googlePersonalLoading ? '구글 계정 확인 중...' : 'G 구글로 시작하기'}
+                </button>
+            )}
+            <button type="button" onClick={() => { setMemberStep('legacy'); clearError(); }} className="w-full py-2 text-sm font-semibold text-ink/65 underline underline-offset-4">기존 회원 로그인 (이름·생년월일로)</button>
+            <button type="button" onClick={handleGuestLogin} disabled={loading} className="w-full rounded-full border border-hairline bg-cream-card py-3 text-sm font-semibold text-ink disabled:opacity-50">로그인 없이 둘러보기</button>
+            {errorMsg && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-center text-xs text-red-500">{errorMsg}</p>}
+        </div>
+    );
+
     // ── Render login card content ────────────────────────────────────────────
     const renderCard = () => {
         // ── Member Entry Choice (첫 화면) ──
-        if (activeTab === 'member' && (memberStep === 'entry' || !loginChurchId)) {
+        if (activeTab === 'member' && memberStep === 'entry') {
             return renderEntryChoice();
         }
+        if (activeTab === 'member' && memberStep === 'legacy' && !loginChurchId) return (
+            <div className="space-y-3.5">
+                <button type="button" onClick={() => { setMemberStep('entry'); clearError(); }} className="text-[12px] text-ink/50">← 다른 방법으로 로그인</button>
+                {renderLegacyEntryChoice()}
+                <button type="button" onClick={() => { setActiveTab('personalSignup'); setPersonalMethod('manual'); clearError(); }} className="w-full py-2 text-xs font-semibold text-blue-600 underline underline-offset-4">소셜 계정이 없어요 → 이름으로 가입</button>
+            </div>
+        );
 
         if (activeTab === 'personalSignup') return (
             <div className="space-y-3.5">
@@ -854,9 +887,9 @@ const LoginView = ({
     };
 
     const isSignupTab = activeTab === 'memberSignup' || activeTab === 'adminSignup' || activeTab === 'personalSignup';
-    const isEntryStep = activeTab === 'member' && (memberStep === 'entry' || !loginChurchId);
+    const isEntryStep = activeTab === 'member' && memberStep === 'entry';
     const cardTitle = {
-        member: isEntryStep ? '어떻게 읽으실래요?' : '로그인',
+        member: isEntryStep ? '바로 시작하세요' : '기존 회원 로그인',
         admin: '관리자 로그인',
         memberSignup: '성도 회원가입',
         adminSignup: '교회 등록',
@@ -970,36 +1003,18 @@ const LoginView = ({
                         <h2 className="font-serif text-[26px] font-semibold text-ink tracking-tight">{cardTitle}</h2>
                     </div>
 
-                    {/* Role tabs (only for login tabs) */}
-                    {!isSignupTab && (
-                        <div className="grid grid-cols-2 gap-2 bg-ink/[0.06] p-1 rounded-[10px] mb-6">
-                            {[
-                                { key: 'member', title: '성도', sub: '오늘의 본문 읽기' },
-                                { key: 'admin', title: '교회 관리자', sub: '구역·진행률 관리' },
-                            ].map(tab => {
-                                const active = activeTab === tab.key;
-                                return (
-                                    <button
-                                        key={tab.key}
-                                        type="button"
-                                        onClick={() => { setActiveTab(tab.key); clearError(); }}
-                                        className={`text-left px-3.5 py-2.5 rounded-[7px] transition-all ${active ? 'bg-cream shadow-sm' : 'hover:bg-ink/5'}`}
-                                    >
-                                        <div className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
-                                            {tab.title}
-                                            {active && tab.key === 'admin' && (
-                                                <span className="text-[9px] font-bold text-cream bg-accent px-1.5 py-0.5 rounded tracking-wide">ADMIN</span>
-                                            )}
-                                        </div>
-                                        <div className="text-[11px] text-ink/55 mt-0.5">{tab.sub}</div>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
-
                     {/* Form content */}
                     {renderCard()}
+                    {!isSignupTab && activeTab === 'member' && (
+                        <div className="mt-5 border-t border-hairline pt-4 text-center text-[11px] text-ink/45">
+                            <button type="button" onClick={() => { setActiveTab('admin'); clearError(); }} className="underline underline-offset-3">교회 관리자 로그인</button>
+                            <span className="mx-2">·</span>
+                            <button type="button" onClick={() => setShowAdminContact(true)} className="underline underline-offset-3">비밀번호 문의</button>
+                        </div>
+                    )}
+                    {!isSignupTab && activeTab === 'admin' && (
+                        <button type="button" onClick={() => { setActiveTab('member'); setMemberStep('entry'); clearError(); }} className="mt-5 w-full border-t border-hairline pt-4 text-center text-[11px] text-ink/45 underline underline-offset-3">다른 방법으로 로그인</button>
+                    )}
                 </div>
 
             </div>
