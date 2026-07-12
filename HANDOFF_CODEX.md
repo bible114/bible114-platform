@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: "🔁 라운드 11 (2026-07-12 개정판)" 체크리스트 (T60~T66, 소셜 시작 + 3단계 온보딩 + 소속 관리).** 라운드 1~10은 전부 완료·리뷰 통과됨. 개정 전 라운드 11(T60~T64)을 본 세션은 개정판 기준으로 재확인할 것.
+> **현재 활성 작업: "🔧 라운드 11 리뷰 수정 (T67~T68)"** — 라운드 11(T60~T66) 구현은 완료됐으나 Claude 리뷰에서 블로커 2건이 나왔다. "🔎 Claude 리뷰 결과 — 라운드 11" 섹션의 수정 체크리스트를 순서대로 처리할 것. 라운드 1~10은 전부 완료·리뷰 통과됨.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -875,6 +875,42 @@ T55~T59 5개 커밋 검토 완료 — **병합 가능, 코드 수정 없음**. �
 7. **Firebase 콘솔** → Authentication → Sign-in method → 새 공급자 → **OpenID Connect**: 이름 `kakao`(공급자 ID `oidc.kakao` 확인), 발급자 `https://kauth.kakao.com`, 클라이언트 ID = 카카오 **REST API 키**, 클라이언트 보안 비밀번호 = 5번의 Client Secret.
 
 **라운드 11 보류(착수 금지)**: 기존 교인·구 무소속 계정에 카카오/구글 연결(계정 통합 — 라운드 12 후보), 카카오싱크(간편가입 약관 동의), 휴대폰 번호 인증, 구 무소속 회원의 roster 수렴.
+---
+
+## 🔎 Claude 리뷰 결과 — 라운드 11 (2026-07-12)
+
+T60~T66 7개 커밋 검토 완료 — **조건부: 블로커 2건 수정 후 병합 가능.** 둘 다 개별 커밋의 코드가 아니라 통합 지점 문제라 `validate-round11.mjs`(문자열 존재 검사)와 빌드는 통과한다. 실기기 검증(M10) 전에 반드시 고칠 것.
+
+### 🚫 블로커 1 — DashboardView가 매핑 전 사용자를 받아 T63·T64가 렌더되지 않음
+
+- 개인 계정 users 문서의 `churchId`는 항상 null이고, 기준 단체 매핑은 App.jsx의 `dashboardUser` useMemo(50행 부근)가 담당한다. 그런데 `dashboardUser`는 `useBibleLogic`·`PlanSelectionView`에만 전달되고 **DashboardView는 원본 `currentUser`를 받는다** (App.jsx 711행 부근).
+- 결과: DashboardView 내부의 `isReadingPeople`(`churchId === UNAFFILIATED_CHURCH_ID`)이 개인 계정에서 항상 false → **T64 평면 랭킹 섹션이 절대 표시되지 않는다.** `hasCommunity = Boolean(currentUser.churchId)`도 false → RaceMap·공지·상점·랭킹이 모든 개인 계정에서 숨겨진다(T64의 "공지·상점은 기존 경로 그대로" 위반). DashboardHeader의 `currentOrganizationName={currentUser.churchName}`도 null이라 T63 버튼 라벨이 항상 "소속 관리" 폴백이다.
+- 데이터 로딩(useBibleLogic → useDepartment)은 이미 `dashboardUser`로 되어 있어 roster 병합 멤버가 `allMembersForRace`에 정상 적재된다 — 화면 게이트만 어긋난 상태.
+- **T67 수정**: App.jsx의 DashboardView 호출을 `currentUser={dashboardUser}`로 바꾼다. 비개인 계정은 `dashboardUser === currentUser`(useMemo가 원본을 그대로 반환)라 무영향.
+  - ⚠️ 제약: 매핑된 `churchId`가 **users 문서에 저장되는 경로가 생기면 안 된다** — 본인 update 규칙이 churchId 값 변경을 거부해 permission-denied가 난다. 검토 결과 DashboardView 계열에 사용자 문서 전체를 set하는 쓰기는 없고 `setCurrentUser`는 전부 함수형 업데이트(원본 기준)지만, 수정 후 이 불변식을 재확인하고 작업 로그에 남길 것.
+  - `validate-round11.mjs`에 `currentUser={dashboardUser}` 존재 검사를 추가할 것.
+
+### 🚫 블로커 2 — 세션 복원이 개인 계정을 재온보딩 트랩에 빠뜨림 (라운드 9 기원, 라운드 11로 주 퍼널 격상)
+
+- App.jsx 네비게이션 effect(215행 부근)의 member 분기는 `currentUser.departmentId && currentUser.subgroupId`일 때만 dashboard로 보낸다. 개인 계정 users 문서는 부서/소그룹이 항상 null(부서는 roster 행에만 있음)이라, **모든 소셜 개인 계정이 새로고침할 때마다 `plan_type_select` → 버전 재선택 → 구 `personal_community_onboarding`으로 끌려간다.**
+- 데이터 파괴 경로: 그 구 온보딩 화면에서 "나중에 할게요"를 누르면 `finishPersonalOnboarding()`이 `primaryOrgId: null`을 저장해 솔로 사용자의 「성경 읽는 사람들」 기준 지정이 풀린다(roster 행은 잔존). 이미 소속된 단체 재가입은 "이미 참여 중" 오류로 막혀 사실상 빠져나갈 수 없는 트랩이다. planId도 재선택 값으로 덮인다.
+- **T68 수정**: 네비게이션 effect의 member 분기에서 `accountType === 'personal'`이면 dept/subgroup 검사 없이 바로 dashboard로 보낸다(`openExistingPersonalUser`와 동일한 결과). 라운드 11 구조상 users 문서는 온보딩 완료 시점에만 생성되므로 planId 없는 고아는 정상 경로에서 생기지 않는다 — 방어적으로 planId 부재 시에만 기존 plan_type_select 폴백을 유지해도 좋다.
+- 참고: 이 버그는 라운드 9 출고분에 이미 있었으나(당시 리뷰가 세션 복원 경로를 안 봄), 라운드 11이 개인 계정을 기본 가입 경로로 만들어 심각도가 올라갔다.
+
+### 통과 확인 (수정 불필요)
+
+- 입장코드(codeHash) 검증이 `selectionOnly` 조기 반환보다 앞 단계에서 수행됨 — 온보딩 경유 코드 우회 없음.
+- roster 생성 필드가 규칙의 13필드 화이트리스트와 정확히 일치(`handleSocialOnboardingComplete`·`joinSoloCommunity` 모두). users create 규칙에 roster 선존재 요구가 없어 동일 트랜잭션 생성 안전 — "규칙 수정 불필요" 판단 유효.
+- 게스트 진도 이관이 온보딩 완료 시점에 적용되고(`buildNewMember`가 게스트 상태 흡수), 중도 이탈 시 users 고아 없음.
+- 카카오 popup의 in-flight ref·auth flow guard·UID 재검사(T50 패턴 재사용), 카톡 인앱 redirect 분기, redirect 복귀 시 useUserAuth가 문서 부재를 currentUser=null로만 처리(로그아웃 없음) 후 `getRedirectResult`가 온보딩을 여는 순서 — 부작용 없음.
+- 첫 화면 4항목·재방문(saveLastChurch)·`?church=ID` 교회 폼 우선·"변경"으로 소셜 입구 복귀·기존 가입 링크 보존. 관리자 진입 하단 링크화.
+- 관리자 뱃지 휴리스틱: 카카오는 `authProvider`, 구 Google 개인은 `@bible.local` 부재로 구분 — 이름 가입 개인 계정(가짜 이메일)에 오탐 없음.
+- `useBibleLogic`의 `else setDepartmentMembers(allMembers)`는 광역 변경이지만 실질 도달 계정이 unaffiliated 개인뿐이라 수용(경미).
+
+### 🔧 라운드 11 수정 체크리스트
+
+- [ ] **T67. DashboardView에 dashboardUser 전달** — 블로커 1 수정 + 불변식(매핑 churchId 미저장) 확인 + validate 스크립트 보강.
+- [ ] **T68. 개인 계정 세션 복원 직행** — 블로커 2 수정. 새로고침 → dashboard 직행, 구 personal_community_onboarding 도달 불가 확인.
 ---
 
 ## 📮 Claude → Codex 메모
