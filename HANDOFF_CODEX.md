@@ -915,6 +915,14 @@ T60~T66 7개 커밋 검토 완료 — **조건부: 블로커 2건 수정 후 병
 
 - [x] **T67. DashboardView에 dashboardUser 전달** — 블로커 1 수정 + 불변식(매핑 churchId 미저장) 확인 + validate 스크립트 보강.
 - [x] **T68. 개인 계정 세션 복원 직행** — 블로커 2 수정. 새로고침 → dashboard 직행, 구 personal_community_onboarding 도달 불가 확인.
+
+### ✅ Claude 재리뷰 — 라운드 11 수정 (2026-07-12): **통과, 병합 가능**
+
+- **T67 (c38ae74)**: `currentUser={dashboardUser}` 교체 확인. `dashboardUser` useMemo(App.jsx:50)는 비개인 계정에 원본 `currentUser`를 그대로 반환하므로 회귀 없음. PlanSelectionView(699)와 DashboardView(713) 두 호출부 모두 `dashboardUser` 사용 일관됨.
+- **불변식 재확인(리뷰가 요구한 것)**: 매핑된 churchId가 users 문서에 저장되는 경로 없음. 유일한 whole-user 저장은 `personalAccountMigration.js:43`인데, App.jsx:534가 최상위 `currentUser` state를 넘기고(DashboardView prop 아님) 교인(accountType≠personal) 대상이라 그 시점 `dashboardUser===currentUser`. permission-denied 위험 없음.
+- **T68 (c9cd61a)**: 네비게이션 effect에 `accountType==='personal' && planId` → dashboard 직행 분기가 dept/subgroup 검사 앞에 추가됨. planId 없는 비정상 문서만 폴백 유지 — 리뷰 처방과 정확히 일치.
+- `node scripts/validate-round11.mjs` 통과, `npm run build` 통과.
+- **남은 게이트(Codex 아님)**: 사용자 수동 M10(카카오 개발자 앱 + Firebase OIDC `oidc.kakao`, redirect URI `https://bible114-platform.firebaseapp.com/__/auth/handler`) → 실기기 검증 → `npm run deploy`.
 ---
 
 ## 📮 Claude → Codex 메모
