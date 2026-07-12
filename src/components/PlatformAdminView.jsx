@@ -4,7 +4,7 @@ import GoogleLinkCard from './admin/GoogleLinkCard';
 import { firebase } from '../utils/firebase';
 import ChurchAdminView from './ChurchAdminView';
 import { fetchLatestFromPlaylist } from './dashboard/DailyVideoCard';
-import { getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
+import { getDaysRead, getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
 import { rebuildChurchDirectory, removeChurchFromDirectory, syncChurchDirectoryEntry } from '../utils/churchDirectory';
 import { sha256 } from '../utils/crypto';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
@@ -958,7 +958,7 @@ const PlatformAdminView = ({
                                     {(() => {
                                         const sorted = [...users].sort((a, b) => {
                                             if (adminSortBy === 'name') return (a.name || '').localeCompare(b.name || '', 'ko-KR');
-                                            if (adminSortBy === 'day') return (((b.readCount || 1) - 1) * 365 + (b.currentDay || 1)) - (((a.readCount || 1) - 1) * 365 + (a.currentDay || 1));
+                                            if (adminSortBy === 'day') return getDaysRead(b) - getDaysRead(a);
                                             if (adminSortBy === 'score') return (b.score || 0) - (a.score || 0);
                                             if (adminSortBy === 'subgroup') {
                                                 const c = (a.departmentName || '').localeCompare(b.departmentName || '', 'ko-KR');
@@ -968,8 +968,7 @@ const PlatformAdminView = ({
                                         });
                                         return sorted.map((u, idx) => {
                                             const readToday = u.lastReadDate === todayStr;
-                                            const rc = u.readCount || 1;
-                                            const totalDays = (rc - 1) * 365 + (u.currentDay || 1);
+                                            const totalDays = getDaysRead(u);
                                             const churchName = churches.find(c => c.id === u.churchId)?.name || u.churchName || '-';
                                             return (
                                                 <tr key={idx} className={`border-b hover:bg-slate-50 ${readToday ? 'bg-green-50' : ''}`}>

@@ -1,6 +1,7 @@
 import { DEFAULT_DEPARTMENTS } from '../data/departments';
 import { TOTAL_DAYS } from '../data/constants';
 import { getMembershipList, belongsToDepartment, belongsToSubgroup } from './memberships';
+import { getDaysRead } from './helpers';
 
 // Firestore 문서는 uid별 1개지만, 잘못 합쳐진 입력이 와도 교회/그룹 지표에서
 // 같은 사용자를 두 번 세지 않는다. uid가 없는 레거시 객체는 서로 다른 사람일 수 있어 유지한다.
@@ -72,9 +73,7 @@ export const calculateSubgroupStats = (members, communities) => {
 
         const avgDay = totalCount > 0
             ? subMembers.reduce((sum, m) => {
-                const readCount = m.readCount || 1;
-                const actualProgress = (readCount - 1) * 365 + (m.currentDay || 1);
-                return sum + actualProgress;
+                return sum + getDaysRead(m);
             }, 0) / totalCount
             : 0;
         const progressRate = TOTAL_DAYS > 0 ? Math.round((avgDay / TOTAL_DAYS) * 100) : 0;
@@ -131,7 +130,7 @@ export const getWeeklyMVP = (departmentMembers) => {
             return {
                 ...m,
                 weeklyCount: readDates.filter(date => date >= weekStart && date <= todayEnd).length,
-                totalCount: ((m.readCount || 1) - 1) * 365 + (m.currentDay || 0)
+                totalCount: getDaysRead(m)
             };
         })
         .filter(m => m.weeklyCount > 0)
@@ -147,7 +146,7 @@ export const getWeeklyMVP = (departmentMembers) => {
     const totalWithCounts = uniqueDepartmentMembers
         .map(m => ({
             ...m,
-            totalCount: ((m.readCount || 1) - 1) * 365 + (m.currentDay || 0)
+            totalCount: getDaysRead(m)
         }))
         .filter(m => m.totalCount > 0);
 
@@ -207,7 +206,7 @@ export const formatProgressRanking = (subgroupStats) => {
         .sort(function (a, b) { return b.progressRate - a.progressRate; });
 };
 
-const totalProgressDay = (member) => ((member.readCount || 1) - 1) * TOTAL_DAYS + (member.currentDay || 1);
+const totalProgressDay = getDaysRead;
 
 const toDate = (value) => {
     if (!value) return null;

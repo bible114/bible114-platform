@@ -55,7 +55,7 @@ const buildTodayQuiz = async (currentUser, hasReadToday) => {
     return null;
 };
 
-const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, sectionRef }) => {
+const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, sectionRef, highlight = false }) => {
     const todayKey = getKstDateString();
     const skipStorageKey = `b114_quiz_skip_${new Date().toDateString()}`;
     const hasReadToday = currentUser?.lastReadDate === new Date().toDateString();
@@ -87,6 +87,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
         return { type: 'done', message: '오늘의 두 번 시도가 끝났습니다.' };
     });
     const [submitting, setSubmitting] = useState(false);
+    const [reviewExpanded, setReviewExpanded] = useState(false);
 
     // 사용자/날짜/진행 본문이 바뀌면 이전 문항에서 고른 답과 피드백이 새 문항에 남지 않게 한다.
     // quizState.quizKey는 제출 후 재조회 중 잠시 null이 되므로 의존성에서 제외한다.
@@ -253,9 +254,37 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
 
     const currentAttempts = currentUser.quizDate === todayKey ? (currentUser.quizAttempts || 0) : 0;
     const showAnswer = currentUser.quizDate === todayKey && (currentUser.quizSolved === true || currentAttempts >= 2);
+    const sectionClassName = `bg-white rounded-3xl border shadow-sm p-5 overflow-hidden transition-[border-color,box-shadow] duration-300 ${highlight ? 'border-indigo-500 ring-4 ring-indigo-200 shadow-indigo-100' : 'border-slate-100'}`;
+
+    if (finished && !reviewExpanded) {
+        return (
+            <section ref={sectionRef} className={sectionClassName}>
+                <button
+                    type="button"
+                    onClick={() => setReviewExpanded(true)}
+                    className="w-full text-left"
+                    aria-expanded="false"
+                >
+                    <p className="text-base font-black text-emerald-700">✅ 오늘 퀴즈 완료 · 내일 새 문제가 나와요</p>
+                    <p className="mt-1 text-sm font-bold text-amber-700">⭐ +{earnedReward}달란트</p>
+                    <p className="mt-2 text-xs font-bold text-slate-400">탭해서 정답과 해설 다시 보기</p>
+                </button>
+                <button
+                    type="button"
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        document.getElementById('tut-read-btn')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }}
+                    className="mt-4 w-full rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-black text-white"
+                >
+                    ↓ 이어서 본문 읽기
+                </button>
+            </section>
+        );
+    }
 
     return (
-        <section ref={sectionRef} className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 overflow-hidden">
+        <section ref={sectionRef} className={sectionClassName}>
             <div className="flex items-start justify-between gap-4 mb-4">
                 <div>
                     <p className="text-xs font-black text-indigo-500 mb-1">오늘의 성경퀴즈</p>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { getDaysRead } from '../../utils/helpers';
 
 const ReadingChampionSection = ({ getWeeklyMVP }) => {
     if (typeof getWeeklyMVP !== 'function') return null;
@@ -37,7 +38,7 @@ const ReadingChampionSection = ({ getWeeklyMVP }) => {
                             if (!progressMVP) return '-';
                             const readCount = progressMVP.readCount || 1;
                             const currentDay = progressMVP.currentDay || 0;
-                            const totalDays = (readCount - 1) * 365 + currentDay;
+                            const totalDays = getDaysRead(progressMVP);
                             if (readCount > 1) {
                                 return `총 ${totalDays}일 (${readCount - 1}독 완료, ${currentDay}일)`;
                             }
@@ -70,7 +71,7 @@ const ReadingChampionSection = ({ getWeeklyMVP }) => {
                     <p className="text-[10px] text-slate-500 font-bold mb-2 text-center">누적 2-10위</p>
                     <div className="space-y-1">
                         {totalTop10.length > 1 ? totalTop10.slice(1, 10).map((member, idx) => {
-                            const totalDays = ((member.readCount || 1) - 1) * 365 + (member.currentDay || 0);
+                            const totalDays = getDaysRead(member);
                             return (
                                 <div key={member.uid} className="flex justify-between items-center text-[10px]">
                                     <span className="text-slate-600 truncate mr-1">{idx + 2}위. {member.name}</span>

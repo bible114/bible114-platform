@@ -2,6 +2,7 @@ import React from 'react';
 import Icon from '../Icon';
 import { DEFAULT_DEPARTMENTS } from '../../data/departments';
 import { belongsToSubgroup } from '../../utils/memberships';
+import { getDaysRead } from '../../utils/helpers';
 
 const membershipMatches = (left, right) => {
     if (!left || !right || left.departmentId !== right.departmentId) return false;
@@ -110,8 +111,8 @@ const RankingModal = ({
             || (detailSubgroupName !== detailSubgroupId
                 && belongsToSubgroup(m, detailDepartmentId, detailSubgroupName))
         )).sort((a, b) => {
-            const aTotalDays = ((a.readCount || 1) - 1) * 365 + (a.currentDay || 1);
-            const bTotalDays = ((b.readCount || 1) - 1) * 365 + (b.currentDay || 1);
+            const aTotalDays = getDaysRead(a);
+            const bTotalDays = getDaysRead(b);
             return bTotalDays - aTotalDays;
         });
         const todayStr = new Date().toDateString();
@@ -145,7 +146,7 @@ const RankingModal = ({
                                             {(member.readCount || 1) > 1 && <span className="text-[10px] bg-purple-500 text-white px-1.5 py-0.5 rounded-full font-bold">{member.readCount - 1}독 완료</span>}
                                             {readTodayFlag && <span className="text-green-500 text-xs">✓</span>}
                                         </div>
-                                        <div className="text-right"><p className="text-sm font-bold text-slate-700">Day {((member.readCount || 1) - 1) * 365 + member.currentDay}</p><p className="text-[10px] text-slate-400">{member.score || 0}점</p></div>
+                                        <div className="text-right"><p className="text-sm font-bold text-slate-700">Day {getDaysRead(member)}</p><p className="text-[10px] text-slate-400">{member.score || 0}점</p></div>
                                     </div>
                                     <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden"><div className={`h-full rounded-full ${isMe ? 'bg-blue-500' : 'bg-slate-400'}`} style={{ width: `${progressRate}%` }}></div></div>
                                     <div className="flex justify-between mt-1"><span className="text-[10px] text-slate-400">{progressRate}% 진행</span>{member.streak > 0 && <span className="text-[10px] text-orange-500 font-bold">🔥 {member.streak}일 연속</span>}</div>

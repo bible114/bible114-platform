@@ -4,6 +4,7 @@ import { BIBLE_VERSIONS, PLAN_TYPES } from '../data/bible_options';
 import { getLevelInfo } from '../data/levels';
 import { DEFAULT_DEPARTMENTS } from '../data/departments';
 import { belongsToDepartment, getMembershipList } from '../utils/memberships';
+import { getDaysRead } from '../utils/helpers';
 
 // Modals
 import {
@@ -129,6 +130,7 @@ const DashboardView = ({
         hasQuestion: false,
         gateOpen: false,
     });
+    const [highlightQuiz, setHighlightQuiz] = useState(false);
     const quizSectionRef = useRef(null);
 
     if (!currentUser) return null;
@@ -203,8 +205,9 @@ const DashboardView = ({
     // 레이터 데이터 정제
     const allRacersSorted = allMembersForRace.map(m => {
         const readCount = m.readCount || 1;
-        const actualProgress = (readCount - 1) * 365 + (m.currentDay || 1);
-        return { ...m, day: actualProgress, isMe: m.uid === currentUser.uid };
+        // day는 누적 읽은 날 수(랭킹/표시)이고, mapDay만 기존 달리기 위치를 보존한다.
+        const mapDay = (readCount - 1) * 365 + (m.currentDay || 1);
+        return { ...m, day: getDaysRead(m), mapDay, isMe: m.uid === currentUser.uid };
     }).sort((a, b) => b.day - a.day);
 
     const top20Overall = allRacersSorted.slice(0, 20);
@@ -260,6 +263,8 @@ const DashboardView = ({
     const topProgressGroups = progressRanking.slice(0, 3);
     const handleQuizGateLocked = () => {
         quizSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setHighlightQuiz(true);
+        window.setTimeout(() => setHighlightQuiz(false), 2000);
     };
 
     return (
@@ -409,6 +414,7 @@ const DashboardView = ({
                         setCurrentUser={setCurrentUser}
                         onGateStateChange={setQuizGate}
                         sectionRef={quizSectionRef}
+                        highlight={highlightQuiz}
                     />
 
                     <BibleReader

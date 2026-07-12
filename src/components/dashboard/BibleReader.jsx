@@ -37,11 +37,11 @@ const BibleReader = ({
         && !quizGateOpen;
     const readButtonLabel = isAdvanceRead
         ? '한 장 더 읽기'
-        : (!hasReadToday && isCurrentProgressDay ? '오늘 읽기 완료' : '읽기 완료');
+        : (isQuizGateLocked ? '☝️ 먼저 오늘 퀴즈 풀기' : (!hasReadToday && isCurrentProgressDay ? '오늘 읽기 완료' : '읽기 완료'));
     const readButtonHelp = isAdvanceRead
         ? '오늘 분량은 완료했습니다. 원하면 다음 본문을 미리 읽을 수 있습니다.'
         : (isQuizGateLocked
-            ? '먼저 위의 성경퀴즈를 풀어보세요 ⬆'
+            ? '퀴즈를 풀면 읽기 완료 버튼이 열려요'
             : !hasReadToday && isCurrentProgressDay
             ? '오늘 본문을 다 읽은 뒤 눌러주세요.'
             : '이 본문을 다 읽은 뒤 눌러주세요.');
@@ -215,8 +215,8 @@ const BibleReader = ({
                     <div id="tut-read-btn" className="mt-8 pt-6 border-t border-slate-100">
                         <div className="relative">
                             <button
-                                onClick={handleRead}
-                                disabled={readSubmitting || isQuizGateLocked}
+                                onClick={isQuizGateLocked ? onQuizGateLocked : handleRead}
+                                disabled={readSubmitting}
                                 className={`w-full py-5 rounded-3xl font-bold text-xl transition-all shadow-xl hover:shadow-2xl active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100 flex items-center justify-center gap-3
                                     ${isAdvanceRead
                                         ? "bg-slate-800 text-white"
@@ -226,14 +226,6 @@ const BibleReader = ({
                                 <span className="text-2xl">📖</span>
                                 {readSubmitting ? '기록 중...' : readButtonLabel}
                             </button>
-                            {isQuizGateLocked && (
-                                <button
-                                    type="button"
-                                    onClick={onQuizGateLocked}
-                                    className="absolute inset-0 w-full rounded-3xl cursor-pointer"
-                                    aria-label="성경퀴즈로 이동"
-                                />
-                            )}
                         </div>
                         <p className="text-center text-xs text-slate-400 mt-4 font-medium">
                             {readButtonHelp}

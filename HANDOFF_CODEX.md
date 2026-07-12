@@ -180,6 +180,11 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-13 | T73 헤더 아이콘 접근성 | `src/components/dashboard/DashboardHeader.jsx`, `HANDOFF_CODEX.md` | 도움말·달성 뱃지·날짜 설정·읽기 달력 아이콘 버튼에 용도를 설명하는 aria-label을 추가했다. `npm run build`, `node scripts/validate-round11.mjs`, `git diff --check` 통과. 커밋 금지 제약 준수. |
+| 2026-07-13 | T74 모바일 375/390 재검증 | `HANDOFF_CODEX.md` | 미완료: 로컬 브라우저·Chrome 제어 연결이 모두 제공되지 않아 375px·390px 실제 리사이즈/스크린샷을 수행할 수 없었다. 최종 `npm run build`, `node scripts/validate-round11.mjs`, `git diff --check`은 통과했으나, 배포 전 실제 모바일 브라우저에서 헤더와 T70~T72를 확인해야 한다. |
+| 2026-07-13 | T72 퀴즈 완료 카드 정리 | `src/components/dashboard/BibleQuizCard.jsx`, `HANDOFF_CODEX.md` | 정답 또는 2회 소진 뒤 문항/보기 대신 완료 요약·획득 달란트·본문 이동 버튼만 보이고, 요약 탭으로 정답/해설을 다시 열 수 있게 했다. 게이트·보상 저장 로직은 변경하지 않았다. `npm run build`, `node scripts/validate-round11.mjs`, `git diff --check` 통과. 커밋 금지 제약 준수. |
+| 2026-07-13 | T71 퀴즈 선행 게이트 유도 | `src/components/DashboardView.jsx`, `src/components/dashboard/{BibleReader,BibleQuizCard}.jsx`, `HANDOFF_CODEX.md` | 잠긴 읽기 완료 자리를 퀴즈 이동 활성 버튼과 보조 문구로 바꾸고, 부드러운 스크롤 뒤 2초 카드 강조를 추가했다. 퀴즈 게이트 해제 조건·저장 로직은 변경하지 않았다. `npm run build`, `node scripts/validate-round11.mjs`, `git diff --check` 통과. 커밋 금지 제약 준수. |
+| 2026-07-13 | T70 총 읽은 날 표시 수정 | `src/utils/helpers.js`, `src/utils/statsUtils.js`, `src/components/{DashboardView,ChurchAdminView,PlatformAdminView}.jsx`, `src/components/dashboard/{ReadingChampionSection,RaceMap}.jsx`, `src/components/modals/RankingModal.jsx`, `HANDOFF_CODEX.md` | `getDaysRead` 공용 헬퍼로 누적 표시·평균·랭킹 정렬을 실제 읽은 날 기준으로 통일했다. 달리기 맵 위치는 기존 `mapDay`를 별도 보존해 변경하지 않았다. `npm run build`, `node scripts/validate-round11.mjs`, `git diff --check` 통과. 커밋 금지 제약 준수. |
 | 2026-07-13 | 소셜 로그인 버튼 디자인 통일 | `src/components/LoginView.jsx`, `scripts/validate-round11.mjs`, `HANDOFF_CODEX.md` | 첫 화면 카카오톡·Google 버튼을 공통 `SocialLoginButton`으로 통합해 동일 높이, pill 모양, 좌측 아이콘 영역, 중앙 문구 정렬 적용. 카카오는 공식 노랑 계열, Google은 흰색/테두리 유지. 프로덕션 미리보기에서 두 버튼 렌더 확인, 라운드 11 검사·빌드·diff 통과. |
 | 2026-07-13 | M10R 무료 카카오 로그인 실연동 | `.gitignore`, `.env.example`, `supabase/functions/kakao-auth/index.ts`, `HANDOFF_CODEX.md` | Supabase `bible114's Project` 연결, 카카오/Firebase 시크릿 3종 등록, `kakao-auth --no-verify-jwt` 배포. 카카오 REST 키에 운영·localhost redirect URI 등록. CORS OPTIONS 204 수정·실응답 확인. 프로덕션 빌드에서 카카오 동의→Firebase `kakao:` UID 생성→이름 온보딩 1/3 진입 확인. 운영 배포와 최종 온보딩 완료(users/roster 쓰기)는 미실행. |
 | 2026-07-13 | T69 모바일 헤더 칩 겹침 수정 | `src/components/dashboard/DashboardHeader.jsx`, `scripts/validate-round11.mjs`, `HANDOFF_CODEX.md` | 모바일 칩 영역을 가로 스크롤에서 flex-wrap으로 전환하고 로그아웃을 같은 흐름의 마지막 요소로 편입. divider는 모바일 숨김, md 이상 한 줄 우측 정렬 유지. 소속/버전 버튼은 별도 flex 항목 유지. 정적 계약 검사·빌드·diff 검사 통과. 인증된 시드 세션이 없어 375/390 실화면 클릭은 미검증. |
@@ -276,6 +281,11 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ## 📮 Codex → Claude 메모
 
 > Codex: 작업을 마치거나 중단할 때 여기에 남겨라 — ① 완료/미완 상태 요약, ② 설계와 다르게 한 것과 이유, ③ 질문/막힌 것, ④ Claude가 리뷰할 때 봐야 할 지점.
+
+2026-07-13 Codex 라운드 13:
+- 완료: T70~T73. `getDaysRead`로 실제 읽은 날 기준의 누적 표시·평균·랭킹 정렬을 통일했고, 달리기 맵 위치는 별도 `mapDay`로 기존 값을 유지했다. 퀴즈 잠금은 활성 이동 버튼+2초 강조로 안내하며, 완료 퀴즈는 요약/본문 이동 버튼으로 접고 탭하면 정답·해설을 다시 본다. 헤더 아이콘 4개에 aria-label을 추가했다.
+- 미완료/막힘: T74. 브라우저와 Chrome 제어 연결이 모두 제공되지 않아 로컬 375px·390px 실화면 리사이즈·탭·스크린샷을 할 수 없었다. 배포 전 실제 모바일 브라우저에서 헤더 칩·로그아웃·소속 관리와 T70~T72 화면을 확인해야 한다.
+- 검증: 최종 `npm run build`, `node scripts/validate-round11.mjs`, `git diff --check` 통과. 라운드 제약대로 커밋·배포·rules 수정은 하지 않았다.
 
 2026-07-13 Codex 사이트 점검 발견:
 - ① 증상: 신규 가입 직후 랭킹/누적 읽기가 `총 1일`로 보이고, 첫 읽기 완료 뒤에는 실제 1일 읽었는데 `총 2일`로 보인다. ② 재현 경로: 카카오 신규 로그인 → 혼자 읽기 → 일년일독·개역개정114 가입 완료 → 대시보드 랭킹 확인 → 퀴즈 정답 후 첫 본문 읽기 완료 → 랭킹 재확인. ③ 관련 파일(추정): `src/hooks/useAuth.js`, `src/hooks/useUserBibleActions.js`, `src/utils/statsUtils.js`, `src/utils/rosterMembers.js`.
@@ -1119,17 +1129,27 @@ T60~T66 7개 커밋 검토 완료 — **조건부: 블로커 2건 수정 후 병
 
 ### 체크리스트
 
-- [ ] **T70. "총 N일" 진행일 표시 수정** — 원인: `(readCount-1)*365 + currentDay`는 "다음에 읽을 날"을 포함해 실제 읽은 일수보다 1 크다 (신규가 "총 1일", 1일 읽으면 "총 2일").
+- [x] **T70. "총 N일" 진행일 표시 수정** — 원인: `(readCount-1)*365 + currentDay`는 "다음에 읽을 날"을 포함해 실제 읽은 일수보다 1 크다 (신규가 "총 1일", 1일 읽으면 "총 2일").
   - 공용 헬퍼 신설 `getDaysRead(member) = ((readCount||1)-1)*365 + Math.max(0, (currentDay||1)-1)` — helpers.js 또는 statsUtils.js.
   - **표시 지점만 교체**: `src/utils/statsUtils.js:76`, `src/components/DashboardView.jsx:206`, `src/components/ChurchAdminView.jsx:1152`(getTotalProgressDay 소비처 전부) + 같은 패턴 전수 검색(`(readCount`- 계열)로 누락 방지. 랭킹 정렬값도 같은 헬퍼로.
   - **바꾸지 말 것**: 달리기 맵의 위치 계산·본문 로딩·읽기 트랜잭션의 currentDay 사용처(진도 의미 자체는 유지). "DAY N" 라벨 중 "현재 읽는 날"을 뜻하는 곳(본문 헤더 등)은 currentDay가 맞으니 유지 — 구분 기준: "얼마나 읽었나"는 getDaysRead, "몇 일차를 읽고 있나"는 currentDay.
   - 0일인 신규는 "총 0일"로 표시 (별도 문구 불필요).
-- [ ] **T71. 퀴즈 선행 게이트 유도 개선** — 잠금 상태의 `오늘 읽기 완료` 자리를 비활성 버튼 대신 **활성 버튼 "☝️ 먼저 오늘 퀴즈 풀기"**로 교체: 클릭 시 퀴즈 카드로 부드럽게 스크롤 + 카드 테두리 강조(2초). 보조 문구 "퀴즈를 풀면 읽기 완료 버튼이 열려요"를 버튼 아래 표시. 퀴즈 게이트 해제 조건·로직(T33)은 무변경.
-- [ ] **T72. 퀴즈 완료 후 카드 상태 정리** — 오늘 퀴즈를 마친 뒤(정답·2회 소진 포함)에는 문항·보기를 접고 요약만: "✅ 오늘 퀴즈 완료 · 내일 새 문제가 나와요" (+획득 달란트). DAY 라벨/문항 노출 제거로 "본문은 DAY 2인데 퀴즈는 DAY 1" 대비 혼란 제거. 요약 카드에 "↓ 이어서 본문 읽기" 스크롤 버튼 추가 (T71과 함께 발견 5의 긴 스크롤 문제 완화). 접힌 카드는 탭하면 펼쳐 정답·해설 재확인 가능.
-- [ ] **T73. 헤더 아이콘 버튼 접근성** — 도움말(Icon helpbook) 버튼에 `aria-label="읽는 방법 도움말"` 추가. 같은 줄의 🏅(달성 뱃지)·📅(날짜 설정)·📆(읽기 달력) 아이콘 버튼에도 aria-label 일괄 추가.
+- [x] **T71. 퀴즈 선행 게이트 유도 개선** — 잠금 상태의 `오늘 읽기 완료` 자리를 비활성 버튼 대신 **활성 버튼 "☝️ 먼저 오늘 퀴즈 풀기"**로 교체: 클릭 시 퀴즈 카드로 부드럽게 스크롤 + 카드 테두리 강조(2초). 보조 문구 "퀴즈를 풀면 읽기 완료 버튼이 열려요"를 버튼 아래 표시. 퀴즈 게이트 해제 조건·로직(T33)은 무변경.
+- [x] **T72. 퀴즈 완료 후 카드 상태 정리** — 오늘 퀴즈를 마친 뒤(정답·2회 소진 포함)에는 문항·보기를 접고 요약만: "✅ 오늘 퀴즈 완료 · 내일 새 문제가 나와요" (+획득 달란트). DAY 라벨/문항 노출 제거로 "본문은 DAY 2인데 퀴즈는 DAY 1" 대비 혼란 제거. 요약 카드에 "↓ 이어서 본문 읽기" 스크롤 버튼 추가 (T71과 함께 발견 5의 긴 스크롤 문제 완화). 접힌 카드는 탭하면 펼쳐 정답·해설 재확인 가능.
+- [x] **T73. 헤더 아이콘 버튼 접근성** — 도움말(Icon helpbook) 버튼에 `aria-label="읽는 방법 도움말"` 추가. 같은 줄의 🏅(달성 뱃지)·📅(날짜 설정)·📆(읽기 달력) 아이콘 버튼에도 aria-label 일괄 추가.
 - [ ] **T74. 모바일 375/390 재검증** — 로컬 dev를 375px·390px로 리사이즈해 헤더 칩 줄바꿈·로그아웃·소속 관리 버튼의 겹침/탭 가능 여부 확인, T70~T72 화면도 같은 폭에서 확인. 결과(스크린샷 또는 관찰 기록)를 작업 로그에 남김.
 
 완료 기준: 각 작업 후 `npm run build` + `node scripts/validate-round11.mjs` 통과, 작업 로그 기록. 커밋 금지(위 참조).
+
+## ✅ Claude 리뷰 결과 — 라운드 13 (2026-07-13)
+
+T70~T73 diff 검토 완료 — **병합 가능, 수정 없음**. 핵심 확인: T70의 위치/표시 분리 정확(달리기 맵은 `mapDay`로 기존 위치 보존, 랭킹·평균·정렬만 `getDaysRead`), 진도 저장 로직 무변경, T71 게이트 버튼이 활성 버튼+스크롤+2초 강조로 교체, T72 완료 퀴즈 접힘/펼침·본문 스크롤 버튼, T73 aria-label. 빌드+검증기 3종 Claude 재실행 통과.
+
+**T74는 Claude가 직접 수행**(Codex 브라우저 부재): 375×812에서 첫 화면 4항목·소셜 버튼·관리자 링크 겹침 없음 확인(스크린샷+텍스트 트리). 로그인 필요한 성도 헤더 칩은 정적 계약 검사로 갈음 — 사용자 실기기 확인 항목 유지.
+
+nit(다음 라운드 참고): 완료 퀴즈 요약이 2회 오답(보상 0)일 때도 "⭐ +0달란트"로 표시됨 — 문구 분기하면 더 자연스러움.
+
+---
 
 ## 📮 Claude → Codex 메모
 

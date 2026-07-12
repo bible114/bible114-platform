@@ -23,6 +23,7 @@ import GoogleLinkCard from './admin/GoogleLinkCard';
 import QRCode from 'qrcode';
 import { SITE_URL } from '../data/constants';
 import { mergePrimaryAndRosterMembers, rosterSnapshotToMembers } from '../utils/rosterMembers';
+import { getDaysRead } from '../utils/helpers';
 
 const formatReadDate = (dateStr) => {
     if (!dateStr) return '-';
@@ -1149,7 +1150,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = yesterday.toDateString();
 
-    const getTotalProgressDay = (member) => ((member.readCount || 1) - 1) * 365 + (member.currentDay || 1);
+    const getTotalProgressDay = getDaysRead;
     const daysSinceRead = (dateStr) => {
         if (!dateStr) return null;
         const d = new Date(dateStr);
@@ -1226,8 +1227,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const sortedMembers = [...members].sort((a, b) => {
         if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '', 'ko-KR');
         if (sortBy === 'day') {
-            const aDay = ((a.readCount || 1) - 1) * 365 + (a.currentDay || 1);
-            const bDay = ((b.readCount || 1) - 1) * 365 + (b.currentDay || 1);
+            const aDay = getDaysRead(a);
+            const bDay = getDaysRead(b);
             return bDay - aDay;
         }
         if (sortBy === 'score') return (b.score || 0) - (a.score || 0);

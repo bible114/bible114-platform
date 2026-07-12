@@ -10,6 +10,13 @@ export const makePseudoEmail = (name, birthdate, churchId = '') => {
 export const makeUnaffiliatedIdentity = (birthdate, phone4) =>
     `${String(birthdate || '').trim()}p${String(phone4 || '').trim()}`;
 
+// currentDay는 "다음에 읽을 날"이다. 누적 진행/랭킹처럼 실제로 읽은 날 수를
+// 보여줄 때만 이 값을 사용하고, 본문 DAY·달리기 위치에는 currentDay를 그대로 쓴다.
+export const getDaysRead = (member) => (
+    ((member?.readCount || 1) - 1) * 365
+    + Math.max(0, (member?.currentDay || 1) - 1)
+);
+
 const FREE_DEFAULTS = ['wall_plain_white', 'floor_plain_white', 'base_man', 'eye_basic', 'expr_happy'];
 
 // 지연(lazy) 마이그레이션: score/talent 이중화 이전 계정을 1회성으로 복구한다.
