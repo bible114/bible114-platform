@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { auth, authReady, db, firebase } from '../utils/firebase';
 import { makePseudoEmail, makeUnaffiliatedIdentity, userDocToState, migrateTalentIfNeeded } from '../utils/helpers';
 import { sha256 } from '../utils/crypto';
@@ -37,6 +37,7 @@ export const useAuth = ({
     const googleAdminSignupStartingRef = useRef(false);
     const googleAdminSignupSubmittingRef = useRef(null);
     const personalSignupRef = useRef(null);
+    const kakaoStartRef = useRef(null);
     const passwordPersonalSignupRef = useRef(false);
 
     const beginGoogleAdminSignupFlow = () => {
@@ -186,6 +187,33 @@ export const useAuth = ({
         setView('dashboard');
     };
 
+    const openSocialOnboarding = (firebaseUser, provider) => {
+        if (!firebaseUser?.uid || auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
+        setCurrentUser(null);
+        setTempUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email || null,
+            name: firebaseUser.displayName || '',
+            role: 'member',
+            accountType: 'personal',
+            socialProvider: provider,
+            extraOrgs: [],
+        });
+        setView('social_onboarding');
+    };
+
+    const finishSocialStart = async (cred, provider) => {
+        const firebaseUser = cred?.user;
+        if (!firebaseUser?.uid || auth.currentUser?.uid !== firebaseUser.uid) throw new Error('INVALID_SOCIAL_PROFILE');
+        const doc = await db.collection('users').doc(firebaseUser.uid).get();
+        if (auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
+        if (doc.exists) {
+            await openExistingPersonalUser(firebaseUser, doc);
+            return;
+        }
+        openSocialOnboarding(firebaseUser, provider);
+    };
+
     const handlePersonalSignup = async ({ name, birthdate, phone4, password }) => {
         if (passwordPersonalSignupRef.current) return;
         passwordPersonalSignupRef.current = true;
@@ -256,20 +284,7 @@ export const useAuth = ({
                     await openExistingPersonalUser(cred.user, existingDoc);
                     return;
                 }
-                const newUser = buildPersonalUser({ name: cred.user.displayName || '성도', email: cred.user.email, google: true });
-                await db.runTransaction(async transaction => {
-                    const latest = await transaction.get(userRef);
-                    if (latest.exists) throw new Error('PERSONAL_USER_RACE');
-                    if (auth.currentUser?.uid !== cred.user.uid) throw new Error('PERSONAL_AUTH_CHANGED');
-                    transaction.set(userRef, newUser);
-                });
-                db.collection('settings').doc('platformStats').set({
-                    total_readers: firebase.firestore.FieldValue.increment(1),
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                }, { merge: true }).catch(() => {});
-                setTempUser({ ...newUser, uid: cred.user.uid, extraOrgs: [] });
-                if (shouldMigrateGuestState()) saveGuestState({ migratedAt: new Date().toISOString() });
-                setView('plan_type_select');
+                openSocialOnboarding(cred.user, 'google.com');
             } catch (error) {
                 if (error?.message === 'NOT_PERSONAL_ACCOUNT') {
                     setErrorMsg('이미 다른 방식으로 등록된 계정입니다. 기존 로그인 방법을 이용해주세요.');
@@ -288,6 +303,58 @@ export const useAuth = ({
         personalSignupRef.current = request;
         return request;
     };
+
+    const handleKakaoStart = async () => {
+        setErrorMsg('');
+        if (kakaoStartRef.current) return kakaoStartRef.current;
+        const request = (async () => {
+            const flowName = 'kakaoPersonalStart';
+            beginInteractiveAuthFlow(flowName);
+            try {
+                await authReady;
+                const provider = new firebase.auth.OAuthProvider('oidc.kakao');
+                if (isKakaoTalkBrowser()) {
+                    await auth.signInWithRedirect(provider);
+                    return;
+                }
+                const cred = await auth.signInWithPopup(provider);
+                await finishSocialStart(cred, 'oidc.kakao');
+            } catch (error) {
+                if (!['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(error?.code)) {
+                    console.error('카카오 로그인 실패:', error);
+                    if (error?.code === 'auth/operation-not-allowed') setErrorMsg('카카오 로그인이 아직 활성화되지 않았습니다. 관리자에게 문의하세요.');
+                    else if (error?.code === 'auth/popup-blocked') setErrorMsg('팝업이 차단되었습니다. 브라우저 설정을 확인해주세요.');
+                    else setErrorMsg('카카오 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.');
+                }
+            } finally {
+                endInteractiveAuthFlow(flowName);
+                kakaoStartRef.current = null;
+            }
+        })();
+        kakaoStartRef.current = request;
+        return request;
+    };
+
+    useEffect(() => {
+        let alive = true;
+        authReady.then(() => auth.getRedirectResult()).then(async cred => {
+            if (!alive || !cred?.user) return;
+            beginInteractiveAuthFlow('kakaoRedirectResult');
+            try {
+                await finishSocialStart(cred, 'oidc.kakao');
+            } catch (error) {
+                console.error('카카오 redirect 처리 실패:', error);
+                if (alive) setErrorMsg('카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요.');
+            } finally {
+                endInteractiveAuthFlow('kakaoRedirectResult');
+            }
+        }).catch(error => {
+            if (!alive || !error) return;
+            console.error('카카오 redirect 결과 확인 실패:', error);
+            setErrorMsg('카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요.');
+        });
+        return () => { alive = false; };
+    }, []);
 
     const makeMemberEmail = (name, birthdate, churchId, phone4) => {
         const identity = churchId === UNAFFILIATED_CHURCH_ID
@@ -849,6 +916,7 @@ export const useAuth = ({
         handleMemberSignup,
         handlePersonalSignup,
         handleGooglePersonalSignup,
+        handleKakaoStart,
         handleChurchAdminLogin,
         handleGoogleAdminLogin,
         handleGoogleAdminSignupStart,

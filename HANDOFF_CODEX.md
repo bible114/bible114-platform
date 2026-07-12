@@ -257,6 +257,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-12 | T57 개인 로그인 흐름 보완 | `src/components/LoginView.jsx`, `src/hooks/useAuth.js`, `HANDOFF_CODEX.md` | 첫 화면·개인 폼을 "시작하기 · 개인 계정 로그인"으로 명확화하고 교회 로그인 계정 없음 안내에 전환 사용자 경로 추가. 기존 email-already-in-use→signIn 로그인 겸용 동작 유지. Auth 이메일 변경 후 users 전환 전 중단된 uid는 localStorage pending 상태를 확인해 개인 로그인으로 복원하고 T56 자동 재개 허용. `npm run build`, `git diff --check` 통과. |
 | 2026-07-12 | T58 관리자·개인 공동체 회귀 | `src/components/ChurchAdminView.jsx`, `HANDOFF_CODEX.md` | roster 병합 멤버를 개인·외부 뱃지로 표시하고 기준 공동체 관리자는 T54 private/auth 규칙을 통해 비밀번호 확인·재설정을 시도하도록 허용(보조 공동체는 권한 오류 안내). 소그룹 배정·제명 유지, users/history/달란트 직접 변경 차단 유지. 창구 판매 선택에는 개인·외부 멤버를 disabled 옵션과 사유로 표시. T52가 active primaryOrgId를 churchId로 투영해 공지/settings read·상점 설정 read·구매 create 기존 경로를 재사용함을 확인. `npm run build`, `git diff --check` 통과. |
 | 2026-07-12 | T59 라운드 10 검증 | `src/utils/personalMigrationSteps.js`, `src/utils/personalAccountMigration.js`, `scripts/validate-personal-migration.mjs`, `HANDOFF_CODEX.md` | 순수 단계 정의를 상태머신과 검증기가 공유. start/email/credentials/roster 각 단계 실패 시 단계 보존→재개 완료 fixture, 개인 이메일 공용 조합, 이메일 충돌·recent login, roster 멱등, users 전환 필드, 무소속·관리자·게스트 비노출 조건, 개인 로그인 겸용/pending 복원 계약 검사 통과. `node scripts/validate-personal-migration.mjs`, `npm run build`, `git diff --check` 통과. 실계정 전환은 운영 데이터 변경 때문에 미검증. |
+| 2026-07-12 | T60 카카오 로그인 코어 | `src/hooks/useAuth.js`, `src/App.jsx`, `HANDOFF_CODEX.md` | Firebase compat `OAuthProvider('oidc.kakao')`로 일반 브라우저 popup·카카오톡 인앱 redirect를 분기하고 앱 로드 시 redirect 결과 처리. users 문서가 있는 personal은 기존 즉시 로그인, 신규 카카오·구글은 users 문서를 만들지 않고 `social_onboarding` 임시 상태로 전달. uid 재검사·in-flight·Auth flow guard·공급자 오류 문구 적용. `npm run build`, `git diff --check` 통과. M10 미실행으로 실 카카오 인증은 미검증. |
 
 ---
 
@@ -367,6 +368,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T58 회귀/설계 메모: T52가 개인 계정의 active `primaryOrgId`를 runtime `churchId`로 투영하므로 공지 settings read, 상점 settings read, talentPurchases create는 기존 경로 그대로 T54 규칙을 사용한다. roster 허용 필드에는 accountType이 없고 `churchId:null` 개인 users를 교회 관리자 명부에서 읽어 판별할 근거도 없어, 전환 개인과 다른 교회 외부 멤버를 정확히 분리한 `개인` 단독 뱃지는 불가능하다. 스키마를 임의 확장하지 않고 `개인·외부` 중립 뱃지를 사용했다. 창구 판매 직접 차감은 문서대로 서버 함수 후속 과제다. `npm run build`, `git diff --check` 통과. 다음 순번은 T59 검증이다.
 - T59 완료. 상태 단계 정의를 순수 모듈로 분리하고 검증 스크립트에서 start/email/credentials/roster 각 실패 지점의 단계 보존과 재개 완료, 개인 이메일 공용 조합, 이메일 충돌·recent-login, roster/users 전환 계약, 무소속·관리자·게스트 비노출, 개인 로그인 겸용과 pending 복원을 검사했다. `node scripts/validate-personal-migration.mjs`, `npm run build`, `git diff --check` 모두 통과했다. 실계정 전환은 운영 데이터 변경 때문에 실행하지 않았다.
 - 사용자 실검증 시나리오: 테스트 성도 계정으로 로그인→개인 전환(전화4 입력)→로그아웃→첫 화면 `시작하기 · 개인 계정 로그인`으로 재로그인→기존 진도·랭킹·공지·상점 확인→구매 1건 생성 확인→기준 교회 관리자에서 `개인·외부` 명부·소그룹·비밀번호 확인→보조 공동체 관리자는 비밀번호 권한 거부 확인→기준 공동체 전환/탈퇴 확인. 라운드 10 T54~T59 완료. 역방향·무소속 전환·창구 판매 서버 함수·일괄 전환은 문서대로 착수 금지다.
+- T60 완료. 카카오는 compat `OAuthProvider('oidc.kakao')`를 사용하고 일반 브라우저는 popup, 카카오톡 인앱은 redirect로 인증하며 앱 재로드에서 `getRedirectResult`를 처리한다. 기존 personal users 문서는 `openExistingPersonalUser`로 즉시 입장시키고 신규 카카오·구글 계정은 문서를 만들지 않은 채 이름이 포함된 `social_onboarding` 임시 상태로 보낸다. uid 재검사·중복 실행 방어·Auth flow guard를 적용했다. `npm run build`, `git diff --check` 통과. M10 전제 미완료로 실 카카오 popup/redirect는 미검증이며 다음 순번은 T61 첫 화면 단순화다.
 
 ---
 
@@ -814,7 +816,7 @@ T55~T59 5개 커밋 검토 완료 — **병합 가능, 코드 수정 없음**. �
 
 ### 라운드 11 체크리스트
 
-- [ ] **T60. 카카오 로그인 코어** (`useAuth.js`)
+- [x] **T60. 카카오 로그인 코어** (`useAuth.js`)
   - `handleKakaoStart`: `new firebase.auth.OAuthProvider('oidc.kakao')` + `signInWithPopup`. **카카오톡 인앱 브라우저에서는 `signInWithRedirect`** + 앱 로드 시 `getRedirectResult` 처리 (`isKakaoTalkBrowser()` 재사용 — 카카오 로그인은 카톡 인앱에서 정상 동작하므로 구글의 차단 안내 문구를 쓰지 말 것).
   - 성공 후: users 문서 있으면 `openExistingPersonalUser`(기존 계정 즉시 입장), 없으면 **T62 온보딩(이름 스텝)으로** — 문서 생성은 온보딩 완료 시점. in-flight ref·auth flow guard·uid 재검사 패턴은 T50 재사용.
   - 구글 버튼은 기존 `handleGooglePersonalSignup`(T50)을 재사용하되, 신규일 때 즉시 문서 생성하던 것을 T62 온보딩 경유로 변경 (기존 계정은 즉시 입장 동일).
