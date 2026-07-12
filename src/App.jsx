@@ -708,7 +708,7 @@ const App = () => {
     } else if (view === 'dashboard' && currentUser) {
         pageContent = (
             <DashboardView
-                currentUser={currentUser}
+                currentUser={dashboardUser}
                 setCurrentUser={setCurrentUser}
                 departmentMembers={departmentMembers}
                 allMembersForRace={allMembersForRace}

@@ -264,6 +264,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-12 | T64 성경 읽는 사람들 정식 단체화 | `src/hooks/useDepartment.js`, `src/hooks/useBibleLogic.js`, `src/components/DashboardView.jsx`, `HANDOFF_CODEX.md` | personal+unaffiliated_v1 기준 화면은 users 쿼리를 Promise 빈 결과로 대체하고 roster만 병합. 부서 없는 roster 전체를 달리기·주간 집계 대상으로 사용하고 상위 10명 평면 랭킹 카드 제공, 소그룹 랭킹/빈 헤더 랭킹은 숨김. unaffiliated 추가 소속 hard-hide 제거. 공지·상점은 기존 active churchId 경로 유지. `npm run build`, `git diff --check` 통과. 구 무소속 users는 알려진 비포함 한계. |
 | 2026-07-12 | T65 소셜 provider 관리자 표시 | `src/utils/helpers.js`, `src/components/PlatformAdminView.jsx`, `HANDOFF_CODEX.md` | userDocToState에 authProvider 매핑. 플랫폼 회원 목록 personal 옆 카카오/Google provider 뱃지 표시, 카카오·구글은 암호 변경 대신 해당 소셜 로그인 안내. 레거시 Google personal은 non-bible 이메일로 호환 판정, 비밀번호 personal은 기존 private/auth 지원 유지. `npm run build`, `git diff --check` 통과. |
 | 2026-07-12 | T66 라운드 11 검증 | `scripts/validate-round11.mjs`, `HANDOFF_CODEX.md` | 첫 화면 4항목·기존 경로·카카오 popup/redirect·구글 신규 온보딩·3단계·users/roster 최종 생성·소속 관리·unaffiliated roster-only 계약 자동 검사 통과. `node scripts/validate-round11.mjs`, `npm run build`, `git diff --check` 통과. 인앱 브라우저 스킬 파일과 Playwright 런타임 부재로 로컬 클릭 검증은 미실행. M10 미완료로 실 카카오 인증·계정 생성 미검증. |
+| 2026-07-12 | T67 dashboardUser 렌더 연결 | `src/App.jsx`, `scripts/validate-round11.mjs`, `HANDOFF_CODEX.md` | DashboardView에 원본 currentUser 대신 runtime 매핑 dashboardUser 전달. personal primaryOrgId의 churchId/name/부서 투영이 T63 버튼·T64 화면 게이트·공지·상점에 적용됨. Dashboard 계열 users 쓰기는 개별 필드만 merge/update하며 매핑 churchId를 전체 저장하는 경로 없음 확인. 검증기에 prop 연결과 whole-user set 금지 assertion 추가. `node scripts/validate-round11.mjs`, `npm run build`, `git diff --check` 통과. |
 
 ---
 
@@ -382,6 +383,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - T65 완료. users의 `authProvider`를 관리자 상태에 매핑하고 플랫폼 전체 회원 목록의 personal 뱃지 옆에 카카오/Google provider 뱃지를 표시한다. 카카오·구글 personal은 비밀번호 없음으로 처리해 각 소셜 로그인 안내를 표시하고, `@bible.local` 비밀번호 personal은 기존 private/auth 확인·변경을 유지한다. authProvider 도입 전 Google personal은 non-bible 이메일로 호환 판정한다. `npm run build`, `git diff --check` 통과. 다음 순번은 T66 전체 검증이다.
 - T66 완료. `scripts/validate-round11.mjs`에서 첫 화면 4항목, 기존 관리자/이름 가입 경로, 카카오 popup·redirect, 구글 신규 온보딩, 이름→소속→버전 3단계, 최종 users+roster 생성, 소속 관리 패널, unaffiliated users 쿼리 금지/roster-only 계약을 검사했다. `node scripts/validate-round11.mjs`, `npm run build`, `git diff --check` 모두 통과했다. 인앱 브라우저 스킬 파일이 설치 경로에 없고 Playwright 런타임도 없어 로컬 브라우저 클릭 검증은 수행하지 못했다.
 - 사용자 실검증 시나리오(M10 후): 첫 화면 카카오/구글/기존 회원/게스트 4항목 확인→신규 카카오 이름 수정→단체 검색·코드·부서/소그룹→버전 선택→대시보드→헤더 단체 관리에서 추가·기준 전환·탈퇴→혼자 읽기 모임 재가입→평면 랭킹·공지·상점 확인→플랫폼 관리자 카카오 뱃지/비밀번호 없음 확인. 실 카카오 popup/redirect와 users/roster 생성은 M10 및 운영 데이터 변경 때문에 미검증이다. 라운드 11 T60~T66 완료, 보류 항목은 착수 금지다.
+- T67 완료. App의 DashboardView에 원본 `currentUser`가 아니라 `dashboardUser`를 전달해 personal primaryOrgId의 runtime churchId/name/부서 매핑이 헤더·랭킹·달리기·공지·상점 화면 게이트에도 적용되게 했다. Dashboard 계열 users 쓰기를 감사한 결과 videoMode·진도·primaryOrgId 등 개별 필드만 update/merge하며 매핑된 churchId를 사용자 문서 전체로 저장하는 경로는 없다. 검증 스크립트에 prop 연결과 `...currentUser` whole-user set 금지 assertion을 추가했고 자동 검사·빌드·diff 검사가 통과했다. 다음 순번은 T68 세션 복원 직행이다.
 
 ---
 
@@ -909,7 +911,7 @@ T60~T66 7개 커밋 검토 완료 — **조건부: 블로커 2건 수정 후 병
 
 ### 🔧 라운드 11 수정 체크리스트
 
-- [ ] **T67. DashboardView에 dashboardUser 전달** — 블로커 1 수정 + 불변식(매핑 churchId 미저장) 확인 + validate 스크립트 보강.
+- [x] **T67. DashboardView에 dashboardUser 전달** — 블로커 1 수정 + 불변식(매핑 churchId 미저장) 확인 + validate 스크립트 보강.
 - [ ] **T68. 개인 계정 세션 복원 직행** — 블로커 2 수정. 새로고침 → dashboard 직행, 구 personal_community_onboarding 도달 불가 확인.
 ---
 

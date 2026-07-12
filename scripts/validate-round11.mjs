@@ -8,6 +8,8 @@ const onboarding = read('src/components/SocialOnboardingView.jsx');
 const dashboard = read('src/components/DashboardView.jsx');
 const membership = read('src/components/dashboard/CommunityMembershipCard.jsx');
 const department = read('src/hooks/useDepartment.js');
+const app = read('src/App.jsx');
+const actions = read('src/hooks/useUserBibleActions.js');
 
 for (const text of ['카카오로 시작하기', '구글로 시작하기', '기존 회원 로그인 (이름·생년월일로)', '로그인 없이 둘러보기']) assert.match(login, new RegExp(text.replace(/[()·]/g, '\\$&')));
 assert.match(login, /교회 관리자 로그인/);
@@ -26,4 +28,7 @@ assert.match(dashboard, /내 단체 관리/);
 assert.match(membership, /기준으로 보기/);
 assert.match(membership, /혼자 읽기 모임으로 돌아가기/);
 assert.match(department, /currentUser\.churchId === UNAFFILIATED_CHURCH_ID[\s\S]*Promise\.resolve\(\{ docs: \[\] \}\)/);
+assert.match(app, /<DashboardView[\s\S]*?currentUser=\{dashboardUser\}/);
+assert.doesNotMatch(dashboard, /users[^\n]*\.set\([^\n]*\.\.\.currentUser/);
+assert.doesNotMatch(actions, /users[^\n]*\.set\([^\n]*\.\.\.currentUser/);
 console.log('라운드 11 계약 검증 통과: 첫 화면, 소셜, 3단계 온보딩, 소속 관리, roster-only');
