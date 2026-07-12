@@ -228,7 +228,9 @@ const App = () => {
                     setView('dashboard');
                 } else {
                     if (dashboardUser?.churchId) loadChurchCommunities(dashboardUser.churchId);
-                    if (currentUser.departmentId && currentUser.subgroupId) {
+                    if (currentUser.accountType === 'personal' && currentUser.planId) {
+                        setView('dashboard');
+                    } else if (currentUser.departmentId && currentUser.subgroupId) {
                         setView('dashboard');
                     } else {
                         setTempUser(currentUser);
