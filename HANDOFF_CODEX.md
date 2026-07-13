@@ -279,10 +279,16 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-12 | T67 dashboardUser 렌더 연결 | `src/App.jsx`, `scripts/validate-round11.mjs`, `HANDOFF_CODEX.md` | DashboardView에 원본 currentUser 대신 runtime 매핑 dashboardUser 전달. personal primaryOrgId의 churchId/name/부서 투영이 T63 버튼·T64 화면 게이트·공지·상점에 적용됨. Dashboard 계열 users 쓰기는 개별 필드만 merge/update하며 매핑 churchId를 전체 저장하는 경로 없음 확인. 검증기에 prop 연결과 whole-user set 금지 assertion 추가. `node scripts/validate-round11.mjs`, `npm run build`, `git diff --check` 통과. |
 | 2026-07-12 | T68 personal 세션 복원 직행 | `src/App.jsx`, `scripts/validate-round11.mjs`, `HANDOFF_CODEX.md` | member 네비게이션에서 accountType personal+planId면 department/subgroup 검사 없이 dashboard 직행. 정상 소셜/개인 계정 새로고침이 구 plan/community onboarding으로 빠져 primaryOrgId를 지우는 트랩 차단. planId 없는 비정상 문서만 기존 플랜 선택 폴백. 검증기에 직행·구 온보딩 비도달 assertion 추가. 자동 검사·빌드·diff 통과. |
 | 2026-07-13 | T87 배치 1 — 일년일독 Day 5~34 | `src/data/quiz/exodus.json`, `src/data/quiz/joshua.json`, `src/data/quiz/judges.json`, `HANDOFF_CODEX.md` | 출애굽기 1~40장 120문항, 여호수아 1~24장 72문항, 사사기 1~21장 63문항으로 총 255문항 추가. 대상 30일은 모두 누락 0, 일일 pool 6~12개이며 전체 미저작 본문은 1,028개에서 943개로 감소. `node scripts/validate-quiz.mjs`는 남은 누락 때문에 의도대로 exit 1, `npm run build`, `git diff --check` 통과. **퀴즈 문항 신학 검수 필요(사용자).** |
+| 2026-07-13 | T87 배치 2 — 일년일독 Day 35~64 | `src/data/quiz/ruth.json`, `src/data/quiz/job.json`, `src/data/quiz/daniel.json`, `src/data/quiz/ezra.json`, `src/data/quiz/haggai.json`, `src/data/quiz/zechariah.json`, `src/data/quiz/nehemiah.json`, `src/data/quiz/esther.json`, `HANDOFF_CODEX.md` | 룻기 12·욥기 126·다니엘 36·에스라 30·학개 6·스가랴 42·느헤미야 39·에스더 30문항으로 총 321문항 추가. 대상 30일 모두 누락 0, 일일 pool 6~18개이며 전체 미저작 본문은 943개에서 836개로 감소. `node scripts/validate-quiz.mjs`는 남은 누락 때문에 의도대로 exit 1, `npm run build`, `git diff --check` 통과. **퀴즈 문항 신학 검수 필요(사용자).** |
 
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-13 Codex 라운드 16 T87 배치 2:
+- 완료: 일년일독 Day 35~64(룻기 1장~에스더 10장) 30일치, 8권 107개 장에 장당 3문항, 총 321문항을 신규 저작했다. 기존 저작 문항과 앱 코드는 수정하지 않았다.
+- 검증: 대상 Day 35~64 각각 누락 0, 일일 pool 6~18개이며 전체 미저작 본문은 943개에서 836개로 감소했다. `node scripts/validate-quiz.mjs`는 남은 누락으로 의도대로 exit 1, `npm run build`, `git diff --check`는 통과했다.
+- 다음 시작점: 일년일독 Day 65 `마 1-4장`부터 다음 30~40일치 배치를 이어간다. T87은 아직 미완료이며 검증기 exit 0 전까지 완료 표시하지 않는다. 라운드 16 지시대로 커밋·배포·push는 하지 않았다. 퀴즈 문항 신학 검수 필요(사용자).
 
 2026-07-13 Codex 라운드 16 T87 배치 1:
 - 완료: 사용자 진도가 가장 먼저 도달하는 일년일독 Day 5~34(출애굽기 1~40장, 여호수아 1~24장, 사사기 1~21장) 30일치에 장당 3문항, 총 255문항을 신규 저작했다. 기존 퀴즈 JSON과 앱 코드는 수정하지 않았다.
