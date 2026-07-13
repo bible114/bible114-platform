@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: "🔧 라운드 17" T88~T90 완료, 다음 작업 T91.** 라운드 16 T87 퀴즈 문항 저작 완료(`validate-quiz` exit 0). git 커밋 금지 — 구현+검증+로그까지만, 커밋은 Claude 담당.
+> **현재 활성 작업: "🔁 라운드 18" T93~T96·T98~T101 완료, T97은 선행 Firestore 규칙 배포 대기.** 라운드 17 T88~T92 완료. git 커밋 금지 — 구현+검증+로그까지만, 커밋은 Claude 담당.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -180,6 +180,14 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-14 | T101 DAY별 퀴즈 | `src/components/dashboard/BibleQuizCard.jsx`, `src/utils/{quizEngine,quizProgress}.js`, `src/hooks/useUserBibleActions.js`, `scripts/validate-round18.mjs` | 퀴즈 완료 상태를 회차·DAY별 `quizProgress`로 분리하고 일일 보상은 `quizRewardDate`로 별도 제한했다. DAY 키·1/2차 보상·같은 날 추가 보상 0 픽스처 통과. |
+| 2026-07-14 | T100 내 기록 허브 | `src/components/dashboard/DashboardHeader.jsx`, `src/components/modals/AchievementsModal.jsx`, `src/hooks/useUserBibleActions.js` | 헤더 점수 칩을 제거하고 업적 모달에 읽은 날·최장 연속·점수·달란트와 계산 안내를 추가했다. `maxStreak`를 읽기 transaction에서 갱신한다. |
+| 2026-07-14 | T98~T99 읽기 흐름·완료 요약 | `src/components/DashboardView.jsx`, `src/components/dashboard/BibleReader.jsx`, `src/hooks/useUserBibleActions.js`, `src/App.jsx` | 퀴즈를 본문 뒤·완료 버튼 앞으로 이동하고 사라지는 보상 토스트를 고정 요약으로 교체했다. 추가 읽기 DAY 퀴즈 게이트와 레벨업→업적 순차 알림을 유지했다. |
+| 2026-07-14 | T96 전용 링크 제거 | `src/components/churchAdmin/SettingsTab.jsx`, `src/components/ChurchAdminView.jsx` | 설정의 전용 로그인 링크 카드와 관리자 인쇄물 노출을 삭제했다. 성도용 A4 QR·표시 주소가 `SITE_URL` 루트 주소를 사용함을 확인했다. |
+| 2026-07-14 | T95 기존 회원 소셜 연결 | `src/components/dashboard/SocialLinkBanner.jsx`, `src/hooks/useAuth.js`, `src/utils/kakaoAuth.js`, `supabase/functions/kakao-auth/{index,core}.ts`, `scripts/validate-kakao-custom-auth.mjs` | 7일 숨김 배너, Google 직접 link, 카카오 ID 토큰 검증·서버 전용 매핑·409 충돌 차단·기존 UID 토큰 발급을 구현했다. 함수 배포와 실계정 연결은 미실행. |
+| 2026-07-14 | T93~T94 브랜드·첫 화면 | `index.html`, `public/manifest.webmanifest`, `src/components/{LoginView,GuestReaderView}.jsx`, `src/components/modals/ScoreInfoModal.jsx`, `src/utils/exportUtils.js`, `src/App.jsx`, `scripts/validate-round11.mjs` | 브랜드를 성경통독 114로 통일하고 카카오 단일 주 버튼·기억 공동체 뱃지·공동체 등록 안내/오진입 방지/완료 화면을 구현했다. 로컬 로그인 화면 렌더 확인. |
+| 2026-07-14 | T92 마무리 청소 | `src/data/items/index.js`, `src/hooks/{useTTS,useBibleContent,useUserAuth}.js`, `src/index.css`, `src/components/{ChurchAdminView,LoginView}.jsx` | 디버그 log/info와 사용처 없는 CSS·중복 상수·미사용 소셜 버튼을 제거했다. 오류 진단용 console.error는 유지했다. |
+| 2026-07-14 | T91 관리자 탭 분할 | `src/components/ChurchAdminView.jsx`, `src/components/churchAdmin/*.jsx` | 대시보드·교인·상점·조직·공지·설정 6개 탭을 순서대로 별도 파일로 이동하고 각 이동 후 빌드를 확인했다. |
 | 2026-07-14 | T90 관리자 번들 지연 로딩 | `src/App.jsx`, `HANDOFF_CODEX.md` | `PlatformAdminView`와 `ChurchAdminView`를 `React.lazy`+`Suspense`로 분리하고 관리자 로딩 안내를 추가했다. 메인 청크는 1,460.04KB(gzip 388.69KB)에서 1,291.68KB(gzip 337.39KB)로 168.36KB 감소했고, 관리자 청크는 각각 54.94KB와 113.19KB로 분리됐다. 메인 청크의 500KB 경고는 여전히 남아 후속 코드 스플리팅 후보가 필요하다. `npm run build`, `npm run validate`, `npm run validate:quiz`, `git diff --check` 통과. |
 | 2026-07-14 | T89 검증 파이프라인 통합 | `package.json`, `HANDOFF_CODEX.md` | `npm run validate`가 round11→round15→kakao-auth→personal-migration을 이름이 드러나는 하위 명령으로 순차 실행하도록 등록하고, 퀴즈는 `npm run validate:quiz`로 분리했다. 두 명령과 빌드·diff 검사 통과. |
 | 2026-07-14 | T88 죽은 코드·잔재 제거 | `src/App.jsx`, `src/data/bibleQuiz.js`, `src/utils/helpers.js`, `src/utils/guestStorage.js`, `HANDOFF_CODEX.md` | 저장소 전체 검색에서 선언 외 참조 0건인 `getTodayQuiz`, `offsetToDateStr`, `clearGuestMigrated`를 제거하고 App의 주석 처리된 옛 hook 및 이동 완료 표시·빈 섹션 잔재를 정리했다. 진입점 도달성 검사상 미사용 컴포넌트는 0개였고 DemoTour·OrgEditor·ChurchAdminTutorial은 실사용 확인, `test_simulation.mjs`는 UPGRADE_PLAN의 부하 테스트 유지 결정을 따라 보존했다. 기존 검증기 전체, 새한글 파서, 빌드, diff 검사 통과. |
@@ -297,6 +305,12 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-14 Codex 라운드 17 완결 + 라운드 18 독립 작업 완료:
+- T91~T96, T98~T101 구현 완료. T94는 갱신된 공동체 등록 안내·성도 오진입 방지·등록 완료 후 QR 인쇄 안내까지 포함했다.
+- T97은 문서 상단의 확정 지시대로 **Firestore T97r 규칙이 미배포 상태라 착수하지 않았다.** 규칙 배포가 확인되면 T97부터 재개해야 한다.
+- T95의 `kakao-auth` 확장도 코드만 반영했으며 Supabase 함수 배포·실계정 연결은 하지 않았다.
+- 검증: `npm run build`, `npm run validate`, `npm run validate:quiz`, `npm run test:saehangul`, `git diff --check`, 로컬 첫 화면 렌더 및 375px 확인. 커밋·배포·push 없음.
 
 2026-07-14 Codex 라운드 17 T88~T90 완료:
 - T88: 선언 외 참조 0건 함수 3개와 App의 옛 주석/빈 섹션을 제거했다. 실제 사용 중인 컴포넌트와 유지 결정된 `test_simulation.mjs`는 보존했다.
@@ -1391,8 +1405,8 @@ T78~T86 검토 완료 — **병합·배포 가능, 수정 없음**. 핵심 확�
 - [x] **T88. 죽은 코드·루트 잔재 제거** — 사용처 0임을 grep으로 확인한 것만: 미사용 컴포넌트(예: DemoTour 연결 여부 확인), 미사용 export/import, 루트의 실험 파일(test_simulation.mjs 등 — 참조 없으면 삭제), 주석 처리된 코드 블록. 각 삭제의 근거(검색 결과 0건)를 작업 로그에 남길 것.
 - [x] **T89. 검증 파이프라인 통합** — package.json에 `npm run validate` 하나로 validate-round11/round15/kakao-custom-auth/personal-migration(+quiz는 별도 `validate:quiz`)이 전부 도는 스크립트 등록. 실패 시 어느 검증기인지 명확히.
 - [x] **T90. 번들 코드 스플리팅** — `PlatformAdminView`·`ChurchAdminView`를 React.lazy+Suspense로 지연 로딩(교인·게스트는 관리자 코드를 내려받지 않게). 메인 청크 크기 before/after를 로그에 기록. 500KB 경고 해소가 목표.
-- [ ] **T91. 거대 컴포넌트 분할 1차** — `ChurchAdminView.jsx`를 탭 단위 파일로 분리(대시보드/교인/상점/조직/공지/설정 → `src/components/churchAdmin/*.jsx`). **한 탭씩** 옮기고 매번 빌드 확인. props·상태·로직은 그대로 이동만(리네이밍·개선 금지). PlatformAdminView는 이번에 손대지 않음(2차 후보).
-- [ ] **T92. 마무리 청소** — 프로덕션 코드의 console.log 중 디버그성 제거(오류 로그 console.error는 유지), 미사용 CSS 클래스 확인, 작업 로그에 남긴 것/남긴 이유 기록.
+- [x] **T91. 거대 컴포넌트 분할 1차** — `ChurchAdminView.jsx`를 탭 단위 파일로 분리(대시보드/교인/상점/조직/공지/설정 → `src/components/churchAdmin/*.jsx`). **한 탭씩** 옮기고 매번 빌드 확인. props·상태·로직은 그대로 이동만(리네이밍·개선 금지). PlatformAdminView는 이번에 손대지 않음(2차 후보).
+- [x] **T92. 마무리 청소** — 프로덕션 코드의 console.log 중 디버그성 제거(오류 로그 console.error는 유지), 미사용 CSS 클래스 확인, 작업 로그에 남긴 것/남긴 이유 기록.
 
 완료 기준: 빌드+`npm run validate` 통과, 기능 diff 없음(리팩터 전후 화면 동작 동일 — 로그인 화면 렌더를 로컬로 확인).
 
@@ -1401,8 +1415,8 @@ T78~T86 검토 완료 — **병합·배포 가능, 수정 없음**. 핵심 확�
 > 사용자 실사용 후 직접 지시 7건. 동작 우선순위: T93~T94(첫인상) → T98~T99(읽기 흐름) → T96 → T97(달란트 지갑) → T95(소셜 연결).
 > **T97r 규칙은 Claude가 수정 완료 — ⚠️ 배포 대기(Firebase 재인증 필요)**: roster 필드 화이트리스트(create/self-update)에 `talent` 추가 + 관리자 update의 talent 음수 방지. **T97 착수 전 배포 확인 필수** — 미배포 상태면 Claude 메모란에 기록하고 T97을 건너뛰고 다음 작업 진행.
 
-- [ ] **T93. 브랜딩 교체** — "천로역정 성경읽기" → **"성경통독 114"** 전체 교체: LoginView 로고(데스크톱·모바일), index.html `<title>`, A4 인쇄물 3종 문구, 기타 grep 전수. 히어로의 "천로역정 같은 통독의 길" 비유도 "함께 걷는 통독의 길"로.
-- [ ] **T94. 첫 화면 — 카카오 단일 주 버튼 (당근마켓 스타일, 2026-07-14 사용자 레퍼런스 확정)**
+- [x] **T93. 브랜딩 교체** — "천로역정 성경읽기" → **"성경통독 114"** 전체 교체: LoginView 로고(데스크톱·모바일), index.html `<title>`, A4 인쇄물 3종 문구, 기타 grep 전수. 히어로의 "천로역정 같은 통독의 길" 비유도 "함께 걷는 통독의 길"로.
+- [x] **T94. 첫 화면 — 카카오 단일 주 버튼 (당근마켓 스타일, 2026-07-14 사용자 레퍼런스 확정)**
   - 레이아웃 (위→아래):
     1. 주황 테두리 말풍선 배지 **"5초만에 빠른 시작"** (버튼 위에 꼬리 달린 라운드 배지)
     2. **[💬 카카오로 시작]** — 전폭 노란(#FEE500) 대형 버튼. 첫 화면의 유일한 큰 버튼.
@@ -1413,33 +1427,52 @@ T78~T86 검토 완료 — **병합·배포 가능, 수정 없음**. 핵심 확�
   - 첫 카드에 공동체 안내 블록(2026-07-14 문구 확정): "⛪ 교회·모임과 함께 읽고 싶으신가요? / **공동체 대표(관리자)가** 먼저 공동체를 등록해야 성도들이 찾아서 함께 읽을 수 있어요." + [공동체 등록하기 →]. 상단 "교회 등록 →" 버튼과 등록 화면 제목 등 사이트 전체 용어를 "공동체 등록"으로 통일.
   - 등록(adminSignup) 1단계 상단에 안내 박스: "공동체 등록이란? 우리 교회(모임)의 관리 계정을 만드는 것 — ①성도 검색 가입 가능 ②입장코드 보호 ③관리 화면·달란트 상점 운영. 무료, 5분 소요." + 성도 오진입 방지 줄: "성도이신가요? 가입은 첫 화면의 카카오로 시작을 눌러주세요 ← 돌아가기".
   - 등록 완료 화면에 다음 행동 연결: "이제 성도들에게 알리세요 — 설정 탭 → 성도용 가입 안내문 인쇄(QR)".
-- [ ] **T95. 기존 회원 소셜 로그인 연결(전환 유도)**
+- [x] **T95. 기존 회원 소셜 로그인 연결(전환 유도)**
   - 로그인한 기존 회원(교회·무소속·이름 개인) 대시보드 상단에 1회성 배너: "다음부터 카카오/구글로 3초 로그인" (닫기 시 7일 숨김).
   - **구글 연결**: `auth.currentUser.linkWithPopup(GoogleAuthProvider)` → 성공 시 users.authProvider 갱신, 이후 구글 버튼 로그인 시 기존 계정으로 들어옴 (uid 동일).
   - **카카오 연결**: 커스텀 토큰이라 link 불가 → 매핑 방식. `kakao-auth` 함수 확장: ① link 모드(`{ code, redirectUri, linkIdToken }`) — idToken 검증한 기존 uid를 `kakaoLinks/{kakao:회원번호}` 문서에 `{ uid }` 로 저장(서비스 계정 쓰기, 이미 다른 uid에 연결돼 있으면 409 안내) ② 로그인 모드 — 커스텀 토큰 발급 전에 kakaoLinks 매핑을 조회해 **있으면 기존 uid로 발급**. kakaoLinks 컬렉션은 클라이언트 접근 금지(규칙 추가 불필요 — 기본 거부, 서비스 계정만).
   - 연결 흐름도 redirect 방식 재사용: 연결 시작 시 sessionStorage에 link 마커 저장 → 복귀 처리에서 로그인 대신 link 모드 호출 → "연결 완료, 다음부터 카카오로 로그인하세요".
-- [ ] **T96. "우리 교회 로그인 링크" 제거** — ChurchAdminView 설정 탭의 해당 카드 삭제(사용자 확정: 실동작 안 함). 성도용 A4 안내문의 QR·주소를 **루트 URL(https://www.bible114.net)**로 변경. `?church=` 파라미터 처리 코드는 남겨도 되나 신규 노출은 없앤다.
-- [ ] **T97. 공동체별 달란트 지갑 분리** (T97r 규칙 배포됨)
+- [x] **T96. "우리 교회 로그인 링크" 제거** — ChurchAdminView 설정 탭의 해당 카드 삭제(사용자 확정: 실동작 안 함). 성도용 A4 안내문의 QR·주소를 **루트 URL(https://www.bible114.net)**로 변경. `?church=` 파라미터 처리 코드는 남겨도 되나 신규 노출은 없앤다.
+- [ ] **T97. 공동체별 달란트 지갑 분리** (T97r 규칙 배포 대기 — 지시서에 따라 착수 보류)
   - **모델**: ① 교회 계정의 주 소속 교회 지갑 = 기존 `users.talent` (무변경·호환) ② roster 소속(개인 계정의 모든 공동체 + 교회 계정의 추가 공동체) = **`roster.talent`** (조직별 독립).
   - **적립**: 하루 첫 읽기·퀴즈 보상 시 내 모든 소속 지갑에 **각각 동일 금액 적립** (교회 계정: users.talent + 각 roster.talent / 개인 계정: 각 roster.talent). 기존 진도 동기화 트랜잭션(T47)에 talent 필드만 추가하는 구조.
   - **이관**: 개인 계정의 기존 `users.talent` 잔액은 로그인 시 1회 primaryOrg roster.talent로 lazy 이관(멱등 플래그 `talentWalletMigrated`).
   - **표시·사용**: 헤더 잔액·상점·구매 차감 = "현재 보는 공동체" 지갑. 상점 구매 트랜잭션이 해당 지갑(users 또는 roster)을 차감. 창구 판매·환불: 자체 교인 → users.talent(기존), roster 멤버 → 그 조직 roster.talent (개인 계정 users.talent 차감 경로는 제거).
   - 플랫폼 관리자 달란트 리셋 버튼도 roster 지갑 포함하도록 확장.
-- [ ] **T98. 퀴즈 위치 이동 — 본문 뒤·완료 버튼 앞** (사용자: "읽고 나서 체크 전에 나와야지")
+- [x] **T98. 퀴즈 위치 이동 — 본문 뒤·완료 버튼 앞** (사용자: "읽고 나서 체크 전에 나와야지")
   - BibleQuizCard를 상단에서 **본문 텍스트 바로 아래, '오늘 읽기 완료' 버튼 바로 위**로 이동. 읽기 흐름: 본문 → (스크롤 끝) 퀴즈 → 완료 버튼. 게이트 로직(T33/T79)은 유지하되 T71의 "퀴즈로 스크롤" 유도는 위치상 불필요해지면 단순화.
-- [ ] **T99. 읽기 완료 피드백 단순화** (사용자: "별 모양 복잡, 빨라서 못 읽음")
+- [x] **T99. 읽기 완료 피드백 단순화** (사용자: "별 모양 복잡, 빨라서 못 읽음")
   - 3초 토스트 제거 → 완료 버튼 자리에 **고정 요약 패널**: 큰 글씨 2줄 이내 "오늘 읽기 완료! 🎉 / +10점 · 달란트 +12" (조직별 적립이면 "모든 공동체에 적립됐어요" 한 줄). 자동 사라짐 없이 오늘 상태로 유지. 레벨업·업적 토스트는 유지하되 순차 표시(겹침 금지).
 
-- [ ] **T100. 헤더 포인트 칩 제거 + '나의 업적'을 내 기록 허브로** (2026-07-14 사용자 추가)
+- [x] **T100. 헤더 포인트 칩 제거 + '나의 업적'을 내 기록 허브로** (2026-07-14 사용자 추가)
   - 헤더에서 점수(pt) 칩 제거 (🔥연속·⭐달란트·🏅 등은 유지).
   - 🏅 나의 업적 모달 상단에 **내 기록 요약** 추가: 총 읽은 날(getDaysRead), **최장 연속**(신규 `users.maxStreak` — handleRead에서 `max(기존, newStreak)` 갱신, 필드 없으면 현재 streak로 시드), 현재 점수, 현재 달란트.
   - 이어서 **계산 방식 안내** 짧은 표: "점수 = 하루 첫 읽기 10점 + 연속 보너스(최대 5)", "달란트 = 하루 첫 읽기 10+연속(최대 7), 퀴즈 정답 +10(2번째 +5) — **달란트는 하루 1번만**". 어르신 큰 글씨.
-- [ ] **T101. 추가 읽기에도 퀴즈 출제 (보상은 하루 1회)** (2026-07-14 사용자 추가)
+- [x] **T101. 추가 읽기에도 퀴즈 출제 (보상은 하루 1회)** (2026-07-14 사용자 추가)
   - 퀴즈를 '하루 1문제'에서 **'진도 DAY마다 1문제'**로: 추가 읽기로 DAY가 넘어가면 새 DAY 본문의 퀴즈가 다시 나오고 게이트도 그 DAY 기준으로 적용 (T79 정합의 완성형).
   - **달란트 적립은 하루 첫 퀴즈 정답만**. 이후 DAY의 퀴즈 정답은 +0으로 처리하되 명확히 안내: "정답이에요! 퀴즈 달란트는 하루 1번만 적립돼요." 완료 요약(T99 패널)에도 동일 원칙 반영.
   - 저장 구조: 문항 완료는 DAY별(quizKey 확장), 일일 보상 여부는 날짜 기준 필드로 분리 — 자정 넘김·재방문 호환 확인.
 
 완료 기준: 빌드 + `npm run validate`(라운드 17에서 통합) + 지갑 이관·다중 적립·DAY별 퀴즈 픽스처, 375px 확인. 커밋 금지(Claude 담당).
+
+## 🔍 라운드 Q — 퀴즈 저비용 모델 검수 (2026-07-14 사용자 승인 — 라운드 17·18과 병행 가능한 읽기 전용 작업)
+
+> **저비용(mini급) 모델로 실행하는 검수 전용 라운드.** 4,719문항 전수를 훑어 의심 문항만 골라낸다.
+> 코드·데이터 수정 금지, git 커밋 금지, **HANDOFF 작업 로그 기록도 생략** — 산출물은 아래 파일 하나뿐.
+
+### 검수 방법
+
+1. `src/data/quiz/*.json` 66권을 책 단위로 순회. 각 문항에 대해 다음만 판정:
+   - **A. 정답 오류 의심**: answerIndex가 가리키는 보기가 성경 내용상 정답이 아닌 것 같음
+   - **B. 이중 정답/모호**: 다른 보기도 정답으로 해석 가능하거나 보기끼리 중복
+   - **C. 근거 불일치**: ref 구절이 문항 내용과 안 맞음
+   - **D. 신학·표기 문제**: 논란 소지 표현, 개역개정과 다른 표기, 어색한 한국어·오타
+2. **확실한 것만 기록** (애매하면 통과 — 최종 판단은 사람). 문항 수정은 절대 금지.
+3. 산출물: 저장소 루트 `QUIZ_REVIEW_FINDINGS.md` — 표 형식:
+   `| 책 | 장 | 문항(앞 20자) | 유형(A~D) | 사유 한 줄 | 수정 제안 |`
+   맨 위에 요약(검사 문항 수 / 의심 건수 / 유형별 집계). 진행 중에는 책 단위로 이어서 append.
+
+완료 후: Claude가 findings를 사용자 O/X용 짧은 문서로 정리 → 승인분만 데이터 수정 → 재배포.
 
 ## 📮 Claude → Codex 메모
 
