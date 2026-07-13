@@ -287,6 +287,15 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - 진행 중: T76 코드 경로는 구현했다. 서버는 ID 토큰→역할/같은 교회 또는 primaryOrgId 검증→Identity Toolkit 실제 password 변경→private/auth 동기화 순서이며, 클라이언트의 기존 직접 private/auth 쓰기는 교체했다.
 - 막힘: `supabase functions deploy admin-set-password --no-verify-jwt`를 실행했으나 이 환경에는 Supabase CLI가 없어 `command not found: supabase`로 실패했다. 배포 후 `VITE_ADMIN_SET_PASSWORD_URL`에 함수 URL을 넣어야 하며, 그 전에는 UI가 설정 오류를 표시한다. T76 배포와 T77 픽스처/실계정 검증은 다음 작업자가 이어야 한다.
 
+2026-07-13 Codex 사이트 점검 발견 3차:
+- ① 증상: 라운드 14 창구 판매에서 개인·외부 roster 멤버의 실제 달란트가 판매액보다 적어도 차감이 진행되어 음수 잔액이 될 수 있다. ② 재현: 기준 공동체 관리자가 개인 계정(예: 실제 talent 3)의 창구 판매에 5를 입력한다. `isExternalOrgMember` 경로는 잔액을 읽지 않고 `FieldValue.increment(-price)` batch를 커밋하며, 규칙도 변경 필드를 제한할 뿐 0 이상을 검증하지 않는다. ③ 추정 파일: `src/components/ChurchAdminView.jsx` `executeManualDeduct`(개인 경로), `firestore.rules` 라운드 14 talent update 분기. 화면 검증 필요: 배포 규칙으로 실제 기준 공동체/타공동체 각각의 허용·거부와 음수 방지 정책 확인.
+- 매일 영상 카드: 이상 없음. 날짜 키는 KST 03시 경계로 재계산하고 재생목록 후보에서 해당 날짜 제목을 우선 선택하며, 선택 모드 URL 누락 시 반대 모드로 폴백한다. 자동채움 자체 실패·양쪽 URL 부재는 카드를 숨기는 fail-closed 경로다. 화면 검증 필요: 실제 YouTube 재생목록의 미리 업로드 영상·챕터 점프/iframe seek.
+- 본문 연동 퀴즈 경계일: 이상 없음. 플랜 첫날은 currentDay, 읽은 뒤에는 currentDay-1(1일이면 365일) 범위를 사용하고, 문항이 없거나 로드 오류면 gate를 열어 읽기 완료를 막지 않는다. node 픽스처로 whole_bible/new_testament의 1·365일 범위 파싱 및 `validate-quiz.mjs` 전체 커버리지를 확인했다.
+- A4 인쇄물 3종: 이상 없음. QR 안내문은 클릭 순간 새 창을 선점한 뒤 고정 운영 URL QR을 생성하고, 상품 목록은 4/8/12/20개 경계별 그리드·글자 크기를 조절하며, 관리자 매뉴얼도 동일 인쇄 창 경로를 사용한다. 화면 검증 필요: 실제 브라우저 인쇄 대화상자의 A4 한 장 레이아웃과 긴 상품명 줄바꿈.
+- 완독(365일) 축하·회차 전환: 이상 없음. 트랜잭션이 365일 완료 시 currentDay를 1로, readCount를 +1로 원자 갱신하고 App이 완료 회차와 다음 회차를 축하 오버레이에 전달한다. node 픽스처로 회차 전환 계약을 확인했다. 화면 검증 필요: 실제 365일 계정의 오버레이/닫기 후 Day 1 본문.
+- 관리자 대시보드 통계: 이상 없음. 0명 교회는 분모 0을 0%로 처리하고 빈 교회 목록·완독자 목록·부서 데이터에 각각 빈 상태가 있다. 조직이 없으면 부서 카드가 빈 상태로 렌더된다.
+- 라운드 14 신규 코드 회귀: 위 개인 창구 판매 음수 잔액 건 외 이상 없음. 판매·환불은 permission-denied를 기준 공동체 불일치로 안내하고, 두 관리자 비밀번호 UI는 `getIdToken` Bearer와 서버 함수만 사용하며 클라이언트의 `private/auth` 직접 쓰기는 없다. `npm run build`, `node scripts/validate-quiz.mjs`, `node scripts/validate-round11.mjs`, `node scripts/validate-personal-migration.mjs`, `node scripts/validate-kakao-custom-auth.mjs`, `git diff --check` 통과.
+
 > Codex: 작업을 마치거나 중단할 때 여기에 남겨라 — ① 완료/미완 상태 요약, ② 설계와 다르게 한 것과 이유, ③ 질문/막힌 것, ④ Claude가 리뷰할 때 봐야 할 지점.
 
 2026-07-13 Codex 라운드 13:
@@ -1203,6 +1212,12 @@ T75c·T76 검토 완료 — **보안 차단급 1건 발견, Claude가 직접 수
 3. 권한 모델 검증 통과: idToken lookup → 서비스 계정으로 호출자 role·교회 확인 → 대상의 churchId/primaryOrgId 일치 or 플랫폼 관리자 — 설계와 일치. 클라이언트 유틸·CORS·오류 일반화도 정상.
 
 배포 상태: **함수 배포 완료**(ejqnwajcvkvpcxechwzl), `VITE_ADMIN_SET_PASSWORD_URL` 로컬 설정 완료. **T75 규칙과 클라이언트 배포는 Firebase 재인증 대기** — 사용자 `firebase login --reauth` 후 rules+client 동시 배포 예정. T77 실검증은 배포 후 테스트 교회 계정으로.
+
+---
+
+## ✅ Claude 리뷰 결과 — 3차 점검 대응 (2026-07-13)
+
+3차 점검 발견 1건(개인 계정 창구 판매 음수 잔액) — **규칙 강화로 즉시 해결·배포**: 라운드 14 talent 분기에 `request.resource.data.talent is number && >= 0` 조건 추가 (관리자가 개인 잔액을 조회할 수 없으므로 음수 차감은 규칙이 거부, 권한 축소 방향이라 자동 적용). 클라이언트 거부 안내 문구를 잔액 부족 겸용으로 확장. rules+client 배포 완료. 이상 없음 5개 영역(매일 영상·퀴즈 경계일·A4 인쇄물·완독 전환·관리자 통계)과 검증기 5종 통과 확인. 남은 화면 검증(유튜브 실영상·인쇄 대화상자·365일 실계정·T77 비밀번호 실변경)은 사용자 실기기 체크리스트로 이관.
 
 ---
 

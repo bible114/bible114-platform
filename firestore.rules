@@ -75,7 +75,10 @@ service cloud.firestore {
       allow update: if isSignedIn() &&
         resource.data.accountType == 'personal' &&
         isChurchAdmin(resource.data.get('primaryOrgId', null)) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['talent', 'updatedAt']);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['talent', 'updatedAt']) &&
+        // 관리자는 개인 계정 잔액을 조회할 수 없으므로 음수 차감은 규칙이 거부한다 (3차 점검 발견)
+        request.resource.data.talent is number &&
+        request.resource.data.talent >= 0;
       // [라운드 10] 개인 계정 전환(일방향, 본인만): 교회 교인 → accountType 'personal' + churchId null.
       // 전환 전에 자기 roster 행(구 교회)이 먼저 만들어져 있어야 한다 — 소속이 명부 원장으로
       // 보존됨을 규칙 수준에서 강제. 다른 교회로의 churchId 변경이나 personal → 교회 복귀는

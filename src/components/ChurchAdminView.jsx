@@ -57,7 +57,7 @@ const isPermissionDenied = (error) => (
     error?.code === 'permission-denied'
     || error?.code === 'firestore/permission-denied'
 );
-const PRIMARY_ORG_TALENT_DENIED_MESSAGE = '이 교인의 기준 공동체가 우리 조직이 아니라 차감할 수 없어요.';
+const PRIMARY_ORG_TALENT_DENIED_MESSAGE = '차감할 수 없어요 — 잔액이 부족하거나, 이 교인의 기준 공동체가 우리 조직이 아니에요.';
 
 const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [members, setMembers] = useState([]);
