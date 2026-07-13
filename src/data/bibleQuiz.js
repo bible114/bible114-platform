@@ -126,8 +126,3 @@ export const getKstDateString = (date = new Date()) => {
     const shifted = new Date(date.getTime() + 9 * 60 * 60 * 1000);
     return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate())).toDateString();
 };
-
-export const getTodayQuiz = (date = new Date()) => {
-    const dayOfYear = getKstDayOfYear(date);
-    return QUIZ_BANK[dayOfYear % QUIZ_BANK.length];
-};

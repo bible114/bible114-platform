@@ -12,6 +12,16 @@ export const buildFirebaseClaims = (uid: string, clientEmail: string, now: numbe
   uid,
 });
 
+export const buildGoogleAccessClaims = (clientEmail: string, now: number) => ({
+  iss: clientEmail,
+  scope: 'https://www.googleapis.com/auth/datastore',
+  aud: 'https://oauth2.googleapis.com/token',
+  iat: now,
+  exp: now + 3600,
+});
+
+export const kakaoLinkDocumentId = (kakaoId: string) => `kakao:${kakaoId}`;
+
 export const exchangeKakaoProfile = async ({
   code,
   redirectUri,

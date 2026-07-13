@@ -21,7 +21,7 @@ export const getSubgroupDisplay = (subgroupId, subgroupName) => {
     // Alias subgroupId to displayKey for the rest of the function
     const subgroupId_ = displayKey;
 
-    // 선명하고 확실한 색상 매핑 (천로역정 레이스용)
+    // 선명하고 확실한 색상 매핑 (통독 레이스용)
     const colorMap = {
         '1구역': 'bg-[#FF5252] text-white border-red-600',
         '2구역': 'bg-[#FF7043] text-white border-orange-600',

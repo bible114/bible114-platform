@@ -104,16 +104,6 @@ body {
     background: linear-gradient(to bottom, #bae6fd 0%, #f0f9ff 100%);
 }
 
-/* 스크롤바 숨김 */
-.scrollbar-hide::-webkit-scrollbar {
-    display: none;
-}
-
-.scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-}
-
 /* 애니메이션: 떠다니는 효과 (구름용) */
 .animate-float {
     animation: float 6s ease-in-out infinite;

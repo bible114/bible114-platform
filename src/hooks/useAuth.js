@@ -11,6 +11,7 @@ import {
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
 import {
     KAKAO_RETURNING_KEY,
+    KAKAO_LINK_RETURNING_KEY,
     KAKAO_STATE_KEY,
     buildKakaoAuthorizeUrl,
     clearKakaoCallbackUrl,
@@ -43,6 +44,7 @@ export const useAuth = ({
     onAdminProviderNotice,
 }) => {
     const [errorMsg, setErrorMsg] = useState('');
+    const [socialLinkNotice, setSocialLinkNotice] = useState(null);
     const googleAdminSignupFlowRef = useRef(null);
     const googleAdminSignupAttemptRef = useRef(0);
     const googleAdminSignupStartingRef = useRef(false);
@@ -203,6 +205,21 @@ export const useAuth = ({
         setView('dashboard');
     };
 
+    const openExistingSocialUser = async (firebaseUser, doc) => {
+        const data = doc.data();
+        const pendingMigration = getPendingPersonalMigration(firebaseUser.uid);
+        if (data.accountType === 'personal' || pendingMigration) {
+            await openExistingPersonalUser(firebaseUser, doc);
+            return;
+        }
+        if (data.role !== 'member') throw new Error('NOT_MEMBER_ACCOUNT');
+        const user = userDocToState(doc);
+        user.extraOrgs = await loadUserExtraOrgs(firebaseUser.uid);
+        setCurrentUser(user);
+        setTempUser(null);
+        setView('dashboard');
+    };
+
     const openSocialOnboarding = (firebaseUser, provider, profile = {}) => {
         if (!firebaseUser?.uid || auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
         socialProviderRef.current = provider;
@@ -225,7 +242,7 @@ export const useAuth = ({
         const doc = await db.collection('users').doc(firebaseUser.uid).get();
         if (auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
         if (doc.exists) {
-            await openExistingPersonalUser(firebaseUser, doc);
+            await openExistingSocialUser(firebaseUser, doc);
             return;
         }
         openSocialOnboarding(firebaseUser, provider, profile);
@@ -298,7 +315,7 @@ export const useAuth = ({
                 const userRef = db.collection('users').doc(cred.user.uid);
                 const existingDoc = await userRef.get();
                 if (existingDoc.exists) {
-                    await openExistingPersonalUser(cred.user, existingDoc);
+                    await openExistingSocialUser(cred.user, existingDoc);
                     return;
                 }
                 openSocialOnboarding(cred.user, 'google.com');
@@ -345,6 +362,54 @@ export const useAuth = ({
         })();
         kakaoStartRef.current = request;
         return request;
+    };
+
+    const handleGoogleLink = async () => {
+        setSocialLinkNotice(null);
+        try {
+            await authReady;
+            if (!auth.currentUser) throw new Error('AUTH_REQUIRED');
+            if (isKakaoTalkBrowser()) {
+                setSocialLinkNotice({ type: 'error', message: KAKAO_GOOGLE_AUTH_MESSAGE });
+                return;
+            }
+            await auth.currentUser.linkWithPopup(new firebase.auth.GoogleAuthProvider());
+            await db.collection('users').doc(auth.currentUser.uid).set({
+                authProvider: 'google.com',
+                authProviders: firebase.firestore.FieldValue.arrayUnion('google.com'),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true });
+            setCurrentUser(user => user ? {
+                ...user,
+                authProvider: 'google.com',
+                authProviders: Array.from(new Set([...(user.authProviders || []), 'google.com'])),
+            } : user);
+            setSocialLinkNotice({ type: 'success', message: '구글 연결 완료! 다음부터 구글로 3초 만에 로그인하세요.' });
+        } catch (error) {
+            if (['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(error?.code)) return;
+            const message = error?.code === 'auth/credential-already-in-use'
+                ? '이미 다른 계정에 연결된 구글 계정입니다.'
+                : '구글 계정을 연결하지 못했습니다. 잠시 후 다시 시도해주세요.';
+            setSocialLinkNotice({ type: 'error', message });
+        }
+    };
+
+    const handleKakaoLinkStart = async () => {
+        setSocialLinkNotice(null);
+        try {
+            await authReady;
+            if (!auth.currentUser) throw new Error('AUTH_REQUIRED');
+            const state = createKakaoState();
+            sessionStorage.setItem(KAKAO_STATE_KEY, state);
+            sessionStorage.setItem(KAKAO_RETURNING_KEY, 'pending');
+            sessionStorage.setItem(KAKAO_LINK_RETURNING_KEY, 'pending');
+            window.location.assign(buildKakaoAuthorizeUrl({ state }));
+        } catch (error) {
+            sessionStorage.removeItem(KAKAO_STATE_KEY);
+            sessionStorage.removeItem(KAKAO_RETURNING_KEY);
+            sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
+            setSocialLinkNotice({ type: 'error', message: '카카오 연결을 시작하지 못했습니다. 잠시 후 다시 시도해주세요.' });
+        }
     };
 
     const handleSocialOnboardingComplete = async ({ name, organization, planId }) => {
@@ -400,24 +465,48 @@ export const useAuth = ({
         if (!callback.code && !callback.error) return () => { alive = false; };
         const expectedState = sessionStorage.getItem(KAKAO_STATE_KEY);
         const returnStatus = sessionStorage.getItem(KAKAO_RETURNING_KEY);
+        const isLinkReturn = sessionStorage.getItem(KAKAO_LINK_RETURNING_KEY) === 'pending';
         clearKakaoCallbackUrl();
         if (callback.error) {
             sessionStorage.removeItem(KAKAO_STATE_KEY);
             sessionStorage.removeItem(KAKAO_RETURNING_KEY);
-            if (callback.error === 'access_denied') setErrorMsg('카카오 로그인이 취소되었습니다.');
+            sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
+            const message = callback.error === 'access_denied' ? '카카오 연결이 취소되었습니다.' : '카카오 연결을 완료하지 못했습니다.';
+            if (isLinkReturn) setSocialLinkNotice({ type: 'error', message });
+            else if (callback.error === 'access_denied') setErrorMsg('카카오 로그인이 취소되었습니다.');
             else setErrorMsg('카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요.');
             return () => { alive = false; };
         }
         if (!isValidKakaoState(callback.state, expectedState) || returnStatus === 'processing') {
             sessionStorage.removeItem(KAKAO_STATE_KEY);
             sessionStorage.removeItem(KAKAO_RETURNING_KEY);
+            sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
             setErrorMsg('카카오 로그인 요청을 확인할 수 없습니다. 다시 시도해주세요.');
             return () => { alive = false; };
         }
         sessionStorage.setItem(KAKAO_RETURNING_KEY, 'processing');
         beginInteractiveAuthFlow('kakaoCustomTokenResult');
         authReady.then(async () => {
-            const profile = await exchangeKakaoCode({ code: callback.code, redirectUri: getKakaoRedirectUri() });
+            const linkIdToken = isLinkReturn ? await auth.currentUser?.getIdToken(true) : null;
+            if (isLinkReturn && !linkIdToken) throw new Error('AUTH_REQUIRED');
+            const profile = await exchangeKakaoCode({ code: callback.code, redirectUri: getKakaoRedirectUri(), linkIdToken });
+            if (isLinkReturn) {
+                const uid = auth.currentUser.uid;
+                await db.collection('users').doc(uid).set({
+                    authProvider: 'kakao.com',
+                    authProviders: firebase.firestore.FieldValue.arrayUnion('kakao.com'),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                }, { merge: true });
+                if (alive) {
+                    setCurrentUser(user => user ? {
+                        ...user,
+                        authProvider: 'kakao.com',
+                        authProviders: Array.from(new Set([...(user.authProviders || []), 'kakao.com'])),
+                    } : user);
+                    setSocialLinkNotice({ type: 'success', message: '연결 완료, 다음부터 카카오로 로그인하세요.' });
+                }
+                return;
+            }
             const cred = await auth.signInWithCustomToken(profile.token);
             if (!alive) return;
             try {
@@ -429,12 +518,15 @@ export const useAuth = ({
         }).catch(error => {
             if (!alive || !error) return;
             console.error('카카오 인증 코드 처리 실패:', error);
-            if (error?.message === 'KAKAO_AUTH_URL_MISSING') setErrorMsg('카카오 로그인 서버 설정이 아직 완료되지 않았습니다. 관리자에게 문의하세요.');
+            const message = error?.status === 409 ? error.message : '카카오 연결을 완료하지 못했습니다. 다시 시도해주세요.';
+            if (isLinkReturn) setSocialLinkNotice({ type: 'error', message });
+            else if (error?.message === 'KAKAO_AUTH_URL_MISSING') setErrorMsg('카카오 로그인 서버 설정이 아직 완료되지 않았습니다. 관리자에게 문의하세요.');
             else setErrorMsg('카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요.');
-            auth.signOut().catch(() => {});
+            if (!isLinkReturn) auth.signOut().catch(() => {});
         }).finally(() => {
             sessionStorage.removeItem(KAKAO_STATE_KEY);
             sessionStorage.removeItem(KAKAO_RETURNING_KEY);
+            sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
             endInteractiveAuthFlow('kakaoCustomTokenResult');
         });
         return () => { alive = false; };
@@ -1001,6 +1093,10 @@ export const useAuth = ({
         handlePersonalSignup,
         handleGooglePersonalSignup,
         handleKakaoStart,
+        handleGoogleLink,
+        handleKakaoLinkStart,
+        socialLinkNotice,
+        setSocialLinkNotice,
         handleSocialOnboardingComplete,
         handleChurchAdminLogin,
         handleGoogleAdminLogin,

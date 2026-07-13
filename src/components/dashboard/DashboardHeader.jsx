@@ -21,10 +21,7 @@ const getMembershipLabel = (membership) => {
 const DashboardHeader = ({
     handleLogout,
     streak,
-    score,
     talent,
-    myLevel,
-    setShowScoreInfo,
     setShowAchievements,
     setShowDateSettings,
     setShowCalendar,
@@ -63,9 +60,6 @@ const DashboardHeader = ({
                             <div id="tut-streak" className={`text-xs font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 shrink-0 ${streak > 0 ? 'bg-orange-50 text-orange-600 border border-orange-100' : 'bg-slate-100 text-slate-400'}`}>
                                 <Icon name="flame" size={12} />{streak}일
                             </div>
-                            <button id="tut-score" type="button" onClick={(e) => { e.stopPropagation(); setShowScoreInfo(true); }} className="text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2.5 py-1.5 rounded-xl hover:bg-blue-100 transition-colors shrink-0">
-                                {myLevel.emoji} {score || 0}pt
-                            </button>
                             {talent !== undefined && (
                                 <div className="text-xs font-bold text-orange-600 bg-orange-50 border border-orange-100 px-2.5 py-1.5 rounded-xl shrink-0" title="성경 읽기로 모은 달란트">
                                     ⭐ {talent || 0} 달란트
@@ -74,7 +68,7 @@ const DashboardHeader = ({
                             {isChurchAdmin && (
                                 <button type="button" onClick={(e) => { e.stopPropagation(); setView('church_admin'); }} className="p-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 shrink-0 flex items-center gap-1" title="교회 관리">⛪ <span className="hidden sm:inline">교회관리</span></button>
                             )}
-                            <button id="tut-achievements" type="button" aria-label="달성 뱃지" onClick={(e) => { e.stopPropagation(); setShowAchievements(true); }} className="p-1.5 text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-100 rounded-xl hover:bg-yellow-100 shrink-0">🏅</button>
+                            <button id="tut-achievements" type="button" aria-label="나의 업적과 기록" onClick={(e) => { e.stopPropagation(); setShowAchievements(true); }} className="p-1.5 text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-100 rounded-xl hover:bg-yellow-100 shrink-0">🏅</button>
                             <button id="tut-date-settings" type="button" aria-label="날짜 설정" onClick={(e) => { e.stopPropagation(); setShowDateSettings(true); }} className="p-1.5 text-xs font-bold text-purple-600 bg-purple-50 border border-purple-100 rounded-xl hover:bg-purple-100 shrink-0">📅</button>
                             <button id="tut-calendar" type="button" aria-label="읽기 달력" onClick={(e) => { e.stopPropagation(); setShowCalendar(true); }} className="p-1.5 text-xs font-bold text-green-600 bg-green-50 border border-green-100 rounded-xl hover:bg-green-100 shrink-0">📆</button>
                             <button type="button" aria-label="읽는 방법 도움말" onClick={(e) => { e.stopPropagation(); setShowReadingGuide(true); }} className="p-1.5 text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded-xl hover:bg-slate-200 shrink-0">

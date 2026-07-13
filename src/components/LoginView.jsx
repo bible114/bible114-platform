@@ -52,29 +52,6 @@ const PulseIndicator = ({ color = '#b8702a', size = 7 }) => (
     </span>
 );
 
-const SocialLoginButton = ({ provider, loading, loadingText, children, ...props }) => {
-    const isKakao = provider === 'kakao';
-    return (
-        <button
-            type="button"
-            className={`relative flex w-full items-center justify-center rounded-full border px-4 py-3.5 text-sm font-bold shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${isKakao
-                ? 'border-[#FEE500] bg-[#FEE500] text-[#191919] hover:bg-[#F5DC00]'
-                : 'border-hairline bg-white text-ink hover:bg-cream'}`}
-            {...props}
-        >
-            <span
-                aria-hidden="true"
-                className={`absolute left-4 flex h-7 w-7 items-center justify-center rounded-full text-sm font-black ${isKakao
-                    ? 'bg-[#191919] text-[#FEE500]'
-                    : 'border border-slate-200 bg-white text-[#4285F4]'}`}
-            >
-                {isKakao ? '💬' : 'G'}
-            </span>
-            {loading ? loadingText : children}
-        </button>
-    );
-};
-
 // 비밀번호 문의 안내 모달.
 // 주의: 비로그인 화면이라 users 컬렉션 쿼리는 규칙상 항상 거부된다 (관리자 이름 표시 불가).
 // 공개 문서인 settings/churchDirectory에서 교회 목록만 보여주고 관리자 문의를 안내한다.
@@ -234,6 +211,7 @@ const LoginView = ({
     // 재방문자는 preselect(URL 파라미터·최근 교회)가 있으면 바로 'form'으로 건너뛴다.
     const [memberStep, setMemberStep] = useState('entry');
     const [directory, setDirectory] = useState([]);
+    const [rememberedChurch, setRememberedChurch] = useState(null);
 
     const verse = todayVerse();
     const isKakaoTalkBrowser = typeof navigator !== 'undefined' && navigator.userAgent.includes('KAKAOTALK');
@@ -253,8 +231,7 @@ const LoginView = ({
         setGuestMigrationPreview(!guest.migratedAt && guest.readDates.length > 0 ? guest : null);
     }, [activeTab]);
 
-    // [Phase 3] 교회 선택 우선순위: URL 파라미터(?church=ID) > localStorage 최근 교회 > 빈 검색창.
-    // 디렉토리 문서에서 유효성(존재 여부)을 확인한 뒤에만 preselect 한다.
+    // URL 파라미터와 최근 교회는 첫 화면을 건너뛰지 않고 안내 뱃지로만 기억한다.
     useEffect(() => {
         let alive = true;
         getChurchDirectory().then(dir => {
@@ -275,7 +252,7 @@ const LoginView = ({
             if (preset) {
                 setLoginChurchId(preset.id);
                 setMChurchId(preset.id);
-                setMemberStep('form');
+                setRememberedChurch(preset);
             }
         });
         return () => { alive = false; };
@@ -306,7 +283,7 @@ const LoginView = ({
                     await onGoogleAdminSignupCancel();
                 }
             } catch (err) {
-                console.error('구글 교회 등록 취소 처리 실패:', err);
+                console.error('구글 공동체 등록 취소 처리 실패:', err);
             } finally {
                 resetGoogleAdminSignupLocalState();
                 setGoogleAdminSignupLoading(false);
@@ -610,19 +587,40 @@ const LoginView = ({
     );
 
     const renderEntryChoice = () => (
-        <div className="space-y-3.5">
-            <SocialLoginButton provider="kakao" onClick={handleKakaoStart} disabled={loading} loading={kakaoLoading} loadingText="카카오 계정 확인 중...">
-                카카오톡으로 로그인
-            </SocialLoginButton>
-            {isKakaoTalkBrowser ? (
-                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12px] text-amber-800">구글 로그인은 다른 브라우저에서 이용해주세요. 카카오 로그인은 이 화면에서 사용할 수 있어요.</p>
-            ) : (
-                <SocialLoginButton provider="google" onClick={handleGooglePersonalSignup} disabled={loading} loading={googlePersonalLoading} loadingText="Google 계정 확인 중...">
-                    Google로 로그인
-                </SocialLoginButton>
-            )}
-            <button type="button" onClick={() => { setMemberStep('legacy'); clearError(); }} className="w-full py-2 text-sm font-semibold text-ink/65 underline underline-offset-4">기존 회원 로그인 (이름·생년월일로)</button>
-            <button type="button" onClick={handleGuestLogin} disabled={loading} className="w-full rounded-full border border-hairline bg-cream-card py-3 text-sm font-semibold text-ink disabled:opacity-50">로그인 없이 둘러보기</button>
+        <div className="space-y-4">
+            <div className="relative mx-auto w-fit rounded-full border-2 border-orange-400 bg-orange-50 px-4 py-1.5 text-xs font-black text-orange-700">
+                5초만에 빠른 시작
+                <span className="absolute -bottom-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-b-2 border-r-2 border-orange-400 bg-orange-50" />
+            </div>
+            <button type="button" onClick={handleKakaoStart} disabled={loading || kakaoLoading}
+                className="w-full rounded-2xl bg-[#FEE500] px-5 py-4 text-base font-black text-[#191919] shadow-sm transition-transform active:scale-[0.99] disabled:opacity-50">
+                {kakaoLoading ? '카카오 계정 확인 중...' : '💬 카카오로 시작'}
+            </button>
+            <div className="flex items-center gap-3"><span className="h-px flex-1 bg-hairline" /><span className="text-[11px] font-semibold text-ink/40">또는</span><span className="h-px flex-1 bg-hairline" /></div>
+            <div className="flex justify-center">
+                <button type="button" onClick={handleGooglePersonalSignup} disabled={loading || googlePersonalLoading || isKakaoTalkBrowser}
+                    className="flex flex-col items-center gap-1.5 text-[11px] font-semibold text-ink/55 disabled:opacity-40"
+                    title={isKakaoTalkBrowser ? 'Google 로그인은 다른 브라우저에서 이용해주세요' : 'Google로 시작'}>
+                    <span className="flex h-12 w-12 items-center justify-center rounded-full border border-hairline bg-white text-lg font-black text-[#4285F4] shadow-sm">G</span>
+                    <span>{googlePersonalLoading ? '확인 중' : 'Google'}</span>
+                </button>
+            </div>
+            <div className="text-center text-[12px] font-semibold text-ink/55">
+                <button type="button" onClick={() => { setMemberStep('legacy'); clearError(); }} className="underline underline-offset-3">기존 회원 로그인(이름으로)</button>
+                {rememberedChurch && <span className="ml-1.5 rounded-full bg-slate-100 px-2 py-1 text-[10px] text-slate-500">지난번: {rememberedChurch.name}</span>}
+                <span className="mx-2">·</span>
+                <button type="button" onClick={handleGuestLogin} disabled={loading} className="underline underline-offset-3">로그인 없이 둘러보기</button>
+            </div>
+            <div className="rounded-xl border border-amber-100 bg-amber-50/70 px-3.5 py-3 text-center text-[12px] leading-relaxed text-ink/65">
+                <p>⛪ 교회·모임과 함께 읽고 싶으신가요?</p>
+                <p><b>공동체 대표(관리자)가</b> 먼저 공동체를 등록해야 성도들이 찾아서 함께 읽을 수 있어요.</p>
+                <button type="button" onClick={() => { setActiveTab('adminSignup'); clearError(); }} className="mt-1.5 font-black text-accent underline underline-offset-3">공동체 등록하기 →</button>
+            </div>
+            <div className="text-center text-[10px] text-ink/40">
+                <button type="button" onClick={() => { setActiveTab('admin'); clearError(); }} className="underline underline-offset-3">공동체 관리자</button>
+                <span className="mx-2">·</span>
+                <button type="button" onClick={() => setShowAdminContact(true)} className="underline underline-offset-3">비밀번호 문의</button>
+            </div>
             {errorMsg && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-center text-xs text-red-500">{errorMsg}</p>}
         </div>
     );
@@ -753,10 +751,10 @@ const LoginView = ({
                     </button>
                 )}
                 <div className="pt-1 text-center">
-                    <span className="text-[12px] text-ink/50">교회 코드가 없으신가요?{' '}</span>
+                    <span className="text-[12px] text-ink/50">공동체가 아직 없으신가요?{' '}</span>
                     <button type="button" onClick={() => { setActiveTab('adminSignup'); clearError(); }}
                         className="text-[12px] text-ink font-semibold underline underline-offset-2 hover:text-accent transition-colors">
-                        교회 등록 신청
+                        공동체 등록 신청
                     </button>
                 </div>
             </form>
@@ -817,6 +815,16 @@ const LoginView = ({
                     <span className="text-[11px] font-bold text-accent bg-accent/10 px-2 py-1 rounded-full">1단계 / 2단계</span>
                     <span className="text-[11px] text-ink/40">기본 정보 입력</span>
                 </div>
+                <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-[12px] leading-relaxed text-blue-900">
+                    <p className="text-sm font-black">공동체 등록이란?</p>
+                    <p>우리 교회(모임)의 관리 계정을 만드는 일이에요.</p>
+                    <p className="mt-1 font-semibold">① 성도 검색 가입 가능 · ② 입장코드 보호 · ③ 관리 화면·달란트 상점 운영</p>
+                    <p className="mt-1 font-black">무료 · 약 5분 소요</p>
+                </div>
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-center text-[12px] text-amber-900">
+                    성도이신가요? 가입은 첫 화면의 카카오로 시작을 눌러주세요.
+                    <button type="button" onClick={() => { setActiveTab('member'); setMemberStep('entry'); clearError(); }} className="ml-1 font-black underline underline-offset-2">← 돌아가기</button>
+                </div>
                 {!googleAdminSignupProfile && (
                     <>
                         {isKakaoTalkBrowser ? (
@@ -828,7 +836,7 @@ const LoginView = ({
                                 type="button"
                                 onClick={handleGoogleAdminSignupStart}
                                 disabled={loading}
-                                aria-label="구글 계정으로 교회 등록 시작"
+                                aria-label="구글 계정으로 공동체 등록 시작"
                                 className="w-full rounded-full border border-hairline bg-white py-3.5 text-sm font-semibold text-ink transition-colors hover:bg-cream disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 {googleAdminSignupLoading ? '구글 계정 확인 중...' : 'G 구글 계정으로 시작'}
@@ -877,7 +885,7 @@ const LoginView = ({
                     </>
                 )}
                 <div className="border-t border-hairline pt-3 space-y-2">
-                    <p className="text-[11px] text-ink/55 font-semibold uppercase tracking-wide">교회 정보</p>
+                    <p className="text-[11px] text-ink/55 font-semibold uppercase tracking-wide">공동체 정보</p>
                     <input type="text" value={aChurchName} onChange={e => setAChurchName(e.target.value)} placeholder="교회 이름 (예: ○○교회)" className={inputCls} />
                     <input type="text" value={aPastorName} onChange={e => setAPastorName(e.target.value)} placeholder="담임목사 성함 (필수, 예: 홍길동 목사)" className={inputCls} />
                     <input type="text" value={aDenomination} onChange={e => setADenomination(e.target.value)} placeholder="교단 (예: 예장합동, 감리교 등)" className={inputCls} />
@@ -902,7 +910,7 @@ const LoginView = ({
                     <span className="text-[11px] text-ink/40">조직 구성</span>
                 </div>
                 <div className="bg-accent/10 rounded-xl p-3 border border-accent/20">
-                    <p className="text-sm font-semibold text-ink mb-1">교회 조직을 구성해주세요</p>
+                    <p className="text-sm font-semibold text-ink mb-1">공동체 조직을 구성해주세요</p>
                     <p className="text-[11px] text-ink/60">부서(장년부, 청년부 등)와 소그룹(1구역, 2팀 등)을 설정합니다.</p>
                     <p className="text-[11px] text-accent mt-1 font-semibold">조직은 관리자 메뉴에서도 언제든지 변경이 가능합니다.</p>
                 </div>
@@ -910,7 +918,7 @@ const LoginView = ({
                 {errorMsg && <p className="text-red-500 text-xs text-center py-1 bg-red-50 rounded-lg px-3">{errorMsg}</p>}
                 <button type="button" onClick={handleAdminSignupFinal} disabled={loading}
                     className="w-full bg-accent text-cream font-semibold py-3.5 rounded-full text-sm flex items-center justify-center gap-2 hover:bg-accent/90 transition-colors disabled:opacity-50">
-                    {loading ? '교회 만드는 중...' : '교회 만들기 완료'}
+                    {loading ? '공동체 등록 중...' : '공동체 등록 완료'}
                 </button>
             </div>
         );
@@ -921,10 +929,10 @@ const LoginView = ({
     const isSignupTab = activeTab === 'memberSignup' || activeTab === 'adminSignup' || activeTab === 'personalSignup';
     const isEntryStep = activeTab === 'member' && memberStep === 'entry';
     const cardTitle = {
-        member: isEntryStep ? '바로 시작하세요' : '기존 회원 로그인',
+        member: isEntryStep ? '성경통독을 시작해요' : '기존 회원 로그인',
         admin: '관리자 로그인',
         memberSignup: '성도 회원가입',
-        adminSignup: '교회 등록',
+        adminSignup: '공동체 등록',
         personalSignup: '개인 계정 시작',
     }[activeTab] || '로그인';
 
@@ -951,7 +959,7 @@ const LoginView = ({
                     <div className="w-8 h-8 rounded-[7px] bg-ink text-cream flex items-center justify-center font-serif font-bold text-[14px] tracking-wide">
                         114
                     </div>
-                    <span className="font-serif text-[17px] font-semibold text-ink tracking-tight">천로역정 성경읽기</span>
+                    <span className="font-serif text-[17px] font-semibold text-ink tracking-tight">성경통독 114</span>
                 </div>
                 {/* Nav links */}
                 <nav className="flex gap-7 text-[13px] text-ink/55">
@@ -962,7 +970,7 @@ const LoginView = ({
                 <button
                     onClick={() => { setActiveTab('adminSignup'); clearError(); }}
                     className="text-[13px] font-semibold text-accent border border-accent/40 bg-accent/8 hover:bg-accent/15 transition-colors px-4 py-2 rounded-full cursor-pointer">
-                    교회 등록 →
+                    공동체 등록
                 </button>
             </div>
 
@@ -973,13 +981,13 @@ const LoginView = ({
                 <div className="flex items-center justify-between mb-6 md:hidden">
                     <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-[6px] bg-ink text-cream flex items-center justify-center font-serif font-bold text-[13px]">114</div>
-                        <span className="font-serif text-base font-semibold text-ink">천로역정 성경읽기</span>
+                        <span className="font-serif text-base font-semibold text-ink">성경통독 114</span>
                     </div>
                     <button
                         type="button"
                         onClick={() => { setActiveTab('adminSignup'); clearError(); }}
                         className="text-[13px] font-semibold text-accent border border-accent/40 bg-accent/8 hover:bg-accent/15 transition-colors px-3 py-1.5 rounded-full">
-                        교회 등록 →
+                        공동체 등록
                     </button>
                 </div>
 
@@ -995,7 +1003,7 @@ const LoginView = ({
                 <p className="text-[14px] md:text-[15px] leading-[1.65] text-ink/78 max-w-md mb-5">
                     전국 <b className="text-ink">{stats.total_churches > 0 ? `${stats.total_churches}개 교회` : '여러 교회'}</b>,{' '}
                     <b className="text-ink">{stats.total_readers > 0 ? `${stats.total_readers.toLocaleString()}명` : '많은 성도들'}</b>이
-                    오늘도 같은 페이지를 넘기고 있습니다. 천로역정 같은 통독의 길, 함께 걸어요.
+                    오늘도 같은 페이지를 넘기고 있습니다. 함께 걷는 통독의 길, 같이 걸어요.
                 </p>
 
                 {/* Stat strip */}
@@ -1037,7 +1045,7 @@ const LoginView = ({
 
                     {/* Form content */}
                     {renderCard()}
-                    {!isSignupTab && activeTab === 'member' && (
+                    {!isSignupTab && activeTab === 'member' && !isEntryStep && (
                         <div className="mt-5 border-t border-hairline pt-4 text-center text-[11px] text-ink/45">
                             <button type="button" onClick={() => { setActiveTab('admin'); clearError(); }} className="underline underline-offset-3">교회 관리자 로그인</button>
                             <span className="mx-2">·</span>

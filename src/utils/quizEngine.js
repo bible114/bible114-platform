@@ -22,7 +22,7 @@ const getCachedTitle = (planId, actualDay) => {
     }
 };
 
-const getReadingRangeForDay = (user, readingDay) => {
+export const getReadingRangeForDay = (user, readingDay) => {
     const planId = user?.planId || '1year_revised';
     const actualDay = getActualDay(readingDay, user?.dayOffset || 0);
     const cachedTitle = getCachedTitle(planId, actualDay);

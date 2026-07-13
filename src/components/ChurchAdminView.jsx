@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db, firebase } from '../utils/firebase';
-import OrgEditor from './OrgEditor';
 import ChurchAdminTutorial from './ChurchAdminTutorial';
 import { sha256 } from '../utils/crypto';
 import { fetchMemberCredentials } from '../utils/memberCredentials';
@@ -19,12 +18,16 @@ import {
     ToastContainer,
     useToast,
 } from './admin';
-import TalentShop from './dashboard/TalentShop';
-import GoogleLinkCard from './admin/GoogleLinkCard';
 import QRCode from 'qrcode';
 import { SITE_URL } from '../data/constants';
 import { mergePrimaryAndRosterMembers, rosterSnapshotToMembers } from '../utils/rosterMembers';
 import { getDaysRead } from '../utils/helpers';
+import OrganizationTab from './churchAdmin/OrganizationTab';
+import AnnouncementTab from './churchAdmin/AnnouncementTab';
+import SettingsTab from './churchAdmin/SettingsTab';
+import DashboardTab from './churchAdmin/DashboardTab';
+import MembersTab from './churchAdmin/MembersTab';
+import TalentShopTab from './churchAdmin/TalentShopTab';
 
 const formatReadDate = (dateStr) => {
     if (!dateStr) return '-';
@@ -43,14 +46,6 @@ const formatAnyDate = (value) => {
 const getSubId = (s) => (typeof s === 'string' ? s : s?.id || '');
 const getSubName = (s) => (typeof s === 'string' ? s : s?.name || '');
 const genSubId = () => 'sub_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-// 상품 이모지 프리셋 — 부서 특성별 그룹 (어린이부: 장난감·학용품 / 어르신 교회: 생필품)
-const SHOP_EMOJI_GROUPS = [
-    { label: '간식·음료', emojis: ['☕', '🧃', '🥤', '🍞', '🍪', '🍫', '🍬', '🍭', '🍩', '🧁', '🍦', '🍎', '🍌', '🍊', '🍕', '🍗'] },
-    { label: '장난감·놀이', emojis: ['🧸', '🚗', '🚂', '🤖', '🪀', '🪁', '🎨', '🖍️', '⚽', '🏀', '🎲', '🧩', '🎮', '👑', '🦖', '🎈'] },
-    { label: '학용품', emojis: ['✏️', '🖊️', '📓', '📔', '📒', '🎒', '📐', '✂️', '📎', '🗂️', '🖌️', '📖'] },
-    { label: '생필품', emojis: ['🧴', '🧻', '🧼', '🪥', '🧦', '🧤', '🧣', '🌂', '🥫', '🍚', '🧂', '🧺', '💊', '🩹', '👓', '🪮'] },
-    { label: '특별 선물', emojis: ['🎁', '⭐', '💝', '💐', '🌹', '🌿', '🕯️', '📿', '🎫', '🏆'] },
-];
 const emptyShopItem = { emoji: '🎁', name: '', price: 10, description: '', active: true };
 const genShopItemId = () => 'item_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const isPermissionDenied = (error) => (
@@ -122,7 +117,6 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [purchaseFilter, setPurchaseFilter] = useState('pending');
 
     // 교회 전용 로그인 링크
-    const [linkCopied, setLinkCopied] = useState(false);
 
     useEffect(() => {
         if (!currentUser?.churchId) return;
@@ -1020,7 +1014,6 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const printAdminManual = () => {
         const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const churchName = esc(churchInfo?.name || currentUser.churchName || '');
-        const link = `${window.location.origin}${window.location.pathname}?church=${currentUser.churchId}`;
         const html = `<!doctype html><html><head><meta charset="utf-8"><title>관리자 매뉴얼</title>
 <style>
   @page { size: A4 portrait; margin: 13mm; }
@@ -1035,7 +1028,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
   .tip { background: #fefce8; border-radius: 6px; padding: 1.5mm 3mm; margin-top: 1.5mm; font-size: 11.5px; color: #854d0e; }
 </style></head><body>
   <h1>📘 ${churchName} — 관리자 매뉴얼</h1>
-  <p class="sub">성경114 (www.bible114.net) · 관리자 로그인: 로그인 화면에서 "교회 관리자" 탭 → 이메일 + 비밀번호</p>
+  <p class="sub">성경통독 114 (www.bible114.net) · 관리자 로그인: 로그인 화면에서 "교회 관리자" 탭 → 이메일 + 비밀번호</p>
 
   <div class="sec"><h2>📊 대시보드 — 매일 아침 한 눈에</h2><ul>
     <li>오늘 읽은 교인 수, 부서별 현황, <b>관심 필요 명단</b>(3일·1주 이상 안 읽은 분)을 확인해요.</li>
@@ -1062,9 +1055,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     <li>공지 탭: 대시보드 상단에 뜨는 공지와 카카오톡 단체방 링크를 등록해요.</li>
   </ul></div>
 
-  <div class="sec"><h2>⚙️ 설정 — 인쇄물 · 링크 · 입장코드</h2><ul>
+  <div class="sec"><h2>⚙️ 설정 — 인쇄물 · 입장코드</h2><ul>
     <li><b>성도용 가입 안내문 인쇄</b>: QR + 가입 방법이 담긴 A4 — 새 성도에게 나눠주세요.</li>
-    <li>우리 교회 전용 링크: ${esc(link)}</li>
     <li>교회 입장코드 변경도 여기서 해요 (가입할 때 교인이 입력하는 코드).</li>
   </ul></div>
 
@@ -1418,808 +1410,64 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     <>
                         {/* ── 대시보드 ── */}
                         {tab === 'dashboard' && (
-                            <div className="space-y-6">
-                                <div>
-                                    <h2 className="font-black text-slate-800 text-lg">목양 대시보드</h2>
-                                    <p className="text-xs text-slate-400 mt-1">
-                                        오늘 읽기 비교는 현재 권한에서 접근 가능한 회원 문서 기준입니다. history 시간값은 앞으로 쌓이는 기록부터 적용됩니다.
-                                    </p>
-                                </div>
-
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                                    <StatCard label="전체 교인" value={`${dashboardStats.total}명`} subvalue={`${deletedMembers.length}명 삭제 보관`} icon="👥" accent />
-                                    <StatCard
-                                        label="오늘 진도"
-                                        value={`${dashboardStats.readToday}명`}
-                                        subvalue={`어제 최종 ${dashboardStats.readYesterday}명 · ${dashboardStats.readDelta >= 0 ? '+' : ''}${dashboardStats.readDelta}명`}
-                                        icon="📖"
-                                    />
-                                    <StatCard label="최근 7일 읽기율" value={`${dashboardStats.recent7Rate}%`} subvalue="최근 7일 내 1회 이상 읽음" icon="🗓️" />
-                                    <StatCard label="평균 진행 DAY" value={dashboardStats.avgDay || '-'} subvalue="독수 포함 총 진행일 기준" icon="🏁" />
-                                    <div
-                                        role="button"
-                                        tabIndex={0}
-                                        aria-label={`완독자 ${completedReaders.length}명 명단 보기`}
-                                        onClick={() => setShowCompletedReaders(true)}
-                                        onKeyDown={(event) => {
-                                            if (event.key === 'Enter' || event.key === ' ') {
-                                                event.preventDefault();
-                                                setShowCompletedReaders(true);
-                                            }
-                                        }}
-                                        className="rounded-2xl cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
-                                    >
-                                        <StatCard
-                                            label="완독자"
-                                            value={`${completedReaders.length}명`}
-                                            subvalue="눌러서 완독 명단 보기"
-                                            icon="🏆"
-                                            className="h-full transition-transform hover:-translate-y-0.5"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 lg:grid-cols-[1.35fr_0.65fr] gap-4">
-                                    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-                                        <div className="flex items-center justify-between gap-3 mb-4">
-                                            <h3 className="text-sm font-black text-slate-800">부서별 현황</h3>
-                                            <span className="text-xs font-bold text-slate-400">{departmentCards.length}개 부서</span>
-                                        </div>
-                                        {departmentCards.length === 0 ? (
-                                            <p className="py-10 text-center text-xs font-bold text-slate-300">부서 데이터가 없습니다.</p>
-                                        ) : (
-                                            <div className="space-y-4">
-                                                {departmentCards.map(dept => (
-                                                    <div key={dept.departmentId || dept.departmentName} className="rounded-2xl border border-slate-100 p-4">
-                                                        <div className="flex items-start justify-between gap-3 mb-3">
-                                                            <div>
-                                                                <p className="font-black text-slate-800">{dept.departmentName}</p>
-                                                                <p className="text-xs text-slate-400">{dept.readCount}/{dept.totalCount}명 읽음 · 평균 DAY {dept.avgDay || '-'}</p>
-                                                            </div>
-                                                            <DonutStat value={dept.rate} size={58} stroke={7} center={`${dept.rate}%`} />
-                                                        </div>
-                                                        <ProgressBar value={dept.rate} label="오늘 읽기율" tone="indigo" />
-                                                        {dept.subgroups.length > 0 && (
-                                                            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                                {dept.subgroups.map(sub => (
-                                                                    <div key={`${sub.departmentId}_${sub.subgroupId}`} className="rounded-xl bg-slate-50 px-3 py-2">
-                                                                        <div className="flex justify-between gap-2">
-                                                                            <span className="text-xs font-bold text-slate-600 truncate">{sub.subgroupName}</span>
-                                                                            <span className="text-xs font-black text-slate-500">{sub.rate}%</span>
-                                                                        </div>
-                                                                        <ProgressBar value={sub.rate} showValue={false} className="mt-1.5" />
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-                                        <h3 className="text-sm font-black text-slate-800 mb-4">이번 주 스트릭 리더 Top 5</h3>
-                                        {streakTop.length === 0 ? (
-                                            <p className="py-10 text-center text-xs font-bold text-slate-300">아직 스트릭 기록이 없습니다.</p>
-                                        ) : (
-                                            <div className="space-y-2">
-                                                {streakTop.map((member, index) => (
-                                                    <div key={member.uid} className="flex items-center justify-between gap-3 rounded-xl bg-orange-50 px-3 py-2">
-                                                        <div className="min-w-0">
-                                                            <p className="text-sm font-black text-slate-800 truncate">{index + 1}. {member.name}</p>
-                                                            <p className="text-xs text-slate-400 truncate">{getMemberMembershipText(member)}</p>
-                                                        </div>
-                                                        <span className="shrink-0 text-sm font-black text-orange-600">{member.streak}일</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                                    {renderRiskList(
-                                        '7일 이상 미독',
-                                        atRisk.noRead7Days,
-                                        '7일 이상 미독 교인이 없습니다.',
-                                        member => {
-                                            const days = daysSinceRead(member.lastReadDate);
-                                            return days === null ? '기록 없음' : `${days}일`;
-                                        }
-                                    )}
-                                    {renderRiskList(
-                                        '진행 하위 10%',
-                                        atRisk.bottomProgress,
-                                        '진행 하위 대상이 없습니다.',
-                                        member => `DAY ${getTotalProgressDay(member)}`
-                                    )}
-                                    {renderRiskList(
-                                        '최근 7일 신규 가입',
-                                        atRisk.recentNewMembers,
-                                        '최근 신규 가입자가 없습니다.',
-                                        member => formatReadDate(member.createdAt?.toDate ? member.createdAt.toDate().toDateString() : member.createdAt)
-                                    )}
-                                </div>
-                            </div>
+                            <DashboardTab
+                                dashboardStats={dashboardStats} deletedMembers={deletedMembers}
+                                completedReaders={completedReaders} setShowCompletedReaders={setShowCompletedReaders}
+                                departmentCards={departmentCards} streakTop={streakTop}
+                                getMemberMembershipText={getMemberMembershipText}
+                                renderRiskList={renderRiskList} atRisk={atRisk}
+                                daysSinceRead={daysSinceRead} getTotalProgressDay={getTotalProgressDay}
+                                formatReadDate={formatReadDate}
+                            />
                         )}
 
                         {/* ── 교인 관리 ── */}
                         {tab === 'members' && (
-                            <div className="space-y-5">
-                                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                                    <div>
-                                        <h2 className="font-black text-slate-800 flex items-center gap-2 text-lg">
-                                            👥 교인 관리
-                                            <span className="text-sm font-bold text-slate-400">전체 {members.length}명</span>
-                                        </h2>
-                                        <p className="text-xs text-slate-400 mt-1">행을 누르면 최근 기록과 관리 작업을 한 번에 볼 수 있습니다.</p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => downloadCSV(filteredMembers)}
-                                        className="self-start sm:self-auto rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-black text-white hover:bg-emerald-700"
-                                    >
-                                        CSV 내보내기
-                                    </button>
-                                </div>
-
-                                {members.length === 0 ? (
-                                    <div className="text-center py-20 text-slate-300">
-                                        <div className="text-4xl mb-2">👥</div>
-                                        <p>아직 가입한 교인이 없습니다</p>
-                                    </div>
-                                ) : (
-                                    <div id="admin-tut-member-list" className="space-y-3">
-                                        <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-                                            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                                                <label className="text-xs font-black text-slate-500">
-                                                    부서
-                                                    <select
-                                                        value={memberDepartmentFilter}
-                                                        onChange={e => setMemberDepartmentFilter(e.target.value)}
-                                                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-700"
-                                                    >
-                                                        <option value="all">전체 부서</option>
-                                                        {orgComms.map(comm => <option key={comm.id} value={comm.id}>{comm.name}</option>)}
-                                                    </select>
-                                                </label>
-                                                <label className="text-xs font-black text-slate-500">
-                                                    읽기 상태
-                                                    <select
-                                                        value={memberReadFilter}
-                                                        onChange={e => setMemberReadFilter(e.target.value)}
-                                                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-700"
-                                                    >
-                                                        <option value="all">전체 상태</option>
-                                                        <option value="today">오늘 읽음</option>
-                                                        <option value="unread">오늘 미독</option>
-                                                        <option value="risk7">7일 이상 미독/기록 없음</option>
-                                                    </select>
-                                                </label>
-                                                <div className="rounded-xl bg-slate-50 px-4 py-3">
-                                                    <p className="text-xs font-black text-slate-400">현재 표시</p>
-                                                    <p className="mt-1 text-xl font-black text-slate-800">{filteredMembers.length}명</p>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <AdminDataTable
-                                            columns={memberColumns}
-                                            rows={filteredMembers}
-                                            getRowId={row => row.uid}
-                                            searchPlaceholder="이름, 생년월일, 부서, 소그룹 검색"
-                                            selectable
-                                            initialSortKey="name"
-                                            emptyMessage="조건에 맞는 교인이 없습니다."
-                                            onRowClick={openMemberDetail}
-                                            renderSelectionActions={({ selectedRows, clearSelection }) => {
-                                                const bulkComm = orgComms.find(c => c.id === bulkCommId);
-                                                const canChangeSubgroup = Boolean(bulkCommId && bulkSubId);
-                                                const hasExternalSelected = selectedRows.some(member => member.isExternalOrgMember);
-                                                return (
-                                                    <>
-                                                        <select
-                                                            value={bulkCommId}
-                                                            onChange={e => { setBulkCommId(e.target.value); setBulkSubId(''); }}
-                                                            className="rounded-lg border border-indigo-100 bg-white px-3 py-2 text-xs font-bold text-indigo-800"
-                                                        >
-                                                            <option value="">부서 선택</option>
-                                                            {orgComms.map(comm => <option key={comm.id} value={comm.id}>{comm.name}</option>)}
-                                                        </select>
-                                                        <select
-                                                            value={bulkSubId}
-                                                            onChange={e => setBulkSubId(e.target.value)}
-                                                            disabled={!bulkCommId}
-                                                            className="rounded-lg border border-indigo-100 bg-white px-3 py-2 text-xs font-bold text-indigo-800 disabled:opacity-50"
-                                                        >
-                                                            <option value="">소그룹 선택</option>
-                                                            {(bulkComm?.subgroups || []).map((sub, index) => {
-                                                                const subId = getSubId(sub);
-                                                                return <option key={subId || index} value={subId}>{getSubName(sub)}</option>;
-                                                            })}
-                                                        </select>
-                                                        <button
-                                                            type="button"
-                                                            disabled={!canChangeSubgroup}
-                                                            onClick={() => setConfirmAction({
-                                                                type: 'bulkSubgroup',
-                                                                members: selectedRows,
-                                                                commId: bulkCommId,
-                                                                subId: bulkSubId,
-                                                                title: `${selectedRows.length}명의 주 소속을 변경할까요?`,
-                                                                message: '선택한 교인의 주 소속(부서/소그룹)을 한 번에 변경합니다. 추가 소속은 유지되며 새 주 소속과 같은 항목만 정리됩니다.',
-                                                                after: clearSelection,
-                                                            })}
-                                                            className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-black text-white disabled:opacity-40"
-                                                        >
-                                                            주 소속 일괄 변경
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            disabled={hasExternalSelected}
-                                                            onClick={() => setConfirmAction({
-                                                                type: 'bulkPassword',
-                                                                members: selectedRows,
-                                                                title: `${selectedRows.length}명의 비밀번호를 초기화할까요?`,
-                                                                message: '각 교인에게 6자리 임시 비밀번호가 새로 발급됩니다. 새 비밀번호는 교인 상세의 "비밀번호 확인"에서 조회할 수 있습니다.',
-                                                                danger: true,
-                                                                confirmLabel: '초기화',
-                                                                after: clearSelection,
-                                                            })}
-                                                            className="rounded-lg bg-red-600 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
-                                                        >
-                                                            비밀번호 초기화
-                                                        </button>
-                                                        {hasExternalSelected && <span className="text-[10px] font-bold text-violet-700">외부 멤버는 비밀번호 변경 제외</span>}
-                                                    </>
-                                                );
-                                            }}
-                                        />
-                                    </div>
-                                )}
-                                {deletedMembers.length > 0 && (
-                                    <div className="mt-6 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                                        <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-                                            <h3 className="text-sm font-bold text-slate-600">삭제 처리된 교인</h3>
-                                            <span className="text-xs text-slate-400">{deletedMembers.length}명</span>
-                                        </div>
-                                        <div className="divide-y divide-slate-100">
-                                            {deletedMembers
-                                                .slice()
-                                                .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR'))
-                                                .map(member => (
-                                                    <div key={member.uid} className="px-4 py-3 flex items-center justify-between gap-3">
-                                                        <div>
-                                                            <div className="font-bold text-sm text-slate-700">{member.name}</div>
-                                                            <div className="text-xs text-slate-400">{getMemberMembershipText(member)}</div>
-                                                        </div>
-                                                        <button onClick={() => restoreMember(member)}
-                                                            className="shrink-0 text-xs bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg font-bold hover:bg-emerald-100">
-                                                            복원
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
+                            <MembersTab ctx={{
+                                members, filteredMembers, memberDepartmentFilter, setMemberDepartmentFilter,
+                                memberReadFilter, setMemberReadFilter, orgComms, memberColumns, openMemberDetail,
+                                bulkCommId, setBulkCommId, bulkSubId, setBulkSubId, setConfirmAction,
+                                deletedMembers, getMemberMembershipText, restoreMember, downloadCSV,
+                                getSubId, getSubName,
+                            }} />
                         )}
 
                         {/* ── 달란트 상점 ── */}
                         {tab === 'talentShop' && (
-                            <div className="space-y-5">
-                                <div className="rounded-2xl border border-violet-100 bg-white p-5 shadow-sm">
-                                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                                        <div>
-                                            <h2 className="text-lg font-black text-slate-800">⭐ 달란트 상점</h2>
-                                            <p className="mt-1 text-xs font-bold text-slate-400">
-                                                끄면 교인에게 상점이 전혀 보이지 않아요. 언제든 다시 켤 수 있습니다.
-                                            </p>
-                                        </div>
-                                        <div className="flex items-center gap-4">
-                                            <button
-                                                type="button"
-                                                onClick={printShopItems}
-                                                className="rounded-xl border border-violet-200 bg-white px-4 py-2 text-sm font-black text-violet-700 hover:bg-violet-50">
-                                                🖨️ 상품 목록 인쇄
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowShopPreview(true)}
-                                                disabled={talentShop.enabled !== true}
-                                                title={talentShop.enabled !== true ? '상점을 켜야 미리볼 수 있어요' : ''}
-                                                className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-black text-white hover:bg-violet-700 disabled:opacity-40">
-                                                👀 교인 화면 미리보기
-                                            </button>
-                                            <label className="inline-flex cursor-pointer items-center gap-3">
-                                                <span className="text-sm font-black text-slate-600">{talentShop.enabled ? '사용 중' : '꺼짐'}</span>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={talentShop.enabled === true}
-                                                    onChange={e => toggleTalentShopEnabled(e.target.checked)}
-                                                    disabled={savingTalentShop}
-                                                    className="h-5 w-5 rounded border-slate-300"
-                                                />
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {showShopPreview && (
-                                    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60"
-                                        onClick={e => { if (e.target === e.currentTarget) setShowShopPreview(false); }}>
-                                        <div className="mx-auto my-8 w-full max-w-md px-4">
-                                            <div className="mb-3 flex items-center justify-between">
-                                                <span className="text-xs font-black text-white">👀 교인에게 보이는 화면 미리보기</span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setShowShopPreview(false)}
-                                                    className="rounded-lg bg-white px-3 py-1.5 text-xs font-black text-slate-700 hover:bg-slate-100">
-                                                    ✕ 닫기
-                                                </button>
-                                            </div>
-                                            <div className="rounded-2xl bg-slate-100 p-4">
-                                                <TalentShop
-                                                    currentUser={{
-                                                        ...currentUser,
-                                                        uid: null,
-                                                        name: '미리보기 성도',
-                                                        talent: shopPreviewTalent,
-                                                    }}
-                                                    setCurrentUser={() => {}}
-                                                    showUnlockModal={false}
-                                                    onCloseUnlockModal={() => {}}
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* 창구 판매 — 앱 사용이 어려운 어르신을 위한 관리자 직접 차감 */}
-                                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-                                    <h3 className="text-sm font-black text-slate-800">🧾 창구 판매 — 관리자가 직접 차감</h3>
-                                    <p className="mt-1 mb-4 text-xs font-bold text-amber-700">
-                                        앱 사용이 어려운 어르신은 관리자에게 말씀만 하시면 돼요. 구입 물품을 기록해야 차감할 수 있습니다.
-                                    </p>
-                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.1fr_1.3fr_0.7fr_auto]">
-                                        <select
-                                            value={deductForm.uid}
-                                            onChange={e => setDeductForm(prev => ({ ...prev, uid: e.target.value }))}
-                                            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700">
-                                            <option value="">교인 선택</option>
-                                            {[...members].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR')).map(m => (
-                                                <option key={m.uid} value={m.uid} title={m.isExternalOrgMember ? '기준 공동체인 개인 계정은 직접 차감할 수 있습니다.' : ''}>{m.name} {m.isExternalOrgMember ? '(개인·외부)' : `(⭐${m.talent || 0})`}</option>
-                                            ))}
-                                        </select>
-                                        <input
-                                            value={deductForm.itemName}
-                                            onChange={e => setDeductForm(prev => ({ ...prev, itemName: e.target.value }))}
-                                            placeholder="구입 물품 (필수, 예: 세탁세제)"
-                                            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700"
-                                        />
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            value={deductForm.price}
-                                            onChange={e => setDeductForm(prev => ({ ...prev, price: e.target.value }))}
-                                            placeholder="달란트"
-                                            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700"
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={requestManualDeduct}
-                                            disabled={deducting}
-                                            className="rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-black text-white hover:bg-amber-700 disabled:opacity-50">
-                                            {deducting ? '처리 중...' : '차감하기'}
-                                        </button>
-                                    </div>
-                                    {(talentShop.items || []).filter(i => i && i.active !== false).length > 0 && (
-                                        <div className="mt-3">
-                                            <p className="mb-1.5 text-[11px] font-bold text-amber-700/70">상품 빠른 선택 (물품·가격 자동 입력)</p>
-                                            <div className="flex flex-wrap gap-2">
-                                                {(talentShop.items || []).filter(i => i && i.active !== false).map(item => (
-                                                    <button
-                                                        key={item.id}
-                                                        type="button"
-                                                        onClick={() => setDeductForm(prev => ({ ...prev, itemName: item.name, price: String(item.price) }))}
-                                                        className="rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-amber-100">
-                                                        {item.emoji} {item.name} ⭐{item.price}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="grid grid-cols-1 lg:grid-cols-[0.85fr_1.15fr] gap-4">
-                                    <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-                                        <h3 className="text-sm font-black text-slate-800 mb-4">{editingShopItemId ? '상품 수정' : '상품 추가'}</h3>
-                                        <div className="space-y-3">
-                                            <div>
-                                                <p className="mb-2 text-xs font-black text-slate-500">이모지</p>
-                                                <div className="mb-2 flex flex-wrap gap-1.5">
-                                                    {SHOP_EMOJI_GROUPS.map((group, idx) => (
-                                                        <button
-                                                            key={group.label}
-                                                            type="button"
-                                                            onClick={() => setEmojiGroupIdx(idx)}
-                                                            className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${emojiGroupIdx === idx
-                                                                ? 'bg-violet-600 text-white'
-                                                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                                                        >
-                                                            {group.emojis[0]} {group.label}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {SHOP_EMOJI_GROUPS[emojiGroupIdx].emojis.map(emoji => (
-                                                        <button
-                                                            key={emoji}
-                                                            type="button"
-                                                            onClick={() => setShopItemDraft(prev => ({ ...prev, emoji }))}
-                                                            className={`h-10 w-10 rounded-xl border text-lg ${shopItemDraft.emoji === emoji ? 'border-violet-400 bg-violet-50' : 'border-slate-100 bg-slate-50'}`}
-                                                        >
-                                                            {emoji}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            <input
-                                                type="text"
-                                                value={shopItemDraft.name}
-                                                onChange={e => setShopItemDraft(prev => ({ ...prev, name: e.target.value }))}
-                                                placeholder="상품 이름"
-                                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold"
-                                            />
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                value={shopItemDraft.price}
-                                                onChange={e => setShopItemDraft(prev => ({ ...prev, price: e.target.value }))}
-                                                placeholder="가격"
-                                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold"
-                                            />
-                                            <textarea
-                                                value={shopItemDraft.description}
-                                                onChange={e => setShopItemDraft(prev => ({ ...prev, description: e.target.value }))}
-                                                placeholder="설명"
-                                                rows={3}
-                                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold resize-none"
-                                            />
-                                            <label className="flex items-center gap-2 text-sm font-bold text-slate-600">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={shopItemDraft.active !== false}
-                                                    onChange={e => setShopItemDraft(prev => ({ ...prev, active: e.target.checked }))}
-                                                />
-                                                판매중
-                                            </label>
-                                            <div className="flex gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={submitShopItem}
-                                                    disabled={savingTalentShop}
-                                                    className="flex-1 rounded-xl bg-violet-700 px-4 py-3 text-sm font-black text-white disabled:opacity-50"
-                                                >
-                                                    {editingShopItemId ? '수정 저장' : '상품 추가'}
-                                                </button>
-                                                {editingShopItemId && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={resetShopItemDraft}
-                                                        className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-500"
-                                                    >
-                                                        취소
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-                                        <div className="mb-4 flex items-center justify-between">
-                                            <h3 className="text-sm font-black text-slate-800">상품 목록</h3>
-                                            <span className="text-xs font-bold text-slate-400">{(talentShop.items || []).length}개</span>
-                                        </div>
-                                        {(talentShop.items || []).length === 0 ? (
-                                            <p className="py-10 text-center text-xs font-bold text-slate-300">아직 상품이 없습니다.</p>
-                                        ) : (
-                                            <div className="space-y-2">
-                                                {(talentShop.items || []).map(item => (
-                                                    <div key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 p-3">
-                                                        <div className="flex min-w-0 items-center gap-3">
-                                                            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-2xl">{item.emoji || '🎁'}</span>
-                                                            <div className="min-w-0">
-                                                                <p className="truncate text-sm font-black text-slate-800">{item.name}</p>
-                                                                <p className="truncate text-xs font-bold text-slate-400">⭐ {item.price} · {item.active === false ? '판매중지' : '판매중'}</p>
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex shrink-0 gap-2">
-                                                            <button type="button" onClick={() => editShopItem(item)} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-black text-slate-600">수정</button>
-                                                            <button type="button" onClick={() => deleteShopItem(item)} className="rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-500">삭제</button>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-                                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                        <div>
-                                            <h3 className="text-sm font-black text-slate-800">구매 내역</h3>
-                                            <p className="mt-1 text-xs font-bold text-slate-400">최근 200건을 불러온 뒤 현재 교회 교인만 표시합니다.</p>
-                                        </div>
-                                        <select
-                                            value={purchaseFilter}
-                                            onChange={e => setPurchaseFilter(e.target.value)}
-                                            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700"
-                                        >
-                                            <option value="pending">수령 대기</option>
-                                            <option value="delivered">수령 완료</option>
-                                            <option value="cancelled">취소</option>
-                                            <option value="all">전체</option>
-                                        </select>
-                                    </div>
-                                    {filteredPurchases.length === 0 ? (
-                                        <p className="py-10 text-center text-xs font-bold text-slate-300">표시할 구매 내역이 없습니다.</p>
-                                    ) : (
-                                        <div className="overflow-x-auto">
-                                            <table className="min-w-full divide-y divide-slate-100">
-                                                <thead className="bg-slate-50">
-                                                    <tr>
-                                                        <th className="px-4 py-3 text-left text-xs font-black text-slate-400">교인</th>
-                                                        <th className="px-4 py-3 text-left text-xs font-black text-slate-400">상품</th>
-                                                        <th className="px-4 py-3 text-left text-xs font-black text-slate-400">가격</th>
-                                                        <th className="px-4 py-3 text-left text-xs font-black text-slate-400">구매일</th>
-                                                        <th className="px-4 py-3 text-left text-xs font-black text-slate-400">잔여</th>
-                                                        <th className="px-4 py-3 text-right text-xs font-black text-slate-400">처리</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-100">
-                                                    {filteredPurchases.map(purchase => {
-                                                        const buyer = memberById[purchase.uid];
-                                                        return (
-                                                            <tr key={purchase.id}>
-                                                                <td className="px-4 py-3 text-sm font-bold text-slate-700">{purchase.memberName || buyer?.name || '-'}</td>
-                                                                <td className="px-4 py-3 text-sm text-slate-600">{purchase.itemName}</td>
-                                                                <td className="px-4 py-3 text-sm font-black text-amber-600">⭐ {purchase.price || 0}</td>
-                                                                <td className="px-4 py-3 text-xs font-bold text-slate-400">{formatAnyDate(purchase.createdAt)}</td>
-                                                                <td className="px-4 py-3 text-sm font-black text-slate-600">{buyer?.isExternalOrgMember || purchase.isExternalBuyer ? '비공개' : (buyer ? `⭐ ${buyer.talent || 0}` : '-')}</td>
-                                                                <td className="px-4 py-3">
-                                                                    {purchase.status === 'pending' ? (
-                                                                        <div className="flex justify-end gap-2">
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => setConfirmAction({
-                                                                                    type: 'deliverPurchase',
-                                                                                    purchase,
-                                                                                    title: `${purchase.itemName} 수령 완료 처리할까요?`,
-                                                                                    message: `${purchase.memberName || buyer?.name || '교인'}님에게 상품을 전달한 뒤 눌러주세요.`,
-                                                                                    confirmLabel: '수령 완료',
-                                                                                })}
-                                                                                className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-600"
-                                                                            >
-                                                                                수령 완료
-                                                                            </button>
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => setConfirmAction({
-                                                                                    type: 'refundPurchase',
-                                                                                    purchase,
-                                                                                    title: `${purchase.itemName} 구매를 취소·환불할까요?`,
-                                                                                    message: `대기 건을 취소하고 ${purchase.price || 0}달란트를 교인 잔액에 돌려줍니다.`,
-                                                                                    danger: true,
-                                                                                    confirmLabel: '취소·환불',
-                                                                                })}
-                                                                                className="rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-500"
-                                                                            >
-                                                                                취소·환불
-                                                                            </button>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <p className="text-right text-xs font-black text-slate-400">{purchase.status === 'delivered' ? '수령 완료' : '취소됨'}</p>
-                                                                    )}
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                            <TalentShopTab ctx={{
+                                talentShop, toggleTalentShopEnabled, savingTalentShop,
+                                setShowShopPreview, showShopPreview, currentUser, setCurrentUser, shopPreviewTalent,
+                                shopItemDraft, setShopItemDraft, editingShopItemId, emojiGroupIdx, setEmojiGroupIdx,
+                                submitShopItem, resetShopItemDraft, editShopItem, deleteShopItem, printShopItems,
+                                deductForm, setDeductForm, members, requestManualDeduct, deducting,
+                                purchaseFilter, setPurchaseFilter, filteredPurchases, memberById,
+                                formatAnyDate, setConfirmAction, deliverPurchase, refundPurchase,
+                            }} />
                         )}
 
                         {/* ── 조직 관리 ── */}
                         {tab === 'org' && (
-                            <div id="admin-tut-org-section" className="space-y-4 max-w-2xl">
-                                <div className="bg-indigo-50 rounded-2xl p-4 border border-indigo-100">
-                                    <p className="text-sm font-bold text-indigo-700 mb-1">📋 교회 조직 관리</p>
-                                    <p className="text-xs text-slate-500">부서와 소그룹을 자유롭게 구성할 수 있습니다.</p>
-                                    <p className="text-xs text-indigo-500 mt-1">💡 조직은 관리자 메뉴에서도 변경이 가능합니다.</p>
-                                </div>
-                                <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
-                                    <OrgEditor departments={orgComms} onChange={setOrgComms} />
-                                    <div className="mt-4 pt-4 border-t border-slate-100">
-                                        <button onClick={saveOrg} disabled={savingOrg}
-                                            className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl text-sm disabled:opacity-50 hover:bg-indigo-700 transition-colors">
-                                            {savingOrg ? '저장 중...' : '✅ 조직 저장하기'}
-                                        </button>
-                                        {orgComms.length > 0 && (
-                                            <p className="text-[10px] text-slate-400 text-center mt-2">
-                                                ⚠️ 부서/소그룹명 변경 시 기존 교인의 배정 표기에 영향이 있을 수 있습니다.
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                                {orgComms.filter(c => String(c?.name || '').trim()).length > 0 && (
-                                    <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
-                                        <p className="text-xs font-bold text-slate-500 mb-3">현재 조직 미리보기</p>
-                                        <div className="space-y-2">
-                                            {orgComms.filter(c => String(c?.name || '').trim()).map(comm => (
-                                                <div key={comm.id} className="flex items-start gap-2">
-                                                    <span className="text-sm shrink-0">🏛️</span>
-                                                    <div>
-                                                        <span className="font-bold text-slate-700 text-sm">{comm.name}</span>
-                                                        <div className="flex flex-wrap gap-1 mt-1">
-                                                            {(comm.subgroups || []).filter(s => getSubName(s).trim()).map((sub, i) => (
-                                                                <span key={i} className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{getSubName(sub)}</span>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
+                            <OrganizationTab orgComms={orgComms} setOrgComms={setOrgComms} saveOrg={saveOrg} savingOrg={savingOrg} />
                         )}
 
                         {/* ── 공지사항 ── */}
                         {tab === 'announcement' && (
-                            <div id="admin-tut-announcement-section" className="space-y-4 max-w-2xl">
-                                <div className="bg-white rounded-2xl p-4 border border-slate-100">
-                                    <label className="flex items-center gap-2 mb-4 cursor-pointer">
-                                        <input type="checkbox" checked={announcement.enabled}
-                                            onChange={e => setAnnouncement(prev => ({ ...prev, enabled: e.target.checked }))}
-                                            className="w-4 h-4 rounded" />
-                                        <span className="font-bold text-slate-700">공지 표시 활성화</span>
-                                    </label>
-                                    <textarea value={announcement.text}
-                                        onChange={e => setAnnouncement(prev => ({ ...prev, text: e.target.value }))}
-                                        placeholder="공지사항 내용을 입력하세요..."
-                                        rows={4}
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                                    <div className="mt-3">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <p className="text-xs text-slate-400 font-bold">링크 (선택)</p>
-                                            <button type="button"
-                                                onClick={() => setAnnouncement(prev => ({ ...prev, links: [...(prev.links || []), { url: '', text: '' }] }))}
-                                                className="text-xs bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg font-bold hover:bg-blue-100">
-                                                + 링크 추가
-                                            </button>
-                                        </div>
-                                        {(announcement.links || []).map((link, i) => (
-                                            <div key={i} className="flex gap-2 mb-2 items-center">
-                                                <input type="text" value={link.text}
-                                                    onChange={e => {
-                                                        const links = [...(announcement.links || [])];
-                                                        links[i] = { ...links[i], text: e.target.value };
-                                                        setAnnouncement(prev => ({ ...prev, links }));
-                                                    }}
-                                                    placeholder="버튼 글자"
-                                                    className="flex-1 bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm" />
-                                                <input type="url" value={link.url}
-                                                    onChange={e => {
-                                                        const links = [...(announcement.links || [])];
-                                                        links[i] = { ...links[i], url: e.target.value };
-                                                        setAnnouncement(prev => ({ ...prev, links }));
-                                                    }}
-                                                    placeholder="https://..."
-                                                    className="flex-1 bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm" />
-                                                <button type="button"
-                                                    onClick={() => setAnnouncement(prev => ({ ...prev, links: prev.links.filter((_, j) => j !== i) }))}
-                                                    className="text-slate-300 hover:text-red-400 font-bold text-lg shrink-0">✕</button>
-                                            </div>
-                                        ))}
-                                        {(announcement.links || []).length === 0 && (
-                                            <p className="text-xs text-slate-300 text-center py-2">링크 버튼이 없습니다.</p>
-                                        )}
-                                    </div>
-                                    <button onClick={saveAnnouncement} disabled={saving}
-                                        className="w-full mt-3 bg-blue-600 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-50 hover:bg-blue-700">
-                                        {saving ? '저장 중...' : '공지 저장'}
-                                    </button>
-                                </div>
-
-                                <div className="bg-white rounded-2xl p-4 border border-slate-100">
-                                    <p className="font-bold text-slate-700 mb-1 flex items-center gap-2">
-                                        💬 카카오톡 채널
-                                    </p>
-                                    <p className="text-xs text-slate-400 mb-3">
-                                        카카오톡 채널 관리자 센터에서 채팅 URL을 복사해 붙여넣으세요.<br />
-                                        설정하면 대시보드에 카카오톡 채널 버튼이 표시됩니다.
-                                    </p>
-                                    <input type="url" value={kakaoLink}
-                                        onChange={e => setKakaoLink(e.target.value)}
-                                        placeholder="https://pf.kakao.com/_xxxx/chat"
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400" />
-                                    <button onClick={saveKakaoLink} disabled={savingKakao}
-                                        className="w-full mt-3 bg-[#FEE500] text-[#3c1e1e] font-bold py-2.5 rounded-xl text-sm disabled:opacity-50 hover:bg-[#FDD835]">
-                                        {savingKakao ? '저장 중...' : '💬 카카오 링크 저장'}
-                                    </button>
-                                </div>
-                            </div>
+                            <AnnouncementTab
+                                announcement={announcement} setAnnouncement={setAnnouncement}
+                                saveAnnouncement={saveAnnouncement} saving={saving}
+                                kakaoLink={kakaoLink} setKakaoLink={setKakaoLink}
+                                saveKakaoLink={saveKakaoLink} savingKakao={savingKakao}
+                            />
                         )}
 
                         {/* ── 설정 ── */}
                         {tab === 'settings' && (
-                            <div id="admin-tut-settings-section" className="space-y-4 max-w-2xl">
-                                <GoogleLinkCard
-                                    accountUid={currentUser?.uid}
-                                    accountRole={currentUser?.role}
-                                />
-                                <div className="bg-white rounded-2xl p-4 border border-slate-100">
-                                    <p className="font-bold text-slate-700 mb-1">🔗 우리 교회 로그인 링크</p>
-                                    <p className="text-xs text-slate-400 mb-3">이 링크로 접속하면 교인이 교회를 직접 검색하지 않아도 자동으로 선택됩니다. 성도들에게 공유해주세요.</p>
-                                    <div className="flex gap-2">
-                                        <input type="text" readOnly value={`${window.location.origin}${window.location.pathname}?church=${currentUser.churchId}`}
-                                            onFocus={e => e.target.select()}
-                                            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-600 font-mono truncate" />
-                                        <button
-                                            onClick={() => {
-                                                const link = `${window.location.origin}${window.location.pathname}?church=${currentUser.churchId}`;
-                                                navigator.clipboard.writeText(link).then(() => {
-                                                    setLinkCopied(true);
-                                                    setTimeout(() => setLinkCopied(false), 2000);
-                                                }).catch(() => alert('복사에 실패했습니다. 직접 선택해 복사해주세요.'));
-                                            }}
-                                            className="bg-indigo-600 text-white font-bold px-4 rounded-xl text-sm hover:bg-indigo-700 whitespace-nowrap">
-                                            {linkCopied ? '복사됨!' : '복사'}
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="bg-white rounded-2xl p-4 border border-slate-100">
-                                    <p className="font-bold text-slate-700 mb-1">🖨️ 인쇄물</p>
-                                    <p className="text-xs text-slate-400 mb-3">
-                                        A4 용지에 인쇄해서 사용하세요. 성도용 안내문에는 우리 교회 QR과 가입·로그인 방법이 큰 글씨로 담기고{churchInfo?.churchCode ? ' 입장코드도 함께 인쇄돼요' : ' 입장코드 자리는 빈칸이라 직접 적어주시면 돼요'}. 관리자 매뉴얼은 책상에 두고 보는 용도예요.
-                                    </p>
-                                    <div className="flex flex-wrap gap-2">
-                                        <button
-                                            onClick={printMemberGuide}
-                                            className="bg-emerald-600 text-white font-bold px-4 py-2.5 rounded-xl text-sm hover:bg-emerald-700">
-                                            📱 성도용 가입 안내문 인쇄
-                                        </button>
-                                        <button
-                                            onClick={printAdminManual}
-                                            className="bg-slate-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm hover:bg-slate-800">
-                                            📘 관리자 매뉴얼 인쇄
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="bg-white rounded-2xl p-4 border border-slate-100">
-                                    <p className="font-bold text-slate-700 mb-1">교회 입장코드 변경</p>
-                                    <p className="text-xs text-slate-400 mb-3">교인들이 가입할 때 사용하는 코드입니다.</p>
-                                    <div className="flex gap-2">
-                                        <input type="text" value={newChurchCode} onChange={e => setNewChurchCode(e.target.value)}
-                                            placeholder="새 입장코드 (4자리 이상)"
-                                            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm" />
-                                        <button onClick={saveChurchCode} disabled={savingCode}
-                                            className="bg-indigo-600 text-white font-bold px-4 rounded-xl text-sm disabled:opacity-50 hover:bg-indigo-700">
-                                            {savingCode ? '...' : '변경'}
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 text-xs text-slate-400">
-                                    <p className="font-bold text-slate-600 mb-1">교회 정보</p>
-                                    <p>교회명: {churchInfo?.name}</p>
-                                    <p>관리자: {currentUser.name}</p>
-                                </div>
-                            </div>
+                            <SettingsTab
+                                currentUser={currentUser} churchInfo={churchInfo}
+                                printMemberGuide={printMemberGuide} printAdminManual={printAdminManual}
+                                newChurchCode={newChurchCode} setNewChurchCode={setNewChurchCode}
+                                saveChurchCode={saveChurchCode} savingCode={savingCode}
+                            />
                         )}
                     </>
                 )}

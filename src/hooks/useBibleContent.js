@@ -49,7 +49,6 @@ export const useBibleContent = (currentUser) => {
         try {
             const local = localStorage.getItem(`v_${cacheKey}`);
             if (local) {
-                console.log(`⚡ localStorage 히트: ${cacheKey}`);
                 return JSON.parse(local);
             }
         } catch (e) { /* localStorage 실패 무시 */ }
@@ -78,11 +77,7 @@ export const useBibleContent = (currentUser) => {
     const fetchCachedVerseData = async (planId, currentDay) => {
         const [planType, version] = (planId || '1year_revised').split('_');
 
-        console.log(`📖 본문 로딩: planId=${planId}, day=${currentDay}, cacheKey=${planType}_${version}_${currentDay}`);
-        const t0 = Date.now();
-
         let cached = await withTimeout(fetchVerseFromCache(planId, currentDay), CACHE_LOOKUP_TIMEOUT_MS, null);
-        console.log(`⏱️ 캐시 조회: ${Date.now() - t0}ms, 결과: ${cached ? '히트' : '미스'}`);
         if (cached && cached.text) {
             return cached;
         }

@@ -6,6 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "validate": "npm run validate:round11 && npm run validate:round15 && npm run validate:round18 && npm run validate:kakao-auth && npm run validate:personal-migration",
+    "validate:round11": "node scripts/validate-round11.mjs",
+    "validate:round15": "node scripts/validate-round15.mjs",
+    "validate:round18": "node scripts/validate-round18.mjs",
+    "validate:kakao-auth": "node scripts/validate-kakao-custom-auth.mjs",
+    "validate:personal-migration": "node scripts/validate-personal-migration.mjs",
+    "validate:quiz": "node scripts/validate-quiz.mjs",
     "test:saehangul": "node scripts/test-saehangul-parser.mjs",
     "test:kakao-auth": "node scripts/validate-kakao-custom-auth.mjs",
     "preview": "vite preview",

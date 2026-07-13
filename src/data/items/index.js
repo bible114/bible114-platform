@@ -151,13 +151,3 @@ export {
     CHARACTER_ITEMS,
     LIVING_HOBBY_MISC_ITEMS
 };
-
-// 디버깅용: 아이템 개수 출력
-if (typeof window !== 'undefined' && window.console) {
-    console.log('🍀 싸이월드 미니홈피 아이템 시스템');
-    console.log(`총 아이템 수: ${SHOP_ITEMS.length}개`);
-    console.log('카테고리별:');
-    SHOP_CATEGORIES.forEach(cat => {
-        console.log(`  - ${cat.name}: ${cat.count}개`);
-    });
-}

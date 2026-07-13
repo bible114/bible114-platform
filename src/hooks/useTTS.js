@@ -33,7 +33,6 @@ export const useTTS = (verseText) => {
             const voices = window.speechSynthesis.getVoices();
             if (voices.length === 0) return;
 
-            console.log("Loaded voices:", voices.length);
             // 운영체제가 ko-KR로 표시하는 캐릭터/효과 음성은 성경 낭독에 부적합하다.
             const noveltyVoicePattern = /^(Eddy|Flo|Grandma|Grandpa|Reed|Rocko|Sandy|Shelley)(?:\s|\(|$)/i;
             const koVoices = voices

@@ -23,11 +23,12 @@ export const useUserBibleActions = (
     const [showConfetti, setShowConfetti] = useState(false);
     const [levelUpToast, setLevelUpToast] = useState(null);
     const [bonusToast, setBonusToast] = useState(null);
+    const [completionSummary, setCompletionSummary] = useState(null);
     const [newAchievement, setNewAchievement] = useState(null);
     const [readSubmitting, setReadSubmitting] = useState(false);
     const readSubmittingRef = useRef(false);
 
-    const checkAchievements = useCallback(async (user, userMemos) => {
+    const checkAchievements = useCallback(async (user, userMemos, deferToast = false) => {
         if (!user?.uid) return [];
         const userRef = db.collection('users').doc(user.uid);
         const result = await db.runTransaction(async transaction => {
@@ -50,8 +51,12 @@ export const useUserBibleActions = (
         if (result.newIds.length > 0) {
             const newest = ACHIEVEMENTS.find(item => item.id === result.newIds[result.newIds.length - 1]);
             if (newest) {
-                setNewAchievement(newest);
-                setTimeout(() => setNewAchievement(null), 5000);
+                const show = () => {
+                    setNewAchievement(newest);
+                    setTimeout(() => setNewAchievement(null), 5000);
+                };
+                if (deferToast) setTimeout(show, 5200);
+                else show();
             }
         }
         return result.newIds;
@@ -126,9 +131,12 @@ export const useUserBibleActions = (
                 }
                 const talentEarned = isFirstReadToday ? 10 + Math.min(newStreak, 7) : 0;
                 const newTalent = (data.talent || 0) + talentEarned;
-                const quizTalentEarned = data.quizDate === quizTodayKey && data.quizSolved === true
-                    ? (data.quizAttempts === 1 ? 10 : 5)
-                    : 0;
+                const maxStreak = Math.max(data.maxStreak || data.streak || 0, newStreak);
+                const quizTalentEarned = data.quizRewardDate === quizTodayKey
+                    ? (data.quizRewardAmount || 0)
+                    : (data.quizDate === quizTodayKey && data.quizSolved === true
+                        ? (data.quizAttempts === 1 ? 10 : (data.quizAttempts === 2 ? 5 : 0))
+                        : 0);
                 const secretShopJustUnlocked = !data.secretShopUnlocked && newStreak >= 7;
                 const today = new Date(todayStr);
                 today.setHours(0, 0, 0, 0);
@@ -162,6 +170,7 @@ export const useUserBibleActions = (
                     score: newScore,
                     talent: newTalent,
                     streak: newStreak,
+                    maxStreak,
                     lastReadDate: todayStr,
                     dailyAdvanceDate: quizTodayKey,
                     dailyAdvanceCount: nextDailyAdvanceCount,
@@ -203,6 +212,7 @@ export const useUserBibleActions = (
                     historyItem,
                     newProgressDay,
                     talentEarned,
+                    scoreEarned: addedScore,
                     quizTalentEarned,
                     totalTalent: newTalent,
                     secretShopJustUnlocked,
@@ -279,17 +289,13 @@ export const useUserBibleActions = (
                 setLevelUpToast(true);
                 setTimeout(() => setLevelUpToast(false), 5000);
             }
-            if (completedRound) {
-                setBonusToast(null);
-            } else if (talentEarned > 0) {
-                const todayTalentEarned = talentEarned + quizTalentEarned;
-                setBonusToast(`오늘 +${todayTalentEarned}달란트! (읽기 ⭐${talentEarned} · 퀴즈 ⭐${quizTalentEarned}) · 보유 ⭐${totalTalent}`);
-                setTimeout(() => setBonusToast(null), 3000);
-            } else if (streakBonus > 0) {
-                const scoreText = streakBonus > 0 ? `${newStreak}일 연속 보너스 +${streakBonus}pt` : `${newStreak}일 연속`;
-                setBonusToast(`${scoreText}!`);
-                setTimeout(() => setBonusToast(null), 3000);
-            }
+            setBonusToast(null);
+            setCompletionSummary({
+                scoreEarned: resultData.scoreEarned,
+                talentEarned: talentEarned > 0 ? talentEarned + quizTalentEarned : 0,
+                isFirstReadToday: talentEarned > 0,
+                quizRewardLimited: talentEarned === 0 && quizTalentEarned > 0,
+            });
 
             const allMembers = await loadAllMembers();
             setAllMembersForRace(allMembers);
@@ -300,11 +306,8 @@ export const useUserBibleActions = (
                 setDepartmentMembers(myCommMembers);
             }
 
-            setShowConfetti(true);
-            setTimeout(() => setShowConfetti(false), 3000);
-            await checkAchievements(updatedUser, {});
+            await checkAchievements(updatedUser, {}, newLevel > oldLevel);
             if (onReadComplete) onReadComplete(resultData);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (e) {
             if (e.message !== 'USER_NOT_FOUND') {
                 console.error("읽기 처리 실패:", e);
@@ -371,6 +374,8 @@ export const useUserBibleActions = (
         setLevelUpToast,
         bonusToast,
         setBonusToast,
+        completionSummary,
+        setCompletionSummary,
         newAchievement,
         setNewAchievement,
         readSubmitting,

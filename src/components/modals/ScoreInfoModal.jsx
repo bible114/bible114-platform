@@ -25,7 +25,7 @@ const ScoreInfoModal = ({ show, onClose, myLevel, score }) => {
                             <li>연속 읽기 보너스: <strong>매일 +1점씩 증가 (최대 +5점)</strong></li>
                         </ul>
                     </div>
-                    <div><h4 className="font-bold text-slate-700 mb-1">천로역정 계급표</h4>
+                    <div><h4 className="font-bold text-slate-700 mb-1">성경통독 114 계급표</h4>
                         <div className="grid gap-2 text-sm">
                             {LEVEL_SYSTEM.map((lvl, idx) => (
                                 <div key={idx} className={`flex items-center gap-2 p-2 rounded ${lvl.title === myLevel.title ? 'bg-yellow-50 border border-yellow-200' : ''}`}>

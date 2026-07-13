@@ -34,8 +34,8 @@ assert(!/isCurrentProgressDay\s*&&\s*!hasReadToday\s*&&\s*!quizGateOpen/.test(re
 assert(!reader.includes('handleSpeak(verseData.text, currentIndex)'));
 
 const quizCard = read('src/components/dashboard/BibleQuizCard.jsx');
-assert(quizCard.includes('quizSkipped: true'));
-assert(quizCard.includes('quizKey,'));
+assert(quizCard.includes('skipped: true'));
+assert(quizCard.includes('[`quizProgress.${progressKey}`]'));
 
 const dashboard = read('src/components/DashboardView.jsx');
 assert(dashboard.includes('currentUser={currentUser}'));

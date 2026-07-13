@@ -105,7 +105,7 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
                     <div className="flex items-center gap-3 min-w-0">
                         <div className="w-9 h-9 rounded-lg bg-slate-900 text-white flex items-center justify-center font-serif font-bold text-sm shrink-0">114</div>
                         <div className="min-w-0">
-                            <p className="text-sm font-extrabold text-slate-900 truncate">천로역정 성경읽기</p>
+                            <p className="text-sm font-extrabold text-slate-900 truncate">성경통독 114</p>
                             <p className="text-xs font-bold text-emerald-700">게스트 모드</p>
                         </div>
                     </div>

@@ -100,5 +100,3 @@ export const recordGuestRead = (viewingDay) => {
     });
     return { ...next, didRecord: true };
 };
-
-export const clearGuestMigrated = () => saveGuestState({ migratedAt: null });

@@ -294,18 +294,6 @@ export const dateToOffset = (month, day) => {
     return offset;
 };
 
-// Day 오프셋 → 날짜 문자열 (0 → "1월 1일", 90 → "4월 1일")
-export const offsetToDateStr = (offset) => {
-    const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    let remaining = offset;
-    let month = 0;
-    while (remaining >= daysInMonth[month]) {
-        remaining -= daysInMonth[month];
-        month++;
-    }
-    return `${month + 1}월 ${remaining + 1}일`;
-};
-
 // 실제 본문 Day 계산 (dayOffset은 Day 1의 날짜를 의미, currentDay는 현재 읽고 있는 Day)
 export const getActualDay = (currentDay, dayOffset) => {
     let actualDay = currentDay + dayOffset;

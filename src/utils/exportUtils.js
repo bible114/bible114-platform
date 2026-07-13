@@ -118,7 +118,7 @@ export const generateMemosHTML = (userName, userMemos, userStats = {}) => {
     </div>
     
     <div style="text-align: center; padding: 30px; color: #94a3b8; font-size: 14px;">
-        천로역정 성경 레이스 🏃
+        성경통독 114 🏃
     </div>
 </div>
 </body>

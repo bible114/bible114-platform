@@ -32,8 +32,6 @@ export const useUserAuth = () => {
             if (cancelled) return;
 
             unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
-                console.log('🔐 Auth state changed:', firebaseUser ? firebaseUser.uid : null);
-
                 // Google 로그인처럼 권한 판정을 별도 후처리가 독점하는 동안에는
                 // Auth 이벤트가 먼저 도착해도 사용자 상태를 자동 적용하지 않는다.
                 if (isInteractiveAuthFlowActive()) {
@@ -81,8 +79,6 @@ export const useUserAuth = () => {
                         if (userDoc.exists) {
                             const user = userDocToState(userDoc);
                             const extraOrgsPromise = loadUserExtraOrgs(firebaseUser.uid);
-                            console.log('✅ 사용자 데이터 복원:', user.name);
-
                             // [랭킹] 자격증명 지연 이관 — 재로그인 없이 세션 복원만 하는
                             // 상시 사용자가 가장 많으므로 이 경로가 핵심 이관 지점이다.
                             const credentialsMigrated = await migrateCredentialsIfNeeded(firebaseUser.uid, userDoc.data());
@@ -128,7 +124,6 @@ export const useUserAuth = () => {
                             setCurrentUser(user);
                         } else {
                             // Firestore에 데이터가 없으면 로그인 화면으로/초기화
-                            console.log('⚠️ Firestore 데이터 없음');
                             if (discardStaleEvent()) return;
                             setCurrentUser(null);
                         }

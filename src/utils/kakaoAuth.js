@@ -2,6 +2,7 @@ import { KAKAO_AUTH_URL, KAKAO_REST_KEY } from '../data/constants.js';
 
 export const KAKAO_STATE_KEY = 'b114_kakao_state_v1';
 export const KAKAO_RETURNING_KEY = 'b114_kakao_returning_v1';
+export const KAKAO_LINK_RETURNING_KEY = 'b114_kakao_link_returning_v1';
 
 export const createKakaoState = () => {
     const bytes = new Uint8Array(24);
@@ -47,15 +48,15 @@ export const clearKakaoCallbackUrl = () => {
     window.history.replaceState({}, document.title, sanitizeKakaoCallbackUrl(window.location.href));
 };
 
-export const exchangeKakaoCode = async ({ code, redirectUri }) => {
+export const exchangeKakaoCode = async ({ code, redirectUri, linkIdToken = null }) => {
     if (!KAKAO_AUTH_URL) throw new Error('KAKAO_AUTH_URL_MISSING');
     const response = await fetch(KAKAO_AUTH_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, redirectUri }),
+        body: JSON.stringify({ code, redirectUri, ...(linkIdToken ? { linkIdToken } : {}) }),
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.token) {
+    if (!response.ok || (!payload.token && !payload.linked)) {
         const error = new Error(payload.error || 'KAKAO_EXCHANGE_FAILED');
         error.status = response.status;
         throw error;

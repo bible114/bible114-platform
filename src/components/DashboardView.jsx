@@ -35,7 +35,8 @@ import {
     TalentShop,
     CompletionCelebration,
     CommunityMembershipCard,
-    PersonalAccountMigrationCard
+    PersonalAccountMigrationCard,
+    SocialLinkBanner
 } from './dashboard';
 import TutorialOverlay from './TutorialOverlay';
 
@@ -91,6 +92,7 @@ const DashboardView = ({
     showConfetti,
     levelUpToast,
     bonusToast,
+    completionSummary,
     newAchievement,
     showScoreInfo, setShowScoreInfo,
     showReadingGuide, setShowReadingGuide,
@@ -122,6 +124,10 @@ const DashboardView = ({
     personalOrganizations = [],
     onPrimaryOrgChange,
     onPersonalAccountMigrate,
+    socialLinkNotice,
+    onSocialLinkNoticeClear,
+    onGoogleLink,
+    onKakaoLink,
 }) => {
     const [showTutorial, setShowTutorial] = useState(false);
     const [showMemberships, setShowMemberships] = useState(false);
@@ -367,10 +373,7 @@ const DashboardView = ({
             <DashboardHeader
                 handleLogout={handleLogout}
                 streak={streak}
-                score={score}
                 talent={talent}
-                myLevel={myLevel}
-                setShowScoreInfo={setShowScoreInfo}
                 setShowAchievements={setShowAchievements}
                 setShowDateSettings={setShowDateSettings}
                 setShowCalendar={setShowCalendar}
@@ -400,6 +403,13 @@ const DashboardView = ({
                 className="max-w-5xl mx-auto w-full mt-8"
                 style={{ paddingBottom: 'var(--app-fixed-bottom-clearance)' }}
             >
+                <SocialLinkBanner
+                    currentUser={currentUser}
+                    notice={socialLinkNotice}
+                    onNoticeClear={onSocialLinkNoticeClear}
+                    onGoogleLink={onGoogleLink}
+                    onKakaoLink={onKakaoLink}
+                />
                 {hasCommunity && <RaceMap racers={racers} departmentChampions={departmentChampions} getSubgroupDisplay={getSubgroupDisplay} />}
 
                 <main className="px-4 space-y-6">
@@ -408,14 +418,6 @@ const DashboardView = ({
                     <DailyVideoCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
 
                     {isReadingPeople && <section className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm"><div className="mb-3 flex items-center justify-between"><div><h2 className="font-black text-slate-800">성경 읽는 사람들</h2><p className="mt-1 text-xs text-slate-500">전국에서 혼자 읽는 분들의 평면 랭킹이에요.</p></div><span className="text-xs font-bold text-emerald-600">{allRacersSorted.length}명</span></div><div className="space-y-2">{allRacersSorted.slice(0, 10).map((member, index) => <div key={member.uid} className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm ${member.isMe ? 'bg-emerald-50' : 'bg-slate-50'}`}><span className="w-6 font-black text-slate-400">{index + 1}</span><span className="min-w-0 flex-1 truncate font-bold text-slate-700">{member.name}</span><span className="font-black text-emerald-700">DAY {member.day}</span></div>)}</div></section>}
-
-                    <BibleQuizCard
-                        currentUser={currentUser}
-                        setCurrentUser={setCurrentUser}
-                        onGateStateChange={setQuizGate}
-                        sectionRef={quizSectionRef}
-                        highlight={highlightQuiz}
-                    />
 
                     <BibleReader
                         verseData={verseData}
@@ -443,6 +445,17 @@ const DashboardView = ({
                         handleRead={handleRead}
                         quizGateOpen={quizGate.gateOpen}
                         onQuizGateLocked={handleQuizGateLocked}
+                        completionSummary={completionSummary}
+                        quizContent={(
+                            <BibleQuizCard
+                                currentUser={currentUser}
+                                setCurrentUser={setCurrentUser}
+                                viewingDay={viewingDay}
+                                onGateStateChange={setQuizGate}
+                                sectionRef={quizSectionRef}
+                                highlight={highlightQuiz}
+                            />
+                        )}
                     />
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

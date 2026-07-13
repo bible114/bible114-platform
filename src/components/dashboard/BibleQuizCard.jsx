@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { db, firebase } from '../../utils/firebase';
 import { QUIZ_BANK, getKstDateString } from '../../data/bibleQuiz';
+import { getQuizProgressKey, getQuizRewardForAnswer } from '../../utils/quizProgress';
 import {
-    getCurrentReadingRange,
-    getTodayReadingRange,
+    getReadingRangeForDay,
     loadQuestionByKey,
     loadQuestionsForRange,
     selectQuiz,
@@ -39,12 +39,11 @@ const resolveQuizKey = async (quizKey) => {
     };
 };
 
-const buildTodayQuiz = async (currentUser, hasReadToday) => {
-    const range = hasReadToday
-        ? getTodayReadingRange(currentUser)
-        : getCurrentReadingRange(currentUser);
+const buildDayQuiz = async (currentUser, viewingDay) => {
+    const range = getReadingRangeForDay(currentUser, viewingDay);
     const pool = await loadQuestionsForRange(range);
-    const selected = selectQuiz(pool, currentUser?.readCount || 1);
+    const cycleSeed = ((currentUser?.readCount || 1) - 1) * 365 + viewingDay;
+    const selected = selectQuiz(pool, cycleSeed);
     if (selected) {
         return {
             quiz: selected,
@@ -55,15 +54,30 @@ const buildTodayQuiz = async (currentUser, hasReadToday) => {
     return null;
 };
 
-const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, sectionRef, highlight = false }) => {
+const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateChange, sectionRef, highlight = false }) => {
     const todayKey = getKstDateString();
-    const skipStorageKey = `b114_quiz_skip_${new Date().toDateString()}`;
     const hasReadToday = currentUser?.lastReadDate === new Date().toDateString();
-    const attempts = currentUser?.quizDate === todayKey ? (currentUser.quizAttempts || 0) : 0;
-    const solved = currentUser?.quizDate === todayKey && currentUser.quizSolved === true;
-    const persistedSkipped = currentUser?.quizDate === todayKey && currentUser.quizSkipped === true;
+    const progressDay = Number(viewingDay || currentUser?.currentDay || 1);
+    const progressCycle = hasReadToday && currentUser?.currentDay === 1 && progressDay === 365
+        ? Math.max(1, (currentUser?.readCount || 1) - 1)
+        : (currentUser?.readCount || 1);
+    const progressKey = getQuizProgressKey(progressCycle, progressDay);
+    const legacyDay = hasReadToday ? (currentUser?.currentDay === 1 ? 365 : (currentUser?.currentDay || 1) - 1) : (currentUser?.currentDay || 1);
+    const legacyCycle = hasReadToday && currentUser?.currentDay === 1 ? Math.max(1, (currentUser?.readCount || 1) - 1) : (currentUser?.readCount || 1);
+    const canUseLegacy = progressDay === legacyDay && progressKey === getQuizProgressKey(legacyCycle, legacyDay) && currentUser?.quizDate === todayKey;
+    const progress = currentUser?.quizProgress?.[progressKey] || (canUseLegacy ? {
+        attempts: currentUser?.quizAttempts || 0,
+        solved: currentUser?.quizSolved === true,
+        skipped: currentUser?.quizSkipped === true,
+        quizKey: currentUser?.quizKey || null,
+    } : null);
+    const attempts = progress?.attempts || 0;
+    const solved = progress?.solved === true;
+    const persistedSkipped = progress?.skipped === true;
     const finished = solved || attempts >= 2;
-    const earnedReward = solved ? getRewardForAttempts(attempts) : 0;
+    const dailyRewardAlready = currentUser?.quizRewardDate === todayKey || (currentUser?.quizDate === todayKey && currentUser?.quizSolved === true);
+    const earnedReward = solved ? (progress?.reward || 0) : 0;
+    const skipStorageKey = `b114_quiz_skip_${currentUser?.uid || 'anon'}_${progressKey}`;
     const [skipped, setSkipped] = useState(false);
 
     useEffect(() => {
@@ -84,8 +98,8 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
     const [selectedIndex, setSelectedIndex] = useState(null);
     const [feedback, setFeedback] = useState(() => {
         if (!finished) return null;
-        if (solved) return { type: 'success', message: `오늘 퀴즈 완료! ⭐ +${earnedReward}달란트` };
-        return { type: 'done', message: '오늘의 두 번 시도가 끝났습니다.' };
+        if (solved) return { type: 'success', message: earnedReward > 0 ? `DAY ${progressDay} 퀴즈 완료! ⭐ +${earnedReward}달란트` : '정답이에요! 퀴즈 달란트는 하루 1번만 적립돼요.' };
+        return { type: 'done', message: `DAY ${progressDay}의 두 번 시도가 끝났습니다.` };
     });
     const [submitting, setSubmitting] = useState(false);
     const [reviewExpanded, setReviewExpanded] = useState(false);
@@ -97,13 +111,13 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
         if (!finished) {
             setFeedback(null);
         } else if (solved) {
-            setFeedback({ type: 'success', message: `오늘 퀴즈 완료! ⭐ +${earnedReward}달란트` });
+            setFeedback({ type: 'success', message: earnedReward > 0 ? `DAY ${progressDay} 퀴즈 완료! ⭐ +${earnedReward}달란트` : '정답이에요! 퀴즈 달란트는 하루 1번만 적립돼요.' });
         } else {
-            setFeedback({ type: 'done', message: '오늘의 두 번 시도가 끝났습니다.' });
+            setFeedback({ type: 'done', message: `DAY ${progressDay}의 두 번 시도가 끝났습니다.` });
         }
     }, [
         currentUser?.uid,
-        currentUser?.currentDay,
+        progressKey,
         currentUser?.dayOffset,
         currentUser?.planId,
         currentUser?.readCount,
@@ -120,9 +134,9 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
             }
             setQuizState({ loading: true, quiz: null, quizKey: null, badge: '', replaceStoredQuizKey: false });
             try {
-                const savedKey = currentUser.quizDate === todayKey ? currentUser.quizKey : null;
+                const savedKey = progress?.quizKey || null;
                 const resolved = savedKey ? await resolveQuizKey(savedKey) : null;
-                const nextQuiz = resolved || await buildTodayQuiz(currentUser, hasReadToday);
+                const nextQuiz = resolved || await buildDayQuiz(currentUser, progressDay);
                 if (!cancelled) {
                     setQuizState(nextQuiz
                         ? { loading: false, ...nextQuiz, replaceStoredQuizKey: Boolean(savedKey && !resolved) }
@@ -138,13 +152,11 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
         return () => { cancelled = true; };
     }, [
         currentUser?.uid,
-        currentUser?.currentDay,
+        progressKey,
         currentUser?.dayOffset,
         currentUser?.planId,
-        currentUser?.quizDate,
-        currentUser?.quizKey,
+        progress?.quizKey,
         currentUser?.readCount,
-        hasReadToday,
         todayKey,
     ]);
 
@@ -168,14 +180,13 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
         if (submitting || !quizKey) return;
         setSubmitting(true);
         try {
-            await db.collection('users').doc(currentUser.uid).set({
-                quizDate: todayKey,
-                quizSkipped: true,
-                quizKey,
+            const entry = { attempts, solved: false, skipped: true, quizKey, updatedDate: todayKey, reward: 0 };
+            await db.collection('users').doc(currentUser.uid).update({
+                [`quizProgress.${progressKey}`]: entry,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true });
+            });
             setCurrentUser(previous => previous?.uid === currentUser.uid
-                ? { ...previous, quizDate: todayKey, quizSkipped: true, quizKey }
+                ? { ...previous, quizProgress: { ...(previous.quizProgress || {}), [progressKey]: entry } }
                 : previous);
             if (typeof localStorage !== 'undefined') {
                 try {
@@ -203,16 +214,23 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
                 if (!snap.exists) throw new Error('USER_NOT_FOUND');
 
                 const data = snap.data();
-                const freshAttempts = data.quizDate === todayKey ? (data.quizAttempts || 0) : 0;
-                const alreadyDone = data.quizDate === todayKey && (data.quizSolved === true || data.quizSkipped === true || freshAttempts >= 2);
-                const storedQuizKey = data.quizDate === todayKey ? data.quizKey : null;
+                const storedProgress = data.quizProgress?.[progressKey] || (canUseLegacy ? {
+                    attempts: data.quizAttempts || 0,
+                    solved: data.quizSolved === true,
+                    skipped: data.quizSkipped === true,
+                    quizKey: data.quizKey || null,
+                    reward: data.quizSolved === true ? getRewardForAttempts(data.quizAttempts || 0) : 0,
+                } : {});
+                const freshAttempts = storedProgress.attempts || 0;
+                const alreadyDone = storedProgress.solved === true || storedProgress.skipped === true || freshAttempts >= 2;
+                const storedQuizKey = storedProgress.quizKey || null;
                 if (alreadyDone) {
                     return {
                         alreadyDone: true,
                         attempts: freshAttempts,
-                        solved: data.quizSolved === true,
-                        skipped: data.quizSkipped === true,
-                        reward: data.quizSolved === true ? getRewardForAttempts(freshAttempts) : 0,
+                        solved: storedProgress.solved === true,
+                        skipped: storedProgress.skipped === true,
+                        reward: storedProgress.reward || 0,
                         talent: data.talent || 0,
                         quizKey: storedQuizKey || quizKey,
                     };
@@ -220,18 +238,33 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
 
                 const nextAttempts = freshAttempts + 1;
                 const isCorrect = selectedIndex === quiz.answerIndex;
-                const reward = isCorrect ? getRewardForAttempts(nextAttempts) : 0;
+                const rewardAlready = data.quizRewardDate === todayKey || (data.quizDate === todayKey && data.quizSolved === true);
+                const reward = getQuizRewardForAnswer({
+                    attempts: nextAttempts,
+                    isCorrect,
+                    rewardDate: data.quizRewardDate,
+                    todayKey,
+                    legacyRewardedToday: data.quizDate === todayKey && data.quizSolved === true,
+                });
                 const nextTalent = (data.talent || 0) + reward;
                 const persistedQuizKey = quizState.replaceStoredQuizKey ? quizKey : (storedQuizKey || quizKey);
-                const updateData = {
-                    quizDate: todayKey,
-                    quizAttempts: nextAttempts,
-                    quizSolved: isCorrect,
-                    quizSkipped: false,
+                const entry = {
+                    attempts: nextAttempts,
+                    solved: isCorrect,
+                    skipped: false,
                     quizKey: persistedQuizKey,
+                    reward,
+                    updatedDate: todayKey,
+                };
+                const updateData = {
+                    [`quizProgress.${progressKey}`]: entry,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 };
-                if (reward > 0) updateData.talent = nextTalent;
+                if (reward > 0) {
+                    updateData.talent = nextTalent;
+                    updateData.quizRewardDate = todayKey;
+                    updateData.quizRewardAmount = reward;
+                }
 
                 transaction.update(userRef, updateData);
                 return {
@@ -241,26 +274,32 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
                     skipped: false,
                     reward,
                     talent: nextTalent,
-                    quizKey: updateData.quizKey,
+                    quizKey: entry.quizKey,
+                    entry,
+                    rewardAlready,
                 };
             });
 
             setCurrentUser(prev => ({
                 ...prev,
-                quizDate: todayKey,
-                quizAttempts: result.attempts,
-                quizSolved: result.solved,
-                quizSkipped: result.skipped === true,
-                quizKey: result.quizKey,
+                quizProgress: {
+                    ...(prev.quizProgress || {}),
+                    [progressKey]: result.entry || {
+                        attempts: result.attempts, solved: result.solved,
+                        skipped: result.skipped === true, quizKey: result.quizKey,
+                        reward: result.reward || 0, updatedDate: todayKey,
+                    },
+                },
+                ...(result.reward > 0 ? { quizRewardDate: todayKey, quizRewardAmount: result.reward } : {}),
                 talent: result.talent,
             }));
 
             if (result.alreadyDone) {
                 setFeedback(result.solved
-                    ? { type: 'success', message: `오늘 퀴즈 완료! ⭐ +${result.reward}달란트` }
-                    : { type: 'done', message: '오늘의 두 번 시도가 끝났습니다.' });
+                    ? { type: 'success', message: result.reward > 0 ? `DAY ${progressDay} 퀴즈 완료! ⭐ +${result.reward}달란트` : '정답이에요! 퀴즈 달란트는 하루 1번만 적립돼요.' }
+                    : { type: 'done', message: `DAY ${progressDay}의 두 번 시도가 끝났습니다.` });
             } else if (result.solved) {
-                setFeedback({ type: 'success', message: `정답입니다! ⭐ +${result.reward}달란트를 받았어요.` });
+                setFeedback({ type: 'success', message: result.reward > 0 ? `정답입니다! ⭐ +${result.reward}달란트를 받았어요.` : '정답이에요! 퀴즈 달란트는 하루 1번만 적립돼요.' });
             } else if (result.attempts >= 2) {
                 setFeedback({ type: 'done', message: '아쉽지만 오늘의 시도는 끝났습니다. 정답을 확인해보세요.' });
             } else {
@@ -275,8 +314,9 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
         }
     };
 
-    const currentAttempts = currentUser.quizDate === todayKey ? (currentUser.quizAttempts || 0) : 0;
-    const showAnswer = currentUser.quizDate === todayKey && (currentUser.quizSolved === true || currentAttempts >= 2);
+    const currentProgress = currentUser?.quizProgress?.[progressKey] || progress || {};
+    const currentAttempts = currentProgress.attempts || 0;
+    const showAnswer = currentProgress.solved === true || currentAttempts >= 2;
     const sectionClassName = `bg-white rounded-3xl border shadow-sm p-5 overflow-hidden transition-[border-color,box-shadow] duration-300 ${highlight ? 'border-indigo-500 ring-4 ring-indigo-200 shadow-indigo-100' : 'border-slate-100'}`;
 
     if (finished && !reviewExpanded) {
@@ -288,7 +328,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
                     className="w-full text-left"
                     aria-expanded="false"
                 >
-                    <p className="text-base font-black text-emerald-700">✅ 오늘 퀴즈 완료 · 내일 새 문제가 나와요</p>
+                    <p className="text-base font-black text-emerald-700">✅ DAY {progressDay} 퀴즈 완료</p>
                     <p className="mt-1 text-sm font-bold text-amber-700">⭐ +{earnedReward}달란트</p>
                     <p className="mt-2 text-xs font-bold text-slate-400">탭해서 정답과 해설 다시 보기</p>
                 </button>
@@ -310,7 +350,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
         <section ref={sectionRef} className={sectionClassName}>
             <div className="flex items-start justify-between gap-4 mb-4">
                 <div>
-                    <p className="text-xs font-black text-indigo-500 mb-1">오늘의 성경퀴즈</p>
+                    <p className="text-xs font-black text-indigo-500 mb-1">DAY {progressDay} 성경퀴즈</p>
                     <div className="mb-2 inline-flex rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-black text-indigo-600">
                         {quizState.badge || '성경 상식 문제'}
                     </div>
@@ -319,8 +359,8 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
                     </h2>
                 </div>
                 <div className="shrink-0 rounded-2xl bg-amber-50 px-3 py-2 text-right">
-                    <p className="text-[11px] font-black text-amber-600">보상</p>
-                    <p className="text-sm font-black text-amber-700">⭐ 10 / 5</p>
+                    <p className="text-[11px] font-black text-amber-600">{dailyRewardAlready ? '오늘 적립 완료' : '보상'}</p>
+                    <p className="text-sm font-black text-amber-700">{dailyRewardAlready ? '⭐ +0' : '⭐ 10 / 5'}</p>
                 </div>
             </div>
 
@@ -352,7 +392,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-h-[1.5rem] text-sm font-bold">
                     {skipped ? (
-                        <span className="text-slate-500">오늘은 퀴즈를 건너뛰었습니다.</span>
+                        <span className="text-slate-500">DAY {progressDay} 퀴즈를 건너뛰었습니다.</span>
                     ) : feedback ? (
                         <span className={
                             feedback.type === 'success' ? 'text-emerald-600' :
@@ -362,7 +402,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
                             {feedback.message}
                         </span>
                     ) : (
-                        <span className="text-slate-400">오늘 최대 2번 도전할 수 있어요. 첫 정답은 10달란트, 두 번째 정답은 5달란트입니다.</span>
+                        <span className="text-slate-400">이 DAY는 최대 2번 도전할 수 있어요. 퀴즈 달란트는 하루 첫 정답에만 적립됩니다.</span>
                     )}
                 </div>
                 <div className="flex shrink-0 flex-col items-center gap-2">
@@ -372,7 +412,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
                         disabled={quizState.loading || selectedIndex === null || submitting || showAnswer || skipped}
                         className="w-full rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white disabled:bg-slate-200 disabled:text-slate-400"
                     >
-                        {submitting ? '확인 중...' : showAnswer ? '오늘 완료' : skipped ? '건너뛰기 완료' : '정답 확인'}
+                        {submitting ? '확인 중...' : showAnswer ? `DAY ${progressDay} 완료` : skipped ? '건너뛰기 완료' : '정답 확인'}
                     </button>
                     {!finished && !skipped && (
                         <button
@@ -380,7 +420,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
                             onClick={skipToday}
                             className="text-xs font-bold text-slate-400 underline underline-offset-2 hover:text-slate-600"
                         >
-                            오늘은 건너뛰기
+                            이 DAY는 건너뛰기
                         </button>
                     )}
                 </div>

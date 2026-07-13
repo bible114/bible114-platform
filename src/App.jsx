@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useCallback, useMemo } from 'react';
 import { db, auth, firebase } from './utils/firebase';
 import { DEFAULT_DEPARTMENTS } from './data/departments';
 import { BIBLE_VERSIONS, isBibleVersionVisibleForUser } from './data/bible_options';
 import { userDocToState, dateToOffset } from './utils/helpers';
 import { setMemberPasswordByAdmin } from './utils/adminPassword';
-import ChurchAdminView from './components/ChurchAdminView';
 import { calculateSubgroupStats, getWeeklyMVP, formatSubgroupRanking, formatProgressRanking, getAdminStats } from './utils/statsUtils';
 import { getSubgroupDisplay } from './utils/dashboardUtils';
 import { generateMemosHTML, downloadCSV, downloadPeriodStatsCSV } from './utils/exportUtils';
@@ -14,7 +13,6 @@ import { useAuth } from './hooks/useAuth';
 import Icon from './components/Icon';
 import MarkdownRenderer from './components/MarkdownRenderer';
 import LoginView from './components/LoginView';
-import PlatformAdminView from './components/PlatformAdminView';
 import PlanSelectionView from './components/PlanSelectionView';
 import DashboardView from './components/DashboardView';
 import GuestReaderView from './components/GuestReaderView';
@@ -24,6 +22,14 @@ import { getPendingPersonalMigration, migrateChurchMemberToPersonal } from './ut
 import { ToastContainer, useToast } from './components/admin';
 import { useTTS } from './hooks/useTTS';
 
+const ChurchAdminView = lazy(() => import('./components/ChurchAdminView'));
+const PlatformAdminView = lazy(() => import('./components/PlatformAdminView'));
+
+const AdminLoadingFallback = () => (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center pb-20">
+        <p className="text-slate-500 font-bold">관리자 화면 불러오는 중...</p>
+    </div>
+);
 
 const App = () => {
     /*
@@ -112,6 +118,7 @@ const App = () => {
         showConfetti, setShowConfetti,
         levelUpToast, setLevelUpToast,
         bonusToast, setBonusToast,
+        completionSummary,
         newAchievement, setNewAchievement,
         readSubmitting,
 
@@ -185,10 +192,6 @@ const App = () => {
         return saved ? parseInt(saved, 10) : 16; // 기본값 16px
     });
 
-    // Auth Hook
-    // const { currentUser, setCurrentUser, authLoading } = useUserAuth(); // Already defined above
-
-
     // 인앱 브라우저 감지 (네이버 등)
     const [isInAppBrowser, setIsInAppBrowser] = useState(false);
     useEffect(() => {
@@ -197,18 +200,6 @@ const App = () => {
             setIsInAppBrowser(true);
         }
     }, []);
-
-    // 숫자를 한자어 수사(일, 이, 삼...)로 변환 (안드로이드 '세 장' 방지용)
-    // (이미 utils/helpers.js에서 import됨)
-
-    /*
-     ============================================================================
-     5.5 [Logic] TTS & Accessibility
-     ============================================================================
-     텍스트 읽어주기(TTS) 및 사용자 편의를 위한 음성 지원 로직입니다.
-    */
-
-
 
     // ★ Auth Side Effects (Navigation & Data Sync)
     useEffect(() => {
@@ -292,19 +283,11 @@ const App = () => {
 
 
 
-    // loadCommunityMembers removed
-    // loadAllMembers removed
 
 
 
 
 
-    /*
-     ============================================================================
-     5.4 [Logic] Data Processing & Stats
-     ============================================================================
-     공동체 통계 계산, 멤버 로딩, 데이터 변환 등 데이터 중심의 로직입니다.
-    */
 
 
 
@@ -409,6 +392,10 @@ const App = () => {
         handlePersonalSignup,
         handleGooglePersonalSignup,
         handleKakaoStart,
+        handleGoogleLink,
+        handleKakaoLinkStart,
+        socialLinkNotice,
+        setSocialLinkNotice,
         handleSocialOnboardingComplete,
         handleChurchAdminLogin,
         handleChurchAdminSignup,
@@ -461,7 +448,9 @@ const App = () => {
         const finalUser = { ...tempUser, subgroupId, subgroupName };
         const runtimeExtraOrgs = Array.isArray(finalUser.extraOrgs) ? finalUser.extraOrgs : [];
         const { extraOrgs: _transientExtraOrgs, ...persistedUser } = finalUser;
-        setCurrentUser({ ...persistedUser, extraOrgs: runtimeExtraOrgs }); setTempUser(null); setView('dashboard');
+        setCurrentUser({ ...persistedUser, extraOrgs: runtimeExtraOrgs });
+        setTempUser(null);
+        setView(finalUser.role === 'churchAdmin' ? 'admin_signup_complete' : 'dashboard');
         try {
             const uid = (auth.currentUser ? auth.currentUser.uid : null) || finalUser.uid;
             if (uid) await db.collection('users').doc(uid).set({ ...persistedUser, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
@@ -527,19 +516,6 @@ const App = () => {
         if (!pending?.phone4) return;
         handlePersonalAccountMigrate(pending.phone4);
     }, [currentUser?.uid]);
-
-    // ----------------------------------------------------------------------
-    // [섹션 H] 데이터 페칭 - 대시보드 진입 시 말씀 로딩
-    // ----------------------------------------------------------------------
-
-    // Effect for data loading moved to useBibleLogic
-
-    // ----------------------------------------------------------------------
-    // [섹션 I] 읽기 완료 처리 - handleRead
-    // "읽었습니다" 버튼 클릭 시 실행
-    // ★ 변경: 기본 점수(10), 보너스 최대값(5), 자동 순환 로직
-    // ----------------------------------------------------------------------
-    // handleRead logic moved to useBibleLogic
 
     const handleLogout = () => {
         if (auth) auth.signOut();
@@ -608,7 +584,7 @@ const App = () => {
 
     if (currentUser?.role === 'superAdmin' || currentUser?.role === 'platformAdmin') {
         return (
-            <>
+            <Suspense fallback={<AdminLoadingFallback />}>
                 <PlatformAdminView
                     currentUser={currentUser}
                     handleLogout={handleLogout}
@@ -640,7 +616,7 @@ const App = () => {
                     db={db}
                 />
                 <ToastContainer toasts={adminAuthToasts.toasts} onClose={adminAuthToasts.removeToast} />
-            </>
+            </Suspense>
         );
     }
 
@@ -688,6 +664,20 @@ const App = () => {
                 churchCommunities={churchCommunities}
             />
         );
+    } else if (view === 'admin_signup_complete' && currentUser?.role === 'churchAdmin') {
+        pageContent = (
+            <div className="min-h-screen bg-slate-50 px-5 py-12 flex items-center justify-center">
+                <section className="w-full max-w-md rounded-3xl bg-white p-7 text-center shadow-xl border border-emerald-100">
+                    <div className="text-5xl">🎉</div>
+                    <h1 className="mt-4 text-2xl font-black text-slate-900">공동체 등록 완료!</h1>
+                    <p className="mt-3 text-base font-bold leading-relaxed text-slate-700">이제 성도들에게 알려주세요.</p>
+                    <div className="mt-4 rounded-2xl bg-emerald-50 px-4 py-4 text-left text-sm font-bold leading-7 text-emerald-900">
+                        관리 화면 → 설정 탭 → 성도용 가입 안내문 인쇄(QR)
+                    </div>
+                    <button type="button" onClick={() => setView('church_admin')} className="mt-6 w-full rounded-2xl bg-indigo-600 px-5 py-4 text-base font-black text-white">관리 화면 열기 →</button>
+                </section>
+            </div>
+        );
     } else if (view === 'dashboard' && currentUser) {
         pageContent = (
             <DashboardView
@@ -732,6 +722,7 @@ const App = () => {
                 showConfetti={showConfetti}
                 levelUpToast={levelUpToast}
                 bonusToast={bonusToast}
+                completionSummary={completionSummary}
                 newAchievement={newAchievement}
                 showScoreInfo={showScoreInfo} setShowScoreInfo={setShowScoreInfo}
                 showReadingGuide={showReadingGuide} setShowReadingGuide={setShowReadingGuide}
@@ -759,6 +750,10 @@ const App = () => {
                 setShowSecretShopUnlocked={setShowSecretShopUnlocked}
                 completionCelebration={completionCelebration}
                 setCompletionCelebration={setCompletionCelebration}
+                socialLinkNotice={socialLinkNotice}
+                onSocialLinkNoticeClear={() => setSocialLinkNotice(null)}
+                onGoogleLink={handleGoogleLink}
+                onKakaoLink={handleKakaoLinkStart}
                 personalOrganizations={personalOrgs.map(org => ({ ...org, name: personalOrgNames[org.orgId] || org.orgId }))}
                 onPrimaryOrgChange={handlePrimaryOrgChange}
                 onPersonalAccountMigrate={handlePersonalAccountMigrate}
@@ -775,11 +770,13 @@ const App = () => {
         );
     } else if (view === 'church_admin' && currentUser?.role === 'churchAdmin') {
         pageContent = (
-            <ChurchAdminView
-                currentUser={currentUser}
-                handleLogout={handleLogout}
-                onBack={() => setView('dashboard')}
-            />
+            <Suspense fallback={<AdminLoadingFallback />}>
+                <ChurchAdminView
+                    currentUser={currentUser}
+                    handleLogout={handleLogout}
+                    onBack={() => setView('dashboard')}
+                />
+            </Suspense>
         );
     }
 
