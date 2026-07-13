@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: "🔁 라운드 16" T87 퀴즈 문항 배치 저작 (반복 — validate-quiz exit 0까지).** 라운드 15까지 Claude 리뷰·커밋·배포 완료됨. git 커밋 금지 — 저작+검증+로그까지만, 커밋은 Claude 담당.
+> **현재 활성 작업: "✅ 라운드 16" T87 퀴즈 문항 저작 완료 (`validate-quiz` exit 0). 다음 라운드 설계 대기.** 라운드 15까지 Claude 리뷰·커밋·배포 완료됨. git 커밋 금지 — 저작+검증+로그까지만, 커밋은 Claude 담당.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -180,6 +180,9 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-13 | T87 완료 — 배치 12 구약 잔여·경고 해소 | `src/data/quiz/genesis.json`, `src/data/quiz/numbers.json`, `src/data/quiz/deuteronomy.json`, `src/data/quiz/colossians.json`, `src/data/quiz/philippians.json`, `HANDOFF_CODEX.md` | 창세기 35~36장 6문항, 민수기 1~16장 48문항, 신명기 9~34장 78문항과 장당 권장 수 경고 해소용 2문항을 추가했다. 남은 미저작 본문은 44개에서 0개로 감소했고 경고도 0개가 되었다. `node scripts/validate-quiz.mjs` **exit 0**, `npm run build`, `git diff --check` 통과. **T87 완료 — exit 0. 퀴즈 문항 신학 검수 필요(사용자).** |
+| 2026-07-13 | T87 배치 11 — 신약일독 잔여 세그먼트 | `src/data/quiz/acts.json`, `src/data/quiz/galatians.json`, `src/data/quiz/hebrews.json`, `src/data/quiz/romans.json`, `src/data/quiz/matthew.json`, `HANDOFF_CODEX.md` | 사도행전 3개, 갈라디아서 1개, 히브리서 3개, 로마서 3개, 마태복음 18개 실제 절 범위에 총 140문항을 추가했다. 각 세그먼트 안의 대표 절만 근거로 사용해 남은 미저작 본문은 72개에서 44개로 감소했다. `node scripts/validate-quiz.mjs`는 남은 구약 누락 때문에 의도대로 exit 1. 최종 누적 상태에서 빌드·diff 검증 통과. **퀴즈 문항 신학 검수 필요(사용자).** |
+| 2026-07-13 | T87 배치 10 — 일년일독 Day 338~365 | `src/data/quiz/1timothy.json`, `src/data/quiz/2timothy.json`, `src/data/quiz/titus.json`, `src/data/quiz/1john.json`, `src/data/quiz/2john.json`, `src/data/quiz/3john.json`, `src/data/quiz/revelation.json`, `HANDOFF_CODEX.md` | 디모데전·후서, 디도서, 요한일·이·삼서, 요한계시록 15~22장에 총 145문항을 추가했다. 계 18:1~19:4와 19:5~21은 실제 절 범위별 5문항을 확보했다. 남은 미저작 본문은 103개에서 72개로 감소했다. `node scripts/validate-quiz.mjs`는 남은 누락 때문에 의도대로 exit 1. 최종 누적 상태에서 빌드·diff 검증 통과. **퀴즈 문항 신학 검수 필요(사용자).** |
 | 2026-07-13 | T87 배치 9 — 요한복음 8~21장 | `src/data/quiz/john.json`, `HANDOFF_CODEX.md` | 일년일독 Day 351~356과 신약일독 Day 296~323의 실제 절 범위 29개에 요한복음 145문항을 추가했다. 대상 34일 모두 누락 0이며 신약일독 일일 pool 5~10개, 일년일독 일일 pool 20~30개를 확인했다. 전체 미저작 본문은 146개에서 103개로 감소. `node scripts/validate-quiz.mjs`는 남은 누락 때문에 의도대로 exit 1, `npm run build`, `git diff --check` 통과. **퀴즈 문항 신학 검수 필요(사용자).** |
 | 2026-07-13 | T87 배치 8 — 일년일독 Day 321~350 | `src/data/quiz/2chronicles.json`, `src/data/quiz/micah.json`, `src/data/quiz/jeremiah.json`, `src/data/quiz/lamentations.json`, `src/data/quiz/malachi.json`, `src/data/quiz/john.json`, `src/data/quiz/psalms.json`, `HANDOFF_CODEX.md` | 역대하 21~36장 48문항, 미가 21문항, 예레미야 159문항, 예레미야애가 15문항, 말라기 12문항, 요한복음 1:1~7:53의 신약일독 세그먼트별 80문항으로 총 335문항 추가. 배치 7 시편 119편 후반 3문항의 중복 질문 문구도 내용 변경 없이 절 범위를 명시해 고쳤다. 대상 30일 모두 누락 0, 일일 pool 3~30개이며 전체 미저작 본문은 251개에서 146개로 감소. `node scripts/validate-quiz.mjs`는 남은 누락 때문에 의도대로 exit 1, `npm run build`, `git diff --check` 통과. **퀴즈 문항 신학 검수 필요(사용자).** |
 | 2026-07-13 | T78~T86 모바일 실제 사용자 E2E QA 대응 | `src/hooks/{useUserBibleActions,useMemos,useTTS,useAuth}.js`, `src/components/dashboard/{BibleReader,BibleQuizCard,CommunityMembershipCard,KakaoChannelButton,RaceMap}.jsx`, `src/components/{DashboardView,GuestReaderView}.jsx`, `src/components/modals/AchievementsModal.jsx`, `src/data/achievements.js`, `src/utils/{readPolicy,helpers}.js`, `src/index.css`, `scripts/{validate-quiz,validate-round15}.mjs`, `QA_MOBILE_E2E_2026-07-13.md`, `HANDOFF_CODEX.md` | Claude 수정 설계를 반영했다. 실제 모바일 500px에서 첫 읽기 DAY2·10점, 추가 2회 DAY4·10점, 4번째 no-op을 확인했고 업적 `1/14`, 음성 `유나/Google 한국의`, 상담 버튼 비고정(콘텐츠 비가림), 이름 가입→계획 선택→신약 일독 DAY1 자동 진입을 확인했다. 기준 공동체 탈퇴와 여정 지도는 테스트 계정에 공동체가 없어 정적 계약으로 검증했다. `validate-round15`, `validate-round11`, 빌드, diff 통과. `validate-quiz`는 의도대로 미저작 본문 1,028개를 잡아 exit 1. 커밋·배포 없음. |
@@ -291,6 +294,11 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-13 Codex 라운드 16 T87 완료(배치 10~12):
+- 완료: 배치 10에서 일년일독 Day 338~365의 서신·요한계시록 145문항, 배치 11에서 신약일독 잔여 실제 절 범위 28개 140문항, 배치 12에서 창세기·민수기·신명기 잔여 44장 132문항을 저작했다. 골로새서 3장과 빌립보서 3장의 장당 권장 수 경고를 없애는 2문항도 추가해 이번 세션 총 419문항을 보탰다.
+- 검증: 미저작 본문 `103 → 72 → 44 → 0`, 최종 `node scripts/validate-quiz.mjs` **exit 0(오류·경고 0)**, `npm run build`, `git diff --check` 통과. 모든 지원 플랜 × 365일의 day pool 기준을 검증기 기준으로 충족했다.
+- 인계: T87을 완료 상태로 바꾸었고 다음 라운드 설계를 기다린다. 앱 코드·검증기 로직은 수정하지 않았으며 임시 저작 스크립트는 제거했다. 라운드 16 지시대로 커밋·배포·push는 하지 않았다. **퀴즈 문항 신학 검수 필요(사용자).**
 
 2026-07-13 Codex 라운드 16 T87 배치 9:
 - 완료: 일년일독 Day 351~356(요한복음 8~21장)과 신약일독 Day 296~323의 실제 절 범위 29개에 총 145문항을 신규 저작했다. 장 경계 읽기인 Day 296과 Day 312도 각 범위 안의 근거 구절만 사용했고 기존 요한복음 1~7장 문항과 앱 코드는 수정하지 않았다.
@@ -1360,7 +1368,7 @@ T78~T86 검토 완료 — **병합·배포 가능, 수정 없음**. 핵심 확�
 - **신약일독은 "하루 = 장이 아니라 범위(세그먼트)"**: `read_schedules.json`의 실제 하루 읽기 범위(예: 눅 3:21-4:13, 장 경계 걸침 포함)를 `parseReadingRange`로 전개한 그 범위 본문에서만 출제해야 한다. 그날 안 읽는 장의 문항이 pool에 들어가면 안 되고, 범위가 짧아도 pool 5개는 채워야 한다 (T27b 파서·검증기가 기준).
 - 완료 판정은 오직 `node scripts/validate-quiz.mjs` **exit 0** — 검증기를 약화시켜 통과시키는 것 금지.
 
-### T87. 배치 저작 (사이클당 1배치)
+### T87. 배치 저작 (사이클당 1배치) — ✅ 완료 (`validate-quiz` exit 0)
 
 1. `node scripts/validate-quiz.mjs` 실행 → 누락 요약에서 **사용자 진도가 먼저 도달할 구간 우선**(일년일독 Day 1~190 → Day 281~365 → 신약일독 잔여 → 기타 플랜)으로 이번 배치 대상 **30~40일치**를 고른다.
 2. 해당 책 JSON에 문항 저작 → 검증기 재실행으로 누락 수 감소 확인 → `npm run build` 통과 확인.
