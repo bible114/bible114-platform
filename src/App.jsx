@@ -3,7 +3,7 @@ import { db, auth, firebase } from './utils/firebase';
 import { DEFAULT_DEPARTMENTS } from './data/departments';
 import { BIBLE_VERSIONS, isBibleVersionVisibleForUser } from './data/bible_options';
 import { userDocToState, dateToOffset } from './utils/helpers';
-import { writeMemberCredentials } from './utils/memberCredentials';
+import { setMemberPasswordByAdmin } from './utils/adminPassword';
 import ChurchAdminView from './components/ChurchAdminView';
 import { calculateSubgroupStats, getWeeklyMVP, formatSubgroupRanking, formatProgressRanking, getAdminStats } from './utils/statsUtils';
 import { getSubgroupDisplay } from './utils/dashboardUtils';
@@ -334,27 +334,8 @@ const App = () => {
         }
 
         try {
-            // Firebase Authentication에서 암호 변경은 직접 불가능
-            // 평문 암호는 private 하위문서에 먼저 기록하고, 본문서에는 null 마커만 남긴다
-            // (같은 교회 교인 랭킹 조회를 열어주는 firestore.rules 조건 유지 — memberCredentials.js 참고)
-            try {
-                await writeMemberCredentials(uid, { password: newPassword });
-                await db.collection('users').doc(uid).set({
-                    password: null,
-                    passwordResetRequired: true,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-            } catch (privateWriteError) {
-                console.error('private 자격증명 기록 실패, 기존 방식으로 대체:', privateWriteError);
-                // Firestore에 새 암호 저장 (사용자가 다음 로그인 시 자동 업데이트됨)
-                await db.collection('users').doc(uid).set({
-                    password: newPassword,
-                    passwordResetRequired: true,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-            }
-
-            alert(`✅ ${userName}님의 암호가 변경되었습니다!\n\n새 암호: ${newPassword}\n\n※ 사용자에게 새 암호를 전달해주세요.`);
+            await setMemberPasswordByAdmin(uid, newPassword);
+            alert(`✅ ${userName}님의 실제 로그인 비밀번호가 변경되었습니다.\n\n새 암호: ${newPassword}\n\n※ 사용자에게 새 암호를 전달해주세요.`);
 
             // 사용자 목록 업데이트
             setAllUsers(prev => prev.map(u =>

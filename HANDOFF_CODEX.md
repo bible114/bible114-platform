@@ -180,6 +180,8 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-13 | T76 관리자 비밀번호 실변경 서버 함수 (배포 대기) | `supabase/functions/admin-set-password/index.ts`, `src/utils/adminPassword.js`, `src/App.jsx`, `src/components/ChurchAdminView.jsx`, `src/data/constants.js`, `.env.example`, `HANDOFF_CODEX.md` | Firebase ID 토큰 검증→서버 역할·소속 검증→Auth 실제 비밀번호 변경→private/auth 조회용 암호 동기화 경로를 구현하고 두 관리자 UI의 직접 Firestore 쓰기를 교체했다. `npm run build`, `git diff --check` 통과. 배포 명령 `supabase functions deploy admin-set-password --no-verify-jwt`는 이 환경에 Supabase CLI가 없어 `command not found: supabase`로 실패했으며, `VITE_ADMIN_SET_PASSWORD_URL` 설정과 배포가 남았다. 커밋 금지 제약 준수. |
+| 2026-07-13 | T75c 창구 판매·환불 개인 계정 활성화 | `src/components/ChurchAdminView.jsx`, `HANDOFF_CODEX.md` | 개인·외부 roster 멤버의 창구 판매 선택과 구매 취소·환불을 활성화했다. 개인 계정은 관리자 users read가 열려 있지 않아 `talent`·`updatedAt`과 판매 기록을 하나의 batch로 처리하며, permission-denied이면 기준 공동체가 다른 경우임을 안내한다. 기존 자체 교인 잔액 transaction·로컬 상태 갱신은 유지했고 roster-only 멤버는 잔액을 추정하지 않는다. `npm run build`, `git diff --check` 통과. 커밋 금지 제약 준수. |
 | 2026-07-13 | T73 헤더 아이콘 접근성 | `src/components/dashboard/DashboardHeader.jsx`, `HANDOFF_CODEX.md` | 도움말·달성 뱃지·날짜 설정·읽기 달력 아이콘 버튼에 용도를 설명하는 aria-label을 추가했다. `npm run build`, `node scripts/validate-round11.mjs`, `git diff --check` 통과. 커밋 금지 제약 준수. |
 | 2026-07-13 | T74 모바일 375/390 재검증 | `HANDOFF_CODEX.md` | 미완료: 로컬 브라우저·Chrome 제어 연결이 모두 제공되지 않아 375px·390px 실제 리사이즈/스크린샷을 수행할 수 없었다. 최종 `npm run build`, `node scripts/validate-round11.mjs`, `git diff --check`은 통과했으나, 배포 전 실제 모바일 브라우저에서 헤더와 T70~T72를 확인해야 한다. |
 | 2026-07-13 | T72 퀴즈 완료 카드 정리 | `src/components/dashboard/BibleQuizCard.jsx`, `HANDOFF_CODEX.md` | 정답 또는 2회 소진 뒤 문항/보기 대신 완료 요약·획득 달란트·본문 이동 버튼만 보이고, 요약 탭으로 정답/해설을 다시 열 수 있게 했다. 게이트·보상 저장 로직은 변경하지 않았다. `npm run build`, `node scripts/validate-round11.mjs`, `git diff --check` 통과. 커밋 금지 제약 준수. |
@@ -279,6 +281,11 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-13 Codex 라운드 14 진행:
+- 완료: T75c. 개인·외부 roster 멤버의 창구 판매 선택과 환불을 열고, 실제 permission-denied일 때만 기준 공동체 불일치 안내를 표시한다. 개인 계정은 관리자 users read가 닫혀 있어 direct batch로 `talent`·`updatedAt`과 판매 기록을 함께 갱신한다.
+- 진행 중: T76 코드 경로는 구현했다. 서버는 ID 토큰→역할/같은 교회 또는 primaryOrgId 검증→Identity Toolkit 실제 password 변경→private/auth 동기화 순서이며, 클라이언트의 기존 직접 private/auth 쓰기는 교체했다.
+- 막힘: `supabase functions deploy admin-set-password --no-verify-jwt`를 실행했으나 이 환경에는 Supabase CLI가 없어 `command not found: supabase`로 실패했다. 배포 후 `VITE_ADMIN_SET_PASSWORD_URL`에 함수 URL을 넣어야 하며, 그 전에는 UI가 설정 오류를 표시한다. T76 배포와 T77 픽스처/실계정 검증은 다음 작업자가 이어야 한다.
 
 > Codex: 작업을 마치거나 중단할 때 여기에 남겨라 — ① 완료/미완 상태 요약, ② 설계와 다르게 한 것과 이유, ③ 질문/막힌 것, ④ Claude가 리뷰할 때 봐야 할 지점.
 
@@ -1176,7 +1183,7 @@ nit(다음 라운드 참고): 완료 퀴즈 요약이 2회 오답(보상 0)일 �
 
 ### 체크리스트
 
-- [ ] **T75c. 창구 판매·환불에서 개인 계정 활성화** (`ChurchAdminView.jsx`)
+- [x] **T75c. 창구 판매·환불에서 개인 계정 활성화** (`ChurchAdminView.jsx`)
   - 창구 판매 교인 선택에서 개인·외부 멤버 disabled 해제 — 단, **차감 시도 후 permission-denied면** "이 교인의 기준 공동체가 우리 조직이 아니라 차감할 수 없어요" 토스트로 구분 안내 (기준 공동체가 이 교회인 개인 계정만 규칙 통과).
   - 구매 취소·환불 batch의 users talent increment도 동일 — 개인 계정 대상 활성화 + 실패 시 같은 안내.
   - 창구 판매·환불 성공 시 로컬 members/purchases 상태 갱신은 기존 로직 재사용.
@@ -1186,6 +1193,18 @@ nit(다음 라운드 참고): 완료 퀴즈 요약이 2회 오답(보상 0)일 �
   - newPassword 6자 이상 검증, CORS는 kakao-auth와 동일 화이트리스트, 오류는 일반화 메시지+서버 로그.
   - 클라이언트: 교회 관리자 비밀번호 재설정·플랫폼 관리자 비밀번호 변경 UI가 이 함수를 호출하도록 교체(기존 private/auth 직접 쓰기 제거). 성공 문구 "실제 로그인 비밀번호가 변경되었습니다".
 - [ ] **T77. 검증** — 함수 픽스처(권한 거부: 비관리자/타교회 관리자, 성공: 같은 교회·기준 공동체·플랫폼), 클라이언트 경로 계약 검사 추가, `npm run build` + 기존 검증기 3종. 실 Auth 변경은 테스트 교회 계정으로만.
+
+## ✅ Claude 리뷰 결과 — 라운드 14 (2026-07-13)
+
+T75c·T76 검토 완료 — **보안 차단급 1건 발견, Claude가 직접 수정 후 병합**:
+
+1. **(차단급 → 수정됨)** `admin-set-password`의 Auth 비밀번호 변경 호출이 공개 API 키만 사용 — 관리자형 계정 수정(localId 지정)은 서비스 계정 OAuth 토큰이 필요해 이대로면 구글이 전부 거부. 수정: OAuth scope에 identitytoolkit 추가 + `projects/{id}/accounts:update`를 Bearer 토큰으로 호출.
+2. (보강) 삭제 처리된(isDeleted) 관리자 계정의 잔존 세션이 함수를 호출하는 경로 차단.
+3. 권한 모델 검증 통과: idToken lookup → 서비스 계정으로 호출자 role·교회 확인 → 대상의 churchId/primaryOrgId 일치 or 플랫폼 관리자 — 설계와 일치. 클라이언트 유틸·CORS·오류 일반화도 정상.
+
+배포 상태: **함수 배포 완료**(ejqnwajcvkvpcxechwzl), `VITE_ADMIN_SET_PASSWORD_URL` 로컬 설정 완료. **T75 규칙과 클라이언트 배포는 Firebase 재인증 대기** — 사용자 `firebase login --reauth` 후 rules+client 동시 배포 예정. T77 실검증은 배포 후 테스트 교회 계정으로.
+
+---
 
 ## 📮 Claude → Codex 메모
 

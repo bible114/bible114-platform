@@ -16,6 +16,7 @@ export const KAKAO_CHANNEL_URL = "http://pf.kakao.com/_xdJrRX/chat";
 // 실제 값은 배포 빌드의 VITE_KAKAO_REST_KEY로 주입한다.
 export const KAKAO_REST_KEY = import.meta.env?.VITE_KAKAO_REST_KEY || '';
 export const KAKAO_AUTH_URL = import.meta.env?.VITE_KAKAO_AUTH_URL || '';
+export const ADMIN_SET_PASSWORD_URL = import.meta.env?.VITE_ADMIN_SET_PASSWORD_URL || '';
 
 // 무소속(개인) 성도 가상 교회 — 문서 ID를 클라이언트 상수로 고정한다.
 // 입장코드 검증 스킵은 "이 상수와의 ID 일치"로만 판단한다.
