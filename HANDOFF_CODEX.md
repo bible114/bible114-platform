@@ -1374,6 +1374,19 @@ T78~T86 검토 완료 — **병합·배포 가능, 수정 없음**. 핵심 확�
 2. 해당 책 JSON에 문항 저작 → 검증기 재실행으로 누락 수 감소 확인 → `npm run build` 통과 확인.
 3. 작업 로그에 배치 범위·저작 문항 수·남은 누락 수 기록. 남은 누락이 0이면 "T87 완료 — exit 0"을 기록.
 
+## 🔁 라운드 17 — 개발자 관점 코드 정리 (2026-07-13 사용자 승인 — ⚠️ 라운드 16 완결 후 시작)
+
+> 목적: 기능 15라운드 동안 쌓인 기술 부채 정리. **동작 변경 절대 금지** — 순수 리팩터·정리만.
+> 순서 고정(안전한 것부터), 각 작업 후 `npm run build` + 검증기 전체 통과 필수. firestore.rules 무수정, git 커밋 금지(Claude 담당).
+
+- [ ] **T88. 죽은 코드·루트 잔재 제거** — 사용처 0임을 grep으로 확인한 것만: 미사용 컴포넌트(예: DemoTour 연결 여부 확인), 미사용 export/import, 루트의 실험 파일(test_simulation.mjs 등 — 참조 없으면 삭제), 주석 처리된 코드 블록. 각 삭제의 근거(검색 결과 0건)를 작업 로그에 남길 것.
+- [ ] **T89. 검증 파이프라인 통합** — package.json에 `npm run validate` 하나로 validate-round11/round15/kakao-custom-auth/personal-migration(+quiz는 별도 `validate:quiz`)이 전부 도는 스크립트 등록. 실패 시 어느 검증기인지 명확히.
+- [ ] **T90. 번들 코드 스플리팅** — `PlatformAdminView`·`ChurchAdminView`를 React.lazy+Suspense로 지연 로딩(교인·게스트는 관리자 코드를 내려받지 않게). 메인 청크 크기 before/after를 로그에 기록. 500KB 경고 해소가 목표.
+- [ ] **T91. 거대 컴포넌트 분할 1차** — `ChurchAdminView.jsx`를 탭 단위 파일로 분리(대시보드/교인/상점/조직/공지/설정 → `src/components/churchAdmin/*.jsx`). **한 탭씩** 옮기고 매번 빌드 확인. props·상태·로직은 그대로 이동만(리네이밍·개선 금지). PlatformAdminView는 이번에 손대지 않음(2차 후보).
+- [ ] **T92. 마무리 청소** — 프로덕션 코드의 console.log 중 디버그성 제거(오류 로그 console.error는 유지), 미사용 CSS 클래스 확인, 작업 로그에 남긴 것/남긴 이유 기록.
+
+완료 기준: 빌드+`npm run validate` 통과, 기능 diff 없음(리팩터 전후 화면 동작 동일 — 로그인 화면 렌더를 로컬로 확인).
+
 ## 📮 Claude → Codex 메모
 
 - 이 설계는 3차 자체 점검을 거친 확정본이다. "더 나은 방법"이 보여도 위 설계 결정 4가지(가상 교회/익명 인증/localStorage 전용/클라이언트 상수)는 바꾸지 말고, 제안은 위 메모란에 적어라.
