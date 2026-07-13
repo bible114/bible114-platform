@@ -278,10 +278,16 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 | 2026-07-12 | T66 라운드 11 검증 | `scripts/validate-round11.mjs`, `HANDOFF_CODEX.md` | 첫 화면 4항목·기존 경로·카카오 popup/redirect·구글 신규 온보딩·3단계·users/roster 최종 생성·소속 관리·unaffiliated roster-only 계약 자동 검사 통과. `node scripts/validate-round11.mjs`, `npm run build`, `git diff --check` 통과. 인앱 브라우저 스킬 파일과 Playwright 런타임 부재로 로컬 클릭 검증은 미실행. M10 미완료로 실 카카오 인증·계정 생성 미검증. |
 | 2026-07-12 | T67 dashboardUser 렌더 연결 | `src/App.jsx`, `scripts/validate-round11.mjs`, `HANDOFF_CODEX.md` | DashboardView에 원본 currentUser 대신 runtime 매핑 dashboardUser 전달. personal primaryOrgId의 churchId/name/부서 투영이 T63 버튼·T64 화면 게이트·공지·상점에 적용됨. Dashboard 계열 users 쓰기는 개별 필드만 merge/update하며 매핑 churchId를 전체 저장하는 경로 없음 확인. 검증기에 prop 연결과 whole-user set 금지 assertion 추가. `node scripts/validate-round11.mjs`, `npm run build`, `git diff --check` 통과. |
 | 2026-07-12 | T68 personal 세션 복원 직행 | `src/App.jsx`, `scripts/validate-round11.mjs`, `HANDOFF_CODEX.md` | member 네비게이션에서 accountType personal+planId면 department/subgroup 검사 없이 dashboard 직행. 정상 소셜/개인 계정 새로고침이 구 plan/community onboarding으로 빠져 primaryOrgId를 지우는 트랩 차단. planId 없는 비정상 문서만 기존 플랜 선택 폴백. 검증기에 직행·구 온보딩 비도달 assertion 추가. 자동 검사·빌드·diff 통과. |
+| 2026-07-13 | T87 배치 1 — 일년일독 Day 5~34 | `src/data/quiz/exodus.json`, `src/data/quiz/joshua.json`, `src/data/quiz/judges.json`, `HANDOFF_CODEX.md` | 출애굽기 1~40장 120문항, 여호수아 1~24장 72문항, 사사기 1~21장 63문항으로 총 255문항 추가. 대상 30일은 모두 누락 0, 일일 pool 6~12개이며 전체 미저작 본문은 1,028개에서 943개로 감소. `node scripts/validate-quiz.mjs`는 남은 누락 때문에 의도대로 exit 1, `npm run build`, `git diff --check` 통과. **퀴즈 문항 신학 검수 필요(사용자).** |
 
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-13 Codex 라운드 16 T87 배치 1:
+- 완료: 사용자 진도가 가장 먼저 도달하는 일년일독 Day 5~34(출애굽기 1~40장, 여호수아 1~24장, 사사기 1~21장) 30일치에 장당 3문항, 총 255문항을 신규 저작했다. 기존 퀴즈 JSON과 앱 코드는 수정하지 않았다.
+- 검증: 대상 Day 5~34 누락 0, 일일 pool 6~12개, 새 파일 3종의 모든 장이 정확히 3문항이다. 전체 미저작 본문은 1,028개에서 943개로 감소했다. `node scripts/validate-quiz.mjs`는 남은 누락으로 의도대로 exit 1, `npm run build`, `git diff --check`는 통과했다.
+- 다음 시작점: 일년일독 Day 35 `룻 1-4장`부터 다음 30~40일치 배치를 이어간다. T87은 아직 미완료이며 검증기 exit 0 전까지 완료 표시하지 않는다. 라운드 16 지시대로 커밋·배포·push는 하지 않았다. 퀴즈 문항 신학 검수 필요(사용자).
 
 2026-07-13 Codex 라운드 15 완료:
 - 완료: T78~T86. 하루 읽기 진도는 최초+추가 2회로 제한하고 최초 1회만 점수·달란트·연속일을 보상한다. 오늘 퀴즈의 skip/quizKey를 저장해 추가 진행 뒤에도 같은 오늘 문제를 유지한다. 업적 계산과 모달 상태를 통일하고, 검증기가 미저작 본문을 성공 처리하지 않게 했다. 한국어 캐릭터 음성 8종을 제외하고 음성 선택 시 자동 재생을 중단했다. 모바일 상담 버튼은 페이지 하단으로 보내 콘텐츠를 가리지 않게 했고, 기준 공동체 탈퇴 차단·이름 가입 세션 유지·RaceMap 위치 clamp를 적용했다.
