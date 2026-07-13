@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { auth, authReady, db, firebase } from '../utils/firebase';
-import { makePseudoEmail, makeUnaffiliatedIdentity, userDocToState, migrateTalentIfNeeded } from '../utils/helpers';
+import { makePseudoEmail, makeUnaffiliatedIdentity, userDocToState, migrateTalentIfNeeded, migratePersonalTalentWalletIfNeeded } from '../utils/helpers';
 import { sha256 } from '../utils/crypto';
 import {
     getChurchDirectory,
@@ -25,6 +25,7 @@ import { getGuestState, saveGuestState } from '../utils/guestStorage';
 import { writeMemberCredentials, migrateCredentialsIfNeeded } from '../utils/memberCredentials';
 import { beginInteractiveAuthFlow, endInteractiveAuthFlow } from '../utils/authFlowGuard';
 import { loadUserExtraOrgs } from '../utils/roster';
+import { updateRosterTalents } from '../utils/talentWallet';
 import { getPendingPersonalMigration } from '../utils/personalAccountMigration';
 
 const GOOGLE_ADMIN_ROLES = new Set(['churchAdmin', 'platformAdmin', 'superAdmin']);
@@ -45,6 +46,17 @@ export const useAuth = ({
 }) => {
     const [errorMsg, setErrorMsg] = useState('');
     const [socialLinkNotice, setSocialLinkNotice] = useState(null);
+
+    const migratePersonalWallet = async user => {
+        if (user?.accountType !== 'personal' || !user?.uid) return user;
+        const result = await migratePersonalTalentWalletIfNeeded(user.uid, user.primaryOrgId);
+        if (!result) return user;
+        return updateRosterTalents({
+            ...user,
+            talent: 0,
+            talentWalletMigrated: true,
+        }, { [result.orgId]: result.talent });
+    };
     const googleAdminSignupFlowRef = useRef(null);
     const googleAdminSignupAttemptRef = useRef(0);
     const googleAdminSignupStartingRef = useRef(false);
@@ -198,8 +210,9 @@ export const useAuth = ({
         const data = doc.data();
         const pendingMigration = getPendingPersonalMigration(firebaseUser.uid);
         if (data.accountType !== 'personal' && !pendingMigration) throw new Error('NOT_PERSONAL_ACCOUNT');
-        const user = userDocToState(doc);
+        let user = userDocToState(doc);
         user.extraOrgs = await loadUserExtraOrgs(firebaseUser.uid);
+        user = await migratePersonalWallet(user);
         setCurrentUser(user);
         setTempUser(null);
         setView('dashboard');
@@ -213,8 +226,9 @@ export const useAuth = ({
             return;
         }
         if (data.role !== 'member') throw new Error('NOT_MEMBER_ACCOUNT');
-        const user = userDocToState(doc);
+        let user = userDocToState(doc);
         user.extraOrgs = await loadUserExtraOrgs(firebaseUser.uid);
+        user = await migratePersonalWallet(user);
         setCurrentUser(user);
         setTempUser(null);
         setView('dashboard');
@@ -481,7 +495,7 @@ export const useAuth = ({
             sessionStorage.removeItem(KAKAO_STATE_KEY);
             sessionStorage.removeItem(KAKAO_RETURNING_KEY);
             sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
-            setErrorMsg('카카오 로그인 요청을 확인할 수 없습니다. 다시 시도해주세요.');
+            setErrorMsg('로그인 확인 시간이 지났어요. 노란 [카카오로 시작] 버튼을 다시 한 번 눌러주세요.');
             return () => { alive = false; };
         }
         sessionStorage.setItem(KAKAO_RETURNING_KEY, 'processing');
@@ -591,7 +605,7 @@ export const useAuth = ({
             const doc = await db.collection('users').doc(cred.user.uid).get();
             if (!doc.exists) { setErrorMsg('사용자 정보를 찾을 수 없습니다.'); return; }
             if (doc.data().isDeleted) { setErrorMsg('삭제 처리된 계정입니다. 교회 관리자에게 복원을 요청해주세요.'); return; }
-            const user = userDocToState(doc);
+            let user = userDocToState(doc);
             const extraOrgsPromise = loadUserExtraOrgs(cred.user.uid);
             // [랭킹] 자격증명 지연 이관 — 본문서에 평문이 남아 있으면 private로 옮긴다.
             if (await migrateCredentialsIfNeeded(cred.user.uid, doc.data())) user.password = null;
@@ -603,6 +617,7 @@ export const useAuth = ({
                 user.talentMigrated = true;
             }
             user.extraOrgs = await extraOrgsPromise;
+            user = await migratePersonalWallet(user);
             if (auth.currentUser?.uid !== cred.user.uid) return;
             setCurrentUser(user);
             setHasReadToday(user.lastReadDate === new Date().toDateString());
@@ -650,7 +665,7 @@ export const useAuth = ({
             return false;
         }
 
-        const user = userDocToState(doc);
+        let user = userDocToState(doc);
         const extraOrgsPromise = loadUserExtraOrgs(cred.user.uid);
         // [랭킹] 자격증명 지연 이관 (관리자 계정 문서도 랭킹 쿼리에 걸린다)
         if (await migrateCredentialsIfNeeded(cred.user.uid, data)) user.password = null;
@@ -663,6 +678,7 @@ export const useAuth = ({
         }
 
         user.extraOrgs = await extraOrgsPromise;
+        user = await migratePersonalWallet(user);
         if (auth.currentUser?.uid !== cred.user.uid) return false;
 
         if (user.role === 'superAdmin' || user.role === 'platformAdmin') {
