@@ -56,7 +56,7 @@ const DashboardHeader = ({
             <div className="bg-white/95 backdrop-blur-md border-b border-slate-200/60 shadow-sm">
                 <div className="px-4 py-2 flex flex-col md:flex-row justify-between items-center max-w-5xl mx-auto w-full gap-2.5 md:gap-4">
                     {/* 상단: 사용자 상태 및 로그아웃 (모바일에서 먼저보이고 좌우 꽉차게) */}
-                    <div className="flex flex-wrap items-center gap-1.5 w-full py-1 md:order-2 md:ml-auto md:w-auto md:flex-nowrap md:justify-end">
+                    <div className="flex flex-wrap items-center gap-1.5 w-full py-1 md:order-2 md:ml-auto md:w-auto md:justify-end">
                             <div id="tut-streak" className={`text-xs font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 shrink-0 ${streak > 0 ? 'bg-orange-50 text-orange-600 border border-orange-100' : 'bg-slate-100 text-slate-400'}`}>
                                 <Icon name="flame" size={12} />{streak}일
                             </div>
@@ -94,7 +94,7 @@ const DashboardHeader = ({
                             <Icon name="refresh" size={10} className="text-slate-400 group-hover:rotate-180 transition-transform duration-500" />
                         </div>
                     </button>
-                    {onOpenMemberships && <button type="button" onClick={onOpenMemberships} className="flex max-w-[210px] items-center gap-1 self-start rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 md:order-1 md:self-center" title="내 단체 관리"><span>⛪</span><span className="truncate">{currentOrganizationName || '소속 관리'}</span><span>▾</span></button>}
+                    {onOpenMemberships && <button type="button" onClick={onOpenMemberships} className="flex min-w-0 max-w-[210px] shrink items-center gap-1 self-start rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 md:order-1 md:self-center md:max-w-[170px]" title="내 단체 관리"><span>⛪</span><span className="truncate">{currentOrganizationName || '소속 관리'}</span><span>▾</span></button>}
                 </div>
             </div>
 
