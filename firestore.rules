@@ -145,7 +145,7 @@ service cloud.firestore {
         allow create: if isRealUser() && request.auth.uid == memberUid &&
           request.resource.data.uid == memberUid &&
           request.resource.data.keys().hasOnly(
-            ['uid', 'name', 'score', 'currentDay', 'streak', 'readCount', 'lastReadDate',
+            ['uid', 'name', 'score', 'currentDay', 'streak', 'readCount', 'lastReadDate', 'talent',
              'departmentId', 'departmentName', 'subgroupId', 'subgroupName', 'joinedAt', 'updatedAt']);
         // 본인 update: create와 같은 필드 화이트리스트 + joinedAt 불변.
         // (T46 경합 방어 — 기존 행 위에 set()이 오면 joinedAt(serverTimestamp)이 기존 값과
@@ -153,10 +153,13 @@ service cloud.firestore {
         allow update: if (isRealUser() && request.auth.uid == memberUid &&
             request.resource.data.uid == memberUid &&
             request.resource.data.keys().hasOnly(
-              ['uid', 'name', 'score', 'currentDay', 'streak', 'readCount', 'lastReadDate',
+              ['uid', 'name', 'score', 'currentDay', 'streak', 'readCount', 'lastReadDate', 'talent',
                'departmentId', 'departmentName', 'subgroupId', 'subgroupName', 'joinedAt', 'updatedAt']) &&
             request.resource.data.joinedAt == resource.data.joinedAt) ||
-          isChurchAdmin(churchId) || isPlatformAdmin();
+          ((isChurchAdmin(churchId) || isPlatformAdmin()) &&
+            // [라운드 18] 조직 지갑(talent)을 관리자가 갱신할 때 음수 금지 (창구 판매·환불)
+            (!('talent' in request.resource.data) ||
+              (request.resource.data.talent is number && request.resource.data.talent >= 0)));
         allow delete: if request.auth.uid == memberUid ||
           isChurchAdmin(churchId) || isPlatformAdmin();
       }
