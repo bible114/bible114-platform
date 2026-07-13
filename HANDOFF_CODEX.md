@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-13 | T87 배치 9 — 요한복음 8~21장 | `src/data/quiz/john.json`, `HANDOFF_CODEX.md` | 일년일독 Day 351~356과 신약일독 Day 296~323의 실제 절 범위 29개에 요한복음 145문항을 추가했다. 대상 34일 모두 누락 0이며 신약일독 일일 pool 5~10개, 일년일독 일일 pool 20~30개를 확인했다. 전체 미저작 본문은 146개에서 103개로 감소. `node scripts/validate-quiz.mjs`는 남은 누락 때문에 의도대로 exit 1, `npm run build`, `git diff --check` 통과. **퀴즈 문항 신학 검수 필요(사용자).** |
 | 2026-07-13 | T87 배치 8 — 일년일독 Day 321~350 | `src/data/quiz/2chronicles.json`, `src/data/quiz/micah.json`, `src/data/quiz/jeremiah.json`, `src/data/quiz/lamentations.json`, `src/data/quiz/malachi.json`, `src/data/quiz/john.json`, `src/data/quiz/psalms.json`, `HANDOFF_CODEX.md` | 역대하 21~36장 48문항, 미가 21문항, 예레미야 159문항, 예레미야애가 15문항, 말라기 12문항, 요한복음 1:1~7:53의 신약일독 세그먼트별 80문항으로 총 335문항 추가. 배치 7 시편 119편 후반 3문항의 중복 질문 문구도 내용 변경 없이 절 범위를 명시해 고쳤다. 대상 30일 모두 누락 0, 일일 pool 3~30개이며 전체 미저작 본문은 251개에서 146개로 감소. `node scripts/validate-quiz.mjs`는 남은 누락 때문에 의도대로 exit 1, `npm run build`, `git diff --check` 통과. **퀴즈 문항 신학 검수 필요(사용자).** |
 | 2026-07-13 | T78~T86 모바일 실제 사용자 E2E QA 대응 | `src/hooks/{useUserBibleActions,useMemos,useTTS,useAuth}.js`, `src/components/dashboard/{BibleReader,BibleQuizCard,CommunityMembershipCard,KakaoChannelButton,RaceMap}.jsx`, `src/components/{DashboardView,GuestReaderView}.jsx`, `src/components/modals/AchievementsModal.jsx`, `src/data/achievements.js`, `src/utils/{readPolicy,helpers}.js`, `src/index.css`, `scripts/{validate-quiz,validate-round15}.mjs`, `QA_MOBILE_E2E_2026-07-13.md`, `HANDOFF_CODEX.md` | Claude 수정 설계를 반영했다. 실제 모바일 500px에서 첫 읽기 DAY2·10점, 추가 2회 DAY4·10점, 4번째 no-op을 확인했고 업적 `1/14`, 음성 `유나/Google 한국의`, 상담 버튼 비고정(콘텐츠 비가림), 이름 가입→계획 선택→신약 일독 DAY1 자동 진입을 확인했다. 기준 공동체 탈퇴와 여정 지도는 테스트 계정에 공동체가 없어 정적 계약으로 검증했다. `validate-round15`, `validate-round11`, 빌드, diff 통과. `validate-quiz`는 의도대로 미저작 본문 1,028개를 잡아 exit 1. 커밋·배포 없음. |
 | 2026-07-13 | T76 관리자 비밀번호 실변경 서버 함수 (배포 대기) | `supabase/functions/admin-set-password/index.ts`, `src/utils/adminPassword.js`, `src/App.jsx`, `src/components/ChurchAdminView.jsx`, `src/data/constants.js`, `.env.example`, `HANDOFF_CODEX.md` | Firebase ID 토큰 검증→서버 역할·소속 검증→Auth 실제 비밀번호 변경→private/auth 조회용 암호 동기화 경로를 구현하고 두 관리자 UI의 직접 Firestore 쓰기를 교체했다. `npm run build`, `git diff --check` 통과. 배포 명령 `supabase functions deploy admin-set-password --no-verify-jwt`는 이 환경에 Supabase CLI가 없어 `command not found: supabase`로 실패했으며, `VITE_ADMIN_SET_PASSWORD_URL` 설정과 배포가 남았다. 커밋 금지 제약 준수. |
@@ -290,6 +291,11 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-13 Codex 라운드 16 T87 배치 9:
+- 완료: 일년일독 Day 351~356(요한복음 8~21장)과 신약일독 Day 296~323의 실제 절 범위 29개에 총 145문항을 신규 저작했다. 장 경계 읽기인 Day 296과 Day 312도 각 범위 안의 근거 구절만 사용했고 기존 요한복음 1~7장 문항과 앱 코드는 수정하지 않았다.
+- 검증: 대상 34일 모두 누락 0이며 신약일독 일일 pool 5~10개, 일년일독 일일 pool 20~30개를 확인했다. 전체 미저작 본문은 146개에서 103개로 감소했다. `node scripts/validate-quiz.mjs`는 남은 누락으로 의도대로 exit 1, `npm run build`, `git diff --check`는 통과했다.
+- 다음 시작점: 일년일독 Day 360의 디모데전서 1장부터 요한계시록 22장까지 남은 서신·계시록 문항을 먼저 채우고, 이후 신약일독 초반 잔여 세그먼트와 민수기·신명기·창세기 잔여 장으로 이어간다. T87은 아직 미완료이며 검증기 exit 0 전까지 완료 표시하지 않는다. 라운드 16 지시대로 커밋·배포·push는 하지 않았다. 퀴즈 문항 신학 검수 필요(사용자).
 
 2026-07-13 Codex 라운드 16 T87 배치 8:
 - 완료: 일년일독 Day 321~350(역대하 21장~요한복음 7장) 30일치에 6권 총 335문항을 신규 저작했다. 구약은 장당 3문항, 요한복음은 신약일독의 실제 절 범위마다 5문항을 두었다. 배치 7의 시편 119편 후반 3문항은 검증기의 장내 질문 중복 오류를 없애기 위해 질문에 `81-176절`만 명시했고 선택지·정답·근거 구절은 바꾸지 않았다.
