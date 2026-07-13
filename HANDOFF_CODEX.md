@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: "🔁 라운드 13" 체크리스트 (T70~T74, 실사용 점검 발견 수정).** 라운드 1~12·T60R 전부 완료·리뷰·배포됨. ⚠️ 이 라운드부터 git 커밋 금지(샌드박스 제약) — 코드 수정과 문서 로그까지만, 커밋은 Claude 담당.
+> **현재 활성 작업: "🔁 라운드 14" 체크리스트 (T75c~T77, 개인 계정 관리자 지원).** 라운드 13까지 완료·배포됨. git 커밋 금지(샌드박스 제약) — 코드 수정과 문서 로그까지만, 커밋은 Claude 담당.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -286,6 +286,17 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - 완료: T70~T73. `getDaysRead`로 실제 읽은 날 기준의 누적 표시·평균·랭킹 정렬을 통일했고, 달리기 맵 위치는 별도 `mapDay`로 기존 값을 유지했다. 퀴즈 잠금은 활성 이동 버튼+2초 강조로 안내하며, 완료 퀴즈는 요약/본문 이동 버튼으로 접고 탭하면 정답·해설을 다시 본다. 헤더 아이콘 4개에 aria-label을 추가했다.
 - 미완료/막힘: T74. 브라우저와 Chrome 제어 연결이 모두 제공되지 않아 로컬 375px·390px 실화면 리사이즈·탭·스크린샷을 할 수 없었다. 배포 전 실제 모바일 브라우저에서 헤더 칩·로그아웃·소속 관리와 T70~T72 화면을 확인해야 한다.
 - 검증: 최종 `npm run build`, `node scripts/validate-round11.mjs`, `git diff --check` 통과. 라운드 제약대로 커밋·배포·rules 수정은 하지 않았다.
+
+2026-07-13 Codex 사이트 점검 발견 2차:
+- ① 증상: 교회에 소속된 개인 계정(카카오·Google 신규 계정 포함)은 달란트 상점에서 구매할 수 있지만, 교회 관리자가 해당 대기 건을 취소·환불할 수 없다. 관리 화면에서 `외부 공동체 멤버`로 분류되어 취소·환불 버튼이 숨겨지고, 규칙도 그 관리자의 해당 개인 `users/{uid}` 달란트 환불 update를 허용하지 않는다. ② 재현 경로: 카카오/Google 신규 가입 → 교회 선택·가입 → 7일 해금 뒤 교회 달란트 상점에서 상품 구매 → 그 교회 관리자 로그인 → 달란트 상점 구매 내역의 해당 대기 건 확인. ③ 추정 파일: `src/components/ChurchAdminView.jsx`, `firestore.rules`, `src/utils/rosterMembers.js`.
+- ① 증상: 교회에 소속된 개인 계정은 관리자의 창구 판매(관리자 대리 달란트 차감)를 사용할 수 없다. 명부 병합 시 전부 외부 공동체 멤버로 판정되어 선택 직후 차감이 차단된다. ② 재현 경로: 카카오/Google 신규 가입 → 교회 선택·가입 → 교회 관리자 로그인 → 달란트 상점 → 창구 판매에서 해당 교인 선택 → 물품·달란트 입력 → 차감 시도. ③ 추정 파일: `src/components/ChurchAdminView.jsx`, `src/utils/rosterMembers.js`, `firestore.rules`.
+- ① 증상: 교회 관리자 화면의 ‘비밀번호 변경’은 조회용 평문 자격증명만 바꾸고 Firebase Auth 비밀번호는 바꾸지 않는다. 관리자가 새 암호를 안내하면 교인은 그 암호로 로그인할 수 없어 지원 절차가 역으로 막힌다. ② 재현 경로: 이메일·비밀번호 기존 교인 → 교회/플랫폼 관리자에서 비밀번호 확인 및 변경 → 관리자가 표시된 새 비밀번호 전달 → 교인이 기존 회원 로그인에서 새 비밀번호 입력. ③ 추정 파일: `src/App.jsx`, `src/utils/memberCredentials.js`, `src/components/{ChurchAdminView,PlatformAdminView}.jsx`.
+- 이상 없음 — 기존 회원 로그인: 교회 검색 선택·일반 교회 입장코드 검증·구 이메일 포맷 재시도와 무소속 전화번호 4자리 포맷이 분리되어 있으며, 개인 계정은 전용 시작하기 경로에서 기존 문서를 대시보드로 복원한다. 실제 Firebase Auth 로그인은 화면 검증 필요.
+- 이상 없음 — 게스트 모드/가입 전환: 익명 세션은 Firestore users 문서를 만들지 않고 localStorage 진도만 복원하며, 가입 시작 시 해당 진도는 점수·달란트 없이 시드된다. 익명 provider 활성화 상태와 실제 본문/TTS/전환 버튼 탭은 화면 검증 필요.
+- 이상 없음 — 소속 관리: 개인 계정의 추가·기준 전환·탈퇴·성경 읽는 사람들 재가입은 roster와 `primaryOrgId`를 분리해 처리하고 최대 3개 및 중복을 방어한다. 실제 Firestore 규칙 통과와 모달 조작은 화면 검증 필요.
+- 이상 없음 — 개인 계정 전환(라운드 10): Auth 이메일 전환 → private 전화번호 저장 → 기존 교회 roster 생성 → users 문서 personal 전환의 재시도 가능한 단계 상태가 존재하며, 세션 복원은 personal+planId를 대시보드로 직행한다. 최근 로그인 요구(Auth)와 실제 전환은 화면 검증 필요.
+- 이상 없음 — 교회 관리자 명부·기본 CSV: roster 병합 명부와 CSV 셀 이스케이프 경로는 정적 점검 및 node roster 픽스처를 통과했다. 단, 위 비밀번호 변경 문제는 별도 수정 필요.
+- 검증: 코드 경로 추적, node roster/소속 픽스처, `node scripts/validate-round11.mjs`, `npm run build` 통과. 운영 데이터·코드·커밋은 변경하지 않았고, 브라우저 상호작용 항목은 Claude 화면 검증 대상으로 남긴다.
 
 2026-07-13 Codex 사이트 점검 발견:
 - ① 증상: 신규 가입 직후 랭킹/누적 읽기가 `총 1일`로 보이고, 첫 읽기 완료 뒤에는 실제 1일 읽었는데 `총 2일`로 보인다. ② 재현 경로: 카카오 신규 로그인 → 혼자 읽기 → 일년일독·개역개정114 가입 완료 → 대시보드 랭킹 확인 → 퀴즈 정답 후 첫 본문 읽기 완료 → 랭킹 재확인. ③ 관련 파일(추정): `src/hooks/useAuth.js`, `src/hooks/useUserBibleActions.js`, `src/utils/statsUtils.js`, `src/utils/rosterMembers.js`.
@@ -1150,6 +1161,31 @@ T70~T73 diff 검토 완료 — **병합 가능, 수정 없음**. 핵심 확인: 
 nit(다음 라운드 참고): 완료 퀴즈 요약이 2회 오답(보상 0)일 때도 "⭐ +0달란트"로 표시됨 — 문구 분기하면 더 자연스러움.
 
 ---
+
+## 🔁 라운드 14 — 개인 계정 관리자 지원 (2026-07-13 사용자 승인, T75~T77)
+
+> 배경: 2차 점검 발견 3건 — 개인 계정(카카오/구글)의 ①창구 판매 차단 ②구매 환불 불가 ③관리자 비밀번호
+> 변경이 실제 Auth에 미반영. **T75 규칙은 Claude가 이미 수정·배포함** — 기준 공동체(primaryOrgId) 관리자가
+> 개인 계정 users의 `talent`(+updatedAt) 필드만 수정 가능해졌다.
+
+### 라운드 14 제약
+
+- firestore.rules 추가 수정 금지 (T75 배포 완료). git 커밋 금지(라운드 13과 동일 — Claude가 커밋).
+- **시크릿을 코드·저장소에 절대 넣지 말 것** — 서버 함수의 서비스 계정은 기존 Supabase secret `FIREBASE_SERVICE_ACCOUNT` 재사용.
+- 서버 함수 배포(`supabase functions deploy`)는 수행하되, 실패 시 명령어를 로그에 남기고 넘어갈 것.
+
+### 체크리스트
+
+- [ ] **T75c. 창구 판매·환불에서 개인 계정 활성화** (`ChurchAdminView.jsx`)
+  - 창구 판매 교인 선택에서 개인·외부 멤버 disabled 해제 — 단, **차감 시도 후 permission-denied면** "이 교인의 기준 공동체가 우리 조직이 아니라 차감할 수 없어요" 토스트로 구분 안내 (기준 공동체가 이 교회인 개인 계정만 규칙 통과).
+  - 구매 취소·환불 batch의 users talent increment도 동일 — 개인 계정 대상 활성화 + 실패 시 같은 안내.
+  - 창구 판매·환불 성공 시 로컬 members/purchases 상태 갱신은 기존 로직 재사용.
+- [ ] **T76. 관리자 비밀번호 실변경 서버 함수** — 신규 `supabase/functions/admin-set-password/index.ts`
+  - 입력: `{ targetUid, newPassword }` + 헤더 `Authorization: Bearer <호출자 Firebase idToken>`.
+  - 서버 검증 순서(전부 서버에서, 클라이언트 신뢰 금지): ① idToken을 identitytoolkit `accounts:lookup`으로 검증해 호출자 uid 획득 ② 서비스 계정 OAuth2 토큰(jose JWT grant — kakao-auth의 서명 유틸 패턴 재사용)으로 Firestore REST 조회: 호출자 users 문서의 role이 churchAdmin/platformAdmin/superAdmin인지, 대상 users 문서의 `churchId` 또는 `primaryOrgId`가 호출자 churchId와 일치하는지(플랫폼 관리자는 전체 허용) ③ 통과 시 identitytoolkit `accounts:update`로 대상 비밀번호 실변경 ④ Firestore REST로 대상 `users/{uid}/private/auth`의 password 필드 갱신(조회용 동기화).
+  - newPassword 6자 이상 검증, CORS는 kakao-auth와 동일 화이트리스트, 오류는 일반화 메시지+서버 로그.
+  - 클라이언트: 교회 관리자 비밀번호 재설정·플랫폼 관리자 비밀번호 변경 UI가 이 함수를 호출하도록 교체(기존 private/auth 직접 쓰기 제거). 성공 문구 "실제 로그인 비밀번호가 변경되었습니다".
+- [ ] **T77. 검증** — 함수 픽스처(권한 거부: 비관리자/타교회 관리자, 성공: 같은 교회·기준 공동체·플랫폼), 클라이언트 경로 계약 검사 추가, `npm run build` + 기존 검증기 3종. 실 Auth 변경은 테스트 교회 계정으로만.
 
 ## 📮 Claude → Codex 메모
 
