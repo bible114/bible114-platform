@@ -318,7 +318,7 @@ const DashboardView = ({
             {/* Modals */}
             <ScoreInfoModal show={showScoreInfo} onClose={() => setShowScoreInfo(false)} myLevel={myLevel} score={score} />
             <ReadingGuideModal show={showReadingGuide} onClose={() => setShowReadingGuide(false)} onStartTutorial={() => setShowTutorial(true)} />
-            <AchievementsModal show={showAchievements} onClose={() => setShowAchievements(false)} />
+            <AchievementsModal show={showAchievements} onClose={() => setShowAchievements(false)} currentUser={currentUser} />
             <CalendarModal show={showCalendar} onClose={() => setShowCalendar(false)} calendarDate={calendarDate} setCalendarDate={setCalendarDate} readHistory={readHistory} />
             <MonthlyContestInfoModal show={showMonthlyContestInfo} onClose={() => setShowMonthlyContestInfo(false)} />
             <RestartConfirmModal show={showRestartConfirm} onClose={() => setShowRestartConfirm(false)} onRestart={handleRestart} />
@@ -398,7 +398,7 @@ const DashboardView = ({
 
             <div
                 className="max-w-5xl mx-auto w-full mt-8"
-                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8rem)' }}
+                style={{ paddingBottom: 'var(--app-fixed-bottom-clearance)' }}
             >
                 {hasCommunity && <RaceMap racers={racers} departmentChampions={departmentChampions} getSubgroupDisplay={getSubgroupDisplay} />}
 

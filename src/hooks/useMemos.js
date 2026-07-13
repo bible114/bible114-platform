@@ -116,7 +116,7 @@ export const useMemos = (currentUser) => {
         }
 
         if (currentUidRef.current !== uid) return;
-        if (checkAchievements) checkAchievements(currentUser, newMemos);
+        if (checkAchievements) await checkAchievements(currentUser, newMemos);
         if (typeof onComplete === 'function') onComplete();
     }, [currentUser, memos]);
 

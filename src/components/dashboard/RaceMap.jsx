@@ -46,7 +46,7 @@ const RaceMap = ({ racers, departmentChampions, getSubgroupDisplay }) => {
                 const is2ndRound = racerReadCount >= 2;
                 const displayDay = is2ndRound ? racer.currentDay : (racer.mapDay ?? racer.day);
 
-                const p = Math.min(getNonLinearPos(displayDay), 100);
+                const p = Math.max(8, Math.min(getNonLinearPos(displayDay), 94));
                 const isMe = racer.isMe;
                 const subgroupInfo = getSubgroupDisplay(racer.subgroupId, racer.subgroupName);
                 const isDeptChampion = departmentChampions[racer.uid];

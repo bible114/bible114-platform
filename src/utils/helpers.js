@@ -90,6 +90,7 @@ export const userDocToState = (doc) => {
         quizDate: d.quizDate ?? null,
         quizAttempts: d.quizAttempts ?? 0,
         quizSolved: d.quizSolved ?? false,
+        quizSkipped: d.quizSkipped ?? false,
         quizKey: d.quizKey ?? null,
         lastReadDate: d.lastReadDate ?? null,
         gender: d.gender ?? "male",
@@ -104,6 +105,8 @@ export const userDocToState = (doc) => {
         readCount: d.readCount ?? 1,
         readHistory: d.readHistory ?? [],
         recentReadDates: d.recentReadDates ?? [],
+        dailyAdvanceDate: d.dailyAdvanceDate ?? null,
+        dailyAdvanceCount: d.dailyAdvanceCount ?? 0,
         // 미니룸 관련: useMiniRoom이 undefined(=미초기화)를 판별에 사용하므로 기본값 없이 그대로 전달
         miniroom: d.miniroom,
         character: d.character,

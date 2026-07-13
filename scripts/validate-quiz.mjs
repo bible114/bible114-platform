@@ -179,6 +179,10 @@ const validateScheduleCoverage = async (quizBySlug) => {
         });
     }
 
+    if (missingSummary.size > 0) {
+        errors.push(`필수 스케줄에 문항이 없는 본문 ${missingSummary.size}개가 있습니다. 위 미저작 세그먼트 집계를 확인하세요.`);
+    }
+
     return { errors, missingSummary, ntSegments };
 };
 

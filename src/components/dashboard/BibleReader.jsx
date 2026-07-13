@@ -33,7 +33,6 @@ const BibleReader = ({
     const isAdvanceRead = hasReadToday && isCurrentProgressDay;
     const isQuizGateLocked = currentUser.role !== 'guest'
         && isCurrentProgressDay
-        && !hasReadToday
         && !quizGateOpen;
     const readButtonLabel = isAdvanceRead
         ? '한 장 더 읽기'
@@ -164,15 +163,9 @@ const BibleReader = ({
                                         value={selectedVoiceURI}
                                         onChange={(e) => {
                                             const newVoiceURI = e.target.value;
+                                            handleStop();
                                             setSelectedVoiceURI(newVoiceURI);
                                             localStorage.setItem('bible_selectedVoiceURI', newVoiceURI);
-                                            if (isSpeaking) {
-                                                const currentIndex = activeChunkIndex;
-                                                handleStop();
-                                                setTimeout(() => {
-                                                    handleSpeak(verseData.text, currentIndex);
-                                                }, 100);
-                                            }
                                         }}
                                         className="flex-1 bg-black/30 text-white text-[9px] py-1 px-2 rounded border border-white/10 focus:outline-none focus:ring-1 focus:ring-white/30 truncate"
                                     >

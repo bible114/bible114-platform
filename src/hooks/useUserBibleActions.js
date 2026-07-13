@@ -1,10 +1,11 @@
 import { useState, useCallback, useRef } from 'react';
 import { auth, db, firebase } from '../utils/firebase';
-import { ACHIEVEMENTS } from '../data/achievements';
+import { ACHIEVEMENTS, getNewAchievementIds, mergeAchievementIds } from '../data/achievements';
 import { getKstDateString } from '../data/bibleQuiz';
 import { calculateSubgroupStats } from '../utils/statsUtils';
 import { belongsToDepartment } from '../utils/memberships';
 import { loadUserExtraOrgsStrict } from '../utils/roster';
+import { DAILY_READ_ADVANCE_LIMIT, getDailyAdvanceState } from '../utils/readPolicy';
 
 export const useUserBibleActions = (
     currentUser,
@@ -26,25 +27,35 @@ export const useUserBibleActions = (
     const [readSubmitting, setReadSubmitting] = useState(false);
     const readSubmittingRef = useRef(false);
 
-    const checkAchievements = useCallback((user, userMemos) => {
-        if (!user) return;
-        const newEarned = [];
-        const currentEarnedIds = new Set(user.achievements || []);
+    const checkAchievements = useCallback(async (user, userMemos) => {
+        if (!user?.uid) return [];
+        const userRef = db.collection('users').doc(user.uid);
+        const result = await db.runTransaction(async transaction => {
+            const snap = await transaction.get(userRef);
+            if (!snap.exists) return null;
+            const latest = { ...user, ...snap.data(), uid: user.uid };
+            const newIds = getNewAchievementIds(latest, userMemos);
+            if (newIds.length === 0) {
+                return { achievements: mergeAchievementIds(latest.achievements, []), newIds: [] };
+            }
+            const achievements = mergeAchievementIds(latest.achievements, newIds);
+            transaction.update(userRef, { achievements });
+            return { achievements, newIds };
+        });
+        if (!result) return [];
 
-        ACHIEVEMENTS.forEach(ach => {
-            if (currentEarnedIds.has(ach.id)) return;
-            if (ach.condition(user, userMemos)) {
-                newEarned.push(ach.id);
-                setNewAchievement((prev) => ach); // Use callback to ensure we handle quick successions?
+        setCurrentUser(previous => previous?.uid === user.uid
+            ? { ...previous, achievements: result.achievements }
+            : previous);
+        if (result.newIds.length > 0) {
+            const newest = ACHIEVEMENTS.find(item => item.id === result.newIds[result.newIds.length - 1]);
+            if (newest) {
+                setNewAchievement(newest);
                 setTimeout(() => setNewAchievement(null), 5000);
             }
-        });
-
-        if (newEarned.length > 0) {
-            const updated = [...(user.achievements || []), ...newEarned];
-            db.collection('users').doc(user.uid).update({ achievements: updated });
         }
-    }, []);
+        return result.newIds;
+    }, [setCurrentUser]);
 
     const handleRead = useCallback(async () => {
         if (readSubmittingRef.current) return;
@@ -85,10 +96,18 @@ export const useUserBibleActions = (
                 );
                 if (isRepeatedCompletion) return null;
 
+                const quizTodayKey = getKstDateString();
+                const dailyState = getDailyAdvanceState(data, quizTodayKey, todayStr);
+                if (dailyState.count >= DAILY_READ_ADVANCE_LIMIT) {
+                    return { blockedReason: 'DAILY_ADVANCE_LIMIT' };
+                }
+                const nextDailyAdvanceCount = dailyState.count + 1;
+                const isFirstReadToday = dailyState.isFirstReadToday;
+
                 const oldScore = data.score || 0;
                 const oldLevel = Math.floor(oldScore / 100);
-                const streakBonus = Math.min(5, data.streak || 0);
-                const addedScore = 10 + streakBonus;
+                const streakBonus = isFirstReadToday ? Math.min(5, data.streak || 0) : 0;
+                const addedScore = isFirstReadToday ? 10 + streakBonus : 0;
                 const newScore = oldScore + addedScore;
                 const newLevel = Math.floor(newScore / 100);
 
@@ -97,7 +116,6 @@ export const useUserBibleActions = (
                 const newProgressDay = completedRound ? 1 : currentProgressDay + 1;
                 const newReadCount = completedRound ? (data.readCount || 1) + 1 : (data.readCount || 1);
 
-                const isFirstReadToday = data.lastReadDate !== todayStr;
                 let newStreak = 1;
                 if (data.lastReadDate) {
                     const diffDays = Math.floor(
@@ -108,7 +126,6 @@ export const useUserBibleActions = (
                 }
                 const talentEarned = isFirstReadToday ? 10 + Math.min(newStreak, 7) : 0;
                 const newTalent = (data.talent || 0) + talentEarned;
-                const quizTodayKey = getKstDateString();
                 const quizTalentEarned = data.quizDate === quizTodayKey && data.quizSolved === true
                     ? (data.quizAttempts === 1 ? 10 : 5)
                     : 0;
@@ -146,6 +163,8 @@ export const useUserBibleActions = (
                     talent: newTalent,
                     streak: newStreak,
                     lastReadDate: todayStr,
+                    dailyAdvanceDate: quizTodayKey,
+                    dailyAdvanceCount: nextDailyAdvanceCount,
                     recentReadDates,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
@@ -208,6 +227,11 @@ export const useUserBibleActions = (
             }
 
             if (!resultData) return;
+            if (resultData.blockedReason === 'DAILY_ADVANCE_LIMIT') {
+                setBonusToast('오늘 읽을 수 있는 분량을 모두 완료했어요. 내일 다시 만나요!');
+                setTimeout(() => setBonusToast(null), 4000);
+                return;
+            }
             // 느린 roster 조회/transaction 사이 로그아웃·계정 전환이 일어나면
             // 이미 커밋된 원래 계정의 결과를 새 화면 상태에 적용하지 않는다.
             if (auth.currentUser?.uid !== uid) return;
@@ -226,7 +250,7 @@ export const useUserBibleActions = (
             } = resultData;
 
             // 플랫폼 통계 업데이트 (fire & forget) — 날짜가 바뀌면 readers_today 리셋
-            db.collection('settings').doc('platformStats').get().then(snap => {
+            if (talentEarned > 0) db.collection('settings').doc('platformStats').get().then(snap => {
                 const prev = snap.exists ? snap.data() : {};
                 const statsUpdate = {
                     readers_today: prev.today_date === todayStr
@@ -278,7 +302,7 @@ export const useUserBibleActions = (
 
             setShowConfetti(true);
             setTimeout(() => setShowConfetti(false), 3000);
-            checkAchievements(updatedUser, {});
+            await checkAchievements(updatedUser, {});
             if (onReadComplete) onReadComplete(resultData);
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (e) {
@@ -304,13 +328,13 @@ export const useUserBibleActions = (
             // memos는 보존 — 재시작해도 묵상 기록은 유지
             await db.collection('users').doc(uid).set({
                 currentDay: 1, score: 0, streak: 0, startDate: today,
-                lastReadDate: null, achievements: [],
+                lastReadDate: null, achievements: [], dailyAdvanceDate: null, dailyAdvanceCount: 0,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
 
             setCurrentUser(prev => ({
                 ...prev, currentDay: 1, score: 0, streak: 0, startDate: today,
-                lastReadDate: null, achievements: [], readCount: 1
+                lastReadDate: null, achievements: [], readCount: 1, dailyAdvanceDate: null, dailyAdvanceCount: 0
             }));
             if (setReadHistory) setReadHistory([]);
             alert('재시작되었습니다! 오늘부터 Day 1입니다. 화이팅! 🔥');

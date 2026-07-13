@@ -25,7 +25,7 @@ const AchievementsModal = ({ show, onClose, currentUser }) => {
                 </div>
                 <div className="mt-4 bg-blue-50 p-3 rounded-xl border border-blue-100">
                     <p className="text-xs text-blue-700 text-center">
-                        획득한 업적: <strong>{(currentUser && currentUser.achievements ? currentUser.achievements.length : 0)}</strong> / {ACHIEVEMENTS.length}
+                        획득한 업적: <strong>{new Set(currentUser?.achievements || []).size}</strong> / {ACHIEVEMENTS.length}
                     </p>
                 </div>
                 <button onClick={onClose} className="w-full bg-slate-100 font-bold py-3 rounded-xl mt-4 text-slate-600">닫기</button>

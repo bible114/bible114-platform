@@ -128,7 +128,7 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
                 </div>
             </header>
 
-            <div className="max-w-5xl mx-auto w-full mt-6 px-4 space-y-5" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 6rem)' }}>
+            <div className="max-w-5xl mx-auto w-full mt-6 px-4 space-y-5" style={{ paddingBottom: 'var(--app-fixed-bottom-clearance)' }}>
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-sm text-amber-900 font-medium">
                     기록은 이 기기에만 저장되며, 브라우저 데이터 삭제 시 사라질 수 있어요. 가입하면 안전하게 보관됩니다.
                 </div>

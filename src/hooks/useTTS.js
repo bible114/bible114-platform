@@ -34,7 +34,14 @@ export const useTTS = (verseText) => {
             if (voices.length === 0) return;
 
             console.log("Loaded voices:", voices.length);
-            const koVoices = voices.filter(v => v.lang === 'ko-KR' || v.lang.startsWith('ko'));
+            // 운영체제가 ko-KR로 표시하는 캐릭터/효과 음성은 성경 낭독에 부적합하다.
+            const noveltyVoicePattern = /^(Eddy|Flo|Grandma|Grandpa|Reed|Rocko|Sandy|Shelley)(?:\s|\(|$)/i;
+            const koVoices = voices
+                .filter(v => (v.lang === 'ko-KR' || v.lang.startsWith('ko')) && !noveltyVoicePattern.test(v.name))
+                .sort((a, b) => {
+                    const preferred = /^(Yuna|유나)$/i;
+                    return Number(preferred.test(b.name)) - Number(preferred.test(a.name));
+                });
 
             setAvailableVoices(prev => {
                 // 부하 방지: 목록이 실제로 바뀌었을 때만 업데이트
@@ -67,14 +74,10 @@ export const useTTS = (verseText) => {
             const savedURI = localStorage.getItem('bible_selectedVoiceURI');
             const voiceExists = savedURI && availableVoices.some(v => v.voiceURI === savedURI);
 
-            if (!selectedVoiceURI) {
-                if (voiceExists) {
-                    setSelectedVoiceURI(savedURI);
-                } else {
-                    const firstVoice = availableVoices[0].voiceURI;
-                    setSelectedVoiceURI(firstVoice);
-                    localStorage.setItem('bible_selectedVoiceURI', firstVoice);
-                }
+            if (!voiceExists || !selectedVoiceURI) {
+                const firstVoice = availableVoices[0].voiceURI;
+                setSelectedVoiceURI(firstVoice);
+                localStorage.setItem('bible_selectedVoiceURI', firstVoice);
             }
         }
     }, [availableVoices, selectedVoiceURI]);

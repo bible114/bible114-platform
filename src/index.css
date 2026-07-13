@@ -69,6 +69,9 @@
     --cy-transition-fast: 150ms ease;
     --cy-transition-normal: 250ms ease;
     --cy-transition-slow: 400ms ease;
+
+    /* 하단 AdFit(56px)과 상담 버튼(56px)이 마지막 콘텐츠를 가리지 않는 공통 여백 */
+    --app-fixed-bottom-clearance: calc(env(safe-area-inset-bottom, 0px) + 11rem);
 }
 
 /* 기본 폰트 설정 */

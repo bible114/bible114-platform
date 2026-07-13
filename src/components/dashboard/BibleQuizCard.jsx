@@ -61,6 +61,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
     const hasReadToday = currentUser?.lastReadDate === new Date().toDateString();
     const attempts = currentUser?.quizDate === todayKey ? (currentUser.quizAttempts || 0) : 0;
     const solved = currentUser?.quizDate === todayKey && currentUser.quizSolved === true;
+    const persistedSkipped = currentUser?.quizDate === todayKey && currentUser.quizSkipped === true;
     const finished = solved || attempts >= 2;
     const earnedReward = solved ? getRewardForAttempts(attempts) : 0;
     const [skipped, setSkipped] = useState(false);
@@ -72,12 +73,12 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
             return;
         }
         try {
-            nextSkipped = localStorage.getItem(skipStorageKey) === '1';
+            nextSkipped = persistedSkipped || localStorage.getItem(skipStorageKey) === '1';
         } catch {
             nextSkipped = false;
         }
         setSkipped(nextSkipped);
-    }, [currentUser?.uid, skipStorageKey]);
+    }, [currentUser?.uid, persistedSkipped, skipStorageKey]);
 
     const [quizState, setQuizState] = useState({ loading: true, quiz: null, quizKey: null, badge: '', replaceStoredQuizKey: false });
     const [selectedIndex, setSelectedIndex] = useState(null);
@@ -163,15 +164,33 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
     if (!currentUser || currentUser.role === 'guest') return null;
     if (!quizState.loading && !hasQuestion) return null;
 
-    const skipToday = () => {
-        if (typeof localStorage !== 'undefined') {
-            try {
-                localStorage.setItem(skipStorageKey, '1');
-            } catch (e) {
-                console.warn('퀴즈 건너뛰기 상태 저장 실패:', e);
+    const skipToday = async () => {
+        if (submitting || !quizKey) return;
+        setSubmitting(true);
+        try {
+            await db.collection('users').doc(currentUser.uid).set({
+                quizDate: todayKey,
+                quizSkipped: true,
+                quizKey,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true });
+            setCurrentUser(previous => previous?.uid === currentUser.uid
+                ? { ...previous, quizDate: todayKey, quizSkipped: true, quizKey }
+                : previous);
+            if (typeof localStorage !== 'undefined') {
+                try {
+                    localStorage.setItem(skipStorageKey, '1');
+                } catch (error) {
+                    console.warn('퀴즈 건너뛰기 로컬 상태 저장 실패:', error);
+                }
             }
+            setSkipped(true);
+        } catch (error) {
+            console.error('퀴즈 건너뛰기 저장 실패:', error);
+            setFeedback({ type: 'error', message: '건너뛰기 상태를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.' });
+        } finally {
+            setSubmitting(false);
         }
-        setSkipped(true);
     };
 
     const submitAnswer = async () => {
@@ -185,13 +204,14 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
 
                 const data = snap.data();
                 const freshAttempts = data.quizDate === todayKey ? (data.quizAttempts || 0) : 0;
-                const alreadyDone = data.quizDate === todayKey && (data.quizSolved === true || freshAttempts >= 2);
+                const alreadyDone = data.quizDate === todayKey && (data.quizSolved === true || data.quizSkipped === true || freshAttempts >= 2);
                 const storedQuizKey = data.quizDate === todayKey ? data.quizKey : null;
                 if (alreadyDone) {
                     return {
                         alreadyDone: true,
                         attempts: freshAttempts,
                         solved: data.quizSolved === true,
+                        skipped: data.quizSkipped === true,
                         reward: data.quizSolved === true ? getRewardForAttempts(freshAttempts) : 0,
                         talent: data.talent || 0,
                         quizKey: storedQuizKey || quizKey,
@@ -207,6 +227,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
                     quizDate: todayKey,
                     quizAttempts: nextAttempts,
                     quizSolved: isCorrect,
+                    quizSkipped: false,
                     quizKey: persistedQuizKey,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 };
@@ -217,6 +238,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
                     alreadyDone: false,
                     attempts: nextAttempts,
                     solved: isCorrect,
+                    skipped: false,
                     reward,
                     talent: nextTalent,
                     quizKey: updateData.quizKey,
@@ -228,6 +250,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, onGateStateChange, section
                 quizDate: todayKey,
                 quizAttempts: result.attempts,
                 quizSolved: result.solved,
+                quizSkipped: result.skipped === true,
                 quizKey: result.quizKey,
                 talent: result.talent,
             }));

@@ -211,6 +211,10 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
     };
 
     const leaveCommunity = async (org) => {
+        if (currentUser.accountType === 'personal' && currentUser.primaryOrgId === org.orgId) {
+            setNotice({ type: 'error', text: '기준 공동체는 바로 탈퇴할 수 없어요. 다른 공동체를 먼저 기준으로 선택해주세요.' });
+            return;
+        }
         if (busy || !window.confirm(`${orgName(org.orgId)}에서 탈퇴하시겠습니까?`)) return;
         setBusy(true);
         setNotice(null);
@@ -296,7 +300,7 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
             </div>
             <div className="space-y-2">
                 {currentUser.accountType !== 'personal' && <div className="rounded-xl bg-slate-50 px-3 py-3 text-sm"><span className="font-bold text-slate-700">{currentUser.churchName || '주 소속 공동체'}</span><span className="ml-2 text-[11px] text-blue-600">주 소속</span></div>}
-                {extraOrgs.map(org => <div key={org.orgId} className="flex items-center gap-3 rounded-xl border border-slate-100 px-3 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-700">{orgName(org.orgId)}{currentUser.accountType === 'personal' && currentUser.primaryOrgId === org.orgId && <span className="ml-2 text-[11px] text-blue-600">★ 기준</span>}</p><p className="truncate text-xs text-slate-400">{[org.departmentName, org.subgroupName].filter(Boolean).join(' · ') || '소속 미배정'}</p></div>{currentUser.accountType === 'personal' && currentUser.primaryOrgId !== org.orgId && <button type="button" disabled={busy} onClick={() => onPrimaryOrgChange?.(org.orgId)} className="text-xs font-bold text-blue-600">기준으로 보기</button>}<button type="button" disabled={busy} onClick={() => leaveCommunity(org)} className="text-xs font-bold text-red-500 disabled:opacity-40">탈퇴</button></div>)}
+                {extraOrgs.map(org => { const isPrimary = currentUser.accountType === 'personal' && currentUser.primaryOrgId === org.orgId; return <div key={org.orgId} className="flex items-center gap-3 rounded-xl border border-slate-100 px-3 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-700">{orgName(org.orgId)}{isPrimary && <span className="ml-2 text-[11px] text-blue-600">★ 기준</span>}</p><p className="truncate text-xs text-slate-400">{[org.departmentName, org.subgroupName].filter(Boolean).join(' · ') || '소속 미배정'}</p>{isPrimary && <p className="mt-1 text-[10px] text-slate-400">다른 공동체를 기준으로 선택한 뒤 탈퇴할 수 있어요.</p>}</div>{currentUser.accountType === 'personal' && !isPrimary && <button type="button" disabled={busy} onClick={() => onPrimaryOrgChange?.(org.orgId)} className="text-xs font-bold text-blue-600">기준으로 보기</button>}<button type="button" disabled={busy || isPrimary} onClick={() => leaveCommunity(org)} className="text-xs font-bold text-red-500 disabled:text-slate-300 disabled:opacity-100">탈퇴</button></div>; })}
                 {extraOrgs.length === 0 && <p className="py-2 text-center text-xs text-slate-400">참여 중인 공동체가 없습니다. 혼자 읽는 기록은 계속 안전하게 저장됩니다.</p>}
                 {currentUser.accountType === 'personal' && !extraOrgs.some(org => org.orgId === UNAFFILIATED_CHURCH_ID) && <button type="button" disabled={busy || extraOrgs.length >= 3} onClick={joinSoloCommunity} className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs font-bold text-emerald-700 disabled:opacity-40">혼자 읽기 모임으로 돌아가기</button>}
             </div>

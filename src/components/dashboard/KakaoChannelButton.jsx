@@ -15,7 +15,7 @@ const KakaoChannelButton = ({ kakaoLink }) => {
     return (
         <button
             onClick={handleClick}
-            className="fixed right-6 z-[100] w-14 h-14 bg-[#FEE500] rounded-full shadow-lg hover:shadow-xl hover:scale-110 active:scale-95 transition-all duration-300 flex items-center justify-center group overflow-hidden"
+            className="absolute md:fixed right-6 z-[100] w-14 h-14 bg-[#FEE500] rounded-full shadow-lg hover:shadow-xl hover:scale-110 active:scale-95 transition-all duration-300 flex items-center justify-center group overflow-hidden"
             style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 84px)' }}
             aria-label="카카오톡 상담하기"
         >

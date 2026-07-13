@@ -65,3 +65,17 @@ export const ACHIEVEMENTS = [
         condition: (u) => u.score >= 1000
     },
 ];
+
+export const getNewAchievementIds = (user, memos = {}) => {
+    const earned = new Set(Array.isArray(user?.achievements) ? user.achievements : []);
+    return ACHIEVEMENTS
+        .filter(achievement => !earned.has(achievement.id) && achievement.condition(user || {}, memos || {}))
+        .map(achievement => achievement.id);
+};
+
+export const mergeAchievementIds = (currentIds, newIds) => (
+    Array.from(new Set([
+        ...(Array.isArray(currentIds) ? currentIds : []),
+        ...(Array.isArray(newIds) ? newIds : []),
+    ]))
+);

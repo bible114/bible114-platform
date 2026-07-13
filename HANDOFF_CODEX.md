@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: "🔁 라운드 15" 체크리스트 (T78~T86, 모바일 E2E QA 대응 — 근거: QA_MOBILE_E2E_2026-07-13.md).** 라운드 14까지 완료·배포됨. git 커밋 금지(샌드박스 제약) — 코드 수정과 문서 로그까지만, 커밋은 Claude 담당.
+> **현재 상태: "✅ 라운드 15" T78~T86 로컬 구현·검증 완료 (근거: `QA_MOBILE_E2E_2026-07-13.md`).** 아직 커밋·배포하지 않았으며 Claude 리뷰·커밋 후 배포가 필요하다. 다음 독립 작업은 퀴즈 미저작 본문 1,028개 보강 설계이며, 날짜 화면/개인 DAY 구분과 묵상 다운로드는 확인 대기다.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-13 | T78~T86 모바일 실제 사용자 E2E QA 대응 | `src/hooks/{useUserBibleActions,useMemos,useTTS,useAuth}.js`, `src/components/dashboard/{BibleReader,BibleQuizCard,CommunityMembershipCard,KakaoChannelButton,RaceMap}.jsx`, `src/components/{DashboardView,GuestReaderView}.jsx`, `src/components/modals/AchievementsModal.jsx`, `src/data/achievements.js`, `src/utils/{readPolicy,helpers}.js`, `src/index.css`, `scripts/{validate-quiz,validate-round15}.mjs`, `QA_MOBILE_E2E_2026-07-13.md`, `HANDOFF_CODEX.md` | Claude 수정 설계를 반영했다. 실제 모바일 500px에서 첫 읽기 DAY2·10점, 추가 2회 DAY4·10점, 4번째 no-op을 확인했고 업적 `1/14`, 음성 `유나/Google 한국의`, 상담 버튼 비고정(콘텐츠 비가림), 이름 가입→계획 선택→신약 일독 DAY1 자동 진입을 확인했다. 기준 공동체 탈퇴와 여정 지도는 테스트 계정에 공동체가 없어 정적 계약으로 검증했다. `validate-round15`, `validate-round11`, 빌드, diff 통과. `validate-quiz`는 의도대로 미저작 본문 1,028개를 잡아 exit 1. 커밋·배포 없음. |
 | 2026-07-13 | T76 관리자 비밀번호 실변경 서버 함수 (배포 대기) | `supabase/functions/admin-set-password/index.ts`, `src/utils/adminPassword.js`, `src/App.jsx`, `src/components/ChurchAdminView.jsx`, `src/data/constants.js`, `.env.example`, `HANDOFF_CODEX.md` | Firebase ID 토큰 검증→서버 역할·소속 검증→Auth 실제 비밀번호 변경→private/auth 조회용 암호 동기화 경로를 구현하고 두 관리자 UI의 직접 Firestore 쓰기를 교체했다. `npm run build`, `git diff --check` 통과. 배포 명령 `supabase functions deploy admin-set-password --no-verify-jwt`는 이 환경에 Supabase CLI가 없어 `command not found: supabase`로 실패했으며, `VITE_ADMIN_SET_PASSWORD_URL` 설정과 배포가 남았다. 커밋 금지 제약 준수. |
 | 2026-07-13 | T75c 창구 판매·환불 개인 계정 활성화 | `src/components/ChurchAdminView.jsx`, `HANDOFF_CODEX.md` | 개인·외부 roster 멤버의 창구 판매 선택과 구매 취소·환불을 활성화했다. 개인 계정은 관리자 users read가 열려 있지 않아 `talent`·`updatedAt`과 판매 기록을 하나의 batch로 처리하며, permission-denied이면 기준 공동체가 다른 경우임을 안내한다. 기존 자체 교인 잔액 transaction·로컬 상태 갱신은 유지했고 roster-only 멤버는 잔액을 추정하지 않는다. `npm run build`, `git diff --check` 통과. 커밋 금지 제약 준수. |
 | 2026-07-13 | T73 헤더 아이콘 접근성 | `src/components/dashboard/DashboardHeader.jsx`, `HANDOFF_CODEX.md` | 도움말·달성 뱃지·날짜 설정·읽기 달력 아이콘 버튼에 용도를 설명하는 aria-label을 추가했다. `npm run build`, `node scripts/validate-round11.mjs`, `git diff --check` 통과. 커밋 금지 제약 준수. |
@@ -281,6 +282,13 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-13 Codex 라운드 15 완료:
+- 완료: T78~T86. 하루 읽기 진도는 최초+추가 2회로 제한하고 최초 1회만 점수·달란트·연속일을 보상한다. 오늘 퀴즈의 skip/quizKey를 저장해 추가 진행 뒤에도 같은 오늘 문제를 유지한다. 업적 계산과 모달 상태를 통일하고, 검증기가 미저작 본문을 성공 처리하지 않게 했다. 한국어 캐릭터 음성 8종을 제외하고 음성 선택 시 자동 재생을 중단했다. 모바일 상담 버튼은 페이지 하단으로 보내 콘텐츠를 가리지 않게 했고, 기준 공동체 탈퇴 차단·이름 가입 세션 유지·RaceMap 위치 clamp를 적용했다.
+- 실사용 검증: 500×929 Chrome에서 DAY1→DAY4까지 3회만 전진, 점수 10점 고정, 4번째 no-op, 업적 1/14, 음성 목록 `유나/Google 한국의`, 상담 버튼 viewport 밖 페이지 하단 배치 확인. `QA신약0713` 신규 가입 직후 랜딩 복귀 없이 계획 선택→신약 일독 새번역 DAY1 진입 확인.
+- 자동 검증: `node scripts/validate-round15.mjs`, `npm run build`, `node scripts/validate-round11.mjs`, `git diff --check` 통과. `node scripts/validate-quiz.mjs`는 의도대로 exit 1이며 미저작 본문 1,028개와 골로새서 3장/빌립보서 3장 각 4문항 경고를 보고한다.
+- 설계 보완: Claude 초안의 단순 하단 padding만으로는 상담 버튼이 퀴즈를 계속 가려 모바일에서 absolute 배치로 바꿨다. TTS 이름은 실제 Chrome에서 지역명이 붙어 나와 prefix 필터로 보강했다. 기준 공동체 탈퇴와 RaceMap은 현재 QA 계정에 공동체가 없어 정적 계약만 확인했다.
+- 남음: 퀴즈 콘텐츠 1,028개 본문 저작, 날짜 화면/개인 DAY 의미 구분 정책, 묵상 다운로드 실기기 확인. 하루 상한 정책 때문에 새번역·신약을 같은 날 UI로 365회 진행하는 기존 QA 방식은 더 이상 사용할 수 없다.
 
 2026-07-13 Codex 라운드 14 진행:
 - 완료: T75c. 개인·외부 roster 멤버의 창구 판매 선택과 환불을 열고, 실제 permission-denied일 때만 기준 공동체 불일치 안내를 표시한다. 개인 계정은 관리자 users read가 닫혀 있어 direct batch로 `talent`·`updatedAt`과 판매 기록을 함께 갱신한다.
@@ -1236,32 +1244,50 @@ T75c·T76 검토 완료 — **보안 차단급 1건 발견, Claude가 직접 수
 
 ### 체크리스트
 
-- [ ] **T78. 하루 추가 읽기 상한·보상 분리** — `useUserBibleActions.js`
+- [x] **T78. 하루 추가 읽기 상한·보상 분리** — `useUserBibleActions.js`
   - 사용자 문서에 날짜별 진행 횟수를 저장한다. 하루 최초 읽기 1회 + 추가 읽기 2회, 총 3회까지만 진도를 전진시킨다.
   - 점수·달란트·연속일·읽은 날짜 보상은 하루 최초 읽기에만 반영한다. 추가 읽기는 진도만 이동한다.
   - 상한 초과는 transaction 안에서 no-op 처리하고 사용자 안내를 표시한다. 기존 사용자에게 신규 필드가 없으면 0회로 호환한다.
-- [ ] **T79. 오늘 퀴즈 게이트와 추가 읽기 정책 정합** — `BibleReader.jsx`, 퀴즈 상태 경로
+- [x] **T79. 오늘 퀴즈 게이트와 추가 읽기 정책 정합** — `BibleReader.jsx`, 퀴즈 상태 경로
   - 오늘 퀴즈를 풀거나 허용된 건너뛰기를 한 뒤에만 오늘의 최초/추가 읽기를 진행할 수 있다.
   - 과거 DAY의 퀴즈 상태와 현재 진행 DAY 라벨이 섞이지 않도록 오늘 날짜 기준 완료 상태를 사용한다.
-- [ ] **T80. 업적 계산·표시 단일화** — 업적 계산 경로, `useUserBibleActions.js`, `useMemos.js`, 업적 모달
+- [x] **T80. 업적 계산·표시 단일화** — 업적 계산 경로, `useUserBibleActions.js`, `useMemos.js`, 업적 모달
   - 토스트와 모달이 동일 조건 함수와 병합된 최신 업적 배열을 사용한다.
   - 첫 묵상·누적 점수 업적 직후 모달 카운트가 즉시 일치해야 한다.
-- [ ] **T81. 퀴즈 검증기 fail-close** — `scripts/validate-quiz.mjs`
+- [x] **T81. 퀴즈 검증기 fail-close** — `scripts/validate-quiz.mjs`
   - 지원 플랜 필수 DAY에 문항 풀이 0개면 누락 책/장/DAY 요약 후 exit 1.
   - 런타임의 안전한 대체 문항 정책과 배포 전 완전성 검증을 분리한다.
-- [ ] **T82. 한국어 TTS 음성 우선** — `useTTS.js`, `BibleReader.jsx`
+- [x] **T82. 한국어 TTS 음성 우선** — `useTTS.js`, `BibleReader.jsx`
   - `lang`이 한국어인 음성만 기본 목록에 노출한다. 기존 저장 음성이 한국어가 아니면 한국어 기본값으로 안전 전환한다.
   - 음성 선택만으로 자동 재생하지 않는다.
-- [ ] **T83. 모바일 고정 요소 겹침 제거** — 공통 레이아웃/광고/카카오 채팅
+- [x] **T83. 모바일 고정 요소 겹침 제거** — 공통 레이아웃/광고/카카오 채팅
   - safe-area와 하단 광고 높이를 공통 여백에 반영해 375/390/500px에서 콘텐츠·버튼을 가리지 않게 한다.
-- [ ] **T84. 기준 공동체 탈퇴 방지** — `CommunityMembershipCard.jsx`
+- [x] **T84. 기준 공동체 탈퇴 방지** — `CommunityMembershipCard.jsx`
   - 현재 `primaryOrgId` 공동체는 탈퇴를 막고 이유를 안내한다. 다른 공동체를 기준으로 지정한 뒤에만 기존 공동체 탈퇴를 허용한다.
-- [ ] **T85. 이름 가입 직후 자동 진입** — `LoginView.jsx`, `useAuth.js`, `App.jsx`
+- [x] **T85. 이름 가입 직후 자동 진입** — `LoginView.jsx`, `useAuth.js`, `App.jsx`
   - 가입 성공 후 현재 인증 세션을 유지하고 온보딩/대시보드로 즉시 진입한다. 랜딩에서 재로그인을 요구하지 않는다.
-- [ ] **T86. 여정 지도 배지 잘림 수정** — `RaceMap.jsx`
+- [x] **T86. 여정 지도 배지 잘림 수정** — `RaceMap.jsx`
   - 초반 DAY의 이름·소속 배지 위치를 뷰포트 안으로 clamp하고 375~500px에서 잘림이 없어야 한다.
 
 완료 기준: `npm run build`, 관련 기존 검증기, 신규 경계 픽스처, 모바일 375/390/500px 실사용 재검증.
+
+### 다음 작업자 시작점
+
+- **현재 코드 상태**: T78~T86 수정은 로컬에 있으며 미커밋·미배포다. 먼저 diff와 `scripts/validate-round15.mjs`를 리뷰한다.
+- **통과 확인**: `node scripts/validate-round15.mjs`, `npm run build`, `node scripts/validate-round11.mjs`, `git diff --check`.
+- **의도된 실패**: `node scripts/validate-quiz.mjs`는 미저작 본문 1,028개 때문에 exit 1이 정상이다. 검증기를 되돌리지 말고 콘텐츠를 보강한다.
+- **실화면 완료**: Chrome 500×929에서 일일 3회 상한·최초 1회 보상·업적 1/14·한국어 음성 목록·상담 버튼 비겹침·이름 가입 자동 진입을 확인했다.
+- **실화면 미확인**: 공동체가 있는 계정의 기준 공동체 탈퇴 버튼과 RaceMap 배지는 코드·계약 검사만 통과했다. 375/390px 실기기도 배포 전 추가 확인한다.
+- **QA 계정 상태**: 새번역 114 테스트 계정은 DAY 4, 신약 일독 새번역 테스트 계정은 DAY 1이다. 하루 상한 때문에 같은 날 365회 반복 QA는 더 이상 수행하지 않는다.
+- **금지 유지**: 사용자 승인 없이 배포·push하지 말고, `firestore.rules`의 `users` read 규칙과 `users.password` 설계는 건드리지 않는다.
+
+## ✅ Claude 리뷰 결과 — 라운드 15 (2026-07-13)
+
+T78~T86 검토 완료 — **병합·배포 가능, 수정 없음**. 핵심 확인: 하루 3회 상한이 트랜잭션 내부에서 no-op으로 강제(P0 어뷰징 차단), 점수·달란트·연속일이 첫 읽기에만 적립, 레거시 호환(신규 필드 없는 기존 사용자가 오늘 이미 읽었으면 첫 읽기 재보상 없음 — readPolicy.getDailyAdvanceState), 업적이 트랜잭션+병합으로 단일화(0/14 불일치 근본 해결), 재시작 시 신규 필드 리셋. Codex가 모바일 500px 실기기 확인까지 수행(4회차 no-op·업적 1/14·유나 음성·자동 진입). validate-round15/11 + 빌드 통과.
+
+참고: `validate-quiz`는 fail-close 전환으로 **미저작 문항 1,028개(약 275일치)를 exit 1로 표면화** — 런타임은 카드 숨김(fail-open)이라 사용자 영향 없음. 이 검증기는 문항 저작 백로그 추적용이며 배포 게이트에서 제외. 프로세스 참고: codex exec가 작업 완료 후 종료하지 않고 잔류하는 현상 1회 — 결과물 확인 후 수동 정리함.
+
+---
 
 ## 📮 Claude → Codex 메모
 

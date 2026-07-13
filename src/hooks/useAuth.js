@@ -129,6 +129,8 @@ export const useAuth = ({
             talentMigrated: true,
             readCount: 1,
             lastReadDate: migrateGuest ? guest.lastReadDate : null,
+            dailyAdvanceDate: null,
+            dailyAdvanceCount: 0,
             gender: 'male',
             planId: guest.planId || '1year_revised',
             departmentId: null, departmentName: null, subgroupId: null,
@@ -183,7 +185,9 @@ export const useAuth = ({
             total_readers: firebase.firestore.FieldValue.increment(1),
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
         }, { merge: true }).catch(() => {});
-        setTempUser({ ...newUser, uid: user.uid, extraOrgs: [] });
+        const runtimeUser = { ...newUser, uid: user.uid, extraOrgs: [] };
+        setCurrentUser(runtimeUser);
+        setTempUser(runtimeUser);
         if (shouldMigrateGuestState()) saveGuestState({ migratedAt: new Date().toISOString() });
         setView('plan_type_select');
     };
