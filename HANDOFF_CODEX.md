@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: "✅ 라운드 16" T87 퀴즈 문항 저작 완료 (`validate-quiz` exit 0). 다음 라운드 설계 대기.** 라운드 15까지 Claude 리뷰·커밋·배포 완료됨. git 커밋 금지 — 저작+검증+로그까지만, 커밋은 Claude 담당.
+> **현재 활성 작업: "🔧 라운드 17" T88~T90 완료, 다음 작업 T91.** 라운드 16 T87 퀴즈 문항 저작 완료(`validate-quiz` exit 0). git 커밋 금지 — 구현+검증+로그까지만, 커밋은 Claude 담당.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -180,6 +180,9 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-14 | T90 관리자 번들 지연 로딩 | `src/App.jsx`, `HANDOFF_CODEX.md` | `PlatformAdminView`와 `ChurchAdminView`를 `React.lazy`+`Suspense`로 분리하고 관리자 로딩 안내를 추가했다. 메인 청크는 1,460.04KB(gzip 388.69KB)에서 1,291.68KB(gzip 337.39KB)로 168.36KB 감소했고, 관리자 청크는 각각 54.94KB와 113.19KB로 분리됐다. 메인 청크의 500KB 경고는 여전히 남아 후속 코드 스플리팅 후보가 필요하다. `npm run build`, `npm run validate`, `npm run validate:quiz`, `git diff --check` 통과. |
+| 2026-07-14 | T89 검증 파이프라인 통합 | `package.json`, `HANDOFF_CODEX.md` | `npm run validate`가 round11→round15→kakao-auth→personal-migration을 이름이 드러나는 하위 명령으로 순차 실행하도록 등록하고, 퀴즈는 `npm run validate:quiz`로 분리했다. 두 명령과 빌드·diff 검사 통과. |
+| 2026-07-14 | T88 죽은 코드·잔재 제거 | `src/App.jsx`, `src/data/bibleQuiz.js`, `src/utils/helpers.js`, `src/utils/guestStorage.js`, `HANDOFF_CODEX.md` | 저장소 전체 검색에서 선언 외 참조 0건인 `getTodayQuiz`, `offsetToDateStr`, `clearGuestMigrated`를 제거하고 App의 주석 처리된 옛 hook 및 이동 완료 표시·빈 섹션 잔재를 정리했다. 진입점 도달성 검사상 미사용 컴포넌트는 0개였고 DemoTour·OrgEditor·ChurchAdminTutorial은 실사용 확인, `test_simulation.mjs`는 UPGRADE_PLAN의 부하 테스트 유지 결정을 따라 보존했다. 기존 검증기 전체, 새한글 파서, 빌드, diff 검사 통과. |
 | 2026-07-13 | T87 완료 — 배치 12 구약 잔여·경고 해소 | `src/data/quiz/genesis.json`, `src/data/quiz/numbers.json`, `src/data/quiz/deuteronomy.json`, `src/data/quiz/colossians.json`, `src/data/quiz/philippians.json`, `HANDOFF_CODEX.md` | 창세기 35~36장 6문항, 민수기 1~16장 48문항, 신명기 9~34장 78문항과 장당 권장 수 경고 해소용 2문항을 추가했다. 남은 미저작 본문은 44개에서 0개로 감소했고 경고도 0개가 되었다. `node scripts/validate-quiz.mjs` **exit 0**, `npm run build`, `git diff --check` 통과. **T87 완료 — exit 0. 퀴즈 문항 신학 검수 필요(사용자).** |
 | 2026-07-13 | T87 배치 11 — 신약일독 잔여 세그먼트 | `src/data/quiz/acts.json`, `src/data/quiz/galatians.json`, `src/data/quiz/hebrews.json`, `src/data/quiz/romans.json`, `src/data/quiz/matthew.json`, `HANDOFF_CODEX.md` | 사도행전 3개, 갈라디아서 1개, 히브리서 3개, 로마서 3개, 마태복음 18개 실제 절 범위에 총 140문항을 추가했다. 각 세그먼트 안의 대표 절만 근거로 사용해 남은 미저작 본문은 72개에서 44개로 감소했다. `node scripts/validate-quiz.mjs`는 남은 구약 누락 때문에 의도대로 exit 1. 최종 누적 상태에서 빌드·diff 검증 통과. **퀴즈 문항 신학 검수 필요(사용자).** |
 | 2026-07-13 | T87 배치 10 — 일년일독 Day 338~365 | `src/data/quiz/1timothy.json`, `src/data/quiz/2timothy.json`, `src/data/quiz/titus.json`, `src/data/quiz/1john.json`, `src/data/quiz/2john.json`, `src/data/quiz/3john.json`, `src/data/quiz/revelation.json`, `HANDOFF_CODEX.md` | 디모데전·후서, 디도서, 요한일·이·삼서, 요한계시록 15~22장에 총 145문항을 추가했다. 계 18:1~19:4와 19:5~21은 실제 절 범위별 5문항을 확보했다. 남은 미저작 본문은 103개에서 72개로 감소했다. `node scripts/validate-quiz.mjs`는 남은 누락 때문에 의도대로 exit 1. 최종 누적 상태에서 빌드·diff 검증 통과. **퀴즈 문항 신학 검수 필요(사용자).** |
@@ -294,6 +297,12 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-14 Codex 라운드 17 T88~T90 완료:
+- T88: 선언 외 참조 0건 함수 3개와 App의 옛 주석/빈 섹션을 제거했다. 실제 사용 중인 컴포넌트와 유지 결정된 `test_simulation.mjs`는 보존했다.
+- T89: `npm run validate`와 `npm run validate:quiz`를 등록했고 모두 통과했다.
+- T90: 관리자 두 화면을 별도 청크로 분리해 메인 청크를 168.36KB 줄였다. 다만 메인 청크는 1,291.68KB라 500KB 경고가 남는다. 설계 범위를 넘어 추가 분리하지 않았으며 다음 작업은 T91의 ChurchAdminView 탭별 순차 이동이다.
+- 검증: `npm run build`, `npm run validate`, `npm run validate:quiz`, `npm run test:saehangul`, `git diff --check` 통과. 커밋·배포·push 없음.
 
 2026-07-13 Codex 라운드 16 T87 완료(배치 10~12):
 - 완료: 배치 10에서 일년일독 Day 338~365의 서신·요한계시록 145문항, 배치 11에서 신약일독 잔여 실제 절 범위 28개 140문항, 배치 12에서 창세기·민수기·신명기 잔여 44장 132문항을 저작했다. 골로새서 3장과 빌립보서 3장의 장당 권장 수 경고를 없애는 2문항도 추가해 이번 세션 총 419문항을 보탰다.
@@ -1379,9 +1388,9 @@ T78~T86 검토 완료 — **병합·배포 가능, 수정 없음**. 핵심 확�
 > 목적: 기능 15라운드 동안 쌓인 기술 부채 정리. **동작 변경 절대 금지** — 순수 리팩터·정리만.
 > 순서 고정(안전한 것부터), 각 작업 후 `npm run build` + 검증기 전체 통과 필수. firestore.rules 무수정, git 커밋 금지(Claude 담당).
 
-- [ ] **T88. 죽은 코드·루트 잔재 제거** — 사용처 0임을 grep으로 확인한 것만: 미사용 컴포넌트(예: DemoTour 연결 여부 확인), 미사용 export/import, 루트의 실험 파일(test_simulation.mjs 등 — 참조 없으면 삭제), 주석 처리된 코드 블록. 각 삭제의 근거(검색 결과 0건)를 작업 로그에 남길 것.
-- [ ] **T89. 검증 파이프라인 통합** — package.json에 `npm run validate` 하나로 validate-round11/round15/kakao-custom-auth/personal-migration(+quiz는 별도 `validate:quiz`)이 전부 도는 스크립트 등록. 실패 시 어느 검증기인지 명확히.
-- [ ] **T90. 번들 코드 스플리팅** — `PlatformAdminView`·`ChurchAdminView`를 React.lazy+Suspense로 지연 로딩(교인·게스트는 관리자 코드를 내려받지 않게). 메인 청크 크기 before/after를 로그에 기록. 500KB 경고 해소가 목표.
+- [x] **T88. 죽은 코드·루트 잔재 제거** — 사용처 0임을 grep으로 확인한 것만: 미사용 컴포넌트(예: DemoTour 연결 여부 확인), 미사용 export/import, 루트의 실험 파일(test_simulation.mjs 등 — 참조 없으면 삭제), 주석 처리된 코드 블록. 각 삭제의 근거(검색 결과 0건)를 작업 로그에 남길 것.
+- [x] **T89. 검증 파이프라인 통합** — package.json에 `npm run validate` 하나로 validate-round11/round15/kakao-custom-auth/personal-migration(+quiz는 별도 `validate:quiz`)이 전부 도는 스크립트 등록. 실패 시 어느 검증기인지 명확히.
+- [x] **T90. 번들 코드 스플리팅** — `PlatformAdminView`·`ChurchAdminView`를 React.lazy+Suspense로 지연 로딩(교인·게스트는 관리자 코드를 내려받지 않게). 메인 청크 크기 before/after를 로그에 기록. 500KB 경고 해소가 목표.
 - [ ] **T91. 거대 컴포넌트 분할 1차** — `ChurchAdminView.jsx`를 탭 단위 파일로 분리(대시보드/교인/상점/조직/공지/설정 → `src/components/churchAdmin/*.jsx`). **한 탭씩** 옮기고 매번 빌드 확인. props·상태·로직은 그대로 이동만(리네이밍·개선 금지). PlatformAdminView는 이번에 손대지 않음(2차 후보).
 - [ ] **T92. 마무리 청소** — 프로덕션 코드의 console.log 중 디버그성 제거(오류 로그 console.error는 유지), 미사용 CSS 클래스 확인, 작업 로그에 남긴 것/남긴 이유 기록.
 
@@ -1401,7 +1410,9 @@ T78~T86 검토 완료 — **병합·배포 가능, 수정 없음**. 핵심 확�
     4. **원형 아이콘 버튼: G(구글) 하나만** — 흰 원 + 테두리, 아래 작은 캡션 "Google". 소셜은 카카오·구글 둘뿐 (다른 공급자 추가 금지).
     5. 하단 작은 텍스트 링크 줄: "기존 회원 로그인(이름으로) · 로그인 없이 둘러보기" / 맨 아래 미세 링크 "공동체 관리자 · 비밀번호 문의".
   - 재방문 기억(saveLastChurch)의 **자동 폼 스킵 제거** — 누구에게나 항상 이 화면이 기본. 기억된 교회는 "기존 회원 로그인" 링크 옆 "지난번: ○○교회" 뱃지로만. `?church=` 링크도 동일.
-  - 첫 카드에 공동체 안내 1줄: "⛪ 교회·모임과 함께 읽으려면 **공동체 등록**이 먼저 필요해요" + [공동체 등록하기] → 기존 교회 등록(adminSignup) 진입. 상단 "교회 등록 →" 버튼 라벨도 "공동체 등록"으로 통일.
+  - 첫 카드에 공동체 안내 블록(2026-07-14 문구 확정): "⛪ 교회·모임과 함께 읽고 싶으신가요? / **공동체 대표(관리자)가** 먼저 공동체를 등록해야 성도들이 찾아서 함께 읽을 수 있어요." + [공동체 등록하기 →]. 상단 "교회 등록 →" 버튼과 등록 화면 제목 등 사이트 전체 용어를 "공동체 등록"으로 통일.
+  - 등록(adminSignup) 1단계 상단에 안내 박스: "공동체 등록이란? 우리 교회(모임)의 관리 계정을 만드는 것 — ①성도 검색 가입 가능 ②입장코드 보호 ③관리 화면·달란트 상점 운영. 무료, 5분 소요." + 성도 오진입 방지 줄: "성도이신가요? 가입은 첫 화면의 카카오로 시작을 눌러주세요 ← 돌아가기".
+  - 등록 완료 화면에 다음 행동 연결: "이제 성도들에게 알리세요 — 설정 탭 → 성도용 가입 안내문 인쇄(QR)".
 - [ ] **T95. 기존 회원 소셜 로그인 연결(전환 유도)**
   - 로그인한 기존 회원(교회·무소속·이름 개인) 대시보드 상단에 1회성 배너: "다음부터 카카오/구글로 3초 로그인" (닫기 시 7일 숨김).
   - **구글 연결**: `auth.currentUser.linkWithPopup(GoogleAuthProvider)` → 성공 시 users.authProvider 갱신, 이후 구글 버튼 로그인 시 기존 계정으로 들어옴 (uid 동일).
