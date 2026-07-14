@@ -22,6 +22,7 @@ const BibleReader = ({
     setSelectedVoiceURI,
     activeChunkIndex,
     jumpToChunk,
+    ttsUnavailableApp,
     hasReadToday,
     readSubmitting,
     handleRead,
@@ -117,6 +118,11 @@ const BibleReader = ({
                 {/* TTS UI */}
                 {verseData.text && verseData.text.length > 20 && !verseData.loading && !hasContentError && (
                     <div id="tut-tts-area" className="mt-3 bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/20">
+                        {ttsUnavailableApp ? (
+                            <p className="text-center text-[11px] leading-relaxed text-white/75">
+                                네이버, 구글앱은 TTS를 지원하지 않습니다. 영상을 활용해 주세요.
+                            </p>
+                        ) : (
                         <div className="flex flex-col gap-2">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
@@ -182,6 +188,7 @@ const BibleReader = ({
                                 </div>
                             )}
                         </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -203,7 +210,7 @@ const BibleReader = ({
                             content={verseData.text}
                             fontSize={fontSize}
                             activeChunkIndex={activeChunkIndex}
-                            onSegmentClick={jumpToChunk}
+                            onSegmentClick={ttsUnavailableApp ? null : jumpToChunk}
                         />
                     )}
                 </div>

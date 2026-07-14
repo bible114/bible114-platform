@@ -45,6 +45,7 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
 
     const {
         isSpeaking, isPaused, ttsSpeed, availableVoices, selectedVoiceURI, activeChunkIndex,
+        ttsUnavailableApp,
         handleSpeedChange, handleTogglePause, handleStop, handleSpeak, jumpToChunk,
         setSelectedVoiceURI,
     } = useTTS(verseData.text);
@@ -186,6 +187,7 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
                     setSelectedVoiceURI={setSelectedVoiceURI}
                     activeChunkIndex={activeChunkIndex}
                     jumpToChunk={jumpToChunk}
+                    ttsUnavailableApp={ttsUnavailableApp}
                     hasReadToday={hasReadToday}
                     handleRead={handleRead}
                     readSubmitting={readSubmitting}

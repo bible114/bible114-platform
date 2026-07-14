@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { toSinoKorean } from '../utils/helpers';
+import { getTTSUnavailableApp } from '../utils/ttsAvailability';
 
 export const useTTS = (verseText) => {
     const [isSpeaking, setIsSpeaking] = useState(false);
@@ -13,6 +14,7 @@ export const useTTS = (verseText) => {
     });
     const [activeChunkIndex, setActiveChunkIndex] = useState(-1);
     const [isInAppBrowser, setIsInAppBrowser] = useState(false);
+    const [ttsUnavailableApp] = useState(() => getTTSUnavailableApp(navigator.userAgent));
 
     const speakQueueRef = useRef([]);
     const currentChunkIndexRef = useRef(0);
@@ -28,8 +30,15 @@ export const useTTS = (verseText) => {
 
     // 1. 목소리 목록 로드 및 업데이트 - 의존성 제거
     useEffect(() => {
+        const ua = navigator.userAgent;
+        if (ua.indexOf('NAVER') > -1 || ua.indexOf('KAKAOTALK') > -1 || /GSA\//i.test(ua)) {
+            setIsInAppBrowser(true);
+        }
+
+        // 안내 대상 앱에서는 불완전한 WebView TTS API에 접근하지 않는다.
+        if (ttsUnavailableApp || !window.speechSynthesis) return undefined;
+
         const loadVoices = () => {
-            if (!window.speechSynthesis) return;
             const voices = window.speechSynthesis.getVoices();
             if (voices.length === 0) return;
 
@@ -52,11 +61,6 @@ export const useTTS = (verseText) => {
         };
 
         loadVoices();
-
-        const ua = navigator.userAgent;
-        if (ua.indexOf('NAVER') > -1 || ua.indexOf('KAKAOTALK') > -1) {
-            setIsInAppBrowser(true);
-        }
 
         if (window.speechSynthesis.addEventListener) {
             window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
@@ -253,6 +257,7 @@ export const useTTS = (verseText) => {
 
     return {
         isSpeaking, isPaused, ttsSpeed, availableVoices, selectedVoiceURI, activeChunkIndex,
+        ttsUnavailableApp,
         handleSpeedChange, handleTogglePause, handleStop, handleSpeak, jumpToChunk,
         setSelectedVoiceURI
     };

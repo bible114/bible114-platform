@@ -212,6 +212,7 @@ const App = () => {
     // --- [Hooks] Extract Logic ---
     const {
         isSpeaking, isPaused, ttsSpeed, availableVoices, selectedVoiceURI, activeChunkIndex,
+        ttsUnavailableApp,
         handleSpeedChange, handleTogglePause, handleStop, handleSpeak, jumpToChunk,
         setSelectedVoiceURI
     } = useTTS(verseData.text);
@@ -806,6 +807,7 @@ const App = () => {
                 setSelectedVoiceURI={setSelectedVoiceURI}
                 activeChunkIndex={activeChunkIndex}
                 jumpToChunk={jumpToChunk}
+                ttsUnavailableApp={ttsUnavailableApp}
                 readSubmitting={readSubmitting}
                 handleRead={handleRead}
                 saveMemo={saveMemo}

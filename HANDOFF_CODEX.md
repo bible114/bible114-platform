@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-14 | 네이버·Google 앱 TTS 안내 | `src/utils/ttsAvailability.js`, `src/hooks/useTTS.js`, `src/{App.jsx,components/DashboardView.jsx,components/GuestReaderView.jsx,components/dashboard/BibleReader.jsx}`, `scripts/validate-round15.mjs`, `HANDOFF_CODEX.md` | NAVER·Google 앱(GSA)에서는 TTS 컨트롤 대신 작은 안내문을 표시하고 본문 탭 낭독도 비활성화. 일반 Chrome·Safari TTS와 카카오 기존 안내는 유지. 안내 대상 WebView의 불완전한 음성 API 접근을 생략. Naver/GSA/Chrome/Safari/Kakao/Googlebot UA 계약, 회원·게스트 연결, 빌드·diff 검사 통과. 실기기 앱 화면은 배포 후 확인 필요. |
 | 2026-07-14 | T123d2 퀴즈 shadow API·비교 장치 | `supabase/functions/platform-api/{core,index}*`, `src/utils/{platformApi,quizSubmissionShadow}.js`, `src/components/dashboard/BibleQuizCard.jsx`, `scripts/validate-round24.mjs`, `HANDOFF_CODEX.md` | `previewQuizSubmission`이 서버 정답 인덱스로 위치·Day·문항·정답·보상을 계산하되 쓰기는 하지 않음. 응답에서 answerIndex·원본 index·잔액·조직정보 제외. 앱은 개발 환경에서만 기존 transaction 전에 최대 4초 호출하고 성공 결과만 실제 값 없이 비교. 통합 리뷰에서 거대 cycle의 앱/서버 검증 차이를 safe integer 제한으로 통일. Deno 40 tests/check/fmt, 전체 validate/build/diff 통과. Edge 배포 후 OPTIONS 204·미인증 401·입력 오류 400·잘못된 origin 403·잘못된 token 401·기존 읽기 보호 401 확인. 실제 로그인 `[quiz-shadow] match:true`는 남음. |
 | 2026-07-14 | T123d1 퀴즈 서버 정답 인덱스·순수 계산 기반 | `src/utils/{quizShuffle,quizEngine}.js`, `scripts/generate-quiz-answer-index.mjs`, `supabase/functions/platform-api/{quiz-answer-index.json,quizCore.ts,quizCore_test.ts}`, `scripts/validate-round24.mjs`, `package.json`, `HANDOFF_CODEX.md` | 앱과 생성기가 동일한 결정적 선택지 섞기를 사용. 표시 정답 위치와 허용 Day 인덱스 6,657개(표준 4,719·쉬움 1,825·레거시 113)를 생성하고 byte-for-byte 최신성 검사를 전체 validate에 포함. 서버 순수 함수가 현재/방금 완료 위치, 계획·Day, 저장 문항 고정, 2회 시도, 당일 1회 보상을 검증. 통합 리뷰에서 1차 오답 후 같은 Day 다른 문항으로 교체 가능한 틈을 찾아 차단. Deno 전체 38 tests/check/fmt, 전체 validate, quiz/nt-easy, build, diff 통과. 쓰기/API 연결 없음. 인덱스 생성 중 일년일독 일정의 예레미야 30~32장 누락 발견(별도 판단 필요). |
 | 2026-07-14 | T123b 로그인 사용자 shadow 비교 장치 | `src/hooks/useUserBibleActions.js`, `src/utils/readCompletionShadow.js`, `scripts/validate-round24.mjs`, `HANDOFF_CODEX.md` | 개발 환경에서만 기존 transaction 전에 읽기 서버 미리보기를 최대 4초 기다리고, 성공했을 때만 기존 결과와 비교. 로그는 일치 여부·상태·불일치 필드명·회독/Day만 남기며 실제 점수·달란트·사용자 상태는 제외. 미리보기/비교 실패는 기존 읽기를 막지 않고 운영 빌드에서는 호출·로그 없음. 전체 validate/build/diff 통과. 앱 안 브라우저는 게스트, Chrome 기존 로컬 탭 2개는 로그아웃 상태라 기록을 변경하는 완료 클릭 없이 종료했으며 실제 로그인 200·일치 로그 확인은 남음. |
@@ -336,6 +337,10 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-14 네이버·Google 앱 TTS 안내:
+- 사용자 결정에 따라 NAVER·Google 앱(GSA) 인앱 화면에서는 TTS를 시도하지 않고 `네이버, 구글앱은 TTS를 지원하지 않습니다. 영상을 활용해 주세요.` 문구만 작게 표시한다. 일반 Chrome·Safari는 기존 TTS를 유지하고 카카오톡은 기존 alert 안내를 유지한다.
+- 안내 대상 앱에서는 TTS 버튼·속도·목소리 선택과 본문 탭 낭독을 모두 비활성화하며, voice 목록과 `speechSynthesis` 이벤트에도 접근하지 않는다. 자동 검증·빌드는 통과했고 배포 후 네이버·Google 앱 실화면 확인이 남아 있다.
 
 2026-07-14 라운드 24 T123d2 퀴즈 shadow 구현·배포, 실로그인 확인 대기:
 - `previewQuizSubmission`은 요청의 progressKey/quizKey/selectedIndex를 엄격히 검사하고, 서버에만 있는 6,657문항 인덱스와 최신 users 문서로 위치·문항·정답·보상을 계산한다. Firestore write는 없고 응답에 answerIndex, 원본 index, 잔액, 조직정보를 싣지 않는다.
