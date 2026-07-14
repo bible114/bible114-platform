@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-14 | T123b 로그인 사용자 shadow 비교 장치 | `src/hooks/useUserBibleActions.js`, `src/utils/readCompletionShadow.js`, `scripts/validate-round24.mjs`, `HANDOFF_CODEX.md` | 개발 환경에서만 기존 transaction 전에 읽기 서버 미리보기를 최대 4초 기다리고, 성공했을 때만 기존 결과와 비교. 로그는 일치 여부·상태·불일치 필드명·회독/Day만 남기며 실제 점수·달란트·사용자 상태는 제외. 미리보기/비교 실패는 기존 읽기를 막지 않고 운영 빌드에서는 호출·로그 없음. 전체 validate/build/diff 통과. 앱 안 브라우저는 게스트, Chrome 기존 로컬 탭 2개는 로그아웃 상태라 기록을 변경하는 완료 클릭 없이 종료했으며 실제 로그인 200·일치 로그 확인은 남음. |
 | 2026-07-14 | T123a 읽기 완료 서버 계산 shadow | `supabase/functions/_shared/{time,firestore}*`, `supabase/functions/platform-api/{readCore,core,index}*`, `src/utils/platformApi.js`, `scripts/validate-round24.mjs`, `HANDOFF_CODEX.md` | 읽기 보상·진행·연속일·개인 지갑을 순수 함수로 계산하고 `previewReadCompletion`으로 읽기 전용 제공. 읽기 날짜는 영상의 오전 3시 기준과 분리해 KST 자정 기준 유지. collectionGroup roster 조회도 읽기만 수행하며 응답에서 조직 ID·잔액·문서 경로를 제외. Deno 28 tests/type/fmt, 전체 validate/build/diff 통과. Edge 재배포 후 OPTIONS 204·미인증 401·입력 오류 400·잘못된 origin 403·잘못된 token 401 확인. 실제 로그인 200 및 기존 계산 비교는 T123b에서 수행. |
 | 2026-07-14 | T122 공통 서버 기반 + shadow API | `supabase/functions/_shared/*`, `supabase/functions/platform-api/*`, `src/utils/platformApi.js`, `src/data/constants.js`, `.env.example`, `scripts/validate-round24.mjs`, `package.json`, `HANDOFF_CODEX.md` | 하위 모델 3개가 서버 공통 모듈, preflight 전용 API, 클라이언트 브리지를 분리 구현하고 Codex가 통합 보안 리뷰. UUID 폴백·오류 내부정보 차단·역할 정규화 보강. Deno 15 tests, type/fmt, 전체 validate, 기존/쉬운 퀴즈, build, diff 검사 통과. `platform-api --no-verify-jwt` Edge 배포 후 OPTIONS 204·미인증/잘못된 토큰 401·잘못된 origin 403 확인. Firestore write 없음. |
 | 2026-07-14 | 라운드 23·긴급 수정 운영 배포 | `HANDOFF_CODEX.md` | 사용자 지시로 기존 금지 게이트 해제. `24a311e` main push, Firestore rules 컴파일·배포, `npm run deploy` Published 완료. 공개 주소 HTTP 200, 캐시 우회 HTML과 새 JS `index-C3RZWRw9.js` HTTP 200 확인. T122 착수 게이트 해제. |
@@ -333,6 +334,12 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-14 라운드 24 T123b 비교 장치 구현, 실로그인 확인 대기:
+- 하위 모델 3개가 비교 순수 함수, 기존 읽기 훅 연결, 정적·동적 회귀 검사를 분리 구현했다. Codex 통합 리뷰에서 preview 실패 시 허위 mismatch 로그가 생기는 문제와 API 장애 시 12초 지연 가능성을 찾아 성공 응답일 때만 비교하고 timeout을 4초로 낮췄다.
+- 비교는 운영 빌드에서 실행되지 않고 개발 환경에서만 기존 transaction 전에 무쓰기 서버 preview를 얻는다. 로그는 `match`, 양쪽 status, mismatch 필드명, cycle/day만 포함하며 점수·달란트·사용자 상태 실제 값은 남기지 않는다.
+- 전체 `npm run validate`, `npm run build`, `git diff --check` 통과. 앱 안 브라우저는 게스트였고 Chrome의 기존 localhost 탭 2개도 로그아웃 화면이라 사용자 기록을 변경하는 완료 클릭은 하지 않았다. 임시 로컬 탭과 dev 서버는 종료했다.
+- T123b 체크박스는 실제 로그인 계정에서 `[read-shadow] match:true` 1건을 보기 전까지 열어 둔다. 이 증거 전에는 T123c 실제 쓰기 전환 금지.
 
 2026-07-14 라운드 24 T123a 완료:
 - 읽기 완료의 서버 계산을 실제 저장과 분리한 `previewReadCompletion`으로 먼저 배포했다. 영상 기준일은 오전 3시지만 읽기 보상은 기존과 동일한 KST 자정 기준이므로 날짜 함수를 분리했다.
@@ -1905,7 +1912,7 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 ### [ ] T123. 읽기 완료·퀴즈 보상 서버 이관
 
 - [x] **T123a. 읽기 완료 서버 계산 shadow** — KST 자정 기준 날짜, 진행 위치·하루 추가 읽기 상한·보상·연속일·개인 지갑을 서버 순수 함수로 계산하고 무쓰기 `previewReadCompletion`으로 배포한다.
-- [ ] **T123b. 로그인 사용자 shadow 비교** — 기존 읽기 완료 직전에 서버 미리보기를 호출하되 기존 동작을 막지 않는다. 개발 환경에서만 기존 계산과 서버 계산의 핵심 필드를 비교해 불일치를 기록하고, 운영에서는 민감값·내부 경로를 출력하지 않는다.
+- [ ] **T123b. 로그인 사용자 shadow 비교** — 비교 장치·자동 검사는 완료. 기존 읽기 완료 직전에 개발 환경에서만 서버 미리보기를 최대 4초 호출하고 성공 응답만 기존 계산과 비교한다. 로그에는 실제 값 없이 불일치 필드명만 남긴다. **남은 완료 조건: 로그인 계정으로 `[read-shadow] match:true` 1건 확인.**
 - [ ] **T123c. 읽기 완료 실제 쓰기 전환** — T123b 일치 확인 후 멱등 ledger와 원자 commit을 구현하고 React의 직접 보상 쓰기를 제거한다. 서버 실패 시 직접 쓰기 폴백을 두지 않는다.
 - [ ] **T123d. 퀴즈 보상 서버 이관** — 서버 정답 인덱스·출제 범위 검증·시도/보상 ledger를 구현하고 클라이언트 직접 쓰기를 제거한다.
 

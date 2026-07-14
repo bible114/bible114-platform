@@ -7,6 +7,8 @@ import { belongsToDepartment } from '../utils/memberships';
 import { loadUserExtraOrgsStrict } from '../utils/roster';
 import { DAILY_READ_ADVANCE_LIMIT, getDailyAdvanceState } from '../utils/readPolicy';
 import { updateRosterTalents } from '../utils/talentWallet';
+import { previewReadCompletion } from '../utils/platformApi';
+import { compareReadCompletionShadow } from '../utils/readCompletionShadow';
 
 export const useUserBibleActions = (
     currentUser,
@@ -80,6 +82,14 @@ export const useUserBibleActions = (
             // 그 캐시로 개인 계정 보상을 처리하면 users 지갑에도 roster 지갑에도
             // 달란트가 남지 않으므로, 읽기 진행을 기록하기 전에 실제 명부를 확인한다.
             let refreshedExtraOrgs = (await loadUserExtraOrgsStrict(uid)).slice(0, 3);
+            let readShadowPreview = null;
+            if (import.meta.env.DEV) {
+                try {
+                    readShadowPreview = await previewReadCompletion(submittedReadCount, vDay, { timeoutMs: 4000 });
+                } catch {
+                    // shadow 확인 실패는 기존 읽기 저장을 막지 않는다.
+                }
+            }
 
             const commitRead = (rosterOrgs) => db.runTransaction(async (transaction) => {
                 const userRef = db.collection('users').doc(uid);
@@ -245,6 +255,22 @@ export const useUserBibleActions = (
                 // 재조회 실패를 빈 목록으로 바꾸지 않는다. 그래야 보상 없는 완료가 커밋되지 않는다.
                 refreshedExtraOrgs = (await loadUserExtraOrgsStrict(uid)).slice(0, 3);
                 resultData = await commitRead(refreshedExtraOrgs);
+            }
+
+            if (import.meta.env.DEV && readShadowPreview?.result) {
+                try {
+                    const comparison = compareReadCompletionShadow(readShadowPreview?.result, resultData);
+                    console.info('[read-shadow]', {
+                        match: comparison.match,
+                        serverStatus: comparison.serverStatus,
+                        clientStatus: comparison.clientStatus,
+                        mismatchKeys: comparison.mismatchKeys,
+                        cycle: submittedReadCount,
+                        day: vDay,
+                    });
+                } catch {
+                    // shadow 비교 자체가 기존 읽기 결과 처리에 영향을 주지 않게 한다.
+                }
             }
 
             if (!resultData) return;

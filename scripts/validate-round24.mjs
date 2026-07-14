@@ -7,6 +7,7 @@ const exists = path => fs.existsSync(new URL(`../${path}`, import.meta.url));
 const constants = read('src/data/constants.js');
 const envExample = read('.env.example');
 const client = read('src/utils/platformApi.js');
+const userBibleActions = read('src/hooks/useUserBibleActions.js');
 const packageJson = JSON.parse(read('package.json'));
 
 assert.match(constants, /export const PLATFORM_API_URL = import\.meta\.env\?\.VITE_PLATFORM_API_URL \|\| '';/);
@@ -72,6 +73,115 @@ for (const [cycle, day] of [[0, 1], [1.5, 1], [1, 0], [1, 366], [1, 2.5]]) {
         `잘못된 읽기 범위(${cycle}, ${day})는 네트워크 요청 전에 거부해야 한다.`,
     );
 }
+
+// 읽기 완료 shadow 비교 계약: DEV에서만 서버 preview를 먼저 기다리고,
+// preview 실패는 기존 클라이언트 transaction을 막지 않으며 실제 값은 로그에 남기지 않는다.
+const readShadowPath = 'src/utils/readCompletionShadow.js';
+assert.equal(exists(readShadowPath), true, `${readShadowPath}가 필요하다.`);
+const readShadowSource = read(readShadowPath);
+assert.match(readShadowSource, /export const compareReadCompletionShadow\s*=/);
+assert.match(userBibleActions, /import\s*\{\s*previewReadCompletion\s*\}\s*from\s*['"]\.\.\/utils\/platformApi['"]/);
+assert.match(userBibleActions, /import\s*\{\s*compareReadCompletionShadow\s*\}\s*from\s*['"]\.\.\/utils\/readCompletionShadow['"]/);
+
+const devGuardIndex = userBibleActions.indexOf('if (import.meta.env.DEV)');
+const previewAwaitIndex = userBibleActions.indexOf('await previewReadCompletion(');
+const transactionAwaitIndex = userBibleActions.indexOf('await commitRead(');
+assert.ok(devGuardIndex >= 0, '읽기 shadow preview는 import.meta.env.DEV 가드 안에서만 실행해야 한다.');
+assert.ok(previewAwaitIndex > devGuardIndex, 'DEV 가드 안에서 previewReadCompletion을 await해야 한다.');
+assert.ok(transactionAwaitIndex > previewAwaitIndex, '서버 preview를 기다린 뒤 기존 transaction을 실행해야 한다.');
+assert.match(
+    userBibleActions.slice(previewAwaitIndex, transactionAwaitIndex),
+    /previewReadCompletion\([^)]*\{\s*timeoutMs:\s*4000\s*\}\)/,
+    'shadow preview는 기존 읽기를 오래 지연시키지 않도록 4초 제한을 사용해야 한다.',
+);
+
+const transactionDeclarationIndex = userBibleActions.indexOf('\n            const commitRead', devGuardIndex);
+assert.ok(transactionDeclarationIndex > previewAwaitIndex, 'shadow 준비 구간 뒤에 기존 transaction 선언이 이어져야 한다.');
+const shadowPreparationBlock = userBibleActions.slice(devGuardIndex, transactionDeclarationIndex);
+assert.match(
+    shadowPreparationBlock,
+    /try\s*\{[\s\S]*await previewReadCompletion\([\s\S]*\}\s*catch(?:\s*\([^)]*\))?\s*\{[\s\S]*\}/,
+    'preview 실패는 catch되어 기존 읽기 transaction 흐름을 막지 않아야 한다.',
+);
+assert.doesNotMatch(
+    shadowPreparationBlock,
+    /catch(?:\s*\([^)]*\))?\s*\{[\s\S]*?\b(?:throw|return)\b/,
+    'shadow preview catch에서 throw/return으로 기존 흐름을 중단하면 안 된다.',
+);
+assert.doesNotMatch(
+    shadowPreparationBlock,
+    /(?:compareReadCompletionShadow|console\.(?:info|debug|warn|error))\s*\(/,
+    'preview 실패 catch에서는 비교하거나 허위 mismatch 로그를 남기면 안 된다.',
+);
+
+assert.match(
+    userBibleActions,
+    /if\s*\(\s*import\.meta\.env\.DEV\s*&&\s*readShadowPreview\?\.result\s*\)\s*\{[\s\S]*compareReadCompletionShadow\(/,
+    'preview 결과가 실제로 있을 때만 transaction 결과와 비교해야 한다.',
+);
+const comparisonLog = userBibleActions.match(/console\.(?:info|debug|warn)\(\s*['"]\[read(?:-completion)?-shadow\]['"]\s*,\s*\{([\s\S]*?)\}\s*\)/);
+assert.ok(comparisonLog, '읽기 shadow 비교 결과는 고정 표식과 제한된 요약 객체로 기록해야 한다.');
+const loggedKeys = Array.from(comparisonLog[1].matchAll(/\b(match|serverStatus|clientStatus|mismatchKeys|cycle|day)\b\s*(?=[:,])/g), match => match[1]);
+assert.deepEqual(
+    [...new Set(loggedKeys)].sort(),
+    ['clientStatus', 'cycle', 'day', 'match', 'mismatchKeys', 'serverStatus'].sort(),
+    'shadow 비교 로그에는 상태, 불일치 키, 요청 위치만 기록해야 한다.',
+);
+assert.doesNotMatch(
+    comparisonLog[1],
+    /\b(?:serverResult|clientResult|updateData|summary|score|talent|streak|recentReadDates|currentUser)\b/,
+    'shadow 비교 로그에 서버/클라이언트 실제 값이나 사용자 상태를 포함하면 안 된다.',
+);
+
+const { compareReadCompletionShadow } = await import('../src/utils/readCompletionShadow.js');
+const readyServer = {
+    status: 'ready',
+    updateData: { currentDay: 2, score: 15 },
+    summary: { oldLevel: 0, newLevel: 0, nextViewingDay: 2 },
+};
+const readyClient = {
+    updateData: { currentDay: 2, score: 15 },
+    oldLevel: 0,
+    newLevel: 0,
+    nextViewingDay: 2,
+};
+assert.deepEqual(compareReadCompletionShadow(readyServer, readyClient), {
+    match: true,
+    serverStatus: 'ready',
+    clientStatus: 'ready',
+    mismatchKeys: [],
+});
+const scoreMismatch = compareReadCompletionShadow(
+    readyServer,
+    { ...readyClient, updateData: { ...readyClient.updateData, score: 14 } },
+);
+assert.equal(scoreMismatch.match, false);
+assert.deepEqual(scoreMismatch.mismatchKeys, ['updateData.score']);
+assert.deepEqual(compareReadCompletionShadow(
+    { status: 'dailyLimit', limit: 3, count: 3 },
+    { blockedReason: 'DAILY_ADVANCE_LIMIT' },
+), {
+    match: true,
+    serverStatus: 'dailyLimit',
+    clientStatus: 'dailyLimit',
+    mismatchKeys: [],
+});
+assert.deepEqual(compareReadCompletionShadow(
+    { status: 'positionMismatch', expected: { cycle: 2, day: 1 }, received: { cycle: 1, day: 365 } },
+    readyClient,
+), {
+    match: false,
+    serverStatus: 'positionMismatch',
+    clientStatus: 'ready',
+    mismatchKeys: ['status'],
+});
+const repeatedClient = compareReadCompletionShadow({ status: 'ready' }, null);
+assert.equal(repeatedClient.clientStatus, 'repeated');
+assert.deepEqual(
+    Object.keys(repeatedClient).sort(),
+    ['match', 'serverStatus', 'clientStatus', 'mismatchKeys'].sort(),
+    'comparator는 실제 값을 반환하지 않고 상태와 mismatchKeys만 반환해야 한다.',
+);
 
 const sharedContracts = {
     'supabase/functions/_shared/cors.ts': ['ALLOWED_ORIGINS', 'isAllowedOrigin', 'handleCors', 'jsonResponse'],
