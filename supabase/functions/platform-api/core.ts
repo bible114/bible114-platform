@@ -1,5 +1,6 @@
 export const PREFLIGHT_ACTION = "preflight" as const;
 export const PREVIEW_READ_COMPLETION_ACTION = "previewReadCompletion" as const;
+export const PREVIEW_QUIZ_SUBMISSION_ACTION = "previewQuizSubmission" as const;
 
 export type PlatformApiRequest =
   | {
@@ -11,6 +12,13 @@ export type PlatformApiRequest =
     requestId: string;
     cycle: number;
     day: number;
+  }
+  | {
+    action: typeof PREVIEW_QUIZ_SUBMISSION_ACTION;
+    requestId: string;
+    progressKey: string;
+    quizKey: string;
+    selectedIndex: number;
   };
 
 export type PlatformApiRequestErrorCode =
@@ -42,7 +50,15 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     throw new PlatformApiRequestError("INVALID_BODY");
   }
 
-  const { action, requestId, cycle, day } = body as Record<string, unknown>;
+  const {
+    action,
+    requestId,
+    cycle,
+    day,
+    progressKey,
+    quizKey,
+    selectedIndex,
+  } = body as Record<string, unknown>;
   if (!isRequestId(requestId)) {
     throw new PlatformApiRequestError("INVALID_REQUEST_ID");
   }
@@ -56,6 +72,30 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       throw new PlatformApiRequestError("INVALID_PAYLOAD");
     }
     return { action, requestId, cycle: Number(cycle), day: Number(day) };
+  }
+  if (action === PREVIEW_QUIZ_SUBMISSION_ACTION) {
+    const progressMatch = typeof progressKey === "string"
+      ? /^r([1-9]\d*)_d([1-9]\d*)$/.exec(progressKey)
+      : null;
+    const progressCycle = progressMatch ? Number(progressMatch[1]) : NaN;
+    const progressDay = progressMatch ? Number(progressMatch[2]) : NaN;
+    if (
+      !progressMatch || !Number.isSafeInteger(progressCycle) ||
+      !Number.isSafeInteger(progressDay) || progressDay < 1 ||
+      progressDay > 365 || typeof quizKey !== "string" ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(quizKey) ||
+      !Number.isInteger(selectedIndex) || Number(selectedIndex) < 0 ||
+      Number(selectedIndex) > 3
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return {
+      action,
+      requestId,
+      progressKey: String(progressKey),
+      quizKey: String(quizKey),
+      selectedIndex: Number(selectedIndex),
+    };
   }
   throw new PlatformApiRequestError("INVALID_ACTION");
 };

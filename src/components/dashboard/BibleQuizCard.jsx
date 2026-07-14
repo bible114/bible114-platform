@@ -5,6 +5,8 @@ import { getQuizLevel, getQuizProgressKey, getQuizRewardForAnswer } from '../../
 import { saveGuestState } from '../../utils/guestStorage';
 import { loadUserExtraOrgsStrict } from '../../utils/roster';
 import { getRosterOrgIds, updateRosterTalents } from '../../utils/talentWallet';
+import { previewQuizSubmission } from '../../utils/platformApi';
+import { compareQuizSubmissionShadow } from '../../utils/quizSubmissionShadow';
 import {
     getReadingRangeForDay,
     loadNtEasyPoolForDay,
@@ -304,6 +306,15 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
         if (!quiz || !quizKey || selectedIndex === null || submitting || finished || skipped) return;
         setSubmitting(true);
         try {
+            let quizShadowPreview = null;
+            if (import.meta.env.DEV) {
+                try {
+                    quizShadowPreview = await previewQuizSubmission(progressKey, quizKey, selectedIndex, { timeoutMs: 4000 });
+                } catch {
+                    // shadow 확인 실패는 기존 퀴즈 저장을 막지 않는다.
+                }
+            }
+
             // 정답일 때만 보상 지갑이 필요하다. 로그인 시 명부 조회 실패로 캐시가
             // 비어 있을 수 있으므로 보상 날짜를 기록하기 전에 실제 명부를 확인한다.
             // 조회가 실패하면 transaction 자체를 시작하지 않아 당일 보상이 소진되지 않는다.
@@ -406,6 +417,22 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                     rewardAlready,
                 };
             });
+
+            if (import.meta.env.DEV && quizShadowPreview?.result) {
+                try {
+                    const comparison = compareQuizSubmissionShadow(quizShadowPreview.result, result);
+                    console.info('[quiz-shadow]', {
+                        match: comparison.match,
+                        serverStatus: comparison.serverStatus,
+                        clientStatus: comparison.clientStatus,
+                        mismatchKeys: comparison.mismatchKeys,
+                        progressKey,
+                        quizKey,
+                    });
+                } catch {
+                    // shadow 비교 자체가 기존 퀴즈 결과 처리에 영향을 주지 않게 한다.
+                }
+            }
 
             setCurrentUser(prev => updateRosterTalents({
                 ...prev,

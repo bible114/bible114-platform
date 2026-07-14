@@ -163,3 +163,25 @@ export const previewReadCompletion = (cycle, day, options = {}) => {
     }
     return callPlatformApi('previewReadCompletion', { cycle, day }, options);
 };
+
+export const previewQuizSubmission = (progressKey, quizKey, selectedIndex, options = {}) => {
+    const progressMatch = typeof progressKey === 'string' ? /^r([1-9]\d*)_d([1-9]\d*)$/.exec(progressKey) : null;
+    const progressCycle = progressMatch ? Number(progressMatch[1]) : NaN;
+    const progressDay = progressMatch ? Number(progressMatch[2]) : NaN;
+    if (!Number.isSafeInteger(progressCycle) || !Number.isSafeInteger(progressDay) || progressDay < 1 || progressDay > 365) {
+        throw new PlatformApiError('퀴즈 진행 위치가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    if (typeof quizKey !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(quizKey)) {
+        throw new PlatformApiError('퀴즈 문항 정보가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    if (!Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex > 3) {
+        throw new PlatformApiError('선택한 퀴즈 답안이 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('previewQuizSubmission', { progressKey, quizKey, selectedIndex }, options);
+};

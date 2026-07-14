@@ -16,10 +16,16 @@ import {
   getServiceDateKst,
 } from "../_shared/time.ts";
 import { parsePlatformApiRequest, PlatformApiRequestError } from "./core.ts";
+import quizAnswerIndex from "./quiz-answer-index.json" with { type: "json" };
+import {
+  type QuizIndexRecord,
+  type StoredQuizUser,
+  validateQuizSubmission,
+} from "./quizCore.ts";
 import { calculateReadCompletion, type StoredReadUser } from "./readCore.ts";
 
-// T122-T123 shadow 단계: 인증·읽기 완료 계산만 수행하며 Firestore 쓰기는 금지한다.
-type UserDocument = StoredReadUser & {
+// T122-T123 shadow 단계: 읽기·퀴즈 결과를 계산만 하며 Firestore 쓰기는 금지한다.
+type UserDocument = StoredReadUser & StoredQuizUser & {
   role?: unknown;
   isDeleted?: unknown;
 };
@@ -100,6 +106,31 @@ Deno.serve(async (request) => {
         role,
         calendarDate: todayLegacy,
         rosterCount: rosterDocuments.length,
+        result,
+      });
+    }
+
+    if (parsed.action === "previewQuizSubmission") {
+      const todayLegacy = getLegacyCalendarDateStringKst();
+      const questions = quizAnswerIndex.questions as Record<
+        string,
+        QuizIndexRecord | undefined
+      >;
+      const result = validateQuizSubmission({
+        user: userDocument.data,
+        progressKey: parsed.progressKey,
+        quizKey: parsed.quizKey,
+        selectedIndex: parsed.selectedIndex,
+        todayLegacy,
+        indexRecord: questions[parsed.quizKey],
+      });
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        uid,
+        role,
+        calendarDate: todayLegacy,
         result,
       });
     }

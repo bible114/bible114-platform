@@ -268,11 +268,201 @@ assert.deepEqual(
 );
 
 const quizCore = read(quizCorePath);
+const corePath = 'supabase/functions/platform-api/core.ts';
+const indexPath = 'supabase/functions/platform-api/index.ts';
+assert.equal(exists(corePath), true, `${corePath}가 필요하다.`);
+assert.equal(exists(indexPath), true, `${indexPath}가 필요하다.`);
+const serverCore = read(corePath);
+const serverIndex = read(indexPath);
 assert.match(quizCore, /export const validateQuizSubmission\s*=/);
 assert.match(
     quizCore,
     /validQuizKey\(stored\.quizKey\)\s*&&\s*stored\.quizKey\s*!==\s*input\.quizKey[\s\S]{0,160}return\s*\{\s*status:\s*['"]invalidQuiz['"]\s*\}/,
     '저장된 quizKey와 제출 quizKey가 다르면 invalidQuiz로 거부해야 한다.',
+);
+
+// 퀴즈 제출 shadow API 계약: 서버가 원본 정답 인덱스로 판정하되 쓰지는
+// 않고, 브라우저는 개발 환경에서만 기존 transaction과 제한된 결과를 비교한다.
+const quizShadowPath = 'src/utils/quizSubmissionShadow.js';
+const quizCardPath = 'src/components/dashboard/BibleQuizCard.jsx';
+assert.equal(exists(quizShadowPath), true, `${quizShadowPath}가 필요하다.`);
+const quizShadowSource = read(quizShadowPath);
+const quizCard = read(quizCardPath);
+
+assert.match(quizShadowSource, /export const compareQuizSubmissionShadow\s*=/);
+assert.match(serverCore, /PREVIEW_QUIZ_SUBMISSION_ACTION\s*=\s*['"]previewQuizSubmission['"]/);
+assert.match(
+    serverCore,
+    /action\s*===\s*PREVIEW_QUIZ_SUBMISSION_ACTION[\s\S]*Number\.isInteger\(selectedIndex\)[\s\S]*selectedIndex[\s\S]*(?:<\s*0|>=?\s*4)/,
+    '서버 parser가 퀴즈 selectedIndex 0~3 정수 범위를 확인해야 한다.',
+);
+for (const field of ['progressKey', 'quizKey', 'selectedIndex']) {
+    assert.match(
+        serverCore,
+        new RegExp(`action\\s*===\\s*PREVIEW_QUIZ_SUBMISSION_ACTION[\\s\\S]*\\b${field}\\b`),
+        `previewQuizSubmission 요청에 ${field}가 필요하다.`,
+    );
+}
+assert.match(
+    serverIndex,
+    /import\s+quizAnswerIndex\s+from\s+['"]\.\/quiz-answer-index\.json['"][^;]*;/,
+    'platform-api가 배포된 퀴즈 정답 JSON을 직접 읽어야 한다.',
+);
+assert.match(
+    serverIndex,
+    /import\s*\{[^}]*validateQuizSubmission[^}]*\}\s*from\s*['"]\.\/quizCore\.ts['"]/,
+    'platform-api가 순수 퀴즈 판정 함수를 사용해야 한다.',
+);
+assert.match(serverIndex, /parsed\.action\s*===\s*['"]previewQuizSubmission['"]/);
+assert.match(serverIndex, /validateQuizSubmission\s*\(/);
+
+const quizPreviewBranchStart = serverIndex.indexOf('if (parsed.action === "previewQuizSubmission")');
+const quizPreviewResponseStart = serverIndex.indexOf('return jsonResponse(origin, 200, {', quizPreviewBranchStart);
+const quizPreviewResponseEnd = serverIndex.indexOf('\n      });', quizPreviewResponseStart);
+assert.ok(
+    quizPreviewBranchStart >= 0 && quizPreviewResponseStart > quizPreviewBranchStart && quizPreviewResponseEnd > quizPreviewResponseStart,
+    'previewQuizSubmission 응답 분기가 필요하다.',
+);
+const quizPreviewResponse = serverIndex.slice(quizPreviewResponseStart, quizPreviewResponseEnd);
+assert.doesNotMatch(
+    quizPreviewResponse,
+    /\b(?:answerIndex|indexRecord|allowed|talent|userTalent|rosterTalentByOrgId|rosterCount|orgId|churchId|organizationId|organizationIds)\b\s*[:,]/,
+    '퀴즈 preview 응답에 정답 위치, 원본 인덱스, 잔액, 조직 정보를 노출하면 안 된다.',
+);
+assert.doesNotMatch(
+    `${serverCore}\n${serverIndex}`,
+    /\b(?:beginTransaction|commitWrites|rollbackTransaction|createDocument|patchDocument|deleteDocument)\s*\(/,
+    '퀴즈 preview는 Firestore를 쓰지 않아야 한다.',
+);
+
+assert.match(client, /export const previewQuizSubmission\s*=\s*\(progressKey, quizKey, selectedIndex, options = \{\}\)/);
+assert.match(client, /callPlatformApi\(['"]previewQuizSubmission['"],\s*\{\s*progressKey,\s*quizKey,\s*selectedIndex\s*\},\s*options\)/);
+assert.match(client, /Number\.isInteger\(selectedIndex\)/);
+assert.match(client, /selectedIndex\s*<\s*0|selectedIndex\s*>\s*3/);
+for (const args of [
+    ['', 'genesis-1-1', 0],
+    ['r0_d1', 'genesis-1-1', 0],
+    ['r1_d366', 'genesis-1-1', 0],
+    ['r1_d1', '', 0],
+    ['r1_d1', 'bad key', 0],
+    ['r1_d1', 'genesis-1-1', -1],
+    ['r1_d1', 'genesis-1-1', 4],
+    ['r1_d1', 'genesis-1-1', 1.5],
+]) {
+    assert.throws(
+        () => platformApi.previewQuizSubmission(...args),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_PAYLOAD'
+            && error.status === 0
+            && error.retryable === false,
+        `잘못된 퀴즈 preview 입력(${JSON.stringify(args)})은 네트워크 전에 거부해야 한다.`,
+    );
+}
+
+assert.match(quizCard, /import\s*\{[^}]*previewQuizSubmission[^}]*\}\s*from\s*['"]\.\.\/\.\.\/utils\/platformApi['"]/);
+assert.match(quizCard, /import\s*\{[^}]*compareQuizSubmissionShadow[^}]*\}\s*from\s*['"]\.\.\/\.\.\/utils\/quizSubmissionShadow['"]/);
+const quizDevGuardIndex = quizCard.indexOf('if (import.meta.env.DEV)');
+const quizPreviewIndex = quizCard.indexOf('await previewQuizSubmission(');
+const quizTransactionIndex = quizCard.indexOf('await db.runTransaction(', quizPreviewIndex);
+assert.ok(quizDevGuardIndex >= 0, '퀴즈 shadow preview는 import.meta.env.DEV 가드 안에서만 실행해야 한다.');
+assert.ok(quizPreviewIndex > quizDevGuardIndex, 'DEV 가드 안에서 previewQuizSubmission을 await해야 한다.');
+assert.ok(quizTransactionIndex > quizPreviewIndex, '서버 퀴즈 preview를 기다린 뒤 기존 transaction을 실행해야 한다.');
+assert.match(
+    quizCard.slice(quizPreviewIndex, quizTransactionIndex),
+    /previewQuizSubmission\([\s\S]*\{\s*timeoutMs:\s*4000\s*\}\)/,
+    '퀴즈 shadow preview는 4초 제한을 사용해야 한다.',
+);
+const quizShadowPreparation = quizCard.slice(quizDevGuardIndex, quizTransactionIndex);
+assert.match(
+    quizShadowPreparation,
+    /try\s*\{[\s\S]*await previewQuizSubmission\([\s\S]*\}\s*catch(?:\s*\([^)]*\))?\s*\{[\s\S]*\}/,
+    '퀴즈 preview 실패는 catch되어 기존 transaction을 막지 않아야 한다.',
+);
+assert.doesNotMatch(
+    quizShadowPreparation.match(/catch(?:\s*\([^)]*\))?\s*\{([\s\S]*?)\}/)?.[1] || '',
+    /\b(?:throw|return)\b|compareQuizSubmissionShadow\s*\(|console\.(?:info|debug|warn|error)\s*\(/,
+    '퀴즈 preview 실패 시 흐름을 중단하거나 허위 비교 로그를 남기면 안 된다.',
+);
+assert.match(
+    quizCard,
+    /if\s*\(\s*import\.meta\.env\.DEV\s*&&\s*quizShadowPreview\?\.result\s*\)\s*\{[\s\S]*compareQuizSubmissionShadow\s*\(/,
+    '성공한 서버 result가 있을 때만 퀴즈 결과를 비교해야 한다.',
+);
+const quizComparisonLog = quizCard.match(/console\.(?:info|debug|warn)\(\s*['"]\[quiz-shadow\]['"]\s*,\s*\{([\s\S]*?)\}\s*\)/);
+assert.ok(quizComparisonLog, '퀴즈 shadow 비교 결과는 [quiz-shadow]와 제한된 요약 객체로 기록해야 한다.');
+const quizLoggedKeys = Array.from(
+    quizComparisonLog[1].matchAll(/\b(match|serverStatus|clientStatus|mismatchKeys|progressKey|quizKey)\b\s*(?=[:,])/g),
+    match => match[1],
+);
+assert.deepEqual(
+    [...new Set(quizLoggedKeys)].sort(),
+    ['match', 'serverStatus', 'clientStatus', 'mismatchKeys', 'progressKey', 'quizKey'].sort(),
+    '퀴즈 shadow 로그는 비교 상태와 문항 위치 식별자 6개 키만 기록해야 한다.',
+);
+assert.doesNotMatch(
+    quizComparisonLog[1],
+    /\b(?:serverResult|clientResult|answerIndex|selectedIndex|entry|reward|talent|currentUser|rosterTalentByOrgId)\b/,
+    '퀴즈 shadow 로그에 정답 위치, 선택값, 보상/잔액, 사용자 상태를 넣으면 안 된다.',
+);
+
+const { compareQuizSubmissionShadow } = await import('../src/utils/quizSubmissionShadow.js');
+const readyQuizEntry = {
+    attempts: 1,
+    solved: true,
+    skipped: false,
+    quizKey: 'genesis-1-1',
+    reward: 10,
+    updatedDate: 'Tue Jul 14 2026',
+};
+const readyQuizServer = {
+    status: 'ready',
+    nextAttempts: 1,
+    isCorrect: true,
+    reward: 10,
+    entry: readyQuizEntry,
+};
+const readyQuizClient = {
+    alreadyDone: false,
+    attempts: 1,
+    solved: true,
+    skipped: false,
+    reward: 10,
+    entry: { ...readyQuizEntry },
+};
+assert.deepEqual(compareQuizSubmissionShadow(readyQuizServer, readyQuizClient), {
+    match: true,
+    serverStatus: 'ready',
+    clientStatus: 'ready',
+    mismatchKeys: [],
+});
+const quizRewardMismatch = compareQuizSubmissionShadow(
+    readyQuizServer,
+    { ...readyQuizClient, reward: 5 },
+);
+assert.equal(quizRewardMismatch.match, false);
+assert.deepEqual(quizRewardMismatch.mismatchKeys, ['reward']);
+assert.deepEqual(compareQuizSubmissionShadow(
+    { status: 'alreadyDone', attempts: 2, solved: false, skipped: false, reward: 0 },
+    { alreadyDone: true, attempts: 2, solved: false, skipped: false, reward: 0 },
+), {
+    match: true,
+    serverStatus: 'alreadyDone',
+    clientStatus: 'alreadyDone',
+    mismatchKeys: [],
+});
+assert.deepEqual(compareQuizSubmissionShadow(
+    { status: 'invalidQuiz' },
+    readyQuizClient,
+), {
+    match: false,
+    serverStatus: 'invalidQuiz',
+    clientStatus: 'ready',
+    mismatchKeys: ['status'],
+});
+assert.deepEqual(
+    Object.keys(compareQuizSubmissionShadow(readyQuizServer, readyQuizClient)).sort(),
+    ['match', 'serverStatus', 'clientStatus', 'mismatchKeys'].sort(),
+    '퀴즈 comparator는 실제 정답/보상값을 반환하지 않아야 한다.',
 );
 
 const sharedContracts = {
@@ -289,14 +479,8 @@ for (const [path, exports] of Object.entries(sharedContracts)) {
     for (const name of exports) assert.match(source, new RegExp(`export (?:const|class|function|type|interface|async function) ${name}\\b`));
 }
 
-const corePath = 'supabase/functions/platform-api/core.ts';
-const indexPath = 'supabase/functions/platform-api/index.ts';
 const readCorePath = 'supabase/functions/platform-api/readCore.ts';
-assert.equal(exists(corePath), true, `${corePath}가 필요하다.`);
-assert.equal(exists(indexPath), true, `${indexPath}가 필요하다.`);
 assert.equal(exists(readCorePath), true, `${readCorePath}가 필요하다.`);
-const serverCore = read(corePath);
-const serverIndex = read(indexPath);
 const readCore = read(readCorePath);
 
 assert.doesNotMatch(
