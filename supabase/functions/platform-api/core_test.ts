@@ -1,0 +1,80 @@
+import {
+  isRequestId,
+  parsePlatformApiRequest,
+  PlatformApiRequestError,
+} from "./core.ts";
+
+const assert = (condition: unknown, message: string) => {
+  if (!condition) throw new Error(message);
+};
+
+const assertRequestError = (
+  fn: () => unknown,
+  expectedCode: PlatformApiRequestError["code"],
+) => {
+  try {
+    fn();
+    throw new Error(`expected ${expectedCode}`);
+  } catch (error) {
+    if (!(error instanceof PlatformApiRequestError)) {
+      throw new Error("expected PlatformApiRequestError");
+    }
+    assert(
+      error.code === expectedCode,
+      `expected ${expectedCode}, received ${error.code}`,
+    );
+  }
+};
+
+Deno.test("requestId는 표준 UUID만 허용한다", () => {
+  assert(
+    isRequestId("123e4567-e89b-12d3-a456-426614174000"),
+    "valid UUID rejected",
+  );
+  assert(
+    isRequestId("018f5f3e-94c0-7ad2-a12e-4c9df184ba4f"),
+    "valid UUID v7 rejected",
+  );
+  assert(
+    !isRequestId("123e4567e89b12d3a456426614174000"),
+    "UUID without hyphens accepted",
+  );
+  assert(
+    !isRequestId("00000000-0000-0000-0000-000000000000"),
+    "nil UUID accepted",
+  );
+  assert(!isRequestId("not-a-uuid"), "invalid UUID accepted");
+});
+
+Deno.test("preflight 요청을 정규화한다", () => {
+  const parsed = parsePlatformApiRequest({
+    action: "preflight",
+    requestId: "123e4567-e89b-12d3-a456-426614174000",
+    ignored: true,
+  });
+  assert(parsed.action === "preflight", "action mismatch");
+  assert(
+    parsed.requestId === "123e4567-e89b-12d3-a456-426614174000",
+    "requestId mismatch",
+  );
+  assert(!("ignored" in parsed), "unknown field leaked into parsed request");
+});
+
+Deno.test("알 수 없는 action은 거부한다", () => {
+  assertRequestError(
+    () =>
+      parsePlatformApiRequest({
+        action: "award-reading",
+        requestId: "123e4567-e89b-12d3-a456-426614174000",
+      }),
+    "INVALID_ACTION",
+  );
+});
+
+Deno.test("본문과 requestId 오류를 구분한다", () => {
+  assertRequestError(() => parsePlatformApiRequest(null), "INVALID_BODY");
+  assertRequestError(
+    () => parsePlatformApiRequest({ action: "preflight", requestId: "bad" }),
+    "INVALID_REQUEST_ID",
+  );
+});

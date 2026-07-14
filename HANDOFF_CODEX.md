@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: 라운드 24 T122 착수 가능** (서버 권위 이관). 라운드 23과 중복 환불 긴급 수정은 커밋 `24a311e`로 main push, Firestore rules, GitHub Pages 배포까지 완료했다.
+> **현재 활성 작업: 라운드 24 T123 착수 가능** (서버 권위 이관). T122 공통 서버 기반·shadow API는 구현/검증 후 Supabase Edge에 배포했다. 기존 UI와 Firestore 쓰기에는 아직 연결하지 않았다.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-14 | T122 공통 서버 기반 + shadow API | `supabase/functions/_shared/*`, `supabase/functions/platform-api/*`, `src/utils/platformApi.js`, `src/data/constants.js`, `.env.example`, `scripts/validate-round24.mjs`, `package.json`, `HANDOFF_CODEX.md` | 하위 모델 3개가 서버 공통 모듈, preflight 전용 API, 클라이언트 브리지를 분리 구현하고 Codex가 통합 보안 리뷰. UUID 폴백·오류 내부정보 차단·역할 정규화 보강. Deno 15 tests, type/fmt, 전체 validate, 기존/쉬운 퀴즈, build, diff 검사 통과. `platform-api --no-verify-jwt` Edge 배포 후 OPTIONS 204·미인증/잘못된 토큰 401·잘못된 origin 403 확인. Firestore write 없음. |
 | 2026-07-14 | 라운드 23·긴급 수정 운영 배포 | `HANDOFF_CODEX.md` | 사용자 지시로 기존 금지 게이트 해제. `24a311e` main push, Firestore rules 컴파일·배포, `npm run deploy` Published 완료. 공개 주소 HTTP 200, 캐시 우회 HTML과 새 JS `index-C3RZWRw9.js` HTTP 200 확인. T122 착수 게이트 해제. |
 | 2026-07-14 | 라운드 24 설계 + 중복 환불 긴급 차단 | `HANDOFF_CODEX.md`, `src/components/ChurchAdminView.jsx`, `firestore.rules`, `scripts/validate-round18.mjs` | 하위 모델 3개가 보상/상점, 가입/디렉토리/통계, 매일 영상을 독립 감사하고 Codex가 교차 설계. 기존 Supabase Edge 기반의 T122~T127 무중단 서버 권위 이관안을 확정. 감사 중 발견한 pending 구매의 중복 취소·환불과 잘못된 상태 역전은 즉시 transaction 최신 상태 검사 + rules `pending → delivered/cancelled` 전이 제한으로 차단. 계약 검사·빌드·diff 검사 통과. |
 | 2026-07-14 | T121 신약 쉬운 퀴즈 최종 확정 | `review/nt_easy_quiz_candidates_*.json`, `src/data/quizNtEasy/*.json`, `HANDOFF_CODEX.md` | 사용자 표본 검수 후 최종 승인. 승격 전 후보 검사 365일·1,825문항 오류/경고 0, 앱 데이터 재승격 및 `reviewStatus` 제거 확인. 전체 validate·기존 퀴즈·쉬운 퀴즈·프로덕션 빌드·diff 검사 통과. 저장소 규칙에 따라 커밋·배포·push는 실행하지 않음. |
@@ -331,6 +332,12 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-14 라운드 24 T122 완료:
+- 사용자 지시에 따라 Codex가 계약을 설계하고 하위 모델 3개가 충돌 없는 소유 영역으로 `_shared`, `platform-api`, 클라이언트 bridge/검증기를 구현했다. Codex 통합 리뷰에서 UUID 비표준 폴백, 5xx 내부 details 노출, raw role 반환, Deno 포맷 불일치를 발견해 담당 모델에 재수정시켰다.
+- 최종 서버 Deno 테스트 15건, `deno check`, `deno fmt --check`, `npm run validate`(round24 포함), `validate:quiz`, `validate:nt-easy`, build, diff 검사 전부 통과.
+- Supabase CLI가 로컬 설치되지 않아 `npx supabase@latest functions deploy platform-api --no-verify-jwt`로 배포했다. Firebase token은 Supabase gateway가 아니라 함수 내부에서 직접 검증한다. 운영 URL에서 OPTIONS 204, no-auth 401, invalid-token 401, bad-origin 403 확인. 실제 로그인 token의 200 preflight는 기존 화면에 아직 연결하지 않았으므로 T123 초기 smoke에서 확인한다.
+- `.env.local`에 운영 platform-api URL을 추가했다(ignored). T122 서버는 `preflight`만 허용하고 Firestore write를 호출하지 않는다. 다음 작업은 T123이며 읽기/퀴즈를 한 번에 바꾸지 말고 서버 계산 dry-run과 읽기 완료부터 순차 이관할 것.
 
 2026-07-14 라운드 24 설계 및 긴급 보강:
 - 사용자 지시에 따라 하위 모델 3개에 ① 읽기/퀴즈/상점 ② 입장코드/디렉토리/통계 ③ dailyVideos를 독립 감사시켰다. 메인 에이전트가 실제 호출 체인·rules·운영 서버 인프라를 교차 확인했다.
@@ -1881,10 +1888,10 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 5. **오래된 앱 보호**: 서버 전환 앱이 안정화되기 전까지 기존 직접 쓰기 규칙을 유지한다. 차단 시점은 최신 앱 7일 안정화, 서버 성공률 목표 충족, 구버전 직접 쓰기 0건을 확인한 뒤 사용자 승인으로 진행한다.
 6. **민감값 응답 금지**: 입장코드 평문/해시와 YouTube API 키는 서버 secret/private 문서에만 둔다. 공개 디렉토리는 최종적으로 `{id,name,hidden}`만 제공한다.
 
-### [ ] T122. 공통 서버 기반 + 계약 검사
+### [x] T122. 공통 서버 기반 + 계약 검사
 
 - `supabase/functions/_shared`에 허용 origin, JSON 응답, Firebase ID token 검증(익명 허용 옵션), 서비스 계정 access token, Firestore REST 읽기/원자 commit, 역할 검증, KST 날짜, 표준 오류 코드를 분리한다.
-- `platform-api`는 인증이 필요한 변경 작업의 action router로, 가입 전 코드 확인은 별도 `join-code` 공개 함수로 분리한다. 공개 함수에는 IP 원문을 남기지 않는 해시 기반 속도 제한과 교회별 실패 제한을 둔다.
+- `platform-api`는 인증이 필요한 변경 작업의 action router로 시작한다. T122에서는 무쓰기 `preflight`만 배포했다. 가입 전 코드 확인용 `join-code` 공개 함수와 IP 원문을 남기지 않는 속도 제한은 T125에서 별도 구현한다.
 - 클라이언트 공용 `platformApi`는 현재 Firebase ID token을 Authorization에 붙이고 timeout·표준 오류·요청 ID를 처리한다. `.env.example`에 URL만 추가하고 실제 URL/secret은 커밋하지 않는다.
 - 순수 함수 단위 테스트: token/role 가드, KST 오전 3시 경계, 숫자/문자열 Firestore 변환, 멱등키, 허용 origin, 재시도 가능한 오류 분류. `npm run validate:round24`로 묶는다.
 

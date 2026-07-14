@@ -17,6 +17,7 @@ export const KAKAO_CHANNEL_URL = "https://pf.kakao.com/_xdJrRX/chat";
 export const KAKAO_REST_KEY = import.meta.env?.VITE_KAKAO_REST_KEY || '';
 export const KAKAO_AUTH_URL = import.meta.env?.VITE_KAKAO_AUTH_URL || '';
 export const ADMIN_SET_PASSWORD_URL = import.meta.env?.VITE_ADMIN_SET_PASSWORD_URL || '';
+export const PLATFORM_API_URL = import.meta.env?.VITE_PLATFORM_API_URL || '';
 export const ADMIN_ENTRY_SESSION_KEY = 'b114_admin_entry_v1';
 
 // 무소속(개인) 성도 가상 교회 — 문서 ID를 클라이언트 상수로 고정한다.
