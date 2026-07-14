@@ -20,7 +20,7 @@ assert.match(auth, /buildKakaoAuthorizeUrl/);
 assert.match(auth, /signInWithCustomToken/);
 assert.match(auth, /isValidKakaoState/);
 assert.doesNotMatch(auth, /OAuthProvider\('oidc\.kakao'\)/);
-assert.match(auth, /openSocialOnboarding\(cred\.user, 'google\.com'\)/);
+assert.match(auth, /openSocialOnboarding\(cred\.user, 'google\.com', \{\}, signupDraft\)/);
 assert.match(onboarding, /1단계 \/ 3단계/);
 assert.match(onboarding, /2단계 \/ 3단계/);
 assert.match(onboarding, /3단계 \/ 3단계/);

@@ -28,12 +28,15 @@ import { beginInteractiveAuthFlow, endInteractiveAuthFlow } from '../utils/authF
 import { loadUserExtraOrgs } from '../utils/roster';
 import { updateRosterTalents } from '../utils/talentWallet';
 import { getPendingPersonalMigration } from '../utils/personalAccountMigration';
+import { buildSignupConsentSnapshot, buildSignupConsentSummary } from '../utils/signupConsent';
+import { writeSignupConsent } from '../utils/signupConsentStore';
 
 const GOOGLE_ADMIN_ROLES = new Set(['churchAdmin', 'platformAdmin', 'superAdmin']);
 const GOOGLE_ADMIN_NOT_FOUND_MESSAGE = "이 구글 계정으로 등록된 관리자가 없습니다. 기존 관리자는 이메일·비밀번호로 로그인하시고, 새 교회는 '교회 등록'을 이용하세요.";
 const GOOGLE_ADMIN_SIGNUP_FLOW_NAME = 'googleAdminSignup';
 const GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE = '이미 등록된 계정입니다. 공동체 관리자 로그인에서 구글로 로그인해주세요.';
 const KAKAO_GOOGLE_AUTH_MESSAGE = "카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 우측 하단 ⋯ 메뉴에서 '다른 브라우저로 열기'를 눌러주세요.";
+const KAKAO_SIGNUP_DRAFT_KEY = 'b114_kakao_signup_consent_v1';
 
 const beginLoginTiming = label => import.meta.env.DEV && typeof performance !== 'undefined'
     ? { label, startedAt: performance.now() }
@@ -143,7 +146,7 @@ export const useAuth = ({
         return !guest.migratedAt && guest.readDates.length > 0;
     };
 
-    const buildNewMember = ({ name, birthdate, email, churchId, churchName }) => {
+    const buildNewMember = ({ name, birthdate, email, churchId, churchName, signupConsent }) => {
         const guest = getGuestState();
         const migrateGuest = shouldMigrateGuestState();
         return {
@@ -166,13 +169,15 @@ export const useAuth = ({
             planId: isPlanIdAllowedForUser(guest.planId, null) ? guest.planId : '1year_revised',
             departmentId: null, departmentName: null, subgroupId: null,
             isDeleted: false, deletedAt: null, deletedBy: null,
+            consentSummary: buildSignupConsentSummary(signupConsent),
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
         };
     };
 
-    const finishMemberSignup = async ({ user, newUser, churchId, credentials }) => {
+    const finishMemberSignup = async ({ user, newUser, churchId, credentials, signupConsent }) => {
         setErrorMsg('');
+        await writeSignupConsent(user.uid, signupConsent);
         if (credentials) {
             try {
                 await writeMemberCredentials(user.uid, credentials);
@@ -197,9 +202,9 @@ export const useAuth = ({
         setView('plan_type_select');
     };
 
-    const buildPersonalUser = ({ name, birthdate = null, email, google = false }) => {
+    const buildPersonalUser = ({ name, birthdate = null, email, google = false, signupConsent }) => {
         const user = {
-            ...buildNewMember({ name, birthdate, email, churchId: null, churchName: null }),
+            ...buildNewMember({ name, birthdate, email, churchId: null, churchName: null, signupConsent }),
             accountType: 'personal',
             primaryOrgId: null,
         };
@@ -207,7 +212,8 @@ export const useAuth = ({
         return user;
     };
 
-    const finishPersonalSignup = async ({ user, newUser, credentials }) => {
+    const finishPersonalSignup = async ({ user, newUser, credentials, signupConsent }) => {
+        await writeSignupConsent(user.uid, signupConsent);
         if (credentials) {
             await writeMemberCredentials(user.uid, credentials);
         }
@@ -268,7 +274,7 @@ export const useAuth = ({
         finishLoginTiming(loginTiming, targetView);
     };
 
-    const openSocialOnboarding = (firebaseUser, provider, profile = {}) => {
+    const openSocialOnboarding = (firebaseUser, provider, profile = {}, signupDraft = null) => {
         if (!firebaseUser?.uid || auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
         socialProviderRef.current = provider;
         setCurrentUser(null);
@@ -279,12 +285,14 @@ export const useAuth = ({
             role: 'member',
             accountType: 'personal',
             socialProvider: provider,
+            signupBirthdate: signupDraft?.birthdate || null,
+            signupConsents: signupDraft?.consents || null,
             extraOrgs: [],
         });
         setView('social_onboarding');
     };
 
-    const finishSocialStart = async (cred, provider, profile = {}, loginTiming = null) => {
+    const finishSocialStart = async (cred, provider, profile = {}, loginTiming = null, signupDraft = null) => {
         const firebaseUser = cred?.user;
         if (!firebaseUser?.uid || auth.currentUser?.uid !== firebaseUser.uid) throw new Error('INVALID_SOCIAL_PROFILE');
         const doc = await db.collection('users').doc(firebaseUser.uid).get();
@@ -293,18 +301,20 @@ export const useAuth = ({
             await openExistingSocialUser(firebaseUser, doc, loginTiming);
             return;
         }
-        openSocialOnboarding(firebaseUser, provider, profile);
+        openSocialOnboarding(firebaseUser, provider, profile, signupDraft);
     };
 
-    const handlePersonalSignup = async ({ name, birthdate, phone4, password }) => {
+    const handlePersonalSignup = async ({ name, birthdate, phone4, password, consents }) => {
         const loginTiming = beginLoginTiming('개인 계정 비밀번호');
         if (passwordPersonalSignupRef.current) return;
         passwordPersonalSignupRef.current = true;
         setErrorMsg('');
         const normalizedPhone4 = String(phone4 || '').trim();
         const email = makePseudoEmail(name, makeUnaffiliatedIdentity(birthdate, normalizedPhone4));
+        let signupConsent;
         let completed = false;
         try {
+            signupConsent = buildSignupConsentSnapshot({ birthdate, consents, audience: 'personal' }, { source: 'manual_personal_signup' });
             beginInteractiveAuthFlow('passwordPersonalSignup');
             await authReady;
             let cred;
@@ -321,16 +331,18 @@ export const useAuth = ({
                 }
                 await finishPersonalSignup({
                     user: cred.user,
-                    newUser: buildPersonalUser({ name, birthdate, email }),
+                    newUser: buildPersonalUser({ name, birthdate, email, signupConsent }),
                     credentials: { password, phone4: normalizedPhone4 },
+                    signupConsent,
                 });
                 completed = true;
                 return;
             }
             await finishPersonalSignup({
                 user: cred.user,
-                newUser: buildPersonalUser({ name, birthdate, email }),
+                newUser: buildPersonalUser({ name, birthdate, email, signupConsent }),
                 credentials: { password, phone4: normalizedPhone4 },
+                signupConsent,
             });
             completed = true;
         } catch (error) {
@@ -346,7 +358,7 @@ export const useAuth = ({
         }
     };
 
-    const handleGooglePersonalSignup = async () => {
+    const handleGooglePersonalSignup = async (signupDraft = null) => {
         setErrorMsg('');
         if (personalSignupRef.current) return personalSignupRef.current;
         const request = (async () => {
@@ -368,7 +380,14 @@ export const useAuth = ({
                     await openExistingSocialUser(cred.user, existingDoc, loginTiming);
                     return;
                 }
-                openSocialOnboarding(cred.user, 'google.com');
+                if (signupDraft?.birthdate || signupDraft?.consents) {
+                    buildSignupConsentSnapshot({
+                        birthdate: signupDraft?.birthdate,
+                        consents: signupDraft?.consents,
+                        audience: 'personal',
+                    }, { source: 'google_personal_signup' });
+                }
+                openSocialOnboarding(cred.user, 'google.com', {}, signupDraft);
             } catch (error) {
                 if (error?.message === 'NOT_PERSONAL_ACCOUNT') {
                     setErrorMsg('이미 다른 방식으로 등록된 계정입니다. 기존 로그인 방법을 이용해주세요.');
@@ -388,13 +407,23 @@ export const useAuth = ({
         return request;
     };
 
-    const handleKakaoStart = async () => {
+    const handleKakaoStart = async (signupDraft = null) => {
         setErrorMsg('');
         if (kakaoStartRef.current) return kakaoStartRef.current;
         const request = (async () => {
             const flowName = 'kakaoPersonalStart';
             beginInteractiveAuthFlow(flowName);
             try {
+                if (signupDraft?.birthdate || signupDraft?.consents) {
+                    buildSignupConsentSnapshot({
+                        birthdate: signupDraft?.birthdate,
+                        consents: signupDraft?.consents,
+                        audience: 'personal',
+                    }, { source: 'kakao_personal_signup' });
+                    sessionStorage.setItem(KAKAO_SIGNUP_DRAFT_KEY, JSON.stringify(signupDraft));
+                } else {
+                    sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
+                }
                 const state = createKakaoState();
                 sessionStorage.setItem(KAKAO_STATE_KEY, state);
                 sessionStorage.setItem(KAKAO_RETURNING_KEY, 'pending');
@@ -403,6 +432,7 @@ export const useAuth = ({
                 console.error('카카오 로그인 시작 실패:', error);
                 sessionStorage.removeItem(KAKAO_STATE_KEY);
                 sessionStorage.removeItem(KAKAO_RETURNING_KEY);
+                sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
                 if (error?.message === 'KAKAO_REST_KEY_MISSING') setErrorMsg('카카오 로그인 설정이 아직 완료되지 않았습니다. 관리자에게 문의하세요.');
                 else setErrorMsg('카카오 로그인을 시작하지 못했습니다. 잠시 후 다시 시도해주세요.');
                 endInteractiveAuthFlow(flowName);
@@ -458,18 +488,25 @@ export const useAuth = ({
             sessionStorage.removeItem(KAKAO_STATE_KEY);
             sessionStorage.removeItem(KAKAO_RETURNING_KEY);
             sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
+            sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
             setSocialLinkNotice({ type: 'error', message: '카카오 연결을 시작하지 못했습니다. 잠시 후 다시 시도해주세요.' });
         }
     };
 
-    const handleSocialOnboardingComplete = async ({ name, organization, planId }) => {
+    const handleSocialOnboardingComplete = async ({ name, organization, planId, birthdate, consents }) => {
         const socialUser = auth.currentUser;
         if (!socialUser?.uid || !name?.trim() || !organization?.orgId || !planId) throw new Error('온보딩 정보를 확인할 수 없습니다.');
+        const signupConsent = buildSignupConsentSnapshot({
+            birthdate,
+            consents,
+            audience: 'personal',
+        }, { source: `${socialProviderRef.current || 'social'}_personal_signup` });
         const userRef = db.collection('users').doc(socialUser.uid);
+        const consentRef = userRef.collection('private').doc('consent');
         const rosterRef = db.collection('churches').doc(organization.orgId).collection('roster').doc(socialUser.uid);
         const providerId = (socialUser.providerData || [])[0]?.providerId || socialProviderRef.current || 'social';
         const newUser = {
-            ...buildPersonalUser({ name: name.trim(), email: socialUser.email || null, google: true }),
+            ...buildPersonalUser({ name: name.trim(), birthdate, email: socialUser.email || null, google: true, signupConsent }),
             planId,
             primaryOrgId: organization.orgId,
             authProvider: providerId,
@@ -495,6 +532,10 @@ export const useAuth = ({
                 joinedAt: now, updatedAt: now,
             });
             transaction.set(userRef, newUser);
+            transaction.set(consentRef, {
+                ...signupConsent,
+                recordedAt: now,
+            });
         });
         db.collection('settings').doc('platformStats').set({
             total_readers: firebase.firestore.FieldValue.increment(1),
@@ -521,11 +562,18 @@ export const useAuth = ({
         const expectedState = sessionStorage.getItem(KAKAO_STATE_KEY);
         const returnStatus = sessionStorage.getItem(KAKAO_RETURNING_KEY);
         const isLinkReturn = sessionStorage.getItem(KAKAO_LINK_RETURNING_KEY) === 'pending';
+        let kakaoSignupDraft = null;
+        try {
+            kakaoSignupDraft = JSON.parse(sessionStorage.getItem(KAKAO_SIGNUP_DRAFT_KEY) || 'null');
+        } catch {
+            sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
+        }
         clearKakaoCallbackUrl();
         if (callback.error) {
             sessionStorage.removeItem(KAKAO_STATE_KEY);
             sessionStorage.removeItem(KAKAO_RETURNING_KEY);
             sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
+            sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
             const message = callback.error === 'access_denied' ? '카카오 연결이 취소되었습니다.' : '카카오 연결을 완료하지 못했습니다.';
             if (isLinkReturn) setSocialLinkNotice({ type: 'error', message });
             else if (callback.error === 'access_denied') setErrorMsg('카카오 로그인이 취소되었습니다.');
@@ -566,7 +614,7 @@ export const useAuth = ({
             const cred = await auth.signInWithCustomToken(profile.token);
             if (!alive) return;
             try {
-                await finishSocialStart(cred, 'kakao.com', profile, loginTiming);
+                await finishSocialStart(cred, 'kakao.com', profile, loginTiming, kakaoSignupDraft);
             } catch (error) {
                 console.error('카카오 커스텀 토큰 처리 실패:', error);
                 if (alive) setErrorMsg('카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요.');
@@ -583,6 +631,7 @@ export const useAuth = ({
             sessionStorage.removeItem(KAKAO_STATE_KEY);
             sessionStorage.removeItem(KAKAO_RETURNING_KEY);
             sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
+            sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
             endInteractiveAuthFlow('kakaoCustomTokenResult');
         });
         return () => { alive = false; };
@@ -910,10 +959,15 @@ export const useAuth = ({
     // (firestore.rules: churches read는 isSignedIn() 필요). 대신 공개된
     // settings/churchDirectory 의 codeHash로 입장코드를 클라이언트에서 검증한다.
     // → Firebase Auth 계정 생성 전에 실패시키므로 가입 실패 시 롤백이 불필요하다.
-    const handleMemberSignup = async ({ name, birthdate, password, churchId, churchCode, phone4 }) => {
+    const handleMemberSignup = async ({ name, birthdate, password, churchId, churchCode, phone4, consents }) => {
         setErrorMsg('');
         try {
             await authReady;
+            const signupConsent = buildSignupConsentSnapshot({
+                birthdate,
+                consents,
+                audience: 'member',
+            }, { source: 'church_member_signup' });
             const isUnaffiliated = churchId === UNAFFILIATED_CHURCH_ID;
             const normalizedPhone4 = String(phone4 || '').trim();
             let churchName = UNAFFILIATED_CHURCH_NAME;
@@ -943,14 +997,14 @@ export const useAuth = ({
                 else setErrorMsg('가입 실패. 잠시 후 다시 시도해주세요.');
                 return null;
             });
-            const newUser = buildNewMember({ name, birthdate, email, churchId, churchName });
+            const newUser = buildNewMember({ name, birthdate, email, churchId, churchName, signupConsent });
             const credentials = {
                 password,
                 ...(isUnaffiliated ? { phone4: normalizedPhone4 } : {}),
             };
 
             if (cred) {
-                await finishMemberSignup({ user: cred.user, newUser, churchId, credentials });
+                await finishMemberSignup({ user: cred.user, newUser, churchId, credentials, signupConsent });
                 return;
             }
 
@@ -967,14 +1021,14 @@ export const useAuth = ({
             const existingDoc = await db.collection('users').doc(orphanCred.user.uid).get();
             if (existingDoc.exists) {
                 if (existingDoc.data().isDeleted) {
-                    await finishMemberSignup({ user: orphanCred.user, newUser, churchId, credentials });
+                    await finishMemberSignup({ user: orphanCred.user, newUser, churchId, credentials, signupConsent });
                     return;
                 }
                 setErrorMsg('이미 가입된 이름+생년월일입니다. 로그인해주세요.');
                 return;
             }
 
-            await finishMemberSignup({ user: orphanCred.user, newUser, churchId });
+            await finishMemberSignup({ user: orphanCred.user, newUser, churchId, signupConsent });
         } catch (err) {
             console.error(err);
             setErrorMsg('가입 처리 중 오류가 발생했습니다.');
@@ -982,7 +1036,10 @@ export const useAuth = ({
     };
 
     // ── 교회 관리자 가입 ──
-    const handleChurchAdminSignup = async ({ name, email, password, churchName, pastorName, denomination, churchCode, departments, googleProfile = null }) => {
+    const handleChurchAdminSignup = async ({
+        name, email, password, churchName, pastorName, denomination, churchCode, departments,
+        googleProfile = null, ageConfirmed14Plus = false, consents,
+    }) => {
         setErrorMsg('');
         const isGoogleSignup = Boolean(googleProfile);
         if (isGoogleSignup && googleAdminSignupSubmittingRef.current) {
@@ -1009,6 +1066,12 @@ export const useAuth = ({
 
         try {
             await authReady;
+            const signupConsent = buildSignupConsentSnapshot({
+                birthdate: null,
+                consents,
+                audience: 'communityAdmin',
+                ageConfirmed14Plus,
+            }, { source: googleProfile ? 'google_community_admin_signup' : 'email_community_admin_signup' });
 
             if (isGoogleSignup) {
                 const profileUid = String(googleProfile?.uid || '').trim();
@@ -1020,6 +1083,7 @@ export const useAuth = ({
                 }
 
                 const userRef = db.collection('users').doc(profileUid);
+                const consentRef = userRef.collection('private').doc('consent');
                 const churchRef = db.collection('churches').doc();
                 const churchAdminRef = churchRef.collection('private').doc('admin');
                 const directoryRef = db.collection('settings').doc('churchDirectory');
@@ -1045,6 +1109,7 @@ export const useAuth = ({
                         currentDay: 1, streak: 0, score: 0, talent: 0, talentMigrated: true, readCount: 1,
                         lastReadDate: null, gender: 'male', planId: '1year_revised',
                         departmentId: null, departmentName: null, subgroupId: null,
+                        consentSummary: buildSignupConsentSummary(signupConsent),
                         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                     };
@@ -1056,6 +1121,10 @@ export const useAuth = ({
                         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     });
                     transaction.set(userRef, newUser);
+                    transaction.set(consentRef, {
+                        ...signupConsent,
+                        recordedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    });
                     transaction.set(churchAdminRef, {
                         adminUid: googleUser.uid,
                         adminEmail: resolvedEmail,
@@ -1132,9 +1201,11 @@ export const useAuth = ({
                 currentDay: 1, streak: 0, score: 0, talent: 0, talentMigrated: true, readCount: 1,
                 lastReadDate: null, gender: 'male', planId: '1year_revised',
                 departmentId: null, departmentName: null, subgroupId: null,
+                consentSummary: buildSignupConsentSummary(signupConsent),
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             };
+            await writeSignupConsent(cred.user.uid, signupConsent);
             await db.collection('users').doc(cred.user.uid).set(newUser);
             await churchRef.collection('private').doc('admin').set({
                 adminUid: cred.user.uid,

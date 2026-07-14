@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-14 | 회원가입 필수 동의·어린이 보호자 절차 | `src/{components/LoginView.jsx,components/SocialOnboardingView.jsx,components/policies/*,data/servicePolicies.js,hooks/useAuth.js,utils/signupConsent*.js}`, `scripts/validate-{service-policies,signup-consent}.mjs`, `scripts/validate-round11.mjs`, `package.json`, `HANDOFF_CODEX.md` | 회원·개인·소셜·공동체 관리자 신규 가입에 약관·개인정보·민감정보·공동체 운영정책 동의를 필수화하고 버전·시각을 private consent 문서에 기록. 만 14세 미만은 보호자 성명·관계·직접 동의가 없으면 진행 불가, 성인은 보호자 입력 미노출. 공동체 등록에는 복음주의 기준과 주요 교단 공식 결의의 이단·사이비 제한을 명시하고 통지·소명 기준을 정책 전문에 포함. 전체 validate/build/diff 및 로컬 브라우저 성인·아동·관리자 화면·정책 전문·오류 로그 검수 통과. 실제 계정 생성은 하지 않음. |
 | 2026-07-14 | 활동 공동체 전체 화면 전환 | `src/{App.jsx,hooks/useBibleLogic.js,hooks/useDepartment.js,components/DashboardView.jsx,components/dashboard/CommunityMembershipCard.jsx,components/modals/RankingModal.jsx}`, `scripts/validate-round{11,18}.mjs`, `HANDOFF_CODEX.md` | 공동체별 별도 순위 미리보기를 제거하고 카드 전체 클릭을 세션 활동 공간 전환에 연결. 기본 공동체는 로그인 기본값·탈퇴 보호로만 유지. 선택 공동체 기준으로 이름·구성원·조직·공지·카카오·지도·랭킹·달란트·상점을 다시 로드하고 본문·진도·퀴즈·묵상은 공통 유지. 빠른 전환 stale 응답과 이전 카카오 링크 잔존 방어. 전체 validate/build/diff 통과. 로컬 브라우저는 게스트·로그아웃 세션뿐이라 실제 다중 공동체 계정 클릭은 배포 전 사용자 확인 필요. |
 | 2026-07-14 | 네이버·Google 앱 TTS 안내 | `src/utils/ttsAvailability.js`, `src/hooks/useTTS.js`, `src/{App.jsx,components/DashboardView.jsx,components/GuestReaderView.jsx,components/dashboard/BibleReader.jsx}`, `scripts/validate-round15.mjs`, `HANDOFF_CODEX.md` | NAVER·Google 앱(GSA)에서는 TTS 컨트롤 대신 작은 안내문을 표시하고 본문 탭 낭독도 비활성화. 일반 Chrome·Safari TTS와 카카오 기존 안내는 유지. 안내 대상 WebView의 불완전한 음성 API 접근을 생략. Naver/GSA/Chrome/Safari/Kakao/Googlebot UA 계약, 회원·게스트 연결, 빌드·diff 검사 통과. 실기기 앱 화면은 배포 후 확인 필요. |
 | 2026-07-14 | T123d2 퀴즈 shadow API·비교 장치 | `supabase/functions/platform-api/{core,index}*`, `src/utils/{platformApi,quizSubmissionShadow}.js`, `src/components/dashboard/BibleQuizCard.jsx`, `scripts/validate-round24.mjs`, `HANDOFF_CODEX.md` | `previewQuizSubmission`이 서버 정답 인덱스로 위치·Day·문항·정답·보상을 계산하되 쓰기는 하지 않음. 응답에서 answerIndex·원본 index·잔액·조직정보 제외. 앱은 개발 환경에서만 기존 transaction 전에 최대 4초 호출하고 성공 결과만 실제 값 없이 비교. 통합 리뷰에서 거대 cycle의 앱/서버 검증 차이를 safe integer 제한으로 통일. Deno 40 tests/check/fmt, 전체 validate/build/diff 통과. Edge 배포 후 OPTIONS 204·미인증 401·입력 오류 400·잘못된 origin 403·잘못된 token 401·기존 읽기 보호 401 확인. 실제 로그인 `[quiz-shadow] match:true`는 남음. |
@@ -338,6 +339,12 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-14 회원가입 동의·아동 가입 보호:
+- 모든 신규 가입 경로에 이용약관, 개인정보처리, 종교·공동체 소속 민감정보, 공동체 공개·운영정책을 분리 동의로 적용했다. 사용자가 본 버전·동의 시각·대상·만 14세 미만 여부는 `users/{uid}/private/consent`에 저장하고, 같은 공동체에 공개될 수 있는 users 본문에는 보호자 이름 없는 요약만 둔다. 기존 회원의 일반 Google·Kakao 로그인은 새 가입 동의로 막지 않는다.
+- 만 14세 미만은 보호자 성명·관계·직접 동의가 모두 있어야 가입할 수 있다. 현재 무료 구조는 보호자의 진술 기록 방식이며 플랫폼 본인인증이나 법정대리인 자격 검증으로 표시하지 않는다. 향후 더 강한 법정대리인 확인이 필요하면 PASS·휴대폰 인증 등 외부 본인확인 수단을 별도 도입해야 한다.
+- 공동체 등록 화면은 복음주의 신앙 공동체만 가능하고 한국교회 주요 교단 공식 결의의 이단·사이비·참여 교류 금지 단체는 제한된다고 쉬운 문구로 안내한다. 전문에는 객관 자료 확인, 사전 통지, 소명 검토, 공동체 조치와 개인 계정 탈퇴의 구분을 넣었다.
+- 전체 `npm run validate`, 프로덕션 빌드, diff 검사가 통과했다. 로컬 브라우저에서 아동/성인 분기, 가입 버튼 잠금, 관리자 안내, 개인정보 전문, 콘솔 오류 0건을 확인했으며 실제 계정 생성은 데이터 변경 방지를 위해 하지 않았다.
 
 2026-07-14 활동 공동체 전체 화면 전환:
 - 사용자 결정: 여러 공동체는 순위만 따로 보는 필터가 아니라, 카드를 눌러 들어가 동일하게 성경을 읽고 활동하는 공간이다. 별도 `🏆 순위` 흐름은 제거하고 현재 활성 공동체의 일반 `전체보기`가 그 공동체 순위를 보여준다.

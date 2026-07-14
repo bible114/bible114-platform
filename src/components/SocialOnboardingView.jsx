@@ -2,14 +2,28 @@ import React, { useState } from 'react';
 import { PLAN_TYPES, getVisibleBibleVersions } from '../data/bible_options';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
 import { CommunityMembershipCard } from './dashboard';
+import { GuardianConsent, PolicyConsent } from './policies';
+import { createEmptyPolicyConsents } from '../data/servicePolicies';
+import { validateSignupConsent } from '../utils/signupConsent';
 
 const SocialOnboardingView = ({ tempUser, onComplete }) => {
     const [step, setStep] = useState(1);
     const [name, setName] = useState(tempUser?.name || '');
+    const [birthdate, setBirthdate] = useState(tempUser?.signupBirthdate || '');
+    const [policyConsents, setPolicyConsents] = useState(() => ({
+        ...createEmptyPolicyConsents('personal'),
+        ...(tempUser?.signupConsents || {}),
+    }));
+    const [guardianConsent, setGuardianConsent] = useState(tempUser?.signupConsents?.childGuardian || null);
     const [organization, setOrganization] = useState(null);
     const [planType, setPlanType] = useState(null);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
+    const consentPayload = {
+        ...policyConsents,
+        ...(guardianConsent ? { childGuardian: guardianConsent } : {}),
+    };
+    const consentReady = validateSignupConsent({ birthdate, consents: consentPayload, audience: 'personal' }).ok;
 
     const chooseOrganization = org => {
         setOrganization(org);
@@ -28,7 +42,13 @@ const SocialOnboardingView = ({ tempUser, onComplete }) => {
     const finish = async versionId => {
         setBusy(true); setError('');
         try {
-            await onComplete({ name: name.trim(), organization, planId: `${planType}_${versionId}` });
+            await onComplete({
+                name: name.trim(),
+                organization,
+                planId: `${planType}_${versionId}`,
+                birthdate,
+                consents: consentPayload,
+            });
         } catch (err) {
             console.error('소셜 온보딩 완료 실패:', err);
             setError(err?.message || '시작 설정을 저장하지 못했습니다. 다시 시도해주세요.');
@@ -49,7 +69,10 @@ const SocialOnboardingView = ({ tempUser, onComplete }) => {
                     <h1 className="mt-2 text-2xl font-black text-slate-900">성함이 어떻게 되세요?</h1>
                     <p className="mt-2 text-sm text-slate-500">랭킹과 단체 명부에 보이는 이름이에요.</p>
                     <input value={name} onChange={event => setName(event.target.value)} maxLength={30} className="mt-6 w-full rounded-xl border border-slate-200 px-4 py-3 text-base" placeholder="성함" autoFocus />
-                    <button type="button" disabled={!name.trim()} onClick={() => setStep(2)} className="mt-4 w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white disabled:bg-slate-300">다음</button>
+                    <input inputMode="numeric" value={birthdate} onChange={event => setBirthdate(event.target.value.replace(/\D/g, ''))} maxLength={8} className="mt-3 w-full rounded-xl border border-slate-200 px-4 py-3 text-base" placeholder="생년월일 8자리 (예: 20150101)" />
+                    <PolicyConsent audience="personal" value={policyConsents} onChange={setPolicyConsents} disabled={busy} className="mt-4" />
+                    <div className="mt-3"><GuardianConsent birthdate={birthdate} value={guardianConsent} onChange={setGuardianConsent} disabled={busy} /></div>
+                    <button type="button" disabled={!name.trim() || !consentReady} onClick={() => setStep(2)} className="mt-4 w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white disabled:bg-slate-300">다음</button>
                 </section>}
 
                 {step === 2 && <div>

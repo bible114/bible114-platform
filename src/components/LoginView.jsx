@@ -7,6 +7,9 @@ import ChurchPicker from './ChurchPicker';
 import { getChurchDirectory, getLastChurch, saveLastChurch } from '../utils/churchDirectory';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
 import { getGuestState } from '../utils/guestStorage';
+import { GuardianConsent, PolicyConsent, PolicyDialog } from './policies';
+import { SERVICE_POLICIES, createEmptyPolicyConsents, isPolicyConsentComplete } from '../data/servicePolicies';
+import { validateSignupConsent } from '../utils/signupConsent';
 
 // ─── Daily verse data ─────────────────────────────────────────────────────────
 const DAILY_VERSES = [
@@ -129,6 +132,7 @@ const LoginView = ({
     const [showAdminContact, setShowAdminContact] = useState(false);
     const [showDemoTour, setShowDemoTour] = useState(false);
     const [showReadingGuide, setShowReadingGuide] = useState(false);
+    const [openPublicPolicyId, setOpenPublicPolicyId] = useState(null);
 
     // Platform stats (Firestore)
     const [stats, setStats] = useState({
@@ -180,6 +184,8 @@ const LoginView = ({
     const [mChurchId, setMChurchId] = useState('');
     const [mChurchCode, setMChurchCode] = useState('');
     const [mPhone4, setMPhone4] = useState('');
+    const [mPolicyConsents, setMPolicyConsents] = useState(() => createEmptyPolicyConsents('member'));
+    const [mGuardianConsent, setMGuardianConsent] = useState(null);
 
     const [personalMethod, setPersonalMethod] = useState('choice');
     const [pName, setPName] = useState('');
@@ -187,6 +193,8 @@ const LoginView = ({
     const [pPhone4, setPPhone4] = useState('');
     const [pPw, setPPw] = useState('');
     const [pPwConfirm, setPPwConfirm] = useState('');
+    const [pPolicyConsents, setPPolicyConsents] = useState(() => createEmptyPolicyConsents('personal'));
+    const [pGuardianConsent, setPGuardianConsent] = useState(null);
     const [googlePersonalLoading, setGooglePersonalLoading] = useState(false);
     const [kakaoLoading, setKakaoLoading] = useState(false);
 
@@ -199,6 +207,8 @@ const LoginView = ({
     const [aPastorName, setAPastorName] = useState('');
     const [aDenomination, setADenomination] = useState('');
     const [aChurchCode, setAChurchCode] = useState('');
+    const [aPolicyConsents, setAPolicyConsents] = useState(() => createEmptyPolicyConsents('communityAdmin'));
+    const [aAgeConfirmed14Plus, setAAgeConfirmed14Plus] = useState(false);
     const [orgComms, setOrgComms] = useState([{ id: 'comm_0', name: '', subgroups: [{ id: 'sub_0', name: '' }] }]);
 
     const [loading, setLoading] = useState(false);
@@ -347,6 +357,17 @@ const LoginView = ({
     const isLoginUnaffiliated = loginChurchId === UNAFFILIATED_CHURCH_ID;
     const isSignupUnaffiliated = mChurchId === UNAFFILIATED_CHURCH_ID;
 
+    const attachGuardianConsent = (policyConsents, guardian) => ({
+        ...policyConsents,
+        ...(guardian ? { childGuardian: guardian } : {}),
+    });
+
+    const memberConsentPayload = () => attachGuardianConsent(mPolicyConsents, mGuardianConsent);
+    const personalConsentPayload = () => attachGuardianConsent(pPolicyConsents, pGuardianConsent);
+    const memberConsentReady = validateSignupConsent({ birthdate: mBirthdate, consents: memberConsentPayload(), audience: 'member' }).ok;
+    const personalConsentReady = validateSignupConsent({ birthdate: pBirthdate, consents: personalConsentPayload(), audience: 'personal' }).ok;
+    const adminConsentReady = isPolicyConsentComplete(aPolicyConsents, 'communityAdmin') && aAgeConfirmed14Plus;
+
     const handleMemberLogin = async (e) => {
         e.preventDefault();
         if (!loginName.trim() || !loginBirthdate.trim() || !loginChurchId || !loginPw.trim()) { setErrorMsg('모든 항목을 입력해주세요.'); return; }
@@ -411,6 +432,8 @@ const LoginView = ({
     const handleMemberSignup = async (e) => {
         e.preventDefault();
         if (!mName.trim() || !mBirthdate.trim() || !mPw || !mChurchId || (!isSignupUnaffiliated && !mChurchCode.trim())) { setErrorMsg('모든 항목을 입력해주세요.'); return; }
+        const consentResult = validateSignupConsent({ birthdate: mBirthdate, consents: memberConsentPayload(), audience: 'member' });
+        if (!consentResult.ok) { setErrorMsg('생년월일과 필수 동의 항목을 확인해주세요. 만 14세 미만은 보호자 동의가 필요합니다.'); return; }
         if (isSignupUnaffiliated && !/^\d{4}$/.test(mPhone4.trim())) { setErrorMsg('전화번호 뒤 4자리를 입력해주세요.'); return; }
         if (mPw !== mPwConfirm) { setErrorMsg('비밀번호가 일치하지 않습니다.'); return; }
         if (mPw.length < 6) { setErrorMsg('비밀번호는 6자리 이상이어야 합니다.'); return; }
@@ -422,6 +445,7 @@ const LoginView = ({
             churchId: mChurchId,
             churchCode: mChurchCode.trim(),
             phone4: mPhone4.trim(),
+            consents: memberConsentPayload(),
         });
         setLoading(false);
     };
@@ -442,20 +466,38 @@ const LoginView = ({
         }
         if (pPw.length < 6) { setErrorMsg('비밀번호는 6자리 이상이어야 합니다.'); return; }
         if (pPw !== pPwConfirm) { setErrorMsg('비밀번호가 일치하지 않습니다.'); return; }
+        const consentResult = validateSignupConsent({ birthdate: pBirthdate, consents: personalConsentPayload(), audience: 'personal' });
+        if (!consentResult.ok) { setErrorMsg('필수 동의 항목을 확인해주세요. 만 14세 미만은 보호자 동의가 필요합니다.'); return; }
         setLoading(true);
-        try { await onPersonalSignup({ name: pName.trim(), birthdate: pBirthdate, phone4: pPhone4, password: pPw }); }
+        try { await onPersonalSignup({ name: pName.trim(), birthdate: pBirthdate, phone4: pPhone4, password: pPw, consents: personalConsentPayload() }); }
         finally { setLoading(false); }
     };
 
-    const handleGooglePersonalSignup = async () => {
+    const handleGoogleAccountStart = async () => {
         clearError(); setLoading(true); setGooglePersonalLoading(true);
         try { await onGooglePersonalSignup(); }
         finally { setGooglePersonalLoading(false); setLoading(false); }
     };
 
-    const handleKakaoStart = async () => {
+    const handleGooglePersonalSignup = async () => {
+        const consentResult = validateSignupConsent({ birthdate: pBirthdate, consents: personalConsentPayload(), audience: 'personal' });
+        if (!consentResult.ok) { setErrorMsg('생년월일과 필수 동의 항목을 확인해주세요. 만 14세 미만은 보호자 동의가 필요합니다.'); return; }
+        clearError(); setLoading(true); setGooglePersonalLoading(true);
+        try { await onGooglePersonalSignup({ birthdate: pBirthdate, consents: personalConsentPayload() }); }
+        finally { setGooglePersonalLoading(false); setLoading(false); }
+    };
+
+    const handleKakaoAccountStart = async () => {
         clearError(); setLoading(true); setKakaoLoading(true);
         try { await onKakaoStart(); }
+        finally { setKakaoLoading(false); setLoading(false); }
+    };
+
+    const handleKakaoStart = async () => {
+        const consentResult = validateSignupConsent({ birthdate: pBirthdate, consents: personalConsentPayload(), audience: 'personal' });
+        if (!consentResult.ok) { setErrorMsg('생년월일과 필수 동의 항목을 확인해주세요. 만 14세 미만은 보호자 동의가 필요합니다.'); return; }
+        clearError(); setLoading(true); setKakaoLoading(true);
+        try { await onKakaoStart({ birthdate: pBirthdate, consents: personalConsentPayload() }); }
         finally { setKakaoLoading(false); setLoading(false); }
     };
 
@@ -488,6 +530,13 @@ const LoginView = ({
         if (!isGoogleSignup && aPw !== aPwConfirm) { setErrorMsg('비밀번호가 일치하지 않습니다.'); return; }
         if (!isGoogleSignup && aPw.length < 6) { setErrorMsg('비밀번호는 6자리 이상이어야 합니다.'); return; }
         if (aChurchCode.trim().length < 4) { setErrorMsg('교회 입장코드는 4자리 이상이어야 합니다.'); return; }
+        const consentResult = validateSignupConsent({
+            birthdate: null,
+            consents: aPolicyConsents,
+            audience: 'communityAdmin',
+            ageConfirmed14Plus: aAgeConfirmed14Plus,
+        });
+        if (!consentResult.ok) { setErrorMsg('만 14세 이상 확인과 필수 정책 동의가 필요합니다.'); return; }
         clearError(); setSignupStep(2);
     };
 
@@ -513,6 +562,8 @@ const LoginView = ({
                 churchCode: aChurchCode.trim(),
                 departments: validComms,
                 googleProfile: googleAdminSignupProfile,
+                ageConfirmed14Plus: aAgeConfirmed14Plus,
+                consents: aPolicyConsents,
             });
             if (result?.resetGoogleProfile) {
                 // 백엔드가 이미 해당 Google 흐름을 종료했다. cancel callback은 오류문구까지 지우므로 호출하지 않는다.
@@ -592,7 +643,7 @@ const LoginView = ({
                 5초만에 빠른 시작
                 <span className="absolute -bottom-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-b-2 border-r-2 border-orange-400 bg-orange-50" />
             </div>
-            <button type="button" onClick={handleKakaoStart} disabled={loading || kakaoLoading}
+            <button type="button" onClick={handleKakaoAccountStart} disabled={loading || kakaoLoading}
                 className="w-full rounded-2xl bg-[#FEE500] px-5 py-4 text-base font-black text-[#191919] shadow-sm transition-transform active:scale-[0.99] disabled:opacity-50">
                 {kakaoLoading ? '카카오 계정 확인 중...' : (
                     <span className="flex items-center justify-center gap-2.5">
@@ -603,7 +654,7 @@ const LoginView = ({
                     </span>
                 )}
             </button>
-            <button type="button" onClick={handleGooglePersonalSignup} disabled={loading || googlePersonalLoading || isKakaoTalkBrowser}
+            <button type="button" onClick={handleGoogleAccountStart} disabled={loading || googlePersonalLoading || isKakaoTalkBrowser}
                 className="w-full rounded-2xl bg-slate-100 px-5 py-4 text-base font-black text-[#191919] shadow-sm transition-transform active:scale-[0.99] disabled:opacity-40"
                 title={isKakaoTalkBrowser ? 'Google 로그인은 다른 브라우저에서 이용해주세요' : '구글로 시작'}>
                 {googlePersonalLoading ? '구글 계정 확인 중...' : (
@@ -658,7 +709,10 @@ const LoginView = ({
                 {personalMethod === 'choice' ? (
                     <>
                         <p className="text-sm font-bold text-ink">시작하기 · 개인 계정 로그인</p>
-                        {isKakaoTalkBrowser ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12px] text-amber-800">카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 다른 브라우저로 열어주세요.</p> : <button type="button" onClick={handleGooglePersonalSignup} disabled={loading} className="w-full rounded-full border border-hairline bg-white py-3.5 text-sm font-semibold text-ink disabled:opacity-50">{googlePersonalLoading ? '구글 계정 확인 중...' : 'G 구글로 시작'}</button>}
+                        <input inputMode="numeric" value={pBirthdate} onChange={e => setPBirthdate(e.target.value.replace(/\D/g, ''))} placeholder="생년월일 8자리 (예: 19900101)" maxLength={8} className={inputCls} />
+                        <PolicyConsent audience="personal" value={pPolicyConsents} onChange={setPPolicyConsents} disabled={loading} />
+                        <GuardianConsent birthdate={pBirthdate} value={pGuardianConsent} onChange={setPGuardianConsent} disabled={loading} />
+                        {isKakaoTalkBrowser ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12px] text-amber-800">카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 다른 브라우저로 열어주세요.</p> : <button type="button" onClick={handleGooglePersonalSignup} disabled={loading || !personalConsentReady} className="w-full rounded-full border border-hairline bg-white py-3.5 text-sm font-semibold text-ink disabled:opacity-50">{googlePersonalLoading ? '구글 계정 확인 중...' : 'G 구글로 시작'}</button>}
                         <button type="button" onClick={() => { setPersonalMethod('manual'); clearError(); }} className="w-full rounded-full bg-ink py-3.5 text-sm font-semibold text-cream">이름·생일·전화번호로 시작</button>
                         {guestMigrationPreview && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-[12px] font-semibold text-emerald-800">지금까지 읽은 {guestMigrationPreview.currentDay}일차 진도를 가져옵니다.</div>}
                         {errorMsg && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-center text-xs text-red-500">{errorMsg}</p>}
@@ -671,10 +725,12 @@ const LoginView = ({
                         <input inputMode="numeric" value={pPhone4} onChange={e => setPPhone4(e.target.value.replace(/\D/g, ''))} placeholder="전화번호 뒤 4자리" maxLength={4} className={inputCls} />
                         <input type="password" value={pPw} onChange={e => setPPw(e.target.value)} placeholder="비밀번호 (6자리 이상)" className={inputCls} />
                         <input type="password" value={pPwConfirm} onChange={e => setPPwConfirm(e.target.value)} placeholder="비밀번호 확인" className={inputCls} />
+                        <PolicyConsent audience="personal" value={pPolicyConsents} onChange={setPPolicyConsents} disabled={loading} />
+                        <GuardianConsent birthdate={pBirthdate} value={pGuardianConsent} onChange={setPGuardianConsent} disabled={loading} />
                         {guestMigrationPreview && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-[12px] font-semibold text-emerald-800">지금까지 읽은 {guestMigrationPreview.currentDay}일차 진도를 가져옵니다.</div>}
                         <p className="text-[11px] text-ink/50">개인 계정 비밀번호 지원은 플랫폼 관리자에게 문의해주세요.</p>
                         {errorMsg && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-center text-xs text-red-500">{errorMsg}</p>}
-                        <button type="submit" disabled={loading} className="w-full rounded-full bg-ink py-3.5 text-sm font-semibold text-cream disabled:opacity-50">{loading ? '확인 중...' : '시작하기 · 로그인'}</button>
+                        <button type="submit" disabled={loading || !personalConsentReady} className="w-full rounded-full bg-ink py-3.5 text-sm font-semibold text-cream disabled:opacity-50">{loading ? '확인 중...' : '시작하기 · 로그인'}</button>
                     </form>
                 )}
             </div>
@@ -811,8 +867,10 @@ const LoginView = ({
                     <input type="password" value={mChurchCode} onChange={e => setMChurchCode(e.target.value)}
                         placeholder="교회 입장코드 (관리자에게 문의)" className={inputCls} />
                 )}
+                <PolicyConsent audience="member" value={mPolicyConsents} onChange={setMPolicyConsents} disabled={loading} />
+                <GuardianConsent birthdate={mBirthdate} value={mGuardianConsent} onChange={setMGuardianConsent} disabled={loading} />
                 {errorMsg && <p className="text-red-500 text-xs text-center py-1 bg-red-50 rounded-lg px-3">{errorMsg}</p>}
-                <button type="submit" disabled={loading}
+                <button type="submit" disabled={loading || !memberConsentReady}
                     className="w-full bg-ink text-cream font-semibold py-3.5 rounded-full text-sm flex items-center justify-center gap-2 hover:bg-ink/90 transition-colors disabled:opacity-50">
                     {loading ? '가입 중...' : '교인으로 가입하기'}
                 </button>
@@ -833,6 +891,10 @@ const LoginView = ({
                     <p>우리 교회(모임)의 관리 계정을 만드는 일이에요.</p>
                     <p className="mt-1 font-semibold">① 성도 검색 가입 가능 · ② 입장코드 보호 · ③ 관리 화면·달란트 상점 운영</p>
                     <p className="mt-1 font-black">무료 · 약 5분 소요</p>
+                </div>
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[12px] leading-relaxed text-red-900">
+                    <p className="font-black">복음주의 신앙 공동체만 등록할 수 있습니다.</p>
+                    <p className="mt-1">한국교회 주요 교단의 공식 결의에서 이단·사이비 또는 참여·교류 금지 대상으로 규정된 단체는 등록과 이용이 제한됩니다.</p>
                 </div>
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-center text-[12px] text-amber-900">
                     성도이신가요? 가입은 첫 화면의 카카오로 시작을 눌러주세요.
@@ -905,8 +967,13 @@ const LoginView = ({
                     <input type="text" value={aChurchCode} onChange={e => setAChurchCode(e.target.value)} placeholder="교회 입장코드 설정 (4자리 이상)" className={inputCls} />
                     <p className="text-[10px] text-ink/40 ml-1">입장코드는 교인들이 가입할 때 사용합니다. 나중에 변경 가능합니다.</p>
                 </div>
+                <label className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-[12px] text-slate-700">
+                    <input type="checkbox" checked={aAgeConfirmed14Plus} onChange={e => setAAgeConfirmed14Plus(e.target.checked)} disabled={loading} className="mt-0.5 h-4 w-4" />
+                    <span><b>[필수]</b> 공동체 등록자는 만 14세 이상이며, 입력한 공동체를 대표하거나 등록할 권한이 있습니다.</span>
+                </label>
+                <PolicyConsent audience="communityAdmin" value={aPolicyConsents} onChange={setAPolicyConsents} disabled={loading} showCompletion />
                 {errorMsg && <p className="text-red-500 text-xs text-center py-1 bg-red-50 rounded-lg px-3">{errorMsg}</p>}
-                <button type="submit" disabled={loading}
+                <button type="submit" disabled={loading || !adminConsentReady}
                     className="w-full bg-accent text-cream font-semibold py-3.5 rounded-full text-sm flex items-center justify-center gap-2 hover:bg-accent/90 transition-colors disabled:opacity-50">
                     {loading ? '확인 중...' : '다음: 조직 구성 →'}
                 </button>
@@ -1043,6 +1110,19 @@ const LoginView = ({
                     <div className="font-serif text-[12px] md:text-[13px] text-ink/55 text-right">— {verse.ref}</div>
                 </div>
 
+                <nav aria-label="서비스 정책" className="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-ink/50">
+                    {['terms', 'privacy', 'community'].map(policyId => (
+                        <button
+                            key={policyId}
+                            type="button"
+                            onClick={() => setOpenPublicPolicyId(policyId)}
+                            className="underline underline-offset-3 hover:text-ink/80"
+                        >
+                            {SERVICE_POLICIES[policyId].shortLabel}
+                        </button>
+                    ))}
+                </nav>
+
             </div>
 
             {/* ═══ RIGHT — Login Card ══════════════════════════════════════════ */}
@@ -1085,6 +1165,13 @@ const LoginView = ({
                 show={showReadingGuide}
                 onClose={() => setShowReadingGuide(false)}
             />
+
+            {openPublicPolicyId && (
+                <PolicyDialog
+                    policy={SERVICE_POLICIES[openPublicPolicyId]}
+                    onClose={() => setOpenPublicPolicyId(null)}
+                />
+            )}
 
         </div>
     );
