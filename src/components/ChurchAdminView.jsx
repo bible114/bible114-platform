@@ -1087,19 +1087,6 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     };
 
     const updatePurchaseStatus = async (purchase, mode) => {
-        if (mode === 'delivered') {
-            await db.collection('churches').doc(currentUser.churchId)
-                .collection('talentPurchases').doc(purchase.id).update({
-                status: 'delivered',
-                deliveredAt: firebase.firestore.FieldValue.serverTimestamp(),
-                deliveredBy: currentUser.uid,
-            });
-            setTalentPurchases(prev => prev.map(p => p.id === purchase.id ? { ...p, status: 'delivered', deliveredAt: new Date(), deliveredBy: currentUser.uid } : p));
-            toast.success('수령 완료로 처리했습니다.');
-            return;
-        }
-
-        const batch = db.batch();
         const purchaseRef = db.collection('churches').doc(currentUser.churchId)
             .collection('talentPurchases').doc(purchase.id);
         const buyer = members.find(member => member.uid === purchase.uid);
@@ -1107,31 +1094,62 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         const walletRef = useRosterWallet
             ? db.collection('churches').doc(currentUser.churchId).collection('roster').doc(purchase.uid)
             : db.collection('users').doc(purchase.uid);
-        batch.update(purchaseRef, {
-            status: 'cancelled',
-            deliveredAt: firebase.firestore.FieldValue.serverTimestamp(),
-            deliveredBy: currentUser.uid,
-        });
-        batch.update(walletRef, {
-            talent: firebase.firestore.FieldValue.increment(purchase.price || 0),
-            ...(useRosterWallet ? { updatedAt: firebase.firestore.FieldValue.serverTimestamp() } : {}),
-        });
+
         try {
-            await batch.commit();
+            await db.runTransaction(async transaction => {
+                const purchaseSnap = await transaction.get(purchaseRef);
+                if (!purchaseSnap.exists) throw new Error('PURCHASE_NOT_FOUND');
+                const latestPurchase = purchaseSnap.data() || {};
+                // pending에서 단 한 번만 상태를 바꾼다. 같은 요청 재시도나 오래된 화면의
+                // 버튼 클릭이 환불을 중복 적립하거나 cancelled를 delivered로 되돌리지 못한다.
+                if (latestPurchase.status !== 'pending') throw new Error('PURCHASE_ALREADY_PROCESSED');
+
+                let refundAmount = 0;
+                let nextWalletTalent = null;
+                if (mode === 'cancelled') {
+                    const walletSnap = await transaction.get(walletRef);
+                    if (!walletSnap.exists) throw new Error('BUYER_WALLET_NOT_FOUND');
+                    refundAmount = Number(latestPurchase.price);
+                    if (!Number.isFinite(refundAmount) || refundAmount < 0) throw new Error('INVALID_PURCHASE_PRICE');
+                    nextWalletTalent = (Number(walletSnap.data()?.talent) || 0) + refundAmount;
+                }
+
+                transaction.update(purchaseRef, {
+                    status: mode,
+                    deliveredAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    deliveredBy: currentUser.uid,
+                });
+
+                if (mode === 'cancelled') {
+                    transaction.update(walletRef, {
+                        talent: nextWalletTalent,
+                        ...(useRosterWallet ? { updatedAt: firebase.firestore.FieldValue.serverTimestamp() } : {}),
+                    });
+                }
+            });
         } catch (error) {
+            if (error?.message === 'PURCHASE_ALREADY_PROCESSED') {
+                toast.error('이미 처리된 구매입니다. 목록을 새로 확인해주세요.');
+                await loadData();
+                return;
+            }
             if (error?.code === 'permission-denied' || error?.code === 'firestore/permission-denied') {
-                toast.error('이 공동체 지갑을 환불할 권한이 없습니다.');
+                toast.error(mode === 'cancelled' ? '이 공동체 지갑을 환불할 권한이 없습니다.' : '수령 처리 권한이 없습니다.');
                 return;
             }
             throw error;
         }
-        setTalentPurchases(prev => prev.map(p => p.id === purchase.id ? { ...p, status: 'cancelled', deliveredAt: new Date(), deliveredBy: currentUser.uid } : p));
-        setMembers(prev => prev.map(m => (
-            m.uid === purchase.uid
-                ? { ...m, talent: (m.talent || 0) + (purchase.price || 0) }
-                : m
-        )));
-        toast.success('구매를 취소하고 달란트를 환불했습니다.');
+        setTalentPurchases(prev => prev.map(p => p.id === purchase.id ? { ...p, status: mode, deliveredAt: new Date(), deliveredBy: currentUser.uid } : p));
+        if (mode === 'cancelled') {
+            setMembers(prev => prev.map(m => (
+                m.uid === purchase.uid
+                    ? { ...m, talent: (m.talent || 0) + (purchase.price || 0) }
+                    : m
+            )));
+            toast.success('구매를 취소하고 달란트를 환불했습니다.');
+        } else {
+            toast.success('수령 완료로 처리했습니다.');
+        }
     };
 
     const todayStr = new Date().toDateString();

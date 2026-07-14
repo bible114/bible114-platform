@@ -66,6 +66,7 @@ export const useUserAuth = () => {
                                 lastReadDate: guest.lastReadDate,
                                 readCount: 1,
                                 videoType: guest.videoType || 'adult',
+                                quizLevel: guest.quizLevel || null,
                                 extraOrgs: [],
                             });
                             setAuthLoading(false);

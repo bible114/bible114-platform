@@ -225,6 +225,8 @@ service cloud.firestore {
             ['uid', 'memberName', 'itemId', 'itemName', 'price', 'status',
              'createdAt', 'deliveredAt', 'deliveredBy']);
         allow update: if (isChurchAdmin(churchId) || isPlatformAdmin()) &&
+          resource.data.status == 'pending' &&
+          request.resource.data.status in ['delivered', 'cancelled'] &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(
             ['status', 'deliveredAt', 'deliveredBy']);
         allow delete: if isPlatformAdmin();

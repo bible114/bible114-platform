@@ -4,7 +4,7 @@ import { PLAN_TYPES, BIBLE_VERSIONS, isBibleVersionVisibleForUser } from '../dat
 import { useBibleContent } from '../hooks/useBibleContent';
 import { useTTS } from '../hooks/useTTS';
 import { recordGuestRead, saveGuestState } from '../utils/guestStorage';
-import { DailyVideoCard, BibleReader } from './dashboard';
+import { DailyVideoCard, BibleReader, QuizLevelToggle } from './dashboard';
 
 const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupClick }) => {
     const { verseData, viewingDay, setViewingDay, loadContent } = useBibleContent(currentUser);
@@ -150,6 +150,16 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
                                 </option>
                             ))}
                         </select>
+                    </div>
+                )}
+
+                {currentPlanId.startsWith('nt_') && (
+                    <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                        <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-500">퀴즈 난이도</p>
+                            <p className="text-[11px] text-slate-400">이 기기에 선택이 저장돼요.</p>
+                        </div>
+                        <QuizLevelToggle currentUser={currentUser} setCurrentUser={setCurrentUser} />
                     </div>
                 )}
 

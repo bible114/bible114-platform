@@ -36,6 +36,17 @@ const fetchPlaylistCandidates = async (playlistId, apiKey) => {
     return candidates;
 };
 
+export const fetchVideoDescriptionChapters = async (videoUrl, apiKey) => {
+    const videoId = extractYouTubeId(videoUrl);
+    if (!videoId || !apiKey) return [];
+    const videoApiUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${encodeURIComponent(videoId)}&key=${encodeURIComponent(apiKey)}`;
+    const videoRes = await fetch(videoApiUrl);
+    if (!videoRes.ok) throw new Error(`videos HTTP ${videoRes.status}`);
+    const videoJson = await videoRes.json();
+    const description = videoJson.items?.[0]?.snippet?.description || '';
+    return parseAndMapChapters(description);
+};
+
 export const fetchLatestFromPlaylist = async (playlistId, apiKey, targetDateKey) => {
     const items = await fetchPlaylistCandidates(playlistId, apiKey);
     const now = Date.now();
@@ -55,13 +66,12 @@ export const fetchLatestFromPlaylist = async (playlistId, apiKey, targetDateKey)
     const videoId = chosen?.contentDetails?.videoId || chosen?.snippet?.resourceId?.videoId;
     if (!videoId) throw new Error('재생목록에 사용 가능한 영상이 없음');
 
-    const videoUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${encodeURIComponent(videoId)}&key=${encodeURIComponent(apiKey)}`;
-    const videoRes = await fetch(videoUrl);
+    const videoApiUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${encodeURIComponent(videoId)}&key=${encodeURIComponent(apiKey)}`;
+    const videoRes = await fetch(videoApiUrl);
     if (!videoRes.ok) throw new Error(`videos HTTP ${videoRes.status}`);
     const videoJson = await videoRes.json();
     const snippet = videoJson.items?.[0]?.snippet || {};
-    const description = snippet.description || '';
-    const chapters = parseAndMapChapters(description);
+    const chapters = parseAndMapChapters(snippet.description || '');
 
     return {
         url: `https://youtu.be/${videoId}`,
@@ -114,6 +124,42 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
         setStartSec(0);
 
         const docRef = db.collection('dailyVideos').doc(dateKey);
+
+        // 날짜 문서에 저장된 시간은 영상 설명을 나중에 수정하면 낡을 수 있다.
+        // 화면에는 저장값을 즉시 보여주되, 현재 YouTube 설명란의 시간을 다시 읽어
+        // 성공한 모드만 최신 챕터로 교체한다. API 실패 시에는 저장값을 그대로 유지한다.
+        const refreshDescriptionChapters = async (storedVideo) => {
+            try {
+                const configDoc = await db.collection('settings').doc('videoAutoConfig').get();
+                if (cancelled || !configDoc.exists) return;
+                const apiKey = configDoc.data()?.apiKey;
+                if (!apiKey) return;
+
+                const refreshedEntries = await Promise.all(['adult', 'kids'].map(async key => {
+                    const entry = storedVideo?.[key];
+                    if (!entry?.url) return [key, null];
+                    try {
+                        const chapters = await fetchVideoDescriptionChapters(entry.url, apiKey);
+                        return [key, chapters.length > 0 ? { ...entry, chapters } : null];
+                    } catch (error) {
+                        console.warn(`영상 설명 구간 갱신 실패 (${key}):`, error);
+                        return [key, null];
+                    }
+                }));
+                if (cancelled) return;
+
+                const refreshedVideo = { ...storedVideo };
+                let changed = false;
+                refreshedEntries.forEach(([key, entry]) => {
+                    if (!entry) return;
+                    refreshedVideo[key] = entry;
+                    changed = true;
+                });
+                if (changed) applyVideoDoc(refreshedVideo);
+            } catch (error) {
+                console.warn('영상 설명 구간 갱신 실패:', error);
+            }
+        };
 
         const tryAutoFill = async () => {
             try {
@@ -190,7 +236,9 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
             .then(doc => {
                 if (cancelled) return;
                 if (doc.exists) {
-                    applyVideoDoc(doc.data());
+                    const storedVideo = doc.data();
+                    applyVideoDoc(storedVideo);
+                    refreshDescriptionChapters(storedVideo);
                     return;
                 }
                 return tryAutoFill();
@@ -223,21 +271,25 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
     const activeChapters = Array.isArray(activeEntry.chapters) ? activeEntry.chapters : [];
 
     const handleModeChange = async (newMode) => {
+        const useEasyQuiz = newMode === 'kids' && String(currentUser?.planId || '').startsWith('nt_');
         setMode(newMode);
         setPlaying(false);
         if (currentUser?.role === 'guest') {
-            saveGuestState({ videoType: newMode });
+            saveGuestState({ videoType: newMode, ...(useEasyQuiz ? { quizLevel: 'easy' } : {}) });
             if (typeof setCurrentUser === 'function') {
-                setCurrentUser(prev => prev ? { ...prev, videoType: newMode } : prev);
+                setCurrentUser(prev => prev ? { ...prev, videoType: newMode, ...(useEasyQuiz ? { quizLevel: 'easy' } : {}) } : prev);
             }
             return;
         }
         if (currentUser?.uid && db) {
             if (typeof setCurrentUser === 'function') {
-                setCurrentUser(prev => prev ? { ...prev, videoMode: newMode } : prev);
+                setCurrentUser(prev => prev ? { ...prev, videoMode: newMode, ...(useEasyQuiz ? { quizLevel: 'easy' } : {}) } : prev);
             }
             try {
-                await db.collection('users').doc(currentUser.uid).set({ videoMode: newMode }, { merge: true });
+                await db.collection('users').doc(currentUser.uid).set({
+                    videoMode: newMode,
+                    ...(useEasyQuiz ? { quizLevel: 'easy' } : {}),
+                }, { merge: true });
             } catch (e) {
                 // 저장 실패해도 화면 표시는 그대로 유지 (다음 로그인 시 다시 시도됨)
                 console.error('videoMode 저장 실패:', e);

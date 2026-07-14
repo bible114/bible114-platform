@@ -30,7 +30,7 @@ assert.match(auth, /transaction\.set\(userRef/);
 assert.match(dashboard, /내 단체 관리/);
 assert.match(membership, /기준으로 보기/);
 assert.match(membership, /혼자 읽기 모임으로 돌아가기/);
-assert.match(department, /currentUser\.churchId === UNAFFILIATED_CHURCH_ID[\s\S]*Promise\.resolve\(\{ docs: \[\] \}\)/);
+assert.match(department, /const orgId = orgIdOverride \|\| currentUser\?\.churchId[\s\S]*orgId === UNAFFILIATED_CHURCH_ID[\s\S]*Promise\.resolve\(\{ docs: \[\] \}\)/);
 assert.match(app, /<DashboardView[\s\S]*?currentUser=\{dashboardUser\}/);
 assert.match(app, /currentUser\.accountType === 'personal' && currentUser\.planId[\s\S]*?setView\('dashboard'\)/);
 assert.doesNotMatch(app, /currentUser\.accountType === 'personal'[\s\S]{0,160}setView\('personal_community_onboarding'\)/);

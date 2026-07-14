@@ -13,23 +13,24 @@ export const useDepartment = (currentUser, setCurrentUser) => {
     const [announcement, setAnnouncement] = useState(null);
     const [kakaoLink, setKakaoLink] = useState(null);
 
-    const loadAllMembers = useCallback(async () => {
+    const loadAllMembers = useCallback(async (orgIdOverride) => {
+        const orgId = orgIdOverride || currentUser?.churchId;
         // 무소속 가상 교회는 규칙상 교인 간 read를 열지 않는다 (전국 단위 익명 집단) —
         // 쿼리해봐야 거부되므로 호출 자체를 건너뛴다.
-        if (!currentUser?.churchId) return [];
-        if (currentUser.churchId === UNAFFILIATED_CHURCH_ID && currentUser.accountType !== 'personal') return [];
+        if (!orgId) return [];
+        if (orgId === UNAFFILIATED_CHURCH_ID && currentUser?.accountType !== 'personal') return [];
         try {
             // password == null 필터는 firestore.rules의 같은 교회 read 허용 조건과 쌍이다 —
             // 자격증명이 private로 이관 완료된 문서만 목록 조회가 규칙 증명을 통과한다.
-            const usersRequest = currentUser.churchId === UNAFFILIATED_CHURCH_ID
+            const usersRequest = orgId === UNAFFILIATED_CHURCH_ID
                 ? Promise.resolve({ docs: [] })
                 : db.collection('users')
-                    .where('churchId', '==', currentUser.churchId)
+                    .where('churchId', '==', orgId)
                     .where('password', '==', null)
                     .get();
             const [usersResult, rosterResult] = await Promise.allSettled([
                 usersRequest,
-                db.collection('churches').doc(currentUser.churchId).collection('roster').get(),
+                db.collection('churches').doc(orgId).collection('roster').get(),
             ]);
             const primaryMembers = usersResult.status === 'fulfilled'
                 ? usersResult.value.docs.map(doc => userDocToState(doc))

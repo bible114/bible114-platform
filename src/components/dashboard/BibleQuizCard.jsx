@@ -1,14 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { db, firebase } from '../../utils/firebase';
 import { QUIZ_BANK, getKstDateString } from '../../data/bibleQuiz';
-import { getQuizProgressKey, getQuizRewardForAnswer } from '../../utils/quizProgress';
+import { getQuizLevel, getQuizProgressKey, getQuizRewardForAnswer } from '../../utils/quizProgress';
+import { saveGuestState } from '../../utils/guestStorage';
 import { loadUserExtraOrgsStrict } from '../../utils/roster';
 import { getRosterOrgIds, updateRosterTalents } from '../../utils/talentWallet';
 import {
     getReadingRangeForDay,
+    loadNtEasyPoolForDay,
+    loadNtEasyQuestionByKey,
     loadQuestionByKey,
     loadQuestionsForRange,
     selectQuiz,
+    selectNtEasyQuiz,
     shuffleQuizChoices,
 } from '../../utils/quizEngine';
 
@@ -18,7 +22,65 @@ const getRewardForAttempts = (attempts) => {
     return 0;
 };
 
-const resolveQuizKey = async (quizKey) => {
+export const QuizLevelToggle = ({ currentUser, setCurrentUser, finished = false }) => {
+    const planType = String(currentUser?.planId || '').split('_')[0];
+    const level = getQuizLevel(currentUser);
+    const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState('');
+    if (planType !== 'nt') return null;
+
+    const changeLevel = async (nextLevel) => {
+        if (saving || nextLevel === level || !['standard', 'easy'].includes(nextLevel)) return;
+        setSaving(true);
+        setSaveError('');
+        try {
+            if (currentUser?.role === 'guest') {
+                saveGuestState({ quizLevel: nextLevel });
+            } else {
+                if (!currentUser?.uid) throw new Error('QUIZ_LEVEL_USER_REQUIRED');
+                await db.collection('users').doc(currentUser.uid).set({
+                    quizLevel: nextLevel,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                }, { merge: true });
+            }
+            setCurrentUser(previous => previous?.uid === currentUser?.uid
+                ? { ...previous, quizLevel: nextLevel }
+                : previous);
+        } catch (error) {
+            console.error('퀴즈 난이도 저장 실패:', error);
+            setSaveError('난이도를 저장하지 못했어요. 다시 눌러주세요.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="flex min-w-0 flex-col items-end gap-1">
+            <div className="inline-flex shrink-0 rounded-xl bg-slate-100 p-1" aria-label="퀴즈 난이도">
+                {[
+                    ['standard', '표준'],
+                    ['easy', '쉬움'],
+                ].map(([value, label]) => (
+                    <button
+                        key={value}
+                        type="button"
+                        disabled={saving}
+                        onClick={() => changeLevel(value)}
+                        className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-black transition-colors ${level === value ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        aria-pressed={level === value}
+                    >
+                        {label}
+                    </button>
+                ))}
+            </div>
+            <p className="max-w-[15rem] text-right text-[10px] font-bold leading-snug text-indigo-500">어린이 영상을 선택하면 쉬운 퀴즈로 자동 변경돼요.</p>
+            {finished && <p className="whitespace-nowrap text-[10px] font-bold text-slate-400">변경한 난이도는 내일부터 적용돼요.</p>}
+            {saveError && <p className="max-w-[15rem] text-right text-[10px] font-bold text-red-500">{saveError}</p>}
+        </div>
+    );
+};
+
+const resolveQuizKey = async (quizKey, currentUser, viewingDay) => {
     if (typeof quizKey !== 'string' || !quizKey) return null;
     if (quizKey.startsWith('bank-')) {
         const index = Number(quizKey.replace('bank-', ''));
@@ -29,6 +91,17 @@ const resolveQuizKey = async (quizKey) => {
             quiz: shuffleQuizChoices({ ...QUIZ_BANK[index], key: quizKey }),
             quizKey,
             badge: '성경 상식 문제',
+        };
+    }
+
+    if (quizKey.startsWith('ntEasy-')) {
+        const quiz = await loadNtEasyQuestionByKey(quizKey);
+        if (!quiz) return null;
+        const range = getReadingRangeForDay(currentUser, viewingDay);
+        return {
+            quiz,
+            quizKey,
+            badge: `오늘 본문에서 쉬운 문제로 나왔어요 · ${range.displayText || range.sourceText || '오늘 본문'}`,
         };
     }
 
@@ -43,6 +116,25 @@ const resolveQuizKey = async (quizKey) => {
 
 const buildDayQuiz = async (currentUser, viewingDay) => {
     const range = getReadingRangeForDay(currentUser, viewingDay);
+    const planType = String(currentUser?.planId || '').split('_')[0];
+    if (planType === 'nt' && getQuizLevel(currentUser) === 'easy') {
+        try {
+            const easyPool = await loadNtEasyPoolForDay(range.actualDay);
+            const readCount = Math.max(1, Number(currentUser?.readCount) || 1);
+            const easySeed = (readCount - 1) * 365 + range.actualDay;
+            const easyQuiz = selectNtEasyQuiz(easyPool, easySeed, readCount);
+            if (easyQuiz) {
+                return {
+                    quiz: easyQuiz,
+                    quizKey: easyQuiz.key,
+                    badge: `오늘 본문에서 쉬운 문제로 나왔어요 · ${range.displayText || range.sourceText || '오늘 본문'}`,
+                };
+            }
+            console.warn('신약일독 쉬운 문제 풀이 비어 있어 표준 문제로 전환합니다.', { actualDay: range.actualDay });
+        } catch (error) {
+            console.warn('신약일독 쉬운 문제를 불러오지 못해 표준 문제로 전환합니다.', error);
+        }
+    }
     const pool = await loadQuestionsForRange(range);
     const cycleSeed = ((currentUser?.readCount || 1) - 1) * 365 + viewingDay;
     const selected = selectQuiz(pool, cycleSeed);
@@ -122,6 +214,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
         progressKey,
         currentUser?.dayOffset,
         currentUser?.planId,
+        currentUser?.quizLevel,
         currentUser?.readCount,
         todayKey,
     ]);
@@ -137,7 +230,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
             setQuizState({ loading: true, quiz: null, quizKey: null, badge: '', replaceStoredQuizKey: false });
             try {
                 const savedKey = progress?.quizKey || null;
-                const resolved = savedKey ? await resolveQuizKey(savedKey) : null;
+                const resolved = savedKey ? await resolveQuizKey(savedKey, currentUser, progressDay) : null;
                 const nextQuiz = resolved || await buildDayQuiz(currentUser, progressDay);
                 if (!cancelled) {
                     setQuizState(nextQuiz
@@ -157,6 +250,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
         progressKey,
         currentUser?.dayOffset,
         currentUser?.planId,
+        currentUser?.quizLevel,
         progress?.quizKey,
         currentUser?.readCount,
         todayKey,
@@ -353,28 +447,31 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
     const showAnswer = currentProgress.solved === true || currentAttempts >= 2;
     const sectionClassName = `bg-white rounded-3xl border shadow-sm p-5 overflow-hidden transition-[border-color,box-shadow] duration-300 ${highlight ? 'border-indigo-500 ring-4 ring-indigo-200 shadow-indigo-100' : 'border-slate-100'}`;
 
+    if (solved) {
+        return (
+            <section ref={sectionRef} className={sectionClassName}>
+                <div className="flex items-start justify-between gap-3">
+                    <p className="pt-2 text-base font-black text-emerald-700">정답!</p>
+                    <QuizLevelToggle currentUser={currentUser} setCurrentUser={setCurrentUser} finished />
+                </div>
+            </section>
+        );
+    }
+
     if (finished && !reviewExpanded) {
         return (
             <section ref={sectionRef} className={sectionClassName}>
+                <div className="mb-3 flex justify-end">
+                    <QuizLevelToggle currentUser={currentUser} setCurrentUser={setCurrentUser} finished />
+                </div>
                 <button
                     type="button"
                     onClick={() => setReviewExpanded(true)}
                     className="w-full text-left"
                     aria-expanded="false"
                 >
-                    <p className="text-base font-black text-emerald-700">✅ DAY {progressDay} 퀴즈 완료</p>
-                    <p className="mt-1 text-sm font-bold text-amber-700">⭐ +{earnedReward}달란트</p>
+                    <p className="text-base font-black text-slate-700">오늘의 퀴즈가 끝났습니다.</p>
                     <p className="mt-2 text-xs font-bold text-slate-400">탭해서 정답과 해설 다시 보기</p>
-                </button>
-                <button
-                    type="button"
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        document.getElementById('tut-read-btn')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }}
-                    className="mt-4 w-full rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-black text-white"
-                >
-                    ↓ 이어서 본문 읽기
                 </button>
             </section>
         );
@@ -382,6 +479,9 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
 
     return (
         <section ref={sectionRef} className={sectionClassName}>
+            <div className="mb-3 flex justify-end">
+                <QuizLevelToggle currentUser={currentUser} setCurrentUser={setCurrentUser} finished={finished} />
+            </div>
             <div className="flex items-start justify-between gap-4 mb-4">
                 <div>
                     <p className="text-xs font-black text-indigo-500 mb-1">DAY {progressDay} 성경퀴즈</p>

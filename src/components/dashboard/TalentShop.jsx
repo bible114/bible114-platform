@@ -240,6 +240,7 @@ const TalentShop = ({
                                 <section className="rounded-3xl border border-violet-100 bg-white p-4 shadow-sm">
                                     <h3 className="text-sm font-black text-slate-800">공동체별 내 달란트</h3>
                                     <p className="mt-1 text-xs font-bold text-slate-400">공동체를 누르면 그곳의 상점과 잔액으로 바뀝니다.</p>
+                                    <p className="mt-1 text-xs font-bold text-violet-600">★ 기준 공동체는 바뀌지 않아요.</p>
                                     <div className="mt-3 space-y-2">
                                         {organizations.map(org => {
                                             const active = org.orgId === currentUser.churchId;

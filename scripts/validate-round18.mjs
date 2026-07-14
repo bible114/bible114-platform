@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { getQuizProgressKey, getQuizRewardForAnswer } from '../src/utils/quizProgress.js';
+import {
+    getDefaultQuizLevel,
+    getQuizLevel,
+    getQuizProgressKey,
+    getQuizRewardForAnswer,
+} from '../src/utils/quizProgress.js';
 import {
     getRosterOrgIds,
     getViewedTalent,
@@ -19,6 +24,11 @@ assert.equal(getQuizRewardForAnswer({ attempts: 2, isCorrect: true, rewardDate: 
 assert.equal(getQuizRewardForAnswer({ attempts: 1, isCorrect: true, rewardDate: 'today', todayKey: 'today' }), 0);
 assert.equal(getQuizRewardForAnswer({ attempts: 1, isCorrect: true, rewardDate: 'yesterday', todayKey: 'today' }), 10);
 assert.equal(getQuizRewardForAnswer({ attempts: 1, isCorrect: true, rewardDate: null, todayKey: 'today', legacyRewardedToday: true }), 0);
+assert.equal(getDefaultQuizLevel({ planId: 'nt_easy' }), 'easy');
+assert.equal(getDefaultQuizLevel({ planId: 'nt_new', videoMode: 'kids' }), 'easy');
+assert.equal(getDefaultQuizLevel({ planId: 'nt_new', departmentId: 'elementary' }), 'easy');
+assert.equal(getDefaultQuizLevel({ planId: 'nt_new' }), 'standard');
+assert.equal(getQuizLevel({ planId: 'nt_easy', quizLevel: 'standard' }), 'standard');
 
 const personalWalletFixture = {
     uid: 'personal-1', accountType: 'personal', churchId: 'org-b', primaryOrgId: 'org-b', talent: 99,
@@ -62,6 +72,14 @@ const manifest = read('public/manifest.webmanifest');
 const firebaseConfig = read('firebase.json');
 const userAuth = read('src/hooks/useUserAuth.js');
 const helperSource = read('src/utils/helpers.js');
+const dailyVideo = read('src/components/dashboard/DailyVideoCard.jsx');
+const departmentHook = read('src/hooks/useDepartment.js');
+const rankingModal = read('src/components/modals/RankingModal.jsx');
+const membershipCard = read('src/components/dashboard/CommunityMembershipCard.jsx');
+const scheduleAliases = read('src/data/schedules.js');
+const quizEngine = read('src/utils/quizEngine.js');
+const guestStorage = read('src/utils/guestStorage.js');
+const guestReader = read('src/components/GuestReaderView.jsx');
 
 for (const text of ['5초만에 빠른 시작', '카카오로 시작', '기존 회원 로그인(이름으로)', '공동체 등록하기']) assert.match(login, new RegExp(text.replace(/[()]/g, '\\$&')));
 for (const text of ['공동체 등록이란?', '성도이신가요?', '무료 · 약 5분 소요']) assert.match(login, new RegExp(text.replace(/[()?]/g, '\\$&')));
@@ -70,12 +88,44 @@ assert.doesNotMatch(settings, /우리 교회 로그인 링크|\?church=/);
 assert.match(dashboard, /quizContent=\{\(/);
 assert.match(reader, /quizContent[\s\S]*tut-read-btn/);
 assert.match(reader, /오늘 읽기 완료! 🎉/);
+assert.match(reader, /const isAdvanceRead = hasReadToday && isCurrentProgressDay;[\s\S]*const isQuizGateLocked = [\s\S]*&& !isAdvanceRead[\s\S]*&& !quizGateOpen;/);
+assert.match(reader, /isAdvanceRead[\s\S]*\? '한 장 더 읽기'/);
+assert.match(departmentHook, /loadAllMembers = useCallback\(async \(orgIdOverride\)/);
+assert.match(departmentHook, /const orgId = orgIdOverride \|\| currentUser\?\.churchId/);
+assert.match(departmentHook, /where\('churchId', '==', orgId\)[\s\S]*where\('password', '==', null\)/);
+assert.match(app, /loadOrgRankingData = async \(orgId\)[\s\S]*Promise\.all\(\[[\s\S]*loadAllMembers\(orgId\)[\s\S]*collection\('churches'\)\.doc\(orgId\)\.get\(\)/);
+assert.match(dashboard, /viewedRankingOrg[\s\S]*orgRankingData[\s\S]*getChurchDirectory\(\)/);
+assert.match(dashboard, /org\.orgId === currentUser\?\.churchId[\s\S]*setViewedRankingOrg\(null\)/);
+assert.match(dashboard, /onViewOrgRanking=\{org => \{ setShowMemberships\(false\); openOrgRanking\(org\); setShowFullRanking\(true\); \}\}/);
+assert.match(rankingModal, /orgTabs\.length >= 2[\s\S]*공동체 순위를 불러오는 중[\s\S]*다시 시도/);
+assert.match(rankingModal, /progressRanking\.length === 0 && flatMembers\.length > 0[\s\S]*renderFlatRanking/);
+assert.match(membershipCard, /onViewOrgRanking[\s\S]*🏆 순위/);
+assert.match(scheduleAliases, /'nt_easy': schedules\.new_testament/);
+assert.match(scheduleAliases, /'nt_message': schedules\.new_testament/);
+assert.match(quizEngine, /import\.meta\.glob\('\.\.\/data\/quizNtEasy\/\*\.json'\)/);
+assert.match(quizEngine, /loadNtEasyPoolForDay[\s\S]*`ntEasy-\$\{day\}-\$\{index \+ 1\}`/);
+assert.match(quizEngine, /loadNtEasyQuestionByKey[\s\S]*\^ntEasy-/);
+assert.match(quizEngine, /selectNtEasyQuiz[\s\S]*createSeededRandom/);
+assert.match(quiz, /planType === 'nt' && getQuizLevel\(currentUser\) === 'easy'/);
+assert.match(quiz, /easySeed = \(readCount - 1\) \* 365 \+ range\.actualDay/);
+assert.match(quizEngine, /nextIndex === selectedIndex[\s\S]*nextIndex \+ 1/);
+assert.match(quiz, /오늘 본문에서 쉬운 문제로 나왔어요/);
+assert.match(helperSource, /quizLevel: \['standard', 'easy'\]\.includes\(d\.quizLevel\)/);
+assert.match(guestStorage, /quizLevel: \['standard', 'easy'\]\.includes\(raw\?\.quizLevel\)/);
+assert.match(userAuth, /quizLevel: guest\.quizLevel \|\| null/);
+assert.match(quiz, /QuizLevelToggle[\s\S]*planType !== 'nt'/);
+assert.match(quiz, /currentUser\?\.role === 'guest'[\s\S]*saveGuestState\(\{ quizLevel: nextLevel \}\)/);
+assert.match(quiz, /collection\('users'\)\.doc\(currentUser\.uid\)\.set\(\{[\s\S]*quizLevel: nextLevel/);
+assert.match(quiz, /변경한 난이도는 내일부터 적용돼요/);
+assert.match(guestReader, /currentPlanId\.startsWith\('nt_'\)[\s\S]*QuizLevelToggle/);
 assert.doesNotMatch(header, /tut-score|\{score \|\| 0\}pt/);
 assert.match(achievements, /총 읽은 날/);
 assert.match(achievements, /최장 연속/);
 assert.match(actions, /maxStreak/);
 assert.match(quiz, /quizProgress\.\$\{progressKey\}/);
 assert.match(quiz, /퀴즈 달란트는 하루 1번만 적립돼요/);
+assert.match(quiz, /if \(solved\)[\s\S]*>정답!<\/p>/);
+assert.doesNotMatch(quiz, /이어서 본문 읽기/);
 assert.match(actions, /rosterTalentByOrgId/);
 assert.match(actions, /let refreshedExtraOrgs = \(await loadUserExtraOrgsStrict\(uid\)\)\.slice\(0, 3\)/);
 assert.doesNotMatch(actions, /refreshedExtraOrgs = \[\]/);
@@ -89,6 +139,11 @@ assert.match(helpers, /talentWalletMigrated: true/);
 assert.match(shop, /공동체별 내 달란트/);
 assert.match(shop, /onOrganizationChange/);
 assert.match(app, /talentOrganizations/);
+assert.match(app, /org\.orgId === \(viewingRosterOrgId \|\| currentUser\.primaryOrgId\)/);
+assert.match(app, /handlePrimaryOrgChange[\s\S]*setViewingRosterOrgId\(null\)/);
+assert.match(app, /handleTalentOrgChange[\s\S]*currentUser\.accountType === 'personal'[\s\S]*setViewingRosterOrgId\(orgId === currentUser\.primaryOrgId \? null : orgId\)/);
+assert.doesNotMatch(app, /handleTalentOrgChange[\s\S]{0,300}await handlePrimaryOrgChange\(orgId\)/);
+assert.match(shop, /★ 기준 공동체는 바뀌지 않아요/);
 assert.match(header, /title="공동체 관리">⚙️ <span>관리<\/span>/);
 assert.match(socialBanner, /\['member', 'churchAdmin'\]\.includes/);
 assert.doesNotMatch(settings, /GoogleLinkCard/);
@@ -104,6 +159,10 @@ assert.match(rules, /get\('talent', 0\) <= resource\.data\.get\('talent', 0\) \+
 assert.match(rules, /get\('score', 0\) <= resource\.data\.get\('score', 0\) \+ 15/);
 assert.match(rules, /match \/churches\/\{churchId\} \{[\s\S]*allow read: if isRealUser\(\)/);
 assert.match(rules, /match \/private\/\{privateId\} \{[\s\S]*isChurchAdminAfter\(churchId\)/);
+assert.match(churchAdmin, /latestPurchase\.status !== 'pending'[\s\S]*PURCHASE_ALREADY_PROCESSED/);
+assert.match(churchAdmin, /transaction\.get\(walletRef\)[\s\S]*transaction\.update\(purchaseRef[\s\S]*transaction\.update\(walletRef/);
+assert.doesNotMatch(churchAdmin, /batch\.update\(walletRef[\s\S]*FieldValue\.increment\(purchase\.price/);
+assert.match(rules, /resource\.data\.status == 'pending'[\s\S]*request\.resource\.data\.status in \['delivered', 'cancelled'\]/);
 assert.match(authFlow, /churchRef\.collection\('private'\)\.doc\('admin'\)/);
 assert.match(constants, /KAKAO_CHANNEL_URL = "https:\/\/pf\.kakao\.com/);
 assert.match(viteConfig, /transformIndexHtml[\s\S]*%BUILD_ID%/);
@@ -121,6 +180,13 @@ assert.match(authFlow, /\[로그인 속도\]/);
 assert.match(app, /view === 'admin_entry'[\s\S]*📖 성경 읽기[\s\S]*⚙️ 공동체 관리/);
 assert.match(app, /sessionStorage\.removeItem\(ADMIN_ENTRY_SESSION_KEY\)/);
 assert.match(app, /\['dashboard', 'church_admin'\]\.includes\(savedAdminEntry\)/);
+assert.match(dailyVideo, /refreshDescriptionChapters\(storedVideo\)/);
+assert.match(dailyVideo, /fetchVideoDescriptionChapters\(entry\.url, apiKey\)/);
+assert.match(dailyVideo, /newMode === 'kids'[\s\S]*startsWith\('nt_'\)/);
+assert.match(dailyVideo, /saveGuestState\(\{ videoType: newMode,[\s\S]*quizLevel: 'easy'/);
+assert.match(dailyVideo, /videoMode: newMode,[\s\S]*quizLevel: 'easy'/);
+assert.match(quiz, /어린이 영상을 선택하면 쉬운 퀴즈로 자동 변경돼요/);
+assert.match(helperSource, /label\.includes\('해설'\) \|\| label\.includes\('묵상'\)/);
 assert.match(app, /\['dashboard', 'church_admin'\]\.includes\(view\)[\s\S]*sessionStorage\.setItem\(ADMIN_ENTRY_SESSION_KEY, view\)/);
 
 console.log('라운드 18 계약 검증 통과: 첫 화면, 소셜 연결, 읽기 흐름, 기록 허브, DAY별 퀴즈, 공동체별 달란트 지갑, 관리자 읽기 기본');

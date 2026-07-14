@@ -35,6 +35,8 @@ const BibleReader = ({
     const isAdvanceRead = hasReadToday && isCurrentProgressDay;
     const isQuizGateLocked = currentUser.role !== 'guest'
         && isCurrentProgressDay
+        // 오늘 첫 읽기를 마친 뒤의 "한 장 더 읽기"는 퀴즈와 무관하게 허용한다.
+        && !isAdvanceRead
         && !quizGateOpen;
     const readButtonLabel = isAdvanceRead
         ? '한 장 더 읽기'

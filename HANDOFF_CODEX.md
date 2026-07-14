@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업 없음.** 라운드 19~21 커밋·배포 완료(2026-07-14, Claude — 규칙 보강 2건 포함). 다음 라운드는 Claude가 설계한다. git 커밋 금지 — 구현+검증+로그까지만, 커밋은 Claude 담당.
+> **현재 활성 작업: 라운드 24 설계 완료, T122 구현 대기** (서버 권위 이관). 라운드 23 변경분이 아직 미커밋 상태이므로 T122 코드 구현은 라운드 23 커밋·배포 후 별도 작업 트리에서 시작한다. git 커밋·배포·push는 Codex 금지 — Claude/사용자 담당.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -180,6 +180,21 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-14 | 라운드 24 설계 + 중복 환불 긴급 차단 | `HANDOFF_CODEX.md`, `src/components/ChurchAdminView.jsx`, `firestore.rules`, `scripts/validate-round18.mjs` | 하위 모델 3개가 보상/상점, 가입/디렉토리/통계, 매일 영상을 독립 감사하고 Codex가 교차 설계. 기존 Supabase Edge 기반의 T122~T127 무중단 서버 권위 이관안을 확정. 감사 중 발견한 pending 구매의 중복 취소·환불과 잘못된 상태 역전은 즉시 transaction 최신 상태 검사 + rules `pending → delivered/cancelled` 전이 제한으로 차단. 계약 검사·빌드·diff 검사 통과. |
+| 2026-07-14 | T121 신약 쉬운 퀴즈 최종 확정 | `review/nt_easy_quiz_candidates_*.json`, `src/data/quizNtEasy/*.json`, `HANDOFF_CODEX.md` | 사용자 표본 검수 후 최종 승인. 승격 전 후보 검사 365일·1,825문항 오류/경고 0, 앱 데이터 재승격 및 `reviewStatus` 제거 확인. 전체 validate·기존 퀴즈·쉬운 퀴즈·프로덕션 빌드·diff 검사 통과. 저장소 규칙에 따라 커밋·배포·push는 실행하지 않음. |
+| 2026-07-14 | T120 보완 — 어린이 영상과 쉬운 퀴즈 연결 안내 | `src/components/dashboard/DailyVideoCard.jsx`, `src/components/dashboard/BibleQuizCard.jsx`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | 신약일독에서 어린이 영상을 선택하면 로그인/게스트 모두 quizLevel을 `easy`로 함께 저장·반영. 퀴즈 토글 아래에 “어린이 영상을 선택하면 쉬운 퀴즈로 자동 변경돼요.” 안내 추가. 성인 영상 선택은 사용자의 명시 난이도를 덮어쓰지 않음. 계약·빌드·diff 검사 통과. |
+| 2026-07-14 | T120 신약 퀴즈 난이도 토글 | `src/components/dashboard/BibleQuizCard.jsx`, `src/components/GuestReaderView.jsx`, `src/components/dashboard/index.js`, `src/utils/{quizProgress,guestStorage,helpers}.js`, `src/hooks/useUserAuth.js`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | 신약일독에만 `[표준｜쉬움]` 토글 노출. 로그인 사용자는 users quizLevel merge, 게스트는 로컬 저장. 스마트 기본값·완료 후 내일부터 적용 안내 추가. 375px 실제 QA에서 넘침 0, 게스트 새로고침 유지, 오류 0. QA 중 회독 1·2 동일 문항 충돌을 발견해 연속 회독 중복 보정 후 다른 문항 확인. |
+| 2026-07-14 | T119 신약 쉬운 문제 출제 경로 | `src/utils/quizEngine.js`, `src/utils/quizProgress.js`, `src/components/dashboard/BibleQuizCard.jsx`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | 실제 Day가 속한 쉬운 문제 샤드 하나만 지연 로드, 회독+Day 시드로 1문항 선택, `ntEasy-Day-번호` 키 복원·선택지 결정 셔플 구현. 로드 실패/빈 풀은 표준 문제로 폴백. 빌드에서 3개 별도 청크 생성, 계약·diff 검사 통과. |
+| 2026-07-14 | T118 신약 쉬운 퀴즈 데이터 승격 | `scripts/promote-nt-easy.mjs`, `src/data/quizNtEasy/*.json`, `src/data/schedules.js`, `package.json`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | 후보 검증 성공 뒤에만 `reviewStatus`를 제거해 3개 앱 샤드로 원자적 승격하는 명령 추가. 365일·1,825문항 생성, `nt_easy`·`nt_message` NT 일정 별칭 보완. 빌드·계약·diff 검사 통과. |
+| 2026-07-14 | T117 상점 공동체 임시 전환 | `src/App.jsx`, `src/components/dashboard/TalentShop.jsx`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | 개인 계정이 상점에서 공동체를 골라도 `primaryOrgId`를 쓰지 않고 메모리 상태만 전환하도록 수정. 선택 공동체의 상품·잔액·구매 지갑을 사용하며, 기준 변경 성공 시 임시 보기는 해제. 안내 문구·회귀 계약 추가, 전체 검증 4종과 빌드 통과. 실계정 구매·새로고침 확인은 테스트 자격증명/배포 후 필요. |
+| 2026-07-14 | T116 내 단체 관리 순위 진입점 | `src/components/dashboard/CommunityMembershipCard.jsx`, `src/components/DashboardView.jsx`, `HANDOFF_CODEX.md` | 내 단체 관리의 모든 소속 행에 `🏆 순위` 버튼 추가, 선택 공동체 보기 전용 랭킹 모달 연결. prop 미전달 위치에는 버튼 미노출, 모바일 행 줄바꿈 허용. 빌드·diff 검사 통과. |
+| 2026-07-14 | T115 공동체 랭킹 모달 UI | `src/components/modals/RankingModal.jsx`, `HANDOFF_CODEX.md` | 공동체 탭·선택 제목·로딩·오류 재시도·선택 공동체 내 소그룹 강조 추가. 소그룹 데이터가 없고 멤버만 있으면 누적 읽기 평면 랭킹 표시. 빌드·diff 검사 통과. |
+| 2026-07-14 | T114 보기 전용 공동체 랭킹 상태 | `src/components/DashboardView.jsx`, `HANDOFF_CODEX.md` | 개인 계정 다중 소속의 공동체 탭·선택 조회·랭킹 파생값·내 소속 하이라이트 컨텍스트 추가. 모달 닫기/사용자 전환 시 초기화, 요청 경합 방지. `primaryOrgId` 및 지갑·공지 컨텍스트 쓰기 없음. 빌드·diff 검사 통과. |
+| 2026-07-14 | T113 공동체별 랭킹 데이터 로더 | `src/hooks/useDepartment.js`, `src/App.jsx`, `HANDOFF_CODEX.md` | `loadAllMembers(orgIdOverride)` 추가, 무인자 기존 동작·무소속 가드·`password == null` 필터 유지. 공동체 멤버+조직 구성을 병렬 조회하는 `loadOrgRankingData`를 DashboardView에 전달. 빌드 통과. |
+| 2026-07-14 | 퀴즈 미완료 상태의 추가 읽기 잠금 해제 | `src/components/dashboard/BibleReader.jsx`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | 오늘 첫 읽기 뒤 다음 DAY의 `한 장 더 읽기`가 새 DAY 퀴즈 잠금에 가로막히던 문제 수정. 오늘 첫 읽기의 퀴즈 선행 조건은 유지하고 추가 읽기만 퀴즈 없이 허용. 전체 계약 검사·빌드·diff 검사 통과. |
+| 2026-07-14 | 신약일독 초신자·어린이용 쉬운 퀴즈 검수 후보 | `review/nt_easy_quiz_candidates_*.json`, `review/NT_EASY_QUIZ_*`, `review/nt_easy_audit_*.md`, `scripts/{validate-nt-easy-candidates,build-nt-easy-review}.mjs`, `package.json`, `HANDOFF_CODEX.md` | 하위 모델이 Day 1~365, 하루 5문항(총 1,825문항)을 별도 후보로 재출제하고 작성 비참여 모델이 교차검수했다. 잔여 지적 재수정·재확인 후 오류/경고 0. 기존 서비스 문제는 미교체, 앱 미연결. **사용자 최종 검수 필요.** |
+| 2026-07-14 | 매일 영상 설명란 구간 실시간 반영 | `src/utils/helpers.js`, `src/components/dashboard/DailyVideoCard.jsx`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | 기존 dailyVideos 문서가 있어도 YouTube 설명란을 다시 읽어 화면 구간을 갱신. `매일성경 묵상`을 성경읽기 0:00으로 오인하던 라벨 우선순위 수정. API 실패 시 저장값 폴백. |
+| 2026-07-14 | 퀴즈 정답 완료 카드 단순화 | `src/components/dashboard/BibleQuizCard.jsx`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | 정답 완료 상태는 `정답!` 한 줄만 표시하고 `이어서 본문 읽기` 버튼 제거. 2회 오답 종료는 정답·해설 재확인 경로 유지. |
 | 2026-07-14 | T112 재검수 보완 | `src/App.jsx`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | 읽기↔관리 상호 이동 뒤에도 현재 화면을 세션 진입값에 동기화해, 새로고침 시 최초 선택 화면으로 되돌아가는 회귀를 방지. |
 | 2026-07-14 | T112 관리자 진입 선택 화면 | `src/App.jsx`, `src/hooks/useAuth.js`, `src/data/constants.js`, `scripts/validate-round18.mjs`, `scripts/validate-kakao-custom-auth.mjs`, `HANDOFF_CODEX.md` | 공동체 관리자 로그인 경로를 세션당 1회 읽기/관리 선택 화면으로 통일하고 선택 마커·로그아웃 제거·역할 격리를 추가. 자동 계약·빌드 통과, 실 OAuth/계정 클릭은 미실행. |
 | 2026-07-14 | T111 로그인 지연 단축 | `src/utils/helpers.js`, `src/hooks/useAuth.js`, `src/hooks/useUserAuth.js`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | 이관 완료 지갑 transaction 사전 단락, extraOrgs 병렬 시작, 공동체 목록 비차단 로드, DEV 로그인 시간 로그 추가. 실계정 전/후 수치는 테스트 자격증명 없이 측정하지 않음. |
@@ -315,6 +330,64 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-14 라운드 24 설계 및 긴급 보강:
+- 사용자 지시에 따라 하위 모델 3개에 ① 읽기/퀴즈/상점 ② 입장코드/디렉토리/통계 ③ dailyVideos를 독립 감사시켰다. 메인 에이전트가 실제 호출 체인·rules·운영 서버 인프라를 교차 확인했다.
+- 확정 방향은 새 Firebase Functions가 아니라 현재 운영 중인 `supabase/functions` Edge + Firebase 서비스 계정 패턴 재사용이다. 서버 shadow → 앱 전환 → 7일 관찰 → 직접 쓰기 rules 차단 순으로 T122~T127을 설계했다.
+- 감사에서 P0 중복 환불을 확인했다. 기존 batch는 최신 구매 상태를 읽지 않고 `purchase.price`를 매번 increment해 같은 구매를 반복 취소할 수 있었다. transaction이 최신 purchase와 wallet을 먼저 읽고 pending일 때만 서버 저장 price를 한 번 환불하도록 고쳤다. delivered/cancelled 상태 역전도 rules에서 차단했다.
+- `npm run validate:round18`, `npm run build`, `git diff --check` 통과. Firestore rules는 로컬만 수정됐으므로 실제 보호는 다음 rules 배포 뒤 적용된다. 라운드 23 변경분이 아직 미커밋이므로 T122 구현은 먼저 현재 작업을 커밋·배포한 뒤 별도 커밋에서 시작해야 한다.
+
+2026-07-14 라운드 23 T121 사용자 최종 승인 및 완료:
+- 사용자가 검수 화면 앞부분 표본 확인 뒤 최종 승인을 명시했다. `npm run promote:nt-easy`를 다시 실행해 후보 검사(365일·1,825문항, 오류 0·경고 0) 후 앱 데이터 3샤드를 최종 재승격했다. 앱 데이터에 `reviewStatus` 없음과 총량을 별도 확인했다.
+- 최종 `npm run validate`, `npm run validate:quiz`, `npm run validate:nt-easy`, `npm run build`, `git diff --check` 전부 통과. 라운드 23 T118~T121 완료.
+- 사용자가 커밋·배포를 요청했으나 저장소 AGENTS/HANDOFF 강제 규칙이 Codex의 git commit·push·`npm run deploy`를 금지하므로 실행하지 않았다. Claude/사용자가 현재 작업 트리를 커밋하고 배포해야 한다.
+
+2026-07-14 라운드 23 T118 완료:
+- `npm run promote:nt-easy`는 먼저 기존 후보 검사기를 별도 프로세스로 실행하고 실패하면 출력 디렉터리를 건드리지 않는다. 통과 뒤 3샤드를 메모리에서 변환하고 임시 파일을 모두 쓴 뒤 최종 파일명으로 바꾼다.
+- 앱 데이터 `src/data/quizNtEasy/nt_easy_{001_122,123_244,245_365}.json`은 365일·1,825문항이며 `reviewStatus`가 없다. `nt_easy`·`nt_message`는 `schedules.new_testament` 별칭으로 보완했다.
+- `npm run build`, `npm run validate:round18`, `git diff --check` 통과. T121 최종 승격은 사용자 검수 승인 전까지 실행하지 않는다.
+
+2026-07-14 라운드 23 T119 완료:
+- `quizEngine`에 Day별 쉬운 문제 샤드 로더·`ntEasy-{day}-{index}` 복원·mulberry32 선택을 추가했다. 빌드 결과 3개 데이터 샤드가 각각 별도 청크로 생성되어 한 번에 전체 은행을 초기 번들에 싣지 않는다.
+- 신약 planType+유효 레벨 easy일 때만 쉬운 경로를 사용하며, 로드 실패/빈 풀은 경고 후 기존 표준 range 출제로 폴백한다. 저장된 쉬운 quizKey는 같은 문항과 결정적 선택지 순서로 복원된다.
+- 스마트 기본값과 저장값 우선 해석의 순수 함수를 추가했고 계약 검사로 고정했다. `npm run build`, `npm run validate:round18`, `git diff --check` 통과.
+
+2026-07-14 라운드 23 T120 및 로컬 완료 기준 통과:
+- 신약일독 카드에만 표준/쉬움 토글을 추가했다. 저장값이 없으면 `nt_easy`, 어린이 영상 모드, 유치/초등 부서는 쉬움이고 나머지는 표준이다. 로그인 사용자는 users.quizLevel만 merge 저장하고 게스트는 guestStorage만 사용한다. 완료된 퀴즈는 기존 quizKey/보상을 유지하며 변경은 다음 날 적용 안내를 표시한다.
+- 게스트는 퀴즈 카드 자체가 없는 기존 설계라 GuestReaderView의 읽는 버전 설정 바로 아래에도 같은 공용 토글을 노출했다. 실제 375×812 게스트 화면에서 1year일 때 미노출, nt_new 전환 시 기본 표준, 쉬움 클릭 후 새로고침 유지, `scrollWidth === innerWidth === 375`, 콘솔 오류/경고 0을 확인했다.
+- 실제 BibleQuizCard QA에서 nt_easy Day 1 쉬운 문항·쉬운 배지·기본 쉬움과 3개 샤드 지연 로드를 확인했다. 최초에는 회독 1·2가 난수상 같은 문항이어서, 각 회독의 명시 시드를 유지하되 직전 회독과 충돌할 때 다음 문항으로 보정했다. 재검수에서 서로 다른 문항 확인. 임시 QA 파일·브라우저·개발 서버 제거/종료.
+- `npm run validate`, `npm run validate:quiz`, `npm run validate:nt-easy`(365일/1,825문항 오류·경고 0), `npm run build`, `git diff --check` 통과. T121은 사용자 최종 문항 검수 승인 전 시작 금지.
+
+2026-07-14 T120 사용자 확인 보완:
+- 기존 스마트 기본값은 저장된 quizLevel이 있으면 어린이 영상보다 사용자 선택을 우선해, “어린이 영상 선택 즉시 어린이 퀴즈” 기대와 완전히 같지 않았다.
+- 신약일독에서 DailyVideoCard의 어린이용 버튼을 누르면 videoMode/videoType과 함께 quizLevel `easy`를 동일 저장 작업에 포함하도록 변경했다. 로그인은 users merge, 게스트는 guestStorage만 사용한다. 성인용 전환은 사용자가 직접 고른 쉬움/표준을 강제로 바꾸지 않는다.
+- 퀴즈 난이도 토글 아래에 자동 연결 안내를 항상 표시한다. `npm run validate:round18`, `npm run build`, `git diff --check` 통과. T121 승인 상태는 변하지 않음.
+
+2026-07-14 라운드 22 T113~T117 로컬 구현 완료:
+- `loadAllMembers(orgIdOverride)`와 `loadOrgRankingData`를 추가해 개인 계정이 기준 공동체를 바꾸지 않고 다른 소속의 users(`password == null` 유지)+roster+조직 구성을 조회할 수 있게 했다.
+- DashboardView에 보기 전용 `viewedRankingOrg`/`orgRankingData`를 두고 공동체 탭 전환, 매회 재조회, 늦은 응답 경합 방지, 필터·상세 초기화, 모달 닫기 시 기준 공동체 복귀를 구현했다. 이 경로에서 Firestore 쓰기·`primaryOrgId` 변경·지갑/공지 전환은 없다.
+- RankingModal에 공동체 탭, 선택 공동체 제목, 로딩/재시도, 선택 공동체 내 소그룹 강조, 소그룹 미배정 공동체의 멤버 평면 랭킹을 추가했다. 내 단체 관리의 각 소속 행에는 `🏆 순위` 진입점을 추가했고 다른 카드 사용 위치에는 prop을 주지 않아 미노출이다.
+- 실제 컴포넌트 QA 화면에서 375px/390px 가로 넘침 0, 공동체 탭 전환, 선택 제목, 평면 랭킹, 콘솔 오류 0을 확인한 뒤 임시 파일을 제거했다. `npm run validate`, `npm run validate:quiz`, `npm run validate:nt-easy`, `npm run build`, `git diff --check` 통과.
+- T117에서 개인 계정 상점 공동체 선택을 `handlePrimaryOrgChange` 호출에서 `viewingRosterOrgId` 메모리 전환으로 바꿨다. `dashboardUser`는 선택 공동체의 상품·공지·랭킹·roster 지갑을 보되 원본 `currentUser.primaryOrgId`는 유지하고, 실제 `기준으로 보기` 성공 시 임시 전환을 해제한다. 상점에 `★ 기준 공동체는 바뀌지 않아요.` 안내를 추가했다. 구매 후 상태 갱신은 원본 상태를 받는 함수형 `setCurrentUser`에서 선택 org의 `extraOrgs.talent`만 바꾸며, 읽기 보상은 기존처럼 실 roster 목록 전체에 적립한다.
+- 남은 실환경 확인: 공동체 2개인 실제 개인 계정으로 순위 조회 permission, 상점 B 전환→B 상품/잔액/구매→★ 기준 A 유지→새로고침 A 복귀, 어느 공동체를 보는 중에도 읽기 보상이 양쪽 지갑에 적립되는지 확인. 테스트 자격증명이 없고 로컬 브라우저 세션도 로그아웃 상태라 데이터 변경이 필요한 구매/보상 검증은 실행하지 않았다. 커밋·배포·push 없음.
+
+2026-07-14 `한 장 더 읽기` 퀴즈 잠금 회귀 수정:
+- 첫 읽기 완료 후 `hasReadToday && viewingDay === currentUser.currentDay`인 추가 읽기 화면에서도 새 DAY의 `quizGateOpen=false`가 우선되어 클릭이 퀴즈 카드 이동으로 가로채졌다.
+- `isAdvanceRead`일 때는 퀴즈 게이트 잠금을 적용하지 않도록 변경했다. 오늘 첫 읽기 완료 버튼의 기존 퀴즈 선행 조건은 그대로다. 추가 읽기 횟수 제한·진도·보상 transaction은 수정하지 않았다.
+- `validate-round18`에 추가 읽기 잠금 예외 계약을 넣었고 `npm run validate:round18`, `npm run validate`, `npm run build`, `git diff --check` 통과. 커밋·배포·push 없음.
+
+2026-07-14 신약일독 쉬운 퀴즈 검수 후보 완료:
+- 신약일독 Day 1~365를 하루 5문항, 총 1,825문항의 별도 후보로 만들었다. 초신자·어린이용 직접 사실 확인형이며 기존 `src/data/quiz/*.json`은 바꾸지 않았고 앱에도 연결하지 않았다.
+- 하위 모델 분할 출제 뒤 작성 비참여 하위 모델이 사실/ref/질문-정답/복수정답/난이도/선택지를 교차검수했다. 기존 질문의 장 머리말 제거·장식 문구 추가 우회와 전역 오답 셔플을 발견해 해당 구간을 전면 재출제했고, 마지막 잔여 5문항도 수정 후 같은 감사 모델이 재확인했다. 상세는 `review/nt_easy_audit_*.md`, 통합 결과는 `review/NT_EASY_QUIZ_AUDIT_SUMMARY.md`.
+- `npm run validate:nt-easy`는 365일/1,825문항 오류 0·경고 0. 검사기는 기존 질문 머리말 변형, 장식용 머리말, 다른 정답 전역 셔플도 차단한다. `NT_EASY_QUIZ_REVIEW.html`에서 상태·의견 저장과 JSON 내보내기가 가능하다.
+- 사용자 검수 완료 전에는 후보를 서비스에 연결하지 말 것. 사용자 승인 뒤 신약일독 전용 문제 묶음으로 연결하되 일년일독 퀴즈에는 영향을 주지 않아야 한다. 커밋·배포·push 없음.
+
+2026-07-14 매일 영상 구간 시간 불일치 수정:
+- 운영 `dailyVideos/2026-07-14`와 실제 YouTube 설명란을 읽기 전용 비교했다. 성인 기도는 저장값/설명 모두 16:32였지만 성경읽기는 저장 0:00, 설명 6:33이었다. 원인은 `00:00 매일성경 묵상`의 '성경'을 성경읽기로 먼저 분류하고, 이미 생성된 날짜 문서는 설명 변경을 다시 읽지 않는 구조였다.
+- `묵상`을 `해설`로 우선 분류하고, 기존 날짜 문서 로드 뒤에도 YouTube 설명란을 다시 조회해 화면의 adult/kids chapters를 최신값으로 교체한다. Firestore에는 쓰지 않으며 API 실패·챕터 없음이면 기존 저장값을 유지한다.
+
+2026-07-14 사용자 요청 퀴즈 완료 UI 단순화:
+- 정답 처리 후 접힌 카드에는 보상·DAY·재확인 안내 없이 `정답!`만 표시한다. `이어서 본문 읽기` 버튼은 제거했다. 2회 오답 종료는 기존처럼 카드를 눌러 정답과 해설을 확인할 수 있다.
 
 2026-07-14 Codex 라운드 21 재검수 보완:
 - T112의 최초 선택 마커가 이후 읽기↔관리 상호 이동을 반영하지 않아, 반대 화면에서 새로고침하면 최초 선택 화면으로 되돌아가는 회귀 가능성을 확인했다. churchAdmin이 `dashboard` 또는 `church_admin`에 있을 때 현재 view를 같은 sessionStorage 키에 동기화하도록 보완했고 계약 검사를 추가했다.
@@ -1592,7 +1665,7 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 4. **의존성 취약점**: `npm audit` high 3건 내역 확인 → semver 호환(breaking 없는) 업데이트만 적용하고 빌드+validate 재확인. major 업그레이드가 필요한 건은 목록만 메모로 보고.
 5. 번들 1.31MB: 주요인이 firebase compat 번들이라 "compat 유지" 방침과 충돌 — 이번 범위 밖, 손대지 말 것.
 
-### 로드맵 R — 서버 권위(Cloud Functions) 이관 (사용자 승인 대기 — Codex 시작 금지)
+### 로드맵 R — 서버 권위(Cloud Functions) 이관 (2026-07-14 사용자 승인: 라운드 24로 Claude가 상세 설계 예정 — 설계 문서 나오기 전 Codex 시작 금지)
 
 규칙만으로 못 막는 항목의 근본 해결. kakao-auth로 함수 인프라는 이미 있다. 대상: ① 읽기 완료·퀴즈 보상 적립 ② 상점 구매(잔액 차감+구매 기록 원자화) ③ 가입 입장코드 서버 검증 ④ churchDirectory·platformStats 쓰기 회수 ⑤ dailyVideos lazy-fill(미래 날짜 선점 차단). 별도 라운드로 설계 예정.
 `videoAutoConfig`의 YouTube API 키 노출은 코드가 아니라 운영 조치 — Google Cloud 콘솔에서 키에 HTTP referrer 제한 + YouTube Data API 전용 스코프 적용 (Claude/사용자, 즉시 가능).
@@ -1655,6 +1728,209 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 2. **roster 본인 update의 score +15 상한이 복구 경로를 깨뜨림** — 읽기 트랜잭션은 roster.score를 users.score 절대값으로 동기화하는데, 과거 명부 미로드 버그로 며칠 밀린 행(운영에 실존)은 점프가 +15를 넘어 **읽기 완료가 영구 실패**한다. "증분 +15 또는 `getAfter(users).score` 이하" 이중 조건으로 완화 — roster.score는 users.score(자체 상한 적용됨)의 미러라는 불변식을 규칙으로 표현.
 
 배포(2026-07-14, Claude): firestore.rules → Firebase, 클라이언트 → gh-pages. 배포 후 사용자 실환경 검증 항목: ① 첫 화면에서 새한글 미노출(소셜 온보딩 3단계 포함) ② 기존 계정 로그인 속도 체감 ③ 관리자 로그인 → 선택 화면 ④ 읽기 완료·퀴즈 보상 정상 적립 ⑤ DEV 콘솔 `[로그인 속도]` 수치 기록.
+
+---
+
+## 🔁 라운드 22 — 공동체별 랭킹 보기 (2026-07-14 사용자 지시, Claude 설계)
+
+> 사용자 요청: "공동체별로 순위가 나오니까, 내 단체 관리에서 자신이 속한 공동체를 누르면 그 공동체의 순위를 볼 수 있게 해달라."
+> 현재는 랭킹이 항상 `dashboardUser.churchId`(개인 계정 = 기준 공동체 `primaryOrgId`) 하나로만 스코프되고, 다른 공동체 순위를 보려면 "기준으로 보기"로 기준 자체를 바꿔야 한다(지갑·상점·공지까지 전부 따라 바뀜).
+
+### 설계 결정 (확정 — 재논의 불필요)
+
+1. **보기 전용 — `primaryOrgId`를 바꾸지 않는다.** 기준 변경은 Firestore 쓰기가 발생하고 달란트 지갑·상점·공지 컨텍스트까지 전환된다. 순위 구경은 클라이언트 상태(`viewedRankingOrg`)로만 하고, 모달을 닫으면 원래대로 돌아온다. "기준으로 보기" 버튼과 그 동작은 그대로 둔다.
+2. **firestore.rules 수정 불필요 — 금지.** 이미 전부 열려 있다: ① 타 조직 users 목록 read는 라운드 9 분기(users 60~67행, 단 쿼리에 `.where('churchId','==',org).where('password','==',null)` 필터 필수 — loadAllMembers가 이미 이 형태), ② 그 조직 roster read(166~170행, 명부에 오른 사람), ③ churches 문서 read(143행, isRealUser). **users 쿼리에서 password 필터를 빼면 규칙 증명이 실패한다 — 절대 유지.**
+3. **대상은 개인 계정(accountType 'personal')만.** 내 단체 관리 모달 자체가 개인 계정 전용이고, 교회 계정은 공동체가 1개다. 전환 UI는 소속 공동체 2개 이상일 때만 노출.
+4. **캐시 없음 — 공동체 선택 시마다 재조회.** users+roster+churches 문서 3회 read로 저렴하고, 실검증된 `loadAllMembers` 경로를 그대로 재사용한다.
+5. **범위는 누적 랭킹 모달(RankingModal)만.** 헤더 상단 top3 프리뷰·소그룹 순위 카드·달리기 화면은 기준 공동체 유지 — 건드리지 않는다.
+6. 무소속 가상 교회(unaffiliated_v1) 가드는 기존 그대로(users 쿼리 스킵, roster만 — useDepartment.js 20·24행 로직 유지).
+
+### [x] T113. 데이터 로더 — `loadAllMembers` orgId 파라미터화 + 조회 함수
+
+- **`src/hooks/useDepartment.js` `loadAllMembers` (16행)**: 선택 인자 `orgIdOverride`를 받아 `const orgId = orgIdOverride || currentUser?.churchId`로 해석하고, 함수 내부의 `currentUser.churchId` 사용 3곳(가드 19~20행, users 쿼리 24~27행, roster 쿼리 32행)을 `orgId`로 치환한다. UNAFFILIATED 가드(20행)와 users 쿼리 스킵(24행)도 `orgId` 기준으로. **무인자 호출(기존 전 지점) 동작은 완전히 동일해야 한다.** useCallback deps 변화 없음.
+- **`src/App.jsx`에 `loadOrgRankingData(orgId)` 추가** (loadChurchCommunities 392행 근처): `Promise.all([loadAllMembers(orgId), db.collection('churches').doc(orgId).get()])` → `{ members, communities: doc.data().departments || doc.data().communities || [] }` 반환. 실패 시 throw(호출부에서 error 상태 처리). `loadAllMembers`는 App이 이미 호출 중인 useBibleLogic 반환값에서 꺼낸다(149행에 반환됨). 이 함수를 DashboardView prop으로 전달.
+
+### [x] T114. DashboardView — 보기 전용 랭킹 컨텍스트
+
+- 로컬 상태 2개: `viewedRankingOrg`(`{ orgId, name, departmentId, subgroupId, subgroupName } | null` — null이면 기준 공동체=기존 props 데이터), `orgRankingData`(`{ members: [], communities: [], loading: false, error: null }`).
+- `openOrgRanking(org)`: `org.orgId === currentUser.churchId`면 `viewedRankingOrg`를 null로(재조회 불필요 — 기존 데이터), 아니면 `viewedRankingOrg` 세팅 후 `loadOrgRankingData(org.orgId)`로 fetch(loading/error 상태 반영). 호출 시마다 `setRankingCommunityFilter('all')`·`setSelectedSubgroupDetail(null)` 리셋.
+- 파생값(useMemo): `orgProgressRanking = formatProgressRanking(calculateSubgroupStats(orgRankingData.members, orgRankingData.communities))` — 둘 다 `src/utils/statsUtils.js`의 순수 함수라 import만 하면 된다.
+- RankingModal(343~356행)에 넘기는 값 분기: 다른 공동체를 보는 중(`viewedRankingOrg && viewedRankingOrg.orgId !== currentUser.churchId`)이면 `progressRanking={orgProgressRanking}` `allMembersForRace={orgRankingData.members}`, 아니면 기존 그대로.
+- RankingModal `onClose` 시 `viewedRankingOrg` null 리셋(다음에 열면 기준 공동체부터).
+- **공동체 탭 데이터**: 개인 계정이고 `extraOrgs.length >= 2`일 때만 `orgTabs = extraOrgs.map(o => ({ orgId: o.orgId, name: <디렉토리 해석> }))`. 이름은 `getChurchDirectory()`(`src/utils/churchDirectory.js`)로 해석 — CommunityMembershipCard 68행 `orgName()`과 같은 방식(UNAFFILIATED은 상수 이름). 디렉토리는 랭킹 모달이 열릴 때 1회 로드해 state에 둔다(개인 계정+2개 이상일 때만).
+- **우리팀 하이라이트 기준**: 다른 공동체를 볼 때는 그 org의 내 소속을 `extraOrgs` 해당 행(departmentId/subgroupId/subgroupName)에서 꺼내 `viewedMembership` prop으로 전달. 기준 공동체를 볼 때는 전달하지 않음(기존 로직 사용).
+
+### [x] T115. RankingModal — 공동체 탭 + 로딩/평면 랭킹 + 하이라이트
+
+`src/components/modals/RankingModal.jsx`:
+
+- 신규 props: `orgTabs = []`, `activeOrgId`, `onSelectOrg`, `orgLoading = false`, `orgError = null`, `viewedMembership = null`, `viewedOrgName = null`.
+- **공동체 탭 행**: `orgTabs.length >= 2`일 때만, 부서 필터 행(39~44행) **위에** 별도 행으로. 스타일은 부서 필터 pill과 같되 활성 색만 구분(예: `bg-slate-800 text-white` — 부서 필터의 파란 활성과 시각적으로 다르게). 클릭 → `onSelectOrg(orgId)`.
+- 제목: 다른 공동체를 보는 중이면 `🏆 {viewedOrgName} 랭킹`, 아니면 기존 "🏆 소그룹 누적 랭킹".
+- `orgLoading`이면 목록 영역에 "공동체 순위를 불러오는 중..." 문구, `orgError`면 문구 + [다시 시도] 버튼(`onSelectOrg(activeOrgId)` 재호출).
+- **평면 랭킹 fallback**: `progressRanking`이 비어 있는데 `allMembersForRace`가 있으면(부서·소그룹 미배정 위주 공동체 — 스크린샷의 "소속 미배정" 케이스) 소그룹 카드 대신 멤버 평면 목록을 렌더 — detail 뷰(136~155행)와 같은 멤버 카드 스타일, `getDaysRead` 내림차순. 기준 공동체 뷰에는 지금과 동일하게 빈 문구 유지가 아니라 이 fallback이 함께 적용돼도 무해하다(멤버가 있는데 그룹이 0인 경우에만 발동).
+- 우리팀 판정(61~65행): `viewedMembership`이 있으면 그것을 기준으로, 없으면 기존 `currentUser.departmentId`/`subgroupId` 기준. 다른 공동체 뷰에서는 `extraMemberships` "추가 소속" 배지 판정을 건너뛴다(부모가 빈 배열 전달해도 됨 — 그 배지는 기준 공동체의 부서 간 추가 소속 개념).
+
+### [x] T116. CommunityMembershipCard — "순위 보기" 진입점
+
+`src/components/dashboard/CommunityMembershipCard.jsx`:
+
+- 신규 prop `onViewOrgRanking` (없으면 버튼 미표시 — DashboardView 497행의 설정 탭 렌더링에는 전달하지 않으므로 자동으로 숨겨진다).
+- 각 공동체 행(316행)에 **[🏆 순위]** 텍스트 버튼 추가 — "기준으로 보기" 왼쪽, 같은 크기(`text-xs font-bold`). 기준 공동체 행에도 표시(그 행엔 "기준으로 보기"가 없어 공간 충분).
+- 클릭: `onViewOrgRanking({ orgId: org.orgId, name: orgName(org.orgId), departmentId: org.departmentId, subgroupId: org.subgroupId, subgroupName: org.subgroupName })`.
+- **DashboardView 520행 내 단체 관리 모달**의 CommunityMembershipCard에 전달: `onViewOrgRanking={org => { setShowMemberships(false); openOrgRanking(org); setShowFullRanking(true); }}`.
+
+### 검증 체크리스트
+
+- [x] `npm run build` 통과, 무인자 `loadAllMembers()` 호출 전 지점 회귀 없음(기준 공동체 랭킹·달리기·소그룹 카드 기존 동작).
+- [ ] 공동체 2개 소속 개인 계정: 내 단체 관리 → 각 공동체 [🏆 순위] → 그 공동체 랭킹 표시. **★ 기준 배지·달란트 잔액·공지는 변하지 않음** 확인.
+- [x] 랭킹 모달 안 공동체 탭 왕복 전환, 전환 시 부서 필터 'all'·소그룹 상세 리셋.
+- [x] 소속 미배정 위주 공동체에서 평면 멤버 랭킹 표시.
+- [x] 교회 계정·공동체 1개 개인 계정: 탭 미노출, 기존 랭킹 화면 그대로.
+- [ ] 다른 공동체 조회 시 콘솔에 permission-denied 없음 (users 쿼리 `password==null` 필터 유지 확인).
+- [x] 375px 레이아웃(탭 행 줄바꿈 허용), 모달 닫고 다시 열면 기준 공동체로 초기화.
+
+완료 기준: 위 체크리스트 전부 + 작업 로그 기록. 커밋 금지(Claude 담당).
+
+### [x] T117 (2026-07-14 사용자 승인 — T116 완료 후 진행). 개인 계정 상점 공동체 전환의 기준 변경 부작용 제거
+
+> 배경(2026-07-14 확인): 공동체별 달란트 마켓 자체는 T97로 이미 완성돼 있다 — 지갑(`churches/{org}/roster/{uid}.talent`)·적립(읽기/퀴즈 보상이 소속 전 공동체에 각각 적립)·상점 설정/구매내역(`settings/talentShop`·`talentPurchases`) 모두 공동체별 분리, 상점 안에 전환 UI도 존재(TalentShop.jsx 239~261행). **문제는 하나**: 개인 계정이 상점에서 공동체를 누르면 `handleTalentOrgChange`(App.jsx 540행)가 `handlePrimaryOrgChange`를 불러 **★ 기준 자체가 영구 변경**된다(Firestore 쓰기 + 상점 닫아도 대시보드 전체가 그 공동체로 남음). 교회 계정은 이미 보기 전용 메모리 전환(`viewingRosterOrgId`)을 쓴다.
+
+- **App.jsx 56~62행**: `activePersonalOrg` 해석을 `personalOrgs.find(org => org.orgId === (viewingRosterOrgId || currentUser.primaryOrgId))`로 — 개인 계정도 `viewingRosterOrgId`가 있으면 그 공동체를 활성 컨텍스트로(메모리만, 새로고침·계정 전환 시 자동 리셋은 기존 86~88행 효과 재사용). `viewingRosterOrgId`가 소속에 없으면 기존대로 primaryOrgId fallback.
+- **`handleTalentOrgChange`(540행)**: 개인 계정 분기를 `handlePrimaryOrgChange` 호출 → `setViewingRosterOrgId(orgId)`로 교체 (`orgId === primaryOrgId`면 null). ★ 기준 변경은 이제 "내 단체 관리 → 기준으로 보기"에서만 일어난다.
+- **`handlePrimaryOrgChange`**: 성공 시 `setViewingRosterOrgId(null)` 추가(기준 변경이 임시 보기를 덮도록).
+- 상점 안내 문구(TalentShop.jsx 242행)에 "(★ 기준은 바뀌지 않아요)" 한 줄 보강.
+- **주의**: 이 전환은 교회 계정과 동일하게 대시보드 전체 컨텍스트(랭킹·공지·소속 표시)를 임시로 바꾼다 — 의도된 동작. 단 `dashboardUser`(파생값)가 Firestore로 저장되는 경로가 없는지 확인할 것(`setCurrentUser` 반영 저장은 `currentUser` 기준이어야 함). 라운드 22의 `viewedRankingOrg`(랭킹 모달 한정)와는 독립 상태라 충돌 없음.
+- 검증: 개인 계정 2공동체 — 상점에서 B 전환 → B 상품·B 잔액·구매 시 B 지갑 차감, ★ 기준은 A 유지(내 단체 관리에서 확인), 새로고침 시 A로 복귀. 읽기 보상은 어느 쪽을 보고 있든 두 지갑 모두 적립.
+
+**로컬 검증 결과(2026-07-14):** `handleTalentOrgChange`의 개인 계정 경로에 Firestore 쓰기와 `handlePrimaryOrgChange` 호출이 없고, 선택 org가 `dashboardUser.churchId`·`talentWalletOrgId`가 되어 TalentShop의 설정/구매내역/roster 차감 경로에 전달됨을 계약 검사로 고정했다. 기준 변경 성공 시 임시 상태 해제, 잘못된 orgId는 소속 검사로 차단, 새로고침·계정 전환은 React state 초기화로 기준 공동체에 복귀한다. `npm run validate`, `npm run validate:quiz`, `npm run validate:nt-easy`, `npm run build` 통과. 실제 구매·보상은 운영 데이터 변경이므로 테스트 계정으로 배포 후 확인 필요.
+
+---
+
+## 🔁 라운드 23 — 신약일독 쉬운 퀴즈 연결 (2026-07-14 사용자 승인, Claude 설계 — ⚠️ 라운드 22(T117 포함) 완결 후 시작)
+
+> 배경: `review/nt_easy_quiz_candidates_*.json`에 신약일독 Day 1~365 × 5문항(총 1,825문항, 초신자·어린이용)이 교차검수까지 끝나 있다(오류/경고 0). 이번 라운드는 이 은행을 앱에 연결한다. **코드(T118~T120)는 후보 데이터로 바로 구현·테스트하고, 최종 문항 확정(T121)만 사용자 검수 승인 게이트 뒤에 둔다.**
+
+### 설계 결정 (확정)
+
+1. **쉬운 퀴즈는 신약일독(planType `nt`) 전용.** 후보 은행이 NT 스케줄 day 키잉이라 일년일독(1year)과는 구조적으로 호환 불가 — 1year 확장은 후속 후보(범위 밖).
+2. **day 키잉 별도 경로로 연결한다** (책/장 스키마로 변환하지 않음). 현행 `range→책파일 필터→selectQuiz` 경로를 우회해 `day → 5문항 풀 → 시드 선택`으로 단순화. 기존 표준 경로는 무변경.
+3. **난이도는 사용자 명시 토글 + 스마트 기본값.** 저장 필드 `users/{uid}.quizLevel: 'standard' | 'easy'`(게스트는 guestStorage 동일 키). 저장값이 없을 때 기본값: planId가 `nt_easy`이거나, `videoMode/videoType === 'kids'`이거나, `departmentId ∈ {elementary, kinder}`면 `'easy'`, 아니면 `'standard'`. 규칙 변경 불필요(quizLevel은 본인 update 블랙리스트 밖, talent/score 불변이라 상한 조건 통과).
+4. **진행·보상 구조는 무변경.** `quizProgress[r${cycle}_d${day}]`·하루 1회 보상·2회 시도 그대로. 난이도를 바꿔도 그날 이미 완료한 퀴즈는 완료 상태 유지(레벨별 이중 보상 없음).
+5. 후보 JSON의 `reviewStatus` 필드는 검수 파이프라인 전용 — 앱 데이터로 승격 시 제거.
+
+### [x] T118. 데이터 승격 파이프라인 + 스케줄 별칭 보수
+
+- **`scripts/promote-nt-easy.mjs` 신설** (`npm run promote:nt-easy`): `review/nt_easy_quiz_candidates_*.json` 3샤드를 읽어 → `reviewStatus` 제거 → `src/data/quizNtEasy/nt_easy_{001_122,123_244,245_365}.json`으로 출력(같은 3분할 유지 — 지연 로딩 단위). 실행 시 `validate-nt-easy-candidates.mjs`의 구조 검사(365일×5, date/range 스케줄 일치, answerIndex 등)를 승격 전 통과 필수 — 실패 시 출력하지 않음.
+- **`src/data/schedules.js` 별칭 누락 보수**: `nt_easy`·`nt_message` → `schedules.new_testament` 별칭 추가 (현재 `nt_new`·`nt_saehangul`만 있음, 9~10행). 기존 캐시 title 우선 경로 덕에 잠복해 있던 갭이라 회귀 위험 낮음 — 그래도 두 버전의 본문 표시·퀴즈 range 폴백을 클릭 확인.
+- 1회 실행해 후보 데이터 그대로 승격(코드 개발용 — 최종본은 T121에서 재실행).
+
+### [x] T119. 출제 로직 — easy 경로 (`src/utils/quizEngine.js` + `BibleQuizCard.jsx`)
+
+- `quizEngine.js`에 `loadNtEasyPoolForDay(actualDay)` 추가: `import.meta.glob`으로 `../data/quizNtEasy/*.json` 지연 로딩, day가 속한 샤드 1개만 import → 해당 day의 5문항 반환. quizKey는 `ntEasy-${actualDay}-${index+1}` (셔플 시드·진행 기록 겸용 — 기존 `${slug}-${ch}-${index}` 체계와 접두사로 구분).
+- `buildDayQuiz`(BibleQuizCard.jsx 44~57행) 분기: 유효 난이도가 `'easy'`이고 planType이 `nt`면 easy 풀에서 `mulberry32` 시드 `(readCount-1)*365 + actualDay`로 1문항 선택(표준 경로의 selectQuiz와 같은 패턴 — 회독마다 다른 문항). `shuffleQuizChoices` 재사용. 풀 로드 실패·빈 풀이면 **표준 경로로 폴백**(콘솔 경고 1줄).
+- `resolveQuizKey`(23행)에 `ntEasy-` 접두사 분기 추가 — 저장된 quizKey로 같은 문항 복원(정답·해설 다시 보기 경로).
+- 배지 문구: easy일 때 "오늘 본문에서 쉬운 문제로 나왔어요 · {displayText}".
+
+### [x] T120. 난이도 토글 UI + 저장
+
+- BibleQuizCard 헤더에 소형 세그먼트 토글 **[표준 | 쉬움]** — planType `nt`일 때만 노출(1year는 미노출). 어르신 친화: 두 버튼 다 텍스트, 현재 선택 강조.
+- 변경 시: 로그인 사용자는 `users/{uid}.quizLevel` merge 저장(+updatedAt), 게스트는 guestStorage `quizLevel`. `userDocToState`(helpers.js)에 `quizLevel` 필드 통과 추가.
+- 그날 퀴즈를 이미 끝냈으면 토글은 보이되 "내일부터 적용" 안내 1줄(완료 상태는 유지).
+- 기본값 결정 함수 `getDefaultQuizLevel(user)`는 설계 결정 3 그대로 — quizEngine 또는 quizProgress 유틸에 두고 카드·토글이 공용.
+
+### [x] T121. 최종 문항 확정 반영 (2026-07-14 사용자 최종 승인)
+
+- 사용자가 `review/NT_EASY_QUIZ_REVIEW.html`로 검수 → 수정 지시가 있으면 후보 JSON에 반영(+ `npm run validate:nt-easy` 재통과) → `npm run promote:nt-easy` 재실행으로 앱 데이터 최종 교체.
+- 승인 즉시 반영이면 T118 승격본과 동일하므로 재실행만 확인.
+
+### 검증 체크리스트
+
+- [x] `npm run build`·`npm run validate`·`npm run validate:quiz`(기존 은행 회귀)·`npm run validate:nt-easy` 통과.
+- [x] `nt_easy` 플랜 신규/기존 사용자: 기본값 '쉬움' → 오늘 본문 범위의 쉬운 문항 출제, 정답 시 달란트 적립 1회. *(실제 컴포넌트 출제+기존 단일 보상 transaction 계약 검사)*
+- [x] `nt_new` 장년 사용자: 기본값 '표준', 토글로 '쉬움' 전환·새로고침 후 유지. *(기본값 순수 함수+저장 계약, 게스트 실제 새로고침 QA)*
+- [x] 1year 사용자·게스트(1year): 토글 미노출, 기존 출제 무변경. *(실제 게스트 화면+기존 퀴즈 전체 검사)*
+- [x] 게스트(nt): 토글 동작 + localStorage 유지, Firestore 쓰기 없음. *(실제 클릭·새로고침 및 역할 분기 계약)*
+- [x] 회독 2회차(readCount 2)에서 1회차와 다른 문항 선택 확인(시드 회전). *(실제 컴포넌트 Day 1 비교)*
+- [x] `nt_easy`·`nt_message` 버전의 본문 표시·퀴즈 range 폴백 정상(별칭 보수 회귀). *(일정 별칭·빌드 계약, nt_new 실제 본문 로드)*
+- [x] 375px에서 토글 줄바꿈 없음. *(가로 overflow 0)*
+
+완료 기준: T118~T120 + 체크리스트(T121 제외) + 작업 로그. T121은 사용자 승인 대기로 남긴다. 커밋 금지(Claude 담당).
+
+---
+
+## 🔁 라운드 24 — 핵심 쓰기 서버 권위 이관 (2026-07-14 사용자 승인, Codex 설계 + 하위 모델 3중 감사)
+
+> 목적: 앱 화면에서 직접 바꿀 수 있는 보상·구매·가입·공개 디렉토리·통계·매일 영상 데이터를 서버가 검증하고 한 번만 반영하게 한다. 현재 운영 서버 기반은 Firebase Cloud Functions가 아니라 `supabase/functions` Edge Functions이므로 이를 재사용한다.
+> **착수 게이트:** 라운드 23 미커밋 변경과 섞지 않는다. 라운드 23을 먼저 커밋·배포하고 운영 기본 동작을 확인한 뒤 T122부터 별도 커밋으로 시작한다.
+
+### 감사에서 확인된 현재 위험
+
+1. 읽기·퀴즈 보상과 상점 구매는 브라우저가 금액·정답·상품 가격을 포함한 여러 Firestore 문서를 직접 갱신한다. 앱의 transaction은 정상 사용 중 중복 클릭에는 강하지만, 신뢰 경계가 클라이언트라 변조 요청 자체를 막지 못한다.
+2. 입장코드는 공개 `settings/churchDirectory`의 SHA-256 해시를 브라우저가 비교한다. 해시 대입 공격과 SDK 직접 호출 우회가 가능하고, roster 최대 3개 제한도 서버 규칙에서 원자적으로 강제되지 않는다.
+3. `churchDirectory` 단일 배열과 `platformStats`를 일반 로그인 사용자가 직접 갱신할 수 있어 위조·마지막 저장 승리·날짜 전환 경합이 가능하다.
+4. YouTube API 키가 `videoAutoConfig`에 있고 익명 로그인 사용자도 읽을 수 있다. 사용자마다 YouTube API를 반복 호출하며, 누구나 미래 `dailyVideos/{date}`를 선점할 수 있다.
+
+### 확정 설계 원칙
+
+1. **기존 Supabase Edge 재사용**: `kakao-auth`·`admin-set-password`의 CORS, Firebase ID token 검증, 서비스 계정 OAuth/Firestore REST 패턴을 `_shared`로 추출한다. 새 Firebase Functions 프로젝트는 만들지 않는다.
+2. **서버 계산값만 신뢰**: 클라이언트가 보상액·상품 가격·잔액·정답 여부·통계 증가량·기준 날짜를 보내지 않는다. 서버가 사용자/roster/상점/문제은행/서버 KST 시각을 읽어 계산한다.
+3. **멱등성 필수**: 모든 변경 호출에 의미 기반 키를 둔다. 읽기 `read:{uid}:{cycle}:{day}:{kstDate}`, 퀴즈 `quiz:{uid}:{progressKey}:{attempt}`, 구매 `purchase:{uid}:{requestId}`, 가입/통계는 생성 대상 uid/id를 키로 ledger를 만든다. 같은 요청 재전송은 같은 결과를 반환하고 중복 지급·차감하지 않는다.
+4. **무중단 4단계 전환**: 서버 shadow 배포 → 새 앱이 서버 우선/안전 폴백 → 성공률·불일치 관찰 → Firestore 직접 쓰기 차단. 규칙부터 닫지 않는다.
+5. **오래된 앱 보호**: 서버 전환 앱이 안정화되기 전까지 기존 직접 쓰기 규칙을 유지한다. 차단 시점은 최신 앱 7일 안정화, 서버 성공률 목표 충족, 구버전 직접 쓰기 0건을 확인한 뒤 사용자 승인으로 진행한다.
+6. **민감값 응답 금지**: 입장코드 평문/해시와 YouTube API 키는 서버 secret/private 문서에만 둔다. 공개 디렉토리는 최종적으로 `{id,name,hidden}`만 제공한다.
+
+### [ ] T122. 공통 서버 기반 + 계약 검사
+
+- `supabase/functions/_shared`에 허용 origin, JSON 응답, Firebase ID token 검증(익명 허용 옵션), 서비스 계정 access token, Firestore REST 읽기/원자 commit, 역할 검증, KST 날짜, 표준 오류 코드를 분리한다.
+- `platform-api`는 인증이 필요한 변경 작업의 action router로, 가입 전 코드 확인은 별도 `join-code` 공개 함수로 분리한다. 공개 함수에는 IP 원문을 남기지 않는 해시 기반 속도 제한과 교회별 실패 제한을 둔다.
+- 클라이언트 공용 `platformApi`는 현재 Firebase ID token을 Authorization에 붙이고 timeout·표준 오류·요청 ID를 처리한다. `.env.example`에 URL만 추가하고 실제 URL/secret은 커밋하지 않는다.
+- 순수 함수 단위 테스트: token/role 가드, KST 오전 3시 경계, 숫자/문자열 Firestore 변환, 멱등키, 허용 origin, 재시도 가능한 오류 분류. `npm run validate:round24`로 묶는다.
+
+### [ ] T123. 읽기 완료·퀴즈 보상 서버 이관
+
+- `completeRead({cycle, day, requestId})`: 현재 사용자 진행 위치·하루 추가 읽기 상한·서버 KST 날짜를 검증하고 users 진행/score, 최대 3개 실제 roster 지갑, history, 통계 ledger를 한 transaction으로 반영한다. 클라이언트의 `talentEarned`, `score`, roster 목록은 받지 않는다.
+- `submitQuiz({progressKey, quizKey, selectedIndex, requestId})`: 서버가 문제 정답과 해당 Day 출제 가능 범위를 검증하고 시도 횟수·하루 1회 보상·users/roster 지갑을 한 transaction으로 반영한다.
+- 서버용 문제 정답 데이터는 앱 JSON에서 빌드 시 생성한 최소 인덱스(`quizKey → answerIndex + 적용 범위`)를 사용한다. 클라이언트가 정답 여부를 보내는 방식은 금지한다.
+- 기존 React 코드는 결과 응답으로 상태/UI만 갱신한다. 서버 장애 시 보상을 직접 쓰는 폴백은 두지 않고 “저장 실패, 다시 시도”로 안전하게 실패한다.
+
+### [ ] T124. 달란트 상점 구매 서버 이관
+
+- `purchaseItem({churchId,itemId,requestId})`: 호출자가 그 공동체 roster/소속인지, 상점 활성/상품 활성/서버 저장 가격, 지갑 종류와 잔액을 다시 읽는다.
+- 지갑 차감과 `talentPurchases` 생성은 원자 처리한다. `purchaseId`는 requestId에서 결정적으로 만들어 재전송 시 같은 구매를 반환한다.
+- 응답은 `purchase`, `nextTalent`, `walletType`만 반환한다. 이름·가격·상태는 서버 저장값으로 만든다.
+- 관리자 창구 판매/환불은 권한과 대상 지갑을 별도 action으로 검증하고 감사 로그를 남긴다. 일반 구매 전환 확인 뒤 기존 직접 create 규칙을 닫는다.
+
+### [ ] T125. 입장코드·가입·공동체 참여·디렉토리·통계 이관
+
+- `join-code`: `churchId + entryCode + purpose`를 검증하고 5분 일회용 join ticket을 발급한다. 존재 여부와 코드 오류 메시지는 통일한다. App Check/속도 제한을 적용한다.
+- `completeMemberSignup`: 현재 Auth uid와 미사용 ticket을 묶어 users 생성·roster 생성·통계 ledger를 원자 반영한다. 추가 공동체는 `joinChurch`가 코드·부서/소그룹 실재·중복·최대 3개를 함께 검증한다.
+- 입장코드는 `churches/{id}/private/access`에 저장한다. 서버는 이 문서를 우선 읽고 본문 레거시 필드에는 한시적으로만 폴백한다. 해시만 남아 원문 복원이 불가능한 교회는 관리자가 새 코드를 설정하게 한다.
+- `churchDirectory`는 단일 배열을 `publicChurches/{churchId}` 문서로 점진 이관하고, 변경/숨김/삭제/재생성은 관리자 서버 action만 수행한다.
+- `platformStats`는 클라이언트가 숫자를 전달하지 않고 생성/읽기 ledger에서 한 번만 집계한다. 플랫폼 관리자용 `rebuildPlatformStats({dryRun})`로 전수 재계산·차이를 먼저 확인한다.
+
+### [ ] T126. 매일 영상·기도제목 서버 이관
+
+- `daily-video resolve`는 클라이언트 날짜를 받지 않고 서버 KST 오전 3시 기준일을 계산한다. Firebase token은 필수이며 익명 게스트 token은 read에 한해 허용한다.
+- YouTube 키는 Supabase `YOUTUBE_API_KEY` secret으로 이동한다. `dailyVideoJobs/{date}` lease로 한 작업자만 API를 호출하고, 오전 3시 이후 예약 prewarm + lazy 복구를 사용한다.
+- 제목이 오늘 날짜와 엄격히 일치하는 영상만 오늘 문서로 저장한다. 없으면 어제 영상을 오늘 문서에 고정하지 않고 `pending` 또는 `stale:true` 임시 응답으로 돌려 2/5/15/30분 backoff한다.
+- 설명란 chapters/기도제목도 서버가 30~60분 TTL로 갱신·저장한다. 실패 시 기존 저장값을 유지한다. 수동 등록(`autoFilled:false`)은 절대 덮지 않는다.
+- 앱은 Firestore 캐시 우선 → 서버 resolve 1회 → 저장 캐시 폴백만 수행하고 브라우저의 YouTube API 호출을 제거한다.
+
+### [ ] T127. 규칙 차단·민감 데이터 정리·운영 검증
+
+- 최신 앱과 Edge Functions를 먼저 배포하고 최소 7일 관찰한다. 지표: action별 성공/실패/중복 재전송, 직접 쓰기 시도, 보상·잔액·통계 불일치, 영상 pending/stale, YouTube 쿼터.
+- 승인 후 rules에서 일반 사용자의 보호 필드 직접 증가, `talentPurchases` create, `churchDirectory`/`platformStats` write, `dailyVideos` create, `videoAutoConfig` read를 순서대로 닫는다. `users` read 규칙은 수정하지 않는다.
+- `videoAutoConfig.apiKey` 삭제 후 노출된 YouTube 키를 회전한다. 미래 dailyVideos·본문 churchCode/code/hash·공개 directory codeHash를 dry-run 감사 후 단계 삭제한다.
+- 복구 계획: 서버 장애 시 규칙을 다시 열어 보상을 클라이언트로 되돌리지 않는다. 변경 요청은 재시도 큐/안내로 멈추고, 읽기 본문·저장된 영상 같은 read-only 기능은 계속 제공한다.
+
+### 완료 기준
+
+- 서버 순수 함수/계약/클라이언트 회귀 검사와 `npm run validate`, `npm run build`, `git diff --check` 통과.
+- 멀티탭·네트워크 재전송에서 읽기/퀴즈/구매가 정확히 한 번만 반영.
+- 변조된 보상액·가격·quizKey/day·타 공동체 요청·미래 영상 날짜가 서버에서 거부됨.
+- 게스트 영상, 일반/개인/관리자 로그인, 첫 읽기·추가 읽기·2회 퀴즈·다중 공동체 지갑·상점 구매/환불·가입/재가입 실검증.
+- 규칙 차단 전후 불일치 0, 운영 교회 private/access 백필 100%, 공개 코드 해시/YouTube 키 0건.
 
 ---
 

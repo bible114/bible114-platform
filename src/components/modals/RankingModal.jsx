@@ -25,17 +25,61 @@ const RankingModal = ({
     rankingCommunityFilter,
     setRankingCommunityFilter,
     extraMemberships = [],
+    orgTabs = [],
+    activeOrgId,
+    onSelectOrg,
+    orgLoading = false,
+    orgError = null,
+    viewedMembership = null,
+    viewedOrgName = null,
 }) => {
     if (!show) return null;
+
+    const flatMembers = [...(allMembersForRace || [])].sort((left, right) => getDaysRead(right) - getDaysRead(left));
+    const myGroupMembership = viewedMembership || {
+        departmentId: currentUser?.departmentId,
+        subgroupId,
+        subgroupName: currentUser?.subgroupName || subgroupId,
+    };
+
+    const renderFlatRanking = () => (
+        <div className="space-y-2">
+            <p className="pb-1 text-center text-[11px] font-bold text-slate-400">소그룹 미배정 멤버 순위</p>
+            {flatMembers.map((member, index) => {
+                const isMe = member.uid === currentUser?.uid;
+                const daysRead = getDaysRead(member);
+                const progressRate = Math.min(100, Math.round((daysRead / 365) * 100));
+                return (
+                    <div key={member.uid} className={`rounded-xl border p-3 ${isMe ? 'border-blue-200 bg-blue-50' : 'border-slate-100 bg-slate-50'}`}>
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-2">
+                                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${index === 0 ? 'bg-yellow-100 text-yellow-700' : index === 1 ? 'bg-slate-200 text-slate-700' : index === 2 ? 'bg-orange-100 text-orange-700' : 'bg-white text-slate-400'}`}>{index + 1}</span>
+                                <span className={`truncate text-sm font-bold ${isMe ? 'text-blue-700' : 'text-slate-700'}`}>{member.name || '이름 없음'} {isMe && '(나)'}</span>
+                            </div>
+                            <span className="shrink-0 text-sm font-black text-slate-700">총 {daysRead}일</span>
+                        </div>
+                        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200"><div className={isMe ? 'h-full rounded-full bg-blue-500' : 'h-full rounded-full bg-slate-400'} style={{ width: `${progressRate}%` }} /></div>
+                    </div>
+                );
+            })}
+        </div>
+    );
 
     if (!selectedSubgroupDetail) {
         return (
             <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
                 <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
                     <div className="flex justify-between items-center mb-4 border-b pb-2">
-                        <h3 className="text-xl font-bold text-slate-800">🏆 소그룹 누적 랭킹</h3>
+                        <h3 className="text-xl font-bold text-slate-800">{viewedOrgName ? `🏆 ${viewedOrgName} 랭킹` : '🏆 소그룹 누적 랭킹'}</h3>
                         <button onClick={onClose} className="text-slate-400"><Icon name="close" /></button>
                     </div>
+                    {orgTabs.length >= 2 && (
+                        <div className="mb-3 flex flex-wrap gap-2" aria-label="공동체 선택">
+                            {orgTabs.map(org => (
+                                <button key={org.orgId} type="button" onClick={() => onSelectOrg?.(org.orgId)} className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition-colors ${activeOrgId === org.orgId ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{org.name}</button>
+                            ))}
+                        </div>
+                    )}
                     <div className="mb-3 flex flex-wrap gap-2">
                         <button onClick={() => setRankingCommunityFilter('all')} className={`px-2.5 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap transition-colors ${rankingCommunityFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>전체</button>
                         {DEFAULT_DEPARTMENTS.map(comm => (
@@ -44,11 +88,19 @@ const RankingModal = ({
                     </div>
                     <div className="mb-3 bg-blue-50 p-3 rounded-xl border border-blue-100"><p className="text-xs text-blue-700"><strong>평균 진행률</strong> = 소그룹 평균 Day ÷ 365 × 100</p><p className="text-[10px] text-blue-600 mt-1">💡 소그룹을 클릭하면 멤버별 진행 상황을 볼 수 있어요</p></div>
                     <div className="flex-1 overflow-y-auto space-y-3 pr-2">
-                        {(() => {
+                        {orgLoading ? (
+                            <div className="py-10 text-center text-sm font-bold text-slate-500">공동체 순위를 불러오는 중...</div>
+                        ) : orgError ? (
+                            <div className="py-10 text-center">
+                                <p className="text-sm font-bold text-red-600">{orgError}</p>
+                                <button type="button" onClick={() => onSelectOrg?.(activeOrgId)} className="mt-3 rounded-xl bg-slate-800 px-4 py-2 text-xs font-bold text-white">다시 시도</button>
+                            </div>
+                        ) : (() => {
                             let filteredRanking = progressRanking;
                             if (rankingCommunityFilter !== 'all') {
                                 filteredRanking = progressRanking.filter(g => g.departmentId === rankingCommunityFilter);
                             }
+                            if (progressRanking.length === 0 && flatMembers.length > 0) return renderFlatRanking();
                             if (filteredRanking.length === 0) return <div className="text-center py-8 text-slate-500"><p className="text-sm">해당 부서의 소그룹 데이터가 없습니다.</p></div>;
                             return filteredRanking.map((group, idx) => {
                                 const groupSubgroupId = group.subgroupId || group.name;
@@ -58,12 +110,8 @@ const RankingModal = ({
                                     subgroupName: group.name,
                                 };
                                 // 우리팀 강조는 추가 소속 전체가 아니라 내 주 소속 pair만 기준으로 한다.
-                                const isMyGroup = membershipMatches(groupMembership, {
-                                    departmentId: currentUser?.departmentId,
-                                    subgroupId,
-                                    subgroupName: currentUser?.subgroupName || subgroupId,
-                                });
-                                const isExtraGroup = !isMyGroup
+                                const isMyGroup = membershipMatches(groupMembership, myGroupMembership);
+                                const isExtraGroup = !viewedMembership && !isMyGroup
                                     && (Array.isArray(extraMemberships) ? extraMemberships : [])
                                         .some(membership => membershipMatches(groupMembership, membership));
                                 const rankColor = idx === 0 ? 'bg-yellow-100 text-yellow-700 border-yellow-200' : idx === 1 ? 'bg-slate-200 text-slate-700 border-slate-300' : idx === 2 ? 'bg-orange-100 text-orange-700 border-orange-200' : 'bg-slate-100 text-slate-600 border-slate-200';

@@ -54,7 +54,9 @@ const App = () => {
     const [viewingRosterOrgId, setViewingRosterOrgId] = useState(null);
     const personalOrgs = Array.isArray(currentUser?.extraOrgs) ? currentUser.extraOrgs : [];
     const activePersonalOrg = currentUser?.accountType === 'personal'
-        ? personalOrgs.find(org => org.orgId === currentUser.primaryOrgId) || null
+        ? personalOrgs.find(org => org.orgId === (viewingRosterOrgId || currentUser.primaryOrgId))
+            || personalOrgs.find(org => org.orgId === currentUser.primaryOrgId)
+            || null
         : null;
     const activeAdditionalOrg = currentUser?.accountType !== 'personal' && viewingRosterOrgId
         ? personalOrgs.find(org => org.orgId === viewingRosterOrgId) || null
@@ -169,7 +171,8 @@ const App = () => {
 
         loadMemos,
         loadAnnouncement,
-        kakaoLink, loadKakaoLink, setKakaoLink
+        kakaoLink, loadKakaoLink, setKakaoLink,
+        loadAllMembers
     } = useBibleLogic(
         dashboardUser,
         setCurrentUser,
@@ -397,6 +400,20 @@ const App = () => {
         } catch (e) { console.error(e); }
     };
 
+    const loadOrgRankingData = async (orgId) => {
+        if (!orgId) throw new Error('ORG_ID_REQUIRED');
+        const [members, churchDoc] = await Promise.all([
+            loadAllMembers(orgId),
+            db.collection('churches').doc(orgId).get(),
+        ]);
+        if (!churchDoc.exists) throw new Error('ORG_NOT_FOUND');
+        const churchData = churchDoc.data() || {};
+        return {
+            members,
+            communities: churchData.departments || churchData.communities || [],
+        };
+    };
+
     useEffect(() => {
         if (view !== 'dashboard') return;
         if (dashboardUser?.churchId) loadChurchCommunities(dashboardUser.churchId);
@@ -531,6 +548,7 @@ const App = () => {
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             }, { merge: true });
             setCurrentUser(user => user?.uid === currentUser.uid ? { ...user, primaryOrgId: orgId } : user);
+            setViewingRosterOrgId(null);
         } catch (error) {
             console.error('기준 공동체 변경 실패:', error);
             alert('공동체를 바꾸지 못했습니다. 잠시 후 다시 시도해주세요.');
@@ -540,7 +558,8 @@ const App = () => {
     const handleTalentOrgChange = async orgId => {
         if (!currentUser || orgId === dashboardUser?.churchId) return;
         if (currentUser.accountType === 'personal') {
-            await handlePrimaryOrgChange(orgId);
+            if (!personalOrgs.some(org => org.orgId === orgId)) return;
+            setViewingRosterOrgId(orgId === currentUser.primaryOrgId ? null : orgId);
             return;
         }
         if (orgId === currentUser.churchId) {
@@ -833,6 +852,7 @@ const App = () => {
                 onKakaoLink={handleKakaoLinkStart}
                 personalOrganizations={personalOrgs.map(org => ({ ...org, name: personalOrgNames[org.orgId] || org.orgId }))}
                 talentOrganizations={talentOrganizations}
+                loadOrgRankingData={loadOrgRankingData}
                 onPrimaryOrgChange={handlePrimaryOrgChange}
                 onTalentOrgChange={handleTalentOrgChange}
                 onPersonalAccountMigrate={handlePersonalAccountMigrate}

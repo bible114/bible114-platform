@@ -127,6 +127,7 @@ export const userDocToState = (doc) => {
         quizSolved: d.quizSolved ?? false,
         quizSkipped: d.quizSkipped ?? false,
         quizKey: d.quizKey ?? null,
+        quizLevel: ['standard', 'easy'].includes(d.quizLevel) ? d.quizLevel : null,
         lastReadDate: d.lastReadDate ?? null,
         gender: d.gender ?? "male",
         departmentId: d.departmentId ?? d.communityId ?? null,
@@ -279,7 +280,8 @@ export const parseChapters = (desc) => {
 
 // 파싱된 자유 라벨을 표준 라벨(해설/성경읽기/기도)로 매핑. 매핑 안 되면 null.
 export const mapToStandardLabel = (label) => {
-    if (label.includes('해설')) return '해설';
+    // "매일성경 묵상"에는 '성경'도 들어가므로 성경읽기보다 먼저 판정해야 한다.
+    if (label.includes('해설') || label.includes('묵상')) return '해설';
     if (label.includes('성경') || label.includes('읽기')) return '성경읽기';
     if (label.includes('기도')) return '기도';
     return null;
