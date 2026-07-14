@@ -6,6 +6,7 @@ import { calculateSubgroupStats } from '../utils/statsUtils';
 import { belongsToDepartment } from '../utils/memberships';
 import { loadUserExtraOrgsStrict } from '../utils/roster';
 import { DAILY_READ_ADVANCE_LIMIT, getDailyAdvanceState } from '../utils/readPolicy';
+import { updateRosterTalents } from '../utils/talentWallet';
 
 export const useUserBibleActions = (
     currentUser,
@@ -86,6 +87,16 @@ export const useUserBibleActions = (
                 if (!userSnap.exists) throw new Error('USER_NOT_FOUND');
 
                 const data = userSnap.data();
+                const rosterRefs = rosterOrgs
+                    .filter(org => org?.orgId)
+                    .map(org => ({
+                        orgId: org.orgId,
+                        ref: db.collection('churches').doc(org.orgId).collection('roster').doc(uid),
+                    }));
+                const rosterSnaps = await Promise.all(rosterRefs.map(item => transaction.get(item.ref)));
+                const rosterWallets = rosterRefs.flatMap((item, index) => (
+                    rosterSnaps[index].exists ? [{ ...item, data: rosterSnaps[index].data() }] : []
+                ));
                 let currentProgressDay = data.currentDay || 1;
                 if (currentProgressDay > 365) {
                     currentProgressDay = ((currentProgressDay - 1) % 365) + 1;
@@ -130,7 +141,8 @@ export const useUserBibleActions = (
                     else if (diffDays === 0) newStreak = data.streak || 0;
                 }
                 const talentEarned = isFirstReadToday ? 10 + Math.min(newStreak, 7) : 0;
-                const newTalent = (data.talent || 0) + talentEarned;
+                const rewardsUserWallet = data.accountType !== 'personal';
+                const newTalent = (data.talent || 0) + (rewardsUserWallet ? talentEarned : 0);
                 const maxStreak = Math.max(data.maxStreak || data.streak || 0, newStreak);
                 const quizTalentEarned = data.quizRewardDate === quizTodayKey
                     ? (data.quizRewardAmount || 0)
@@ -168,7 +180,6 @@ export const useUserBibleActions = (
                     currentDay: newProgressDay,
                     readCount: newReadCount,
                     score: newScore,
-                    talent: newTalent,
                     streak: newStreak,
                     maxStreak,
                     lastReadDate: todayStr,
@@ -177,6 +188,7 @@ export const useUserBibleActions = (
                     recentReadDates,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
+                if (rewardsUserWallet) updateData.talent = newTalent;
                 if (secretShopJustUnlocked) {
                     updateData.secretShopUnlocked = true;
                 }
@@ -191,10 +203,11 @@ export const useUserBibleActions = (
                     lastReadDate: todayStr,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 };
-                rosterOrgs.forEach(org => {
-                    if (!org?.orgId) return;
-                    const rosterRef = db.collection('churches').doc(org.orgId).collection('roster').doc(uid);
-                    transaction.update(rosterRef, rosterProgress);
+                const rosterTalentByOrgId = {};
+                rosterWallets.forEach(wallet => {
+                    const nextRosterTalent = (Number(wallet.data?.talent) || 0) + talentEarned;
+                    rosterTalentByOrgId[wallet.orgId] = nextRosterTalent;
+                    transaction.update(wallet.ref, { ...rosterProgress, talent: nextRosterTalent });
                 });
 
                 // history 서브컬렉션 쓰기 (배열 필드 대신 서브컬렉션만 사용 — 문서 크기 무한 증가 방지)
@@ -214,7 +227,10 @@ export const useUserBibleActions = (
                     talentEarned,
                     scoreEarned: addedScore,
                     quizTalentEarned,
-                    totalTalent: newTalent,
+                    totalTalent: rewardsUserWallet
+                        ? newTalent
+                        : (rosterTalentByOrgId[currentUser.churchId] || 0),
+                    rosterTalentByOrgId,
                     secretShopJustUnlocked,
                     completedRound
                 };
@@ -256,6 +272,7 @@ export const useUserBibleActions = (
                 talentEarned,
                 quizTalentEarned,
                 totalTalent,
+                rosterTalentByOrgId,
                 completedRound
             } = resultData;
 
@@ -275,11 +292,11 @@ export const useUserBibleActions = (
 
             const updatedUser = { ...currentUser, ...updateData };
             setCurrentUser(previous => previous?.uid === uid
-                ? {
+                ? updateRosterTalents({
                     ...previous,
                     ...updateData,
                     ...(shouldRefreshExtraOrgs ? { extraOrgs: refreshedExtraOrgs } : {}),
-                }
+                }, rosterTalentByOrgId)
                 : previous);
             setViewingDay(nextViewingDay);
             setHasReadToday(true);

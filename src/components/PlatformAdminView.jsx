@@ -352,7 +352,7 @@ const PlatformAdminView = ({
     const toggleChurchHidden = async (church) => {
         const next = !isChurchHidden(church);
         const msg = next
-            ? `'${church.name}' 교회를 검색에서 숨깁니다.\n\n다른 사람들은 검색으로 이 교회를 찾을 수 없게 됩니다. (초대 링크로는 계속 가입/로그인 가능)\n(교회 관리자 이메일 로그인과 슈퍼관리자 진입은 계속 가능)`
+            ? `'${church.name}' 교회를 검색에서 숨깁니다.\n\n다른 사람들은 검색으로 이 교회를 찾을 수 없게 됩니다. (초대 링크로는 계속 가입/로그인 가능)\n(공동체 관리자 이메일 로그인과 슈퍼관리자 진입은 계속 가능)`
             : `'${church.name}' 교회를 검색에 다시 노출할까요?`;
         if (!confirm(msg)) return;
         setHiddenToggling(true);
@@ -404,24 +404,33 @@ const PlatformAdminView = ({
         if (!confirm('정말 실행할까요? 이 작업은 실물 상점 오픈 시점에 딱 한 번만 실행해야 합니다.')) return;
         setTalentResetting(true);
         try {
-            const snap = await db.collection('users').get();
-            const docs = snap.docs;
-            setTalentResetProgress({ done: 0, total: docs.length });
+            const [usersSnap, rosterSnap] = await Promise.all([
+                db.collection('users').get(),
+                db.collectionGroup('roster').get(),
+            ]);
+            const targets = [
+                ...usersSnap.docs.map(doc => ({ type: 'user', ref: doc.ref })),
+                ...rosterSnap.docs.map(doc => ({ type: 'roster', ref: doc.ref })),
+            ];
+            setTalentResetProgress({ done: 0, total: targets.length });
             let processed = 0;
-            for (let i = 0; i < docs.length; i += 10) {
+            for (let i = 0; i < targets.length; i += 10) {
                 const batch = db.batch();
-                docs.slice(i, i + 10).forEach(doc => {
-                    batch.update(doc.ref, {
+                targets.slice(i, i + 10).forEach(target => {
+                    batch.update(target.ref, {
                         talent: 0,
-                        talentMigrated: true,
+                        ...(target.type === 'user' ? {
+                            talentMigrated: true,
+                            talentWalletMigrated: true,
+                        } : {}),
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                     });
                 });
                 await batch.commit();
-                processed = Math.min(i + 10, docs.length);
-                setTalentResetProgress({ done: processed, total: docs.length });
+                processed = Math.min(i + 10, targets.length);
+                setTalentResetProgress({ done: processed, total: targets.length });
             }
-            alert(`달란트 잔액 초기화 완료: ${processed}명 처리`);
+            alert(`달란트 잔액 초기화 완료: ${usersSnap.size}명 + 공동체 지갑 ${rosterSnap.size}개 처리`);
         } catch (e) {
             alert('달란트 잔액 초기화 실패: ' + e.message);
         } finally {
@@ -597,7 +606,7 @@ const PlatformAdminView = ({
         return (
             <div>
                 <div className="bg-amber-500 text-white text-xs font-bold px-4 py-2 flex items-center justify-between sticky top-0 z-50">
-                    <span>🛠️ 슈퍼관리자 모드 — {selectedChurch.name} 교회관리자 화면 미리보기</span>
+                    <span>🛠️ 슈퍼관리자 모드 — {selectedChurch.name} 공동체 관리자 화면 미리보기</span>
                     <button
                         onClick={() => setViewingChurchAsAdmin(false)}
                         className="bg-white text-amber-600 px-3 py-1 rounded-lg font-bold text-xs hover:bg-amber-50">
@@ -761,7 +770,7 @@ const PlatformAdminView = ({
                                         <button
                                             onClick={() => setViewingChurchAsAdmin(true)}
                                             className="flex items-center gap-1.5 bg-blue-600 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-blue-700 shadow-sm">
-                                            ⛪ 교회관리자 화면으로 보기
+                                            ⛪ 공동체 관리자 화면으로 보기
                                         </button>
                                     </div>
                                 </div>
@@ -1345,7 +1354,7 @@ const PlatformAdminView = ({
                     {/* 플랫폼 문의 카카오 채널 */}
                     <div className="bg-white rounded-xl shadow-sm p-6">
                         <h2 className="text-base font-bold text-slate-800 mb-1">💬 플랫폼 문의 카카오 채널</h2>
-                        <p className="text-xs text-slate-400 mb-4">교회관리자 화면 상단에 표시되는 문의 버튼입니다. 교회 관리자들이 운영자에게 직접 연락할 수 있습니다.</p>
+                        <p className="text-xs text-slate-400 mb-4">공동체 관리자 화면 상단에 표시되는 문의 버튼입니다. 공동체 관리자들이 운영자에게 직접 연락할 수 있습니다.</p>
                         <input type="url" value={platformKakaoInput}
                             onChange={e => setPlatformKakaoInput(e.target.value)}
                             placeholder="https://pf.kakao.com/_xxxx/chat"

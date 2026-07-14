@@ -101,7 +101,7 @@ const TalentShopTab = ({ ctx }) => {
                                             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700">
                                             <option value="">교인 선택</option>
                                             {[...members].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR')).map(m => (
-                                                <option key={m.uid} value={m.uid} title={m.isExternalOrgMember ? '기준 공동체인 개인 계정은 직접 차감할 수 있습니다.' : ''}>{m.name} {m.isExternalOrgMember ? '(개인·외부)' : `(⭐${m.talent || 0})`}</option>
+                                                <option key={m.uid} value={m.uid}>{m.name} (⭐{m.talent || 0})</option>
                                             ))}
                                         </select>
                                         <input
@@ -299,7 +299,7 @@ const TalentShopTab = ({ ctx }) => {
                                                                 <td className="px-4 py-3 text-sm text-slate-600">{purchase.itemName}</td>
                                                                 <td className="px-4 py-3 text-sm font-black text-amber-600">⭐ {purchase.price || 0}</td>
                                                                 <td className="px-4 py-3 text-xs font-bold text-slate-400">{formatAnyDate(purchase.createdAt)}</td>
-                                                                <td className="px-4 py-3 text-sm font-black text-slate-600">{buyer?.isExternalOrgMember || purchase.isExternalBuyer ? '비공개' : (buyer ? `⭐ ${buyer.talent || 0}` : '-')}</td>
+                                                                <td className="px-4 py-3 text-sm font-black text-slate-600">{buyer ? `⭐ ${buyer.talent || 0}` : '-'}</td>
                                                                 <td className="px-4 py-3">
                                                                     {purchase.status === 'pending' ? (
                                                                         <div className="flex justify-end gap-2">

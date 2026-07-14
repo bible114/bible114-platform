@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { db, firebase } from '../../utils/firebase';
+import { updateRosterTalents, usesRosterTalentWallet } from '../../utils/talentWallet';
 
 const statusLabel = {
     pending: '대기',
@@ -30,6 +31,8 @@ const formatDate = (value) => {
 const TalentShop = ({
     currentUser,
     setCurrentUser,
+    organizations = [],
+    onOrganizationChange,
     showUnlockModal,
     onCloseUnlockModal,
 }) => {
@@ -115,15 +118,21 @@ const TalentShop = ({
             const purchaseRef = db.collection('churches').doc(currentUser.churchId)
                 .collection('talentPurchases').doc();
             const result = await db.runTransaction(async (transaction) => {
-                const userRef = db.collection('users').doc(currentUser.uid);
-                const userSnap = await transaction.get(userRef);
-                if (!userSnap.exists) throw new Error('USER_NOT_FOUND');
-                const userData = userSnap.data();
-                const balance = userData.talent || 0;
+                const rosterWallet = currentUser.talentWalletType === 'roster'
+                    || usesRosterTalentWallet(currentUser);
+                const walletRef = rosterWallet
+                    ? db.collection('churches').doc(currentUser.churchId).collection('roster').doc(currentUser.uid)
+                    : db.collection('users').doc(currentUser.uid);
+                const walletSnap = await transaction.get(walletRef);
+                if (!walletSnap.exists) throw new Error('USER_NOT_FOUND');
+                const balance = walletSnap.data().talent || 0;
                 if (balance < item.price) throw new Error('INSUFFICIENT_TALENT');
                 const nextTalent = balance - item.price;
 
-                transaction.update(userRef, { talent: nextTalent });
+                transaction.update(walletRef, {
+                    talent: nextTalent,
+                    ...(rosterWallet ? { updatedAt: firebase.firestore.FieldValue.serverTimestamp() } : {}),
+                });
                 transaction.set(purchaseRef, {
                     uid: currentUser.uid,
                     memberName: currentUser.name,
@@ -133,11 +142,17 @@ const TalentShop = ({
                     status: 'pending',
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 });
-                return nextTalent;
+                return { nextTalent, rosterWallet };
             });
 
             if (typeof setCurrentUser === 'function') {
-                setCurrentUser(prev => prev?.uid === currentUser.uid ? { ...prev, talent: result } : prev);
+                setCurrentUser(prev => {
+                    if (prev?.uid !== currentUser.uid) return prev;
+                    if (result.rosterWallet) {
+                        return updateRosterTalents(prev, { [currentUser.churchId]: result.nextTalent });
+                    }
+                    return { ...prev, talent: result.nextTalent };
+                });
             }
             setMessage({ type: 'success', text: '구매 완료! 교회에서 상품을 받아가세요.' });
             setPurchases(prev => [{
@@ -221,6 +236,29 @@ const TalentShop = ({
                         </header>
 
                         <div className="p-5 space-y-5">
+                            {organizations.length > 0 && (
+                                <section className="rounded-3xl border border-violet-100 bg-white p-4 shadow-sm">
+                                    <h3 className="text-sm font-black text-slate-800">공동체별 내 달란트</h3>
+                                    <p className="mt-1 text-xs font-bold text-slate-400">공동체를 누르면 그곳의 상점과 잔액으로 바뀝니다.</p>
+                                    <div className="mt-3 space-y-2">
+                                        {organizations.map(org => {
+                                            const active = org.orgId === currentUser.churchId;
+                                            return (
+                                                <button
+                                                    key={`${org.walletType || 'roster'}:${org.orgId}`}
+                                                    type="button"
+                                                    disabled={active}
+                                                    onClick={() => onOrganizationChange?.(org.orgId)}
+                                                    className={`flex w-full items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${active ? 'bg-violet-100 text-violet-900 ring-2 ring-violet-300' : 'bg-slate-50 text-slate-700 hover:bg-violet-50'}`}
+                                                >
+                                                    <span className="min-w-0 truncate">{active ? '★ ' : '⛪ '}{org.name || org.orgId}</span>
+                                                    <span className="shrink-0 text-amber-600">⭐ {Number(org.talent) || 0}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </section>
+                            )}
                             {message && (
                                 <div className={`rounded-2xl px-4 py-3 text-sm font-bold ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
                                     {message.text}

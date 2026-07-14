@@ -1,12 +1,9 @@
-import GoogleLinkCard from '../admin/GoogleLinkCard';
-
 const SettingsTab = ({
     currentUser, churchInfo,
     printMemberGuide, printAdminManual,
     newChurchCode, setNewChurchCode, saveChurchCode, savingCode,
 }) => (
     <div id="admin-tut-settings-section" className="space-y-4 max-w-2xl">
-        <GoogleLinkCard accountUid={currentUser?.uid} accountRole={currentUser?.role} />
         <div className="bg-white rounded-2xl p-4 border border-slate-100">
             <p className="font-bold text-slate-700 mb-1">🖨️ 인쇄물</p>
             <p className="text-xs text-slate-400 mb-3">

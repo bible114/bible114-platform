@@ -124,7 +124,7 @@ const PlanSelectionView = ({
                     <div className="w-full max-w-2xl text-center py-12 bg-white rounded-2xl border border-slate-200 shadow-sm">
                         <div className="text-4xl mb-3">🏛️</div>
                         <p className="font-bold text-slate-600">아직 교회 조직이 설정되지 않았습니다.</p>
-                        <p className="text-xs text-slate-400 mt-2">교회 관리자에게 조직 설정을 요청해주세요.</p>
+                        <p className="text-xs text-slate-400 mt-2">공동체 관리자에게 조직 설정을 요청해주세요.</p>
                     </div>
                 ) : (
                     <div className="w-full max-w-2xl space-y-3">

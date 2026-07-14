@@ -5,6 +5,7 @@ import { sha256 } from '../../utils/crypto';
 import { db, firebase } from '../../utils/firebase';
 import { getChurchDirectory } from '../../utils/churchDirectory';
 import { loadUserExtraOrgsStrict } from '../../utils/roster';
+import { migratePersonalTalentWalletIfNeeded } from '../../utils/helpers';
 
 const emptySelection = { departmentId: '', departmentName: '', subgroupId: '', subgroupName: '' };
 
@@ -163,6 +164,7 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
                 uid: currentUser.uid,
                 name: currentUser.name || '',
                 score: currentUser.score || 0,
+                talent: 0,
                 currentDay: currentUser.currentDay || 1,
                 streak: currentUser.streak || 0,
                 readCount: currentUser.readCount || 1,
@@ -183,7 +185,14 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
             } else {
                 await rosterRef.set(rosterData);
             }
-            const runtimeOrg = { uid: currentUser.uid, orgId, rosterPath: rosterRef.path, ...selection, joinedAt: null, updatedAt: null };
+            const walletMigration = shouldAssignPrimary
+                ? await migratePersonalTalentWalletIfNeeded(currentUser.uid, orgId)
+                : null;
+            const runtimeOrg = {
+                uid: currentUser.uid, orgId, rosterPath: rosterRef.path, ...selection,
+                talent: walletMigration?.talent || 0,
+                joinedAt: null, updatedAt: null,
+            };
             if (onboarding && onJoinComplete) {
                 onJoinComplete(runtimeOrg);
                 return;
@@ -191,6 +200,7 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
             setCurrentUser(user => user?.uid === currentUser.uid
                 ? {
                     ...user,
+                    ...(walletMigration ? { talent: 0, talentWalletMigrated: true } : {}),
                     extraOrgs: [...latestExtraOrgs, runtimeOrg].sort((a, b) => a.orgId.localeCompare(b.orgId)),
                     primaryOrgId: shouldAssignPrimary ? orgId : user.primaryOrgId,
                 }
@@ -258,16 +268,19 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
             if (latest.some(org => org.orgId === UNAFFILIATED_CHURCH_ID)) return;
             const rosterRef = db.collection('churches').doc(UNAFFILIATED_CHURCH_ID).collection('roster').doc(currentUser.uid);
             const now = firebase.firestore.FieldValue.serverTimestamp();
-            const runtimeOrg = { uid: currentUser.uid, orgId: UNAFFILIATED_CHURCH_ID, rosterPath: rosterRef.path, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null };
+            let walletMigration = null;
+            const runtimeOrg = { uid: currentUser.uid, orgId: UNAFFILIATED_CHURCH_ID, rosterPath: rosterRef.path, talent: 0, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null };
             if (!currentUser.primaryOrgId) {
                 await db.runTransaction(async transaction => {
-                    transaction.set(rosterRef, { uid: currentUser.uid, name: currentUser.name || '', score: currentUser.score || 0, currentDay: currentUser.currentDay || 1, streak: currentUser.streak || 0, readCount: currentUser.readCount || 1, lastReadDate: currentUser.lastReadDate || null, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null, joinedAt: now, updatedAt: now });
+                    transaction.set(rosterRef, { uid: currentUser.uid, name: currentUser.name || '', score: currentUser.score || 0, talent: 0, currentDay: currentUser.currentDay || 1, streak: currentUser.streak || 0, readCount: currentUser.readCount || 1, lastReadDate: currentUser.lastReadDate || null, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null, joinedAt: now, updatedAt: now });
                     transaction.update(db.collection('users').doc(currentUser.uid), { primaryOrgId: UNAFFILIATED_CHURCH_ID, updatedAt: now });
                 });
+                walletMigration = await migratePersonalTalentWalletIfNeeded(currentUser.uid, UNAFFILIATED_CHURCH_ID);
+                runtimeOrg.talent = walletMigration?.talent || 0;
             } else {
-                await rosterRef.set({ uid: currentUser.uid, name: currentUser.name || '', score: currentUser.score || 0, currentDay: currentUser.currentDay || 1, streak: currentUser.streak || 0, readCount: currentUser.readCount || 1, lastReadDate: currentUser.lastReadDate || null, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null, joinedAt: now, updatedAt: now });
+                await rosterRef.set({ uid: currentUser.uid, name: currentUser.name || '', score: currentUser.score || 0, talent: 0, currentDay: currentUser.currentDay || 1, streak: currentUser.streak || 0, readCount: currentUser.readCount || 1, lastReadDate: currentUser.lastReadDate || null, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null, joinedAt: now, updatedAt: now });
             }
-            setCurrentUser(user => user?.uid === currentUser.uid ? { ...user, primaryOrgId: user.primaryOrgId || UNAFFILIATED_CHURCH_ID, extraOrgs: [...latest, runtimeOrg].sort((a, b) => a.orgId.localeCompare(b.orgId)) } : user);
+            setCurrentUser(user => user?.uid === currentUser.uid ? { ...user, ...(walletMigration ? { talent: 0, talentWalletMigrated: true } : {}), primaryOrgId: user.primaryOrgId || UNAFFILIATED_CHURCH_ID, extraOrgs: [...latest, runtimeOrg].sort((a, b) => a.orgId.localeCompare(b.orgId)) } : user);
         } catch (error) {
             setNotice({ type: 'error', text: error?.message === 'max' ? '공동체는 최대 3개까지 추가할 수 있습니다.' : '혼자 읽기 모임에 참여하지 못했습니다.' });
         } finally { setBusy(false); }

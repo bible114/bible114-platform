@@ -13,7 +13,7 @@ const SocialLinkBanner = ({ currentUser, notice, onNoticeClear, onGoogleLink, on
     ].filter(Boolean)), [currentUser?.authProvider, currentUser?.authProviders]);
     const hasGoogle = providers.has(firebase.auth.GoogleAuthProvider.PROVIDER_ID);
     const hasKakao = providers.has('kakao.com') || providers.has('oidc.kakao');
-    const eligible = currentUser?.role === 'member' && !hasGoogle && !hasKakao;
+    const eligible = ['member', 'churchAdmin'].includes(currentUser?.role) && !hasGoogle && !hasKakao;
     const visible = Boolean(notice) || (eligible && Date.now() >= dismissedUntil);
 
     useEffect(() => {

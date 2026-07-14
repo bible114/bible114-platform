@@ -13,6 +13,7 @@ export const rosterSnapshotToMembers = (snapshot) => {
             name: data.name || '이름 없음',
             role: 'member',
             score: data.score || 0,
+            talent: data.talent || 0,
             currentDay: data.currentDay || 1,
             streak: data.streak || 0,
             readCount: data.readCount || 1,

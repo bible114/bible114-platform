@@ -1,5 +1,5 @@
 import { auth, db, firebase } from './firebase';
-import { makePseudoEmail, makeUnaffiliatedIdentity, userDocToState } from './helpers';
+import { makePseudoEmail, makeUnaffiliatedIdentity, userDocToState, migratePersonalTalentWalletIfNeeded } from './helpers';
 import { writeMemberCredentials } from './memberCredentials';
 import { loadUserExtraOrgs } from './roster';
 import { nextPersonalMigrationStep } from './personalMigrationSteps';
@@ -90,6 +90,7 @@ const runMigration = async ({ currentUser, phone4 }) => {
                 uid: currentUser.uid,
                 name: currentUser.name || '',
                 score: currentUser.score || 0,
+                talent: 0,
                 currentDay: currentUser.currentDay || 1,
                 streak: currentUser.streak || 0,
                 readCount: currentUser.readCount || 1,
@@ -118,6 +119,8 @@ const runMigration = async ({ currentUser, phone4 }) => {
         state = { ...state, step: nextPersonalMigrationStep(state.step) };
         writeState(state);
     }
+
+    await migratePersonalTalentWalletIfNeeded(currentUser.uid, source.churchId);
 
     const userDoc = await db.collection('users').doc(currentUser.uid).get();
     if (!userDoc.exists) throw migrationError('migration/user-missing', '회원 정보를 다시 불러오지 못했습니다.');

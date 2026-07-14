@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { db, firebase } from '../../utils/firebase';
 import { QUIZ_BANK, getKstDateString } from '../../data/bibleQuiz';
 import { getQuizProgressKey, getQuizRewardForAnswer } from '../../utils/quizProgress';
+import { getRosterOrgIds, updateRosterTalents } from '../../utils/talentWallet';
 import {
     getReadingRangeForDay,
     loadQuestionByKey,
@@ -246,7 +247,19 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                     todayKey,
                     legacyRewardedToday: data.quizDate === todayKey && data.quizSolved === true,
                 });
-                const nextTalent = (data.talent || 0) + reward;
+                const rewardsUserWallet = data.accountType !== 'personal';
+                const nextTalent = (data.talent || 0) + (rewardsUserWallet ? reward : 0);
+                const rosterWallets = [];
+                if (reward > 0) {
+                    const refs = getRosterOrgIds(currentUser).map(orgId => ({
+                        orgId,
+                        ref: db.collection('churches').doc(orgId).collection('roster').doc(currentUser.uid),
+                    }));
+                    const snaps = await Promise.all(refs.map(item => transaction.get(item.ref)));
+                    refs.forEach((item, index) => {
+                        if (snaps[index].exists) rosterWallets.push({ ...item, data: snaps[index].data() });
+                    });
+                }
                 const persistedQuizKey = quizState.replaceStoredQuizKey ? quizKey : (storedQuizKey || quizKey);
                 const entry = {
                     attempts: nextAttempts,
@@ -261,26 +274,36 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 };
                 if (reward > 0) {
-                    updateData.talent = nextTalent;
+                    if (rewardsUserWallet) updateData.talent = nextTalent;
                     updateData.quizRewardDate = todayKey;
                     updateData.quizRewardAmount = reward;
                 }
 
                 transaction.update(userRef, updateData);
+                const rosterTalentByOrgId = {};
+                rosterWallets.forEach(wallet => {
+                    const nextRosterTalent = (Number(wallet.data?.talent) || 0) + reward;
+                    rosterTalentByOrgId[wallet.orgId] = nextRosterTalent;
+                    transaction.update(wallet.ref, {
+                        talent: nextRosterTalent,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    });
+                });
                 return {
                     alreadyDone: false,
                     attempts: nextAttempts,
                     solved: isCorrect,
                     skipped: false,
                     reward,
-                    talent: nextTalent,
+                    userTalent: rewardsUserWallet ? nextTalent : null,
+                    rosterTalentByOrgId,
                     quizKey: entry.quizKey,
                     entry,
                     rewardAlready,
                 };
             });
 
-            setCurrentUser(prev => ({
+            setCurrentUser(prev => updateRosterTalents({
                 ...prev,
                 quizProgress: {
                     ...(prev.quizProgress || {}),
@@ -291,8 +314,8 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                     },
                 },
                 ...(result.reward > 0 ? { quizRewardDate: todayKey, quizRewardAmount: result.reward } : {}),
-                talent: result.talent,
-            }));
+                ...(result.userTalent !== null && result.userTalent !== undefined ? { talent: result.userTalent } : {}),
+            }, result.rosterTalentByOrgId));
 
             if (result.alreadyDone) {
                 setFeedback(result.solved

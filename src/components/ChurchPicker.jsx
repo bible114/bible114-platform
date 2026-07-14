@@ -83,7 +83,7 @@ const ChurchPicker = ({ value, onChange, label = '출석 교회' }) => {
                     {focused && query.trim() && (
                         <div className="absolute z-20 top-full left-0 right-0 mt-1.5 bg-cream-card border border-hairline rounded-lg shadow-lg max-h-64 overflow-y-auto">
                             {results.length === 0 ? (
-                                <p className="text-[12px] text-ink/50 px-3.5 py-3 text-center">교회를 찾을 수 없습니다. 교회 관리자에게 문의해주세요.</p>
+                                <p className="text-[12px] text-ink/50 px-3.5 py-3 text-center">교회를 찾을 수 없습니다. 공동체 관리자에게 문의해주세요.</p>
                             ) : (
                                 <ul>
                                     {results.map(c => (

@@ -64,6 +64,35 @@ export const migrateTalentIfNeeded = async (uid, data) => {
     });
 };
 
+// 개인 계정이 공동체별 지갑 모델을 처음 사용할 때 기존 users.talent를
+// 기준 공동체 roster.talent로 한 번만 옮긴다. 트랜잭션 안의 플래그 재확인으로 멱등성을 보장한다.
+export const migratePersonalTalentWalletIfNeeded = async (uid, primaryOrgId) => {
+    const normalizedOrgId = String(primaryOrgId || '').trim();
+    if (!uid || !normalizedOrgId) return null;
+    const userRef = db.collection('users').doc(uid);
+    const rosterRef = db.collection('churches').doc(normalizedOrgId).collection('roster').doc(uid);
+
+    return db.runTransaction(async transaction => {
+        const [userSnap, rosterSnap] = await Promise.all([
+            transaction.get(userRef),
+            transaction.get(rosterRef),
+        ]);
+        if (!userSnap.exists || !rosterSnap.exists) return null;
+        const user = userSnap.data();
+        if (user.accountType !== 'personal' || user.talentWalletMigrated === true) return null;
+
+        const movedTalent = Number(user.talent) || 0;
+        const rosterTalent = Number(rosterSnap.data()?.talent) || 0;
+        const nextRosterTalent = rosterTalent + movedTalent;
+        transaction.update(userRef, {
+            talent: 0,
+            talentWalletMigrated: true,
+        });
+        transaction.update(rosterRef, { talent: nextRosterTalent });
+        return { orgId: normalizedOrgId, talent: nextRosterTalent, movedTalent };
+    });
+};
+
 // Firestore 문서 → 사용자 상태 객체 변환
 export const userDocToState = (doc) => {
     const d = doc.data();
@@ -76,6 +105,7 @@ export const userDocToState = (doc) => {
         role: d.role || 'member',
         accountType: d.accountType || null,
         authProvider: d.authProvider || null,
+        authProviders: Array.isArray(d.authProviders) ? d.authProviders : [],
         primaryOrgId: d.primaryOrgId || null,
         churchId: d.churchId || null,
         churchName: d.churchName || null,
@@ -86,6 +116,7 @@ export const userDocToState = (doc) => {
         score: d.score ?? 0,
         talent: d.talent,
         talentMigrated: d.talentMigrated ?? false,
+        talentWalletMigrated: d.talentWalletMigrated ?? false,
         secretShopUnlocked: d.secretShopUnlocked ?? false,
         quizDate: d.quizDate ?? null,
         quizAttempts: d.quizAttempts ?? 0,

@@ -48,11 +48,6 @@ const getSubName = (s) => (typeof s === 'string' ? s : s?.name || '');
 const genSubId = () => 'sub_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 const emptyShopItem = { emoji: '🎁', name: '', price: 10, description: '', active: true };
 const genShopItemId = () => 'item_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-const isPermissionDenied = (error) => (
-    error?.code === 'permission-denied'
-    || error?.code === 'firestore/permission-denied'
-);
-const PRIMARY_ORG_TALENT_DENIED_MESSAGE = '차감할 수 없어요 — 잔액이 부족하거나, 이 교인의 기준 공동체가 우리 조직이 아니에요.';
 
 const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [members, setMembers] = useState([]);
@@ -833,9 +828,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         if (!member) { toast.error('교인을 선택해주세요.'); return; }
         if (!itemName) { toast.error('구입 물품을 반드시 기록해주세요.'); return; }
         if (!price || price <= 0) { toast.error('차감할 달란트를 입력해주세요.'); return; }
-        // roster로만 병합된 개인 계정은 users 문서의 잔액을 읽을 수 없다. 기준 공동체
-        // 관리자에게만 허용된 서버 규칙으로 실제 차감을 시도하고, 거부되면 아래에서 안내한다.
-        if (!member.isExternalOrgMember && (member.talent || 0) < price) {
+        if ((member.talent || 0) < price) {
             toast.error(`${member.name}님의 잔액(⭐${member.talent || 0})이 부족합니다.`);
             return;
         }
@@ -843,9 +836,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             type: 'manualDeduct',
             form: { member, itemName, price },
             title: `${member.name}님 달란트를 차감할까요?`,
-            message: member.isExternalOrgMember
-                ? `${itemName} · ⭐${price} 차감 (기준 공동체 권한을 확인해 처리합니다)`
-                : `${itemName} · ⭐${price} 차감 (잔액 ⭐${member.talent || 0} → ⭐${(member.talent || 0) - price})`,
+            message: `${itemName} · ⭐${price} 차감 (잔액 ⭐${member.talent || 0} → ⭐${(member.talent || 0) - price})`,
             confirmLabel: '차감하기',
         });
     };
@@ -855,34 +846,18 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         try {
             const purchaseRef = db.collection('churches').doc(currentUser.churchId)
                 .collection('talentPurchases').doc();
-            const userRef = db.collection('users').doc(member.uid);
-            if (member.isExternalOrgMember) {
-                // 개인 계정은 rules상 관리자에게 read가 열려 있지 않으므로 transaction.get을
-                // 하지 않는다. batch는 users talent(+updatedAt)과 판매 기록을 함께 실패/성공시킨다.
-                const batch = db.batch();
-                batch.update(userRef, {
-                    talent: firebase.firestore.FieldValue.increment(-price),
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                });
-                batch.set(purchaseRef, {
-                    uid: member.uid,
-                    memberName: member.name,
-                    itemId: 'manual',
-                    itemName,
-                    price,
-                    status: 'delivered',
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    deliveredAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    deliveredBy: currentUser.uid || 'platformAdmin',
-                });
-                await batch.commit();
-            } else {
-                await db.runTransaction(async (transaction) => {
-                const snap = await transaction.get(userRef);
+            const walletRef = member.isExternalOrgMember
+                ? db.collection('churches').doc(currentUser.churchId).collection('roster').doc(member.uid)
+                : db.collection('users').doc(member.uid);
+            await db.runTransaction(async (transaction) => {
+                const snap = await transaction.get(walletRef);
                 if (!snap.exists) throw new Error('교인 정보를 찾을 수 없습니다.');
                 const balance = snap.data().talent || 0;
                 if (balance < price) throw new Error(`잔액이 부족합니다 (현재 ⭐${balance}).`);
-                transaction.update(userRef, { talent: balance - price });
+                transaction.update(walletRef, {
+                    talent: balance - price,
+                    ...(member.isExternalOrgMember ? { updatedAt: firebase.firestore.FieldValue.serverTimestamp() } : {}),
+                });
                 transaction.set(purchaseRef, {
                     uid: member.uid,
                     memberName: member.name,
@@ -894,10 +869,9 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     deliveredAt: firebase.firestore.FieldValue.serverTimestamp(),
                     deliveredBy: currentUser.uid || 'platformAdmin',
                 });
-                });
-            }
+            });
             setMembers(prev => prev.map(m => (
-                m.uid === member.uid && !m.isExternalOrgMember
+                m.uid === member.uid
                     ? { ...m, talent: (m.talent || 0) - price }
                     : m
             )));
@@ -910,7 +884,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             toast.success(`${member.name}님 ⭐${price} 차감 완료 (${itemName})`);
         } catch (e) {
             console.error(e);
-            toast.error(isPermissionDenied(e) ? PRIMARY_ORG_TALENT_DENIED_MESSAGE : (e.message || '차감 처리에 실패했습니다.'));
+            toast.error(e.message || '차감 처리에 실패했습니다.');
         } finally {
             setDeducting(false);
         }
@@ -1028,7 +1002,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
   .tip { background: #fefce8; border-radius: 6px; padding: 1.5mm 3mm; margin-top: 1.5mm; font-size: 11.5px; color: #854d0e; }
 </style></head><body>
   <h1>📘 ${churchName} — 관리자 매뉴얼</h1>
-  <p class="sub">성경통독 114 (www.bible114.net) · 관리자 로그인: 로그인 화면에서 "교회 관리자" 탭 → 이메일 + 비밀번호</p>
+  <p class="sub">성경통독 114 (www.bible114.net) · 관리자 로그인: 로그인 화면에서 "공동체 관리자" 탭 → 이메일 + 비밀번호</p>
 
   <div class="sec"><h2>📊 대시보드 — 매일 아침 한 눈에</h2><ul>
     <li>오늘 읽은 교인 수, 부서별 현황, <b>관심 필요 명단</b>(3일·1주 이상 안 읽은 분)을 확인해요.</li>
@@ -1128,28 +1102,32 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         const batch = db.batch();
         const purchaseRef = db.collection('churches').doc(currentUser.churchId)
             .collection('talentPurchases').doc(purchase.id);
-        const userRef = db.collection('users').doc(purchase.uid);
+        const buyer = members.find(member => member.uid === purchase.uid);
+        const useRosterWallet = purchase.isExternalBuyer || buyer?.isExternalOrgMember;
+        const walletRef = useRosterWallet
+            ? db.collection('churches').doc(currentUser.churchId).collection('roster').doc(purchase.uid)
+            : db.collection('users').doc(purchase.uid);
         batch.update(purchaseRef, {
             status: 'cancelled',
             deliveredAt: firebase.firestore.FieldValue.serverTimestamp(),
             deliveredBy: currentUser.uid,
         });
-        batch.update(userRef, {
+        batch.update(walletRef, {
             talent: firebase.firestore.FieldValue.increment(purchase.price || 0),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            ...(useRosterWallet ? { updatedAt: firebase.firestore.FieldValue.serverTimestamp() } : {}),
         });
         try {
             await batch.commit();
         } catch (error) {
-            if (isPermissionDenied(error)) {
-                toast.error(PRIMARY_ORG_TALENT_DENIED_MESSAGE);
+            if (error?.code === 'permission-denied' || error?.code === 'firestore/permission-denied') {
+                toast.error('이 공동체 지갑을 환불할 권한이 없습니다.');
                 return;
             }
             throw error;
         }
         setTalentPurchases(prev => prev.map(p => p.id === purchase.id ? { ...p, status: 'cancelled', deliveredAt: new Date(), deliveredBy: currentUser.uid } : p));
         setMembers(prev => prev.map(m => (
-            m.uid === purchase.uid && !m.isExternalOrgMember
+            m.uid === purchase.uid
                 ? { ...m, talent: (m.talent || 0) + (purchase.price || 0) }
                 : m
         )));
@@ -1368,7 +1346,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             {/* 상단 헤더 */}
             <div className="bg-white border-b border-slate-200 px-4 py-4 flex items-center justify-between sticky top-0 z-10">
                 <div>
-                    <h1 className="font-extrabold text-slate-800">⛪ 교회 관리</h1>
+                    <h1 className="font-extrabold text-slate-800">⛪ 공동체 관리</h1>
                     <p className="text-xs text-slate-400">{currentUser.churchName}</p>
                 </div>
                 <div className="flex gap-2 flex-wrap justify-end">
@@ -1384,7 +1362,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     </button>
                     <button onClick={onBack}
                         className="text-xs bg-slate-100 text-slate-600 px-3 py-2 rounded-lg font-bold">
-                        대시보드
+                        ← 성경 읽기로
                     </button>
                     <button onClick={handleLogout}
                         className="text-xs bg-red-50 text-red-500 px-3 py-2 rounded-lg font-bold">
@@ -1725,7 +1703,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                     ))}
                                 </div>
                             )}
-                        </div> : <div className="rounded-2xl bg-slate-50 p-4 text-xs font-bold text-slate-500">개인 읽기 기록은 원 소속 교회 관리자만 조회할 수 있습니다.</div>}
+                        </div> : <div className="rounded-2xl bg-slate-50 p-4 text-xs font-bold text-slate-500">개인 읽기 기록은 원 소속 공동체 관리자만 조회할 수 있습니다.</div>}
                     </div>
                 )}
             </SlideOverPanel>

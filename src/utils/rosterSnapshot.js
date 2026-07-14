@@ -1,4 +1,5 @@
 const ROSTER_FIELDS = [
+    'talent',
     'departmentId', 'departmentName', 'subgroupId', 'subgroupName',
     'joinedAt', 'updatedAt',
 ];
@@ -33,6 +34,7 @@ export const rosterSnapshotToExtraOrgs = (snapshot, uid, maxOrgs = 3) => {
             subgroupName: null,
             joinedAt: null,
             updatedAt: null,
+            talent: 0,
         };
         ROSTER_FIELDS.forEach(field => {
             if (data[field] !== undefined) row[field] = data[field];

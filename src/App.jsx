@@ -49,25 +49,44 @@ const App = () => {
     const [presetChurchId] = useState(() => new URLSearchParams(window.location.search).get('church') || null);
     const { currentUser, setCurrentUser, authLoading, authError, retryAuthCheck } = useUserAuth();
     const [personalOrgNames, setPersonalOrgNames] = useState({});
+    const [viewingRosterOrgId, setViewingRosterOrgId] = useState(null);
     const personalOrgs = Array.isArray(currentUser?.extraOrgs) ? currentUser.extraOrgs : [];
     const activePersonalOrg = currentUser?.accountType === 'personal'
         ? personalOrgs.find(org => org.orgId === currentUser.primaryOrgId) || null
         : null;
+    const activeAdditionalOrg = currentUser?.accountType !== 'personal' && viewingRosterOrgId
+        ? personalOrgs.find(org => org.orgId === viewingRosterOrgId) || null
+        : null;
+    const activeRosterOrg = activePersonalOrg || activeAdditionalOrg;
     const dashboardUser = useMemo(() => {
-        if (currentUser?.accountType !== 'personal' || !activePersonalOrg) return currentUser;
+        if (!currentUser) return currentUser;
+        if (!activeRosterOrg) {
+            return {
+                ...currentUser,
+                talentWalletType: 'user',
+                talentWalletOrgId: currentUser.churchId || null,
+            };
+        }
         return {
             ...currentUser,
-            churchId: activePersonalOrg.orgId,
-            churchName: personalOrgNames[activePersonalOrg.orgId] || '참여 공동체',
-            departmentId: activePersonalOrg.departmentId || null,
-            departmentName: activePersonalOrg.departmentName || null,
-            subgroupId: activePersonalOrg.subgroupId || null,
-            subgroupName: activePersonalOrg.subgroupName || null,
+            churchId: activeRosterOrg.orgId,
+            churchName: personalOrgNames[activeRosterOrg.orgId] || '참여 공동체',
+            talent: Number(activeRosterOrg.talent) || 0,
+            talentWalletType: 'roster',
+            talentWalletOrgId: activeRosterOrg.orgId,
+            departmentId: activeRosterOrg.departmentId || null,
+            departmentName: activeRosterOrg.departmentName || null,
+            subgroupId: activeRosterOrg.subgroupId || null,
+            subgroupName: activeRosterOrg.subgroupName || null,
         };
-    }, [currentUser, activePersonalOrg, personalOrgNames]);
+    }, [currentUser, activeRosterOrg, personalOrgNames]);
 
     useEffect(() => {
-        if (currentUser?.accountType !== 'personal' || personalOrgs.length === 0) {
+        setViewingRosterOrgId(null);
+    }, [currentUser?.uid]);
+
+    useEffect(() => {
+        if (personalOrgs.length === 0) {
             setPersonalOrgNames({});
             return;
         }
@@ -81,7 +100,25 @@ const App = () => {
             }
         })).then(entries => { if (alive) setPersonalOrgNames(Object.fromEntries(entries)); });
         return () => { alive = false; };
-    }, [currentUser?.uid, currentUser?.accountType, personalOrgs.map(org => org.orgId).join('|')]);
+    }, [currentUser?.uid, personalOrgs.map(org => org.orgId).join('|')]);
+
+    const talentOrganizations = useMemo(() => {
+        const rosterWallets = personalOrgs
+            .filter(org => currentUser?.accountType === 'personal' || org.orgId !== currentUser?.churchId)
+            .map(org => ({
+            ...org,
+            name: personalOrgNames[org.orgId] || org.orgId,
+            walletType: 'roster',
+            talent: Number(org.talent) || 0,
+            }));
+        if (currentUser?.accountType === 'personal' || !currentUser?.churchId) return rosterWallets;
+        return [{
+            orgId: currentUser.churchId,
+            name: currentUser.churchName || currentUser.churchId,
+            walletType: 'user',
+            talent: Number(currentUser.talent) || 0,
+        }, ...rosterWallets];
+    }, [currentUser, personalOrgs, personalOrgNames]);
     const adminAuthToasts = useToast();
     const handleReadComplete = useCallback((resultData) => {
         if (typeof window !== 'undefined' && window.refreshKakaoAdBanner) {
@@ -498,6 +535,19 @@ const App = () => {
         }
     };
 
+    const handleTalentOrgChange = async orgId => {
+        if (!currentUser || orgId === dashboardUser?.churchId) return;
+        if (currentUser.accountType === 'personal') {
+            await handlePrimaryOrgChange(orgId);
+            return;
+        }
+        if (orgId === currentUser.churchId) {
+            setViewingRosterOrgId(null);
+            return;
+        }
+        if (personalOrgs.some(org => org.orgId === orgId)) setViewingRosterOrgId(orgId);
+    };
+
     const handlePersonalAccountMigrate = async (phone4) => {
         if (!currentUser) return;
         try {
@@ -755,7 +805,9 @@ const App = () => {
                 onGoogleLink={handleGoogleLink}
                 onKakaoLink={handleKakaoLinkStart}
                 personalOrganizations={personalOrgs.map(org => ({ ...org, name: personalOrgNames[org.orgId] || org.orgId }))}
+                talentOrganizations={talentOrganizations}
                 onPrimaryOrgChange={handlePrimaryOrgChange}
+                onTalentOrgChange={handleTalentOrgChange}
                 onPersonalAccountMigrate={handlePersonalAccountMigrate}
             />
         );

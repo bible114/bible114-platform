@@ -122,7 +122,9 @@ const DashboardView = ({
     completionCelebration,
     setCompletionCelebration,
     personalOrganizations = [],
+    talentOrganizations = [],
     onPrimaryOrgChange,
+    onTalentOrgChange,
     onPersonalAccountMigrate,
     socialLinkNotice,
     onSocialLinkNoticeClear,
@@ -485,6 +487,8 @@ const DashboardView = ({
                     {hasCommunity && <TalentShop
                         currentUser={currentUser}
                         setCurrentUser={setCurrentUser}
+                        organizations={talentOrganizations}
+                        onOrganizationChange={onTalentOrgChange}
                         showUnlockModal={showSecretShopUnlocked}
                         onCloseUnlockModal={() => setShowSecretShopUnlocked(false)}
                     />}

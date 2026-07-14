@@ -31,7 +31,7 @@ import { getPendingPersonalMigration } from '../utils/personalAccountMigration';
 const GOOGLE_ADMIN_ROLES = new Set(['churchAdmin', 'platformAdmin', 'superAdmin']);
 const GOOGLE_ADMIN_NOT_FOUND_MESSAGE = "이 구글 계정으로 등록된 관리자가 없습니다. 기존 관리자는 이메일·비밀번호로 로그인하시고, 새 교회는 '교회 등록'을 이용하세요.";
 const GOOGLE_ADMIN_SIGNUP_FLOW_NAME = 'googleAdminSignup';
-const GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE = '이미 등록된 계정입니다. 관리자 로그인에서 구글로 로그인해주세요.';
+const GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE = '이미 등록된 계정입니다. 공동체 관리자 로그인에서 구글로 로그인해주세요.';
 const KAKAO_GOOGLE_AUTH_MESSAGE = "카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 우측 하단 ⋯ 메뉴에서 '다른 브라우저로 열기'를 눌러주세요.";
 
 export const useAuth = ({
@@ -211,6 +211,12 @@ export const useAuth = ({
         const pendingMigration = getPendingPersonalMigration(firebaseUser.uid);
         if (data.accountType !== 'personal' && !pendingMigration) throw new Error('NOT_PERSONAL_ACCOUNT');
         let user = userDocToState(doc);
+        const legacyTalent = await migrateTalentIfNeeded(firebaseUser.uid, data);
+        if (legacyTalent) {
+            user.talent = legacyTalent.talent;
+            user.score = legacyTalent.score;
+            user.talentMigrated = true;
+        }
         user.extraOrgs = await loadUserExtraOrgs(firebaseUser.uid);
         user = await migratePersonalWallet(user);
         setCurrentUser(user);
@@ -225,8 +231,14 @@ export const useAuth = ({
             await openExistingPersonalUser(firebaseUser, doc);
             return;
         }
-        if (data.role !== 'member') throw new Error('NOT_MEMBER_ACCOUNT');
+        if (!['member', 'churchAdmin'].includes(data.role)) throw new Error('NOT_MEMBER_ACCOUNT');
         let user = userDocToState(doc);
+        const legacyTalent = await migrateTalentIfNeeded(firebaseUser.uid, data);
+        if (legacyTalent) {
+            user.talent = legacyTalent.talent;
+            user.score = legacyTalent.score;
+            user.talentMigrated = true;
+        }
         user.extraOrgs = await loadUserExtraOrgs(firebaseUser.uid);
         user = await migratePersonalWallet(user);
         setCurrentUser(user);
@@ -446,6 +458,7 @@ export const useAuth = ({
             transaction.set(rosterRef, {
                 uid: socialUser.uid, name: name.trim(),
                 score: newUser.score || 0, currentDay: newUser.currentDay || 1,
+                talent: 0,
                 streak: newUser.streak || 0, readCount: newUser.readCount || 1,
                 lastReadDate: newUser.lastReadDate || null,
                 departmentId: organization.departmentId || null,
@@ -465,6 +478,7 @@ export const useAuth = ({
             ...newUser, uid: socialUser.uid,
             extraOrgs: [{
                 uid: socialUser.uid, orgId: organization.orgId, rosterPath: rosterRef.path,
+                talent: 0,
                 departmentId: organization.departmentId || null, departmentName: organization.departmentName || null,
                 subgroupId: organization.subgroupId || null, subgroupName: organization.subgroupName || null,
             }],
@@ -604,7 +618,7 @@ export const useAuth = ({
             if (!cred) return;
             const doc = await db.collection('users').doc(cred.user.uid).get();
             if (!doc.exists) { setErrorMsg('사용자 정보를 찾을 수 없습니다.'); return; }
-            if (doc.data().isDeleted) { setErrorMsg('삭제 처리된 계정입니다. 교회 관리자에게 복원을 요청해주세요.'); return; }
+            if (doc.data().isDeleted) { setErrorMsg('삭제 처리된 계정입니다. 공동체 관리자에게 복원을 요청해주세요.'); return; }
             let user = userDocToState(doc);
             const extraOrgsPromise = loadUserExtraOrgs(cred.user.uid);
             // [랭킹] 자격증명 지연 이관 — 본문서에 평문이 남아 있으면 private로 옮긴다.
@@ -874,7 +888,7 @@ export const useAuth = ({
                 const directory = await getChurchDirectory();
                 const churchEntry = directory.find(c => c.id === churchId);
                 if (!churchEntry) { setErrorMsg('교회를 찾을 수 없습니다.'); return; }
-                if (!churchEntry.codeHash) { setErrorMsg('교회 입장코드 정보를 확인할 수 없습니다. 교회 관리자에게 문의해주세요.'); return; }
+                if (!churchEntry.codeHash) { setErrorMsg('교회 입장코드 정보를 확인할 수 없습니다. 공동체 관리자에게 문의해주세요.'); return; }
                 const inputHash = await sha256(churchCode);
                 if (churchEntry.codeHash !== inputHash) { setErrorMsg('교회 입장코드가 틀렸습니다.'); return; }
                 churchName = churchEntry.name;
@@ -906,7 +920,7 @@ export const useAuth = ({
             // 같은 계정으로 재가입하면 기존 비밀번호로 로그인해 문서를 재활성화한다.
             const orphanCred = await auth.signInWithEmailAndPassword(email, password).catch(() => null);
             if (!orphanCred) {
-                setErrorMsg('이미 가입된 이름+생년월일입니다. 기존 비밀번호로 로그인하거나 교회 관리자에게 복원을 요청해주세요.');
+                setErrorMsg('이미 가입된 이름+생년월일입니다. 기존 비밀번호로 로그인하거나 공동체 관리자에게 복원을 요청해주세요.');
                 return;
             }
 

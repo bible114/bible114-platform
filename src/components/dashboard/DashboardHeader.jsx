@@ -56,7 +56,7 @@ const DashboardHeader = ({
             <div className="bg-white/95 backdrop-blur-md border-b border-slate-200/60 shadow-sm">
                 <div className="px-4 py-2 flex flex-col md:flex-row justify-between items-center max-w-5xl mx-auto w-full gap-2.5 md:gap-4">
                     {/* 상단: 사용자 상태 및 로그아웃 (모바일에서 먼저보이고 좌우 꽉차게) */}
-                    <div className="flex flex-wrap items-center gap-1.5 w-full py-1 md:order-2 md:ml-auto md:w-auto md:justify-end">
+                    <div className="flex flex-wrap items-center gap-1.5 w-full py-1 md:order-2 md:ml-auto md:w-auto md:flex-nowrap md:justify-end">
                             <div id="tut-streak" className={`text-xs font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 shrink-0 ${streak > 0 ? 'bg-orange-50 text-orange-600 border border-orange-100' : 'bg-slate-100 text-slate-400'}`}>
                                 <Icon name="flame" size={12} />{streak}일
                             </div>
@@ -66,7 +66,7 @@ const DashboardHeader = ({
                                 </div>
                             )}
                             {isChurchAdmin && (
-                                <button type="button" onClick={(e) => { e.stopPropagation(); setView('church_admin'); }} className="p-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 shrink-0 flex items-center gap-1" title="교회 관리">⛪ <span className="hidden sm:inline">교회관리</span></button>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); setView('church_admin'); }} className="p-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 shrink-0 flex items-center gap-1" title="공동체 관리">⚙️ <span>관리</span></button>
                             )}
                             <button id="tut-achievements" type="button" aria-label="나의 업적과 기록" onClick={(e) => { e.stopPropagation(); setShowAchievements(true); }} className="p-1.5 text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-100 rounded-xl hover:bg-yellow-100 shrink-0">🏅</button>
                             <button id="tut-date-settings" type="button" aria-label="날짜 설정" onClick={(e) => { e.stopPropagation(); setShowDateSettings(true); }} className="p-1.5 text-xs font-bold text-purple-600 bg-purple-50 border border-purple-100 rounded-xl hover:bg-purple-100 shrink-0">📅</button>

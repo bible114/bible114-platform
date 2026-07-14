@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: "🔁 라운드 18" T93~T96·T98~T101 완료, T97은 선행 Firestore 규칙 배포 대기.** 라운드 17 T88~T92 완료. git 커밋 금지 — 구현+검증+로그까지만, 커밋은 Claude 담당.
+> **현재 활성 작업: "🔁 라운드 18" T93~T102 로컬 구현·검증 완료.** T97r 활성 규칙셋 확인 후 T97까지 완료했으며, 커밋·배포는 Claude/사용자 대기. 라운드 17 T88~T92 완료. git 커밋 금지 — 구현+검증+로그까지만, 커밋은 Claude 담당.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -180,6 +180,8 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-14 | T102 관리자 읽기 기본·명칭 통일 | `src/App.jsx`, `src/hooks/useAuth.js`, `src/components/{LoginView,ChurchAdminView,PlatformAdminView,ChurchPicker,PlanSelectionView,ChurchAdminTutorial}.jsx`, `src/components/dashboard/{DashboardHeader,SocialLinkBanner}.jsx`, `src/components/churchAdmin/SettingsTab.jsx`, `scripts/validate-round18.mjs` | 공동체 관리자는 이메일·Google·카카오 로그인 모두 읽기 대시보드로 들어오고 헤더 `⚙️ 관리`로 관리 화면을 연다. 소셜 연결 배너 대상에 관리자를 포함하고 설정 탭의 중복 Google 연결 카드를 제거했으며 사용자 노출 명칭을 `공동체 관리자`로 통일했다. |
+| 2026-07-14 | T97 공동체별 달란트 지갑 | `src/utils/{talentWallet,helpers,rosterSnapshot,rosterMembers}.js`, `src/hooks/{useUserAuth,useAuth,useUserBibleActions}.js`, `src/components/dashboard/{BibleQuizCard,TalentShop,CommunityMembershipCard}.jsx`, `src/components/{ChurchAdminView,PlatformAdminView,DashboardView}.jsx`, `src/App.jsx`, `scripts/validate-round18.mjs` | Rules API로 활성 Firestore ruleset `c433bfb2-19e6-4073-9b84-fed16add4d98`의 roster talent 허용·음수 방지를 확인했다. 읽기·퀴즈 보상을 모든 소속 지갑에 적립하고 개인 users 잔액을 primary roster로 1회 이관한다. 현재 공동체 표시·구매, 관리자 창구/환불, 전체 초기화를 조직 지갑 기준으로 바꾸고 상점에 전체 지갑 목록·탭 전환을 추가했다. 실계정 금액 변경은 미실행. |
 | 2026-07-14 | T101 DAY별 퀴즈 | `src/components/dashboard/BibleQuizCard.jsx`, `src/utils/{quizEngine,quizProgress}.js`, `src/hooks/useUserBibleActions.js`, `scripts/validate-round18.mjs` | 퀴즈 완료 상태를 회차·DAY별 `quizProgress`로 분리하고 일일 보상은 `quizRewardDate`로 별도 제한했다. DAY 키·1/2차 보상·같은 날 추가 보상 0 픽스처 통과. |
 | 2026-07-14 | T100 내 기록 허브 | `src/components/dashboard/DashboardHeader.jsx`, `src/components/modals/AchievementsModal.jsx`, `src/hooks/useUserBibleActions.js` | 헤더 점수 칩을 제거하고 업적 모달에 읽은 날·최장 연속·점수·달란트와 계산 안내를 추가했다. `maxStreak`를 읽기 transaction에서 갱신한다. |
 | 2026-07-14 | T98~T99 읽기 흐름·완료 요약 | `src/components/DashboardView.jsx`, `src/components/dashboard/BibleReader.jsx`, `src/hooks/useUserBibleActions.js`, `src/App.jsx` | 퀴즈를 본문 뒤·완료 버튼 앞으로 이동하고 사라지는 보상 토스트를 고정 요약으로 교체했다. 추가 읽기 DAY 퀴즈 게이트와 레벨업→업적 순차 알림을 유지했다. |
@@ -306,9 +308,14 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 ## 📮 Codex → Claude 메모
 
+2026-07-14 Codex 라운드 18 T97·T102 완결:
+- 활성 Firestore ruleset `c433bfb2-19e6-4073-9b84-fed16add4d98`에서 roster `talent` 화이트리스트와 관리자 음수 방지를 읽기 전용 API로 확인한 뒤 T97을 구현했다. 개인 users 잔액 1회 이관, 모든 소속 지갑 보상, 현재 공동체 잔액·상점·구매, 창구 판매·환불, 플랫폼 전체 초기화, 공동체별 잔액 목록·전환까지 반영했다.
+- T102도 완료했다. 공동체 관리자는 이메일·Google·카카오 어느 로그인 경로에서도 읽기 대시보드가 기본이며 `⚙️ 관리`로 관리 화면에 들어간다. 소셜 연결 배너 포함, 중복 Google 카드 제거, 사용자 노출 명칭 `공동체 관리자` 통일을 확인했다.
+- 검증: `npm run build`, `npm run validate`, `npm run validate:quiz`, `npm run test:saehangul`, `git diff --check` 통과. 로컬 375px 첫 화면은 `innerWidth=375`, `scrollWidth=375`, 콘솔 오류·경고 0으로 재확인했다. 인증이 필요한 상점 지갑 목록·관리자 버튼은 자동 계약/빌드로 확인했으며 실계정 보상·구매·관리자 차감/환불·전체 초기화는 실제 데이터를 바꾸므로 미실행. 커밋·배포·push 없음.
+
 2026-07-14 Codex 라운드 17 완결 + 라운드 18 독립 작업 완료:
 - T91~T96, T98~T101 구현 완료. T94는 갱신된 공동체 등록 안내·성도 오진입 방지·등록 완료 후 QR 인쇄 안내까지 포함했다.
-- T97은 문서 상단의 확정 지시대로 **Firestore T97r 규칙이 미배포 상태라 착수하지 않았다.** 규칙 배포가 확인되면 T97부터 재개해야 한다.
+- 당시 T97은 Firestore T97r 규칙 미배포로 보류했으나, 이후 활성 규칙셋 확인 뒤 위 최신 메모대로 완료했다.
 - T95의 `kakao-auth` 확장도 코드만 반영했으며 Supabase 함수 배포·실계정 연결은 하지 않았다.
 - 검증: `npm run build`, `npm run validate`, `npm run validate:quiz`, `npm run test:saehangul`, `git diff --check`, 로컬 첫 화면 렌더 및 375px 확인. 커밋·배포·push 없음.
 
@@ -1413,7 +1420,7 @@ T78~T86 검토 완료 — **병합·배포 가능, 수정 없음**. 핵심 확�
 ## 🔁 라운드 18 — 실사용 피드백 7건 (2026-07-14 사용자 지시 — ⚠️ 라운드 17 완결 후 시작)
 
 > 사용자 실사용 후 직접 지시 7건. 동작 우선순위: T93~T94(첫인상) → T98~T99(읽기 흐름) → T96 → T97(달란트 지갑) → T95(소셜 연결).
-> **T97r 규칙 배포 완료(2026-07-14 오전)** — roster talent 화이트리스트+음수 방지 라이브. **T97(공동체별 달란트 지갑)만 남음 — 지금 착수 가능.**
+> **T97r 규칙 배포 및 활성 규칙셋 확인 완료(2026-07-14)** — roster talent 화이트리스트+음수 방지 라이브. **T97·T102까지 로컬 구현·검증 완료.**
 
 - [x] **T93. 브랜딩 교체** — "천로역정 성경읽기" → **"성경통독 114"** 전체 교체: LoginView 로고(데스크톱·모바일), index.html `<title>`, A4 인쇄물 3종 문구, 기타 grep 전수. 히어로의 "천로역정 같은 통독의 길" 비유도 "함께 걷는 통독의 길"로.
 - [x] **T94. 첫 화면 — 카카오 단일 주 버튼 (당근마켓 스타일, 2026-07-14 사용자 레퍼런스 확정)**
@@ -1433,14 +1440,14 @@ T78~T86 검토 완료 — **병합·배포 가능, 수정 없음**. 핵심 확�
   - **카카오 연결**: 커스텀 토큰이라 link 불가 → 매핑 방식. `kakao-auth` 함수 확장: ① link 모드(`{ code, redirectUri, linkIdToken }`) — idToken 검증한 기존 uid를 `kakaoLinks/{kakao:회원번호}` 문서에 `{ uid }` 로 저장(서비스 계정 쓰기, 이미 다른 uid에 연결돼 있으면 409 안내) ② 로그인 모드 — 커스텀 토큰 발급 전에 kakaoLinks 매핑을 조회해 **있으면 기존 uid로 발급**. kakaoLinks 컬렉션은 클라이언트 접근 금지(규칙 추가 불필요 — 기본 거부, 서비스 계정만).
   - 연결 흐름도 redirect 방식 재사용: 연결 시작 시 sessionStorage에 link 마커 저장 → 복귀 처리에서 로그인 대신 link 모드 호출 → "연결 완료, 다음부터 카카오로 로그인하세요".
 - [x] **T96. "우리 교회 로그인 링크" 제거** — ChurchAdminView 설정 탭의 해당 카드 삭제(사용자 확정: 실동작 안 함). 성도용 A4 안내문의 QR·주소를 **루트 URL(https://www.bible114.net)**로 변경. `?church=` 파라미터 처리 코드는 남겨도 되나 신규 노출은 없앤다.
-- [ ] **T97. 공동체별 달란트 지갑 분리** (T97r 규칙 배포 대기 — 지시서에 따라 착수 보류)
+- [x] **T97. 공동체별 달란트 지갑 분리**
   - **모델**: ① 교회 계정의 주 소속 교회 지갑 = 기존 `users.talent` (무변경·호환) ② roster 소속(개인 계정의 모든 공동체 + 교회 계정의 추가 공동체) = **`roster.talent`** (조직별 독립).
   - **적립**: 하루 첫 읽기·퀴즈 보상 시 내 모든 소속 지갑에 **각각 동일 금액 적립** (교회 계정: users.talent + 각 roster.talent / 개인 계정: 각 roster.talent). 기존 진도 동기화 트랜잭션(T47)에 talent 필드만 추가하는 구조.
   - **이관**: 개인 계정의 기존 `users.talent` 잔액은 로그인 시 1회 primaryOrg roster.talent로 lazy 이관(멱등 플래그 `talentWalletMigrated`).
   - **표시·사용**: 헤더 잔액·상점·구매 차감 = "현재 보는 공동체" 지갑. 상점 구매 트랜잭션이 해당 지갑(users 또는 roster)을 차감. 창구 판매·환불: 자체 교인 → users.talent(기존), roster 멤버 → 그 조직 roster.talent (개인 계정 users.talent 차감 경로는 제거).
   - 플랫폼 관리자 달란트 리셋 버튼도 roster 지갑 포함하도록 확장.
   - **공동체별 잔액 한눈에 (2026-07-14 사용자 추가)**: 달란트 상점 화면 상단에 내 소속 공동체 전부의 지갑 잔액 목록 표시 — "⛪ ○○교회 ⭐120 · 성경 읽는 사람들 ⭐43" 형식, 현재 보는 공동체가 강조(★). 항목을 탭하면 그 공동체 상점으로 전환(기준 전환 재사용). 헤더 달란트 칩은 현재 공동체 지갑 기준.
-- [ ] **T102. 관리자도 성경 읽기 기본 + "관리" 버튼 + 명칭 통일** (2026-07-14 사용자 추가)
+- [x] **T102. 관리자도 성경 읽기 기본 + "관리" 버튼 + 명칭 통일** (2026-07-14 사용자 추가)
   - 관리자(churchAdmin)가 **어떤 방식으로 로그인하든**(카카오·구글·이메일) 첫 화면은 **성도와 같은 성경 읽기 대시보드**. 관리 화면 직행 제거.
   - 대시보드 헤더 상단에 **[⚙️ 관리] 버튼** (관리자에게만 표시, 기존 "⛪ 교회관리" 버튼을 이 위치·라벨로 통일) → 관리자 화면 진입. 관리자 화면에서 "← 성경 읽기로" 복귀 버튼 유지.
   - **명칭 전체 통일: "교회 관리자" → "공동체 관리자"** — 로그인 화면 링크, 관리자 화면 제목, 안내 문구, 인쇄 매뉴얼, 비밀번호 문의 모달 등 grep 전수 교체 (firestore.rules 주석·필드명 role 'churchAdmin' 값 자체는 변경 금지 — 표시 텍스트만).
@@ -1483,6 +1490,12 @@ T78~T86 검토 완료 — **병합·배포 가능, 수정 없음**. 핵심 확�
 ## ✅ Claude 리뷰 결과 — 라운드 17·18 (2026-07-14)
 
 T88~T96·T98~T101 검토 완료 — **병합·배포 가능**. 확인: T91 탭 분할이 이동만 수행(로직 무변경), T90 지연 로딩으로 메인 청크 -168KB, T95 카카오 연결의 idToken 검증이 서명·audience·issuer 3중 확인 + create-only 경합 409 — 견고함. Claude 보강 1건: 익명(게스트) 세션의 카카오 연결 차단 1줄 추가. kakao-auth 함수 재배포 완료. 검증기 전체+빌드 Claude 재실행 통과. T97은 규칙 미배포 판단으로 건너뛴 것이 올바른 프로토콜 준수 — 규칙은 이제 배포됐으므로 T97만 재개하면 라운드 18 완결.
+
+---
+
+## ✅ Claude 리뷰 결과 — T97·T102 (2026-07-14)
+
+검토 완료 — **병합·배포 가능, 수정 없음**. 확인: 적립 트랜잭션이 모든 소속 지갑(교회 계정 users.talent + roster 지갑들)에 원자 적립·읽기 선행 규칙 준수, 개인 잔액 이관이 트랜잭션 내 플래그 재확인으로 멱등, 상점·헤더 잔액이 dashboardUser 투영(talentWalletType/보는 조직 지갑)으로 정확, 창구·환불·전체 리셋의 조직 지갑 전환, rules 무수정(Rules API로 활성 룰셋 검증 — 좋은 방식), 상점 지갑 목록·탭 전환, T102 관리자 읽기 기본+⚙️ 관리+명칭 통일. 검증기 4종+빌드 Claude 재실행 통과. 라운드 18 전체(T93~T102) 완결. 퀴즈 검수 75건 수정(라운드 Q)도 이번 배포에 동승.
 
 ---
 

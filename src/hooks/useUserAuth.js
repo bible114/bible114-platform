@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { auth, authReady, db } from '../utils/firebase';
-import { userDocToState, migrateTalentIfNeeded } from '../utils/helpers';
+import { userDocToState, migrateTalentIfNeeded, migratePersonalTalentWalletIfNeeded } from '../utils/helpers';
 import { getGuestState } from '../utils/guestStorage';
 import { migrateCredentialsIfNeeded } from '../utils/memberCredentials';
 import { isInteractiveAuthFlowActive } from '../utils/authFlowGuard';
 import { loadUserExtraOrgs } from '../utils/roster';
+import { updateRosterTalents } from '../utils/talentWallet';
 
 export const useUserAuth = () => {
     const [currentUser, setCurrentUser] = useState(null);
@@ -120,6 +121,17 @@ export const useUserAuth = () => {
                             }
 
                             user.extraOrgs = await extraOrgsPromise;
+                            const walletMigration = await migratePersonalTalentWalletIfNeeded(
+                                firebaseUser.uid,
+                                user.primaryOrgId
+                            );
+                            if (walletMigration) {
+                                user.talent = 0;
+                                user.talentWalletMigrated = true;
+                                Object.assign(user, updateRosterTalents(user, {
+                                    [walletMigration.orgId]: walletMigration.talent,
+                                }));
+                            }
                             if (discardStaleEvent()) return;
                             setCurrentUser(user);
                         } else {

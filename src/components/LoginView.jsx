@@ -715,7 +715,7 @@ const LoginView = ({
             <form onSubmit={handleAdminLogin} className="space-y-3.5">
                 <div className="bg-accent/10 border border-accent/25 rounded-lg px-3.5 py-2.5 flex gap-2.5 items-start">
                     <div className="w-5 h-5 rounded-full bg-accent text-cream flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">!</div>
-                    <p className="text-[12px] text-ink leading-relaxed"><b>교회 관리자 전용</b>입니다. 구역 편성, 성도 관리, 통독 진행률 대시보드를 사용할 수 있어요.</p>
+                    <p className="text-[12px] text-ink leading-relaxed"><b>공동체 관리자 전용</b>입니다. 구역 편성, 성도 관리, 통독 진행률 대시보드를 사용할 수 있어요.</p>
                 </div>
                 <div>
                     <label className="block text-[11px] font-semibold text-ink/55 mb-1.5 uppercase tracking-wide">관리자 이메일</label>
@@ -744,7 +744,7 @@ const LoginView = ({
                         type="button"
                         onClick={handleGoogleAdminLogin}
                         disabled={loading}
-                        aria-label="구글 계정으로 관리자 로그인"
+                        aria-label="구글 계정으로 공동체 관리자 로그인"
                         className="w-full rounded-full border border-hairline bg-white py-3.5 text-sm font-semibold text-ink transition-colors hover:bg-cream disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         {googleAdminLoading ? '구글 로그인 중...' : 'G 구글로 로그인'}
@@ -930,7 +930,7 @@ const LoginView = ({
     const isEntryStep = activeTab === 'member' && memberStep === 'entry';
     const cardTitle = {
         member: isEntryStep ? '성경통독을 시작해요' : '기존 회원 로그인',
-        admin: '관리자 로그인',
+        admin: '공동체 관리자 로그인',
         memberSignup: '성도 회원가입',
         adminSignup: '공동체 등록',
         personalSignup: '개인 계정 시작',
@@ -1047,7 +1047,7 @@ const LoginView = ({
                     {renderCard()}
                     {!isSignupTab && activeTab === 'member' && !isEntryStep && (
                         <div className="mt-5 border-t border-hairline pt-4 text-center text-[11px] text-ink/45">
-                            <button type="button" onClick={() => { setActiveTab('admin'); clearError(); }} className="underline underline-offset-3">교회 관리자 로그인</button>
+                            <button type="button" onClick={() => { setActiveTab('admin'); clearError(); }} className="underline underline-offset-3">공동체 관리자 로그인</button>
                             <span className="mx-2">·</span>
                             <button type="button" onClick={() => setShowAdminContact(true)} className="underline underline-offset-3">비밀번호 문의</button>
                         </div>
