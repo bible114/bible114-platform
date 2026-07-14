@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { selectDailyVideoCandidate } from '../src/utils/dailyVideoPolicy.js';
+import {
+    getDailyVideoFillState,
+    selectDailyVideoCandidate,
+    titleMatchesDate,
+} from '../src/utils/dailyVideoPolicy.js';
 import {
     getDefaultQuizLevel,
     getQuizLevel,
@@ -195,6 +199,24 @@ const dailyVideoCandidates = [
     { snippet: { title: '7월 14일 매일성경' }, contentDetails: { videoPublishedAt: '2026-07-14T03:00:00Z', videoId: 'todayVideo1' } },
     { snippet: { title: '7월 13일 매일성경' }, contentDetails: { videoPublishedAt: '2026-07-13T03:00:00Z', videoId: 'pastVideo01' } },
 ];
+assert.equal(titleMatchesDate('7월 15일 매일성경', '2026-07-15'), true);
+assert.equal(titleMatchesDate('07.15 신앙생활 1분만', '2026-07-15'), true);
+assert.equal(titleMatchesDate('[7/15] 어린이 매일성경', '2026-07-15'), true);
+assert.equal(titleMatchesDate('20260715 매일성경', '2026-07-15'), true);
+assert.equal(titleMatchesDate('0715 매일성경', '2026-07-15'), true);
+assert.equal(titleMatchesDate('요한복음 7.15 말씀', '2026-07-15'), false);
+assert.equal(titleMatchesDate('창세기 7/15 본문', '2026-07-15'), false);
+assert.equal(titleMatchesDate('로마서 0715 해설', '2026-07-15'), false);
+assert.equal(titleMatchesDate('7월 14일 매일성경', '2026-07-15'), false);
+assert.equal(titleMatchesDate('2월 29일 매일성경', '2026-02-29'), false);
+assert.deepEqual(
+    getDailyVideoFillState(['adult', 'kids'], { adult: { url: 'adult' }, kids: null }),
+    { hasAny: true, allReady: false, missingModes: ['kids'] }
+);
+assert.deepEqual(
+    getDailyVideoFillState(['adult'], { adult: { url: 'adult' }, kids: null }),
+    { hasAny: true, allReady: true, missingModes: [] }
+);
 const matchesDate = (title, dateKey) => title.includes(dateKey === '2026-07-14' ? '7월 14일' : '7월 15일');
 const matchedDailyVideo = selectDailyVideoCandidate(dailyVideoCandidates, {
     targetDateKey: '2026-07-14',
@@ -214,8 +236,12 @@ assert.equal(pendingDailyVideo.pending, true);
 assert.equal(pendingDailyVideo.stale, true);
 assert.match(dailyVideo, /selectDailyVideoCandidate\(items/);
 assert.match(dailyVideo, /pendingError\.code = 'VIDEO_DATE_PENDING'/);
-assert.match(dailyVideo, /storedVideo\?\.autoFilled === true[\s\S]*matchedDate !== true/);
-assert.match(dailyVideo, /tryAutoFill\(\{ persist: false \}\)/);
+assert.match(dailyVideo, /AUTO_RETRY_DELAYS_MS = \[2, 5, 15, 30\]/);
+assert.match(dailyVideo, /getDailyVideoFillState\(configuredModeKeys, payload\)/);
+assert.match(dailyVideo, /if \(!fillState\.allReady\)[\s\S]*scheduleAutoRetry[\s\S]*return;/);
+assert.match(dailyVideo, /if \(storedVideo\?\.autoFilled !== true\)[\s\S]*refreshDescriptionChapters\(storedVideo\)/);
+assert.match(dailyVideo, /tryAutoFill\(\{ persist: false, baseVideo: storedVideo \}\)/);
+assert.match(dailyVideo, /baseVideo\?\.\[key\]\?\.url && baseVideo\[key\]\.matchedDate === true/);
 assert.match(dailyVideo, /newMode === 'kids'[\s\S]*startsWith\('nt_'\)/);
 assert.match(dailyVideo, /saveGuestState\(\{ videoType: newMode,[\s\S]*quizLevel: 'easy'/);
 assert.match(dailyVideo, /videoMode: newMode,[\s\S]*quizLevel: 'easy'/);

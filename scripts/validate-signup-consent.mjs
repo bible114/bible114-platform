@@ -168,5 +168,22 @@ assert.match(
     /이메일 가입도 Google 가입과 동일하게[\s\S]*db\.runTransaction\(async transaction =>[\s\S]*transaction\.set\(churchRef,[\s\S]*transaction\.set\(userRef, newUser\);[\s\S]*transaction\.set\(consentRef,[\s\S]*transaction\.set\(churchAdminRef,/,
     '이메일 공동체 관리자 가입도 소유 증명과 계정을 원자적으로 생성해야 한다.',
 );
+assert.match(
+    authHook,
+    /canResumeEmailSignup[\s\S]*provider\?\.providerId === 'password'[\s\S]*if \(!existingUserDoc\.exists\)[\s\S]*cred = \{ user: currentAuthUser \}/,
+    'Auth 생성 뒤 Firestore 실패 시 같은 password 인증 세션으로 관리자 가입을 재개해야 한다.',
+);
+assert.match(
+    authHook,
+    /existingUserDoc\.exists && existingUserDoc\.data\(\)\?\.role === 'churchAdmin'[\s\S]*loadChurchCommunities\(recoveredUser\.churchId\)[\s\S]*recovered: true/,
+    'commit 응답 유실 시 이미 생성된 관리자 문서를 복구하고 공동체를 중복 생성하면 안 된다.',
+);
+assert.match(
+    authHook,
+    /transactionError\.emailAdminSignupIncomplete = true;[\s\S]*transactionError\.emailAdminSignupResumable = authSessionPreserved;/,
+    '이메일 관리자 Firestore 실패는 인증 세션 보존 여부를 호출부에 전달해야 한다.',
+);
+assert.match(authHook, /인증 계정은 만들어졌지만 공동체 정보 저장이 완료되지 않았습니다/);
+assert.match(authHook, /로그인 상태가 변경되어 자동 재개할 수 없습니다/);
 
 console.log('가입 동의 모델 검증 통과: 정책 버전·필수 동의·만14세·보호자 방식·Firestore snapshot');

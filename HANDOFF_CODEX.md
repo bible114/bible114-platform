@@ -2029,7 +2029,15 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 - 기본 `npm run validate`에 전체 퀴즈와 신약 쉬운 퀴즈 검사를 포함한다.
 - 검증: 전체 validate, production build, Firestore rules dry-run compile, diff-check 통과.
 
-### [ ] R25-2. 2차 — 1차 독립 재감사 발견 수정
+### [x] R25-2. 2차 — 1차 독립 재감사 발견 수정
+
+- adult/kids 일부 게시 상태는 화면에만 임시 표시하고 두 모드가 모두 준비될 때만 자동 문서를 생성한다. 열린 화면과 기존 부분 문서는 2/5/15/30분 backoff로 재조회한다.
+- 축약 날짜(`07.15`, `7/15`, `0715`)는 제목 머리말에서만 인정해 성경 장·절 오인을 막고, 명시적 `M월 D일`·`YYYYMMDD`는 유지한다.
+- 이메일 관리자 가입의 Auth 성공·Firestore 실패 상태는 같은 password 인증 세션으로 재개한다. 이전 commit 응답만 유실된 경우 기존 관리자 문서를 복구해 공동체 중복 생성을 막는다.
+- pending 구매는 문서 id 기준 100건씩 페이지 조회하고 최근 이력 200건과 독립적으로 불러온다. 한 쿼리 실패 시 다른 결과와 경고를 유지한다.
+- v2 roster 환불은 `walletOrgId` 존재·현재 공동체 일치를 필수로 한다.
+- 직접 교인 구매 뒤 개인 계정 전환으로 동일 공동체 roster 지갑이 생긴 경우, 관리자 2차 확인과 transaction 내 재검증 뒤 roster로 환불한다.
+- 검증: 전체 validate, production build, Firestore rules dry-run compile, diff-check 통과.
 
 ### [ ] R25-3. 3차 — 2차 독립 재감사 발견 수정·최종 감사
 

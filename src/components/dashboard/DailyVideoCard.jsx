@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { db, firebase } from '../../utils/firebase';
 import { getVideoDateKST, extractYouTubeId, parseAndMapChapters, titleMatchesDate } from '../../utils/helpers';
 import { saveGuestState } from '../../utils/guestStorage';
-import { selectDailyVideoCandidate } from '../../utils/dailyVideoPolicy';
+import { getDailyVideoFillState, selectDailyVideoCandidate } from '../../utils/dailyVideoPolicy';
 
 const CHAPTER_ORDER = [
     { key: '해설', label: '묵상 해설', emoji: '📖' },
@@ -22,6 +22,7 @@ const CHAPTER_ORDER = [
 // 때 어제/과거 영상을 오늘 문서에 고정하지 않고 pending 오류로 호출부에 알린다.
 // 실패(쿼터 초과, 잘못된 키/ID, 후보 없음)하면 예외를 던지고 호출부에서 console.warn만 남긴다.
 const MAX_PLAYLIST_PAGES = 5;
+const AUTO_RETRY_DELAYS_MS = [2, 5, 15, 30].map(minutes => minutes * 60 * 1000);
 
 const fetchPlaylistCandidates = async (playlistId, apiKey) => {
     const candidates = [];
@@ -118,6 +119,8 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
 
     useEffect(() => {
         let cancelled = false;
+        let retryTimer = null;
+        let retryIndex = 0;
         if (!db) { setVideo(null); return; }
 
         setVideo(undefined);
@@ -125,6 +128,22 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
         setStartSec(0);
 
         const docRef = db.collection('dailyVideos').doc(dateKey);
+
+        const clearAutoRetry = () => {
+            if (retryTimer) clearTimeout(retryTimer);
+            retryTimer = null;
+        };
+
+        const scheduleAutoRetry = (retry) => {
+            if (cancelled || retryTimer || retryIndex >= AUTO_RETRY_DELAYS_MS.length) return;
+            const delay = AUTO_RETRY_DELAYS_MS[retryIndex++];
+            retryTimer = setTimeout(() => {
+                retryTimer = null;
+                // 3시 경계를 지난 이전 날짜 요청이 뒤늦게 화면을 덮지 않게 한다.
+                if (cancelled || getVideoDateKST() !== dateKey) return;
+                void retry();
+            }, delay);
+        };
 
         // 날짜 문서에 저장된 시간은 영상 설명을 나중에 수정하면 낡을 수 있다.
         // 화면에는 저장값을 즉시 보여주되, 현재 YouTube 설명란의 시간을 다시 읽어
@@ -162,20 +181,22 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
             }
         };
 
-        const tryAutoFill = async ({ persist = true } = {}) => {
+        let handleStoredVideo;
+
+        const tryAutoFill = async ({ persist = true, baseVideo = null } = {}) => {
             try {
                 const configDoc = await db.collection('settings').doc('videoAutoConfig').get();
                 if (cancelled) return;
-                if (!configDoc.exists) { setVideo(null); return; }
+                if (!configDoc.exists) { clearAutoRetry(); setVideo(null); return; }
                 const config = configDoc.data();
-                if (!config.enabled || !config.apiKey) { setVideo(null); return; }
+                if (!config.enabled || !config.apiKey) { clearAutoRetry(); setVideo(null); return; }
 
                 const modes = [
                     ['adult', config.adultPlaylistId],
                     ['kids', config.kidsPlaylistId],
                 ].filter(([, playlistId]) => !!playlistId);
 
-                if (modes.length === 0) { setVideo(null); return; }
+                if (modes.length === 0) { clearAutoRetry(); setVideo(null); return; }
 
                 const results = await Promise.all(modes.map(async ([key, playlistId]) => {
                     try {
@@ -193,9 +214,33 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
                 if (cancelled) return;
 
                 const payload = { adult: null, kids: null };
-                results.forEach(([key, entry]) => { payload[key] = entry; });
+                results.forEach(([key, entry]) => {
+                    // 이미 오늘 날짜로 검증된 항목은 API가 잠깐 실패해도 유지한다. 날짜 검증
+                    // 표시가 없는 과거 자동 항목이나 다른 날짜 항목은 절대 재사용하지 않는다.
+                    payload[key] = entry || (
+                        baseVideo?.[key]?.url && baseVideo[key].matchedDate === true
+                            ? baseVideo[key]
+                            : null
+                    );
+                });
 
-                if (!payload.adult?.url && !payload.kids?.url) { setVideo(null); return; }
+                const configuredModeKeys = modes.map(([key]) => key);
+                const fillState = getDailyVideoFillState(configuredModeKeys, payload);
+
+                if (fillState.hasAny) {
+                    // 한쪽만 먼저 게시됐으면 열린 화면에서는 먼저 준비된 영상만 임시로 보여준다.
+                    // 문서에는 두 설정 모드가 모두 준비된 뒤에만 저장해 partial 고착을 막는다.
+                    applyVideoDoc({ ...payload, autoFilled: true });
+                } else {
+                    setVideo(null);
+                }
+
+                if (!fillState.allReady) {
+                    scheduleAutoRetry(() => tryAutoFill({ persist, baseVideo: payload }));
+                    return;
+                }
+
+                clearAutoRetry();
 
                 payload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
                 payload.autoFilled = true;
@@ -215,8 +260,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
                 const recheck = await docRef.get();
                 if (cancelled) return;
                 if (recheck.exists) {
-                    applyVideoDoc(recheck.data());
-                    return;
+                    return handleStoredVideo(recheck.data());
                 }
                 try {
                     await docRef.set(payload);
@@ -232,7 +276,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
                     const after = await docRef.get().catch(() => null);
                     if (cancelled) return;
                     if (after?.exists) {
-                        applyVideoDoc(after.data());
+                        return handleStoredVideo(after.data());
                     } else {
                         console.warn('매일 영상 자동 채움 실패(쓰기 거부, 재조회 실패):', writeErr);
                         setVideo(null);
@@ -240,33 +284,42 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
                 }
             } catch (e) {
                 console.warn('매일 영상 자동 채움 실패:', e);
-                if (!cancelled) setVideo(null);
+                if (!cancelled) {
+                    if (!baseVideo?.adult?.url && !baseVideo?.kids?.url) setVideo(null);
+                    scheduleAutoRetry(() => tryAutoFill({ persist, baseVideo }));
+                }
             }
+        };
+
+        handleStoredVideo = (storedVideo) => {
+            // 수동 등록은 관리자의 명시적 오버라이드다. 자동 재조회·보충·덮어쓰기를 하지 않는다.
+            if (storedVideo?.autoFilled !== true) {
+                clearAutoRetry();
+                applyVideoDoc(storedVideo);
+                void refreshDescriptionChapters(storedVideo);
+                return;
+            }
+
+            // 자동 문서는 이전 버전이 한 모드만 저장했거나 과거 영상을 저장했을 수 있다.
+            // 검증된 오늘 항목만 기반값으로 유지하며, 설정된 모든 모드를 다시 엄격히 조회한다.
+            return tryAutoFill({ persist: false, baseVideo: storedVideo });
         };
 
         docRef.get()
             .then(doc => {
                 if (cancelled) return;
                 if (doc.exists) {
-                    const storedVideo = doc.data();
-                    // 수동 등록(autoFilled !== true)은 관리자 오버라이드이므로 날짜 표시와 관계없이 그대로 유지한다.
-                    // 반면 이전 버전이 최신 폴백을 저장한 자동 문서는 노출하지 않고,
-                    // 오늘 날짜를 엄격히 맞춘 임시 결과로만 복구한다.
-                    const hasUnsafeAutoEntry = storedVideo?.autoFilled === true
-                        && ['adult', 'kids'].some(key => storedVideo?.[key]?.url && storedVideo[key].matchedDate !== true);
-                    if (hasUnsafeAutoEntry) {
-                        return tryAutoFill({ persist: false });
-                    }
-                    applyVideoDoc(storedVideo);
-                    refreshDescriptionChapters(storedVideo);
-                    return;
+                    return handleStoredVideo(doc.data());
                 }
                 return tryAutoFill();
             })
             .catch(() => {
                 if (!cancelled) setVideo(null);
             });
-        return () => { cancelled = true; };
+        return () => {
+            cancelled = true;
+            clearAutoRetry();
+        };
     }, [dateKey, currentUser?.uid]);
 
     useEffect(() => {

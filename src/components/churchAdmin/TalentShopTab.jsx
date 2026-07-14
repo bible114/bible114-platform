@@ -18,6 +18,8 @@ const TalentShopTab = ({ ctx }) => {
         submitShopItem, resetShopItemDraft, editShopItem, deleteShopItem, printShopItems,
         deductForm, setDeductForm, members, requestManualDeduct, deducting,
         purchaseFilter, setPurchaseFilter, filteredPurchases, memberById,
+        purchaseLoadWarning, hasMorePendingPurchases, loadingMorePendingPurchases,
+        loadMorePendingPurchases,
         formatAnyDate, setConfirmAction, requestPurchaseRefund, deliverPurchase, refundPurchase,
     } = ctx;
 
@@ -319,7 +321,7 @@ const TalentShopTab = ({ ctx }) => {
                                     <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div>
                                             <h3 className="text-sm font-black text-slate-800">구매 내역</h3>
-                                            <p className="mt-1 text-xs font-bold text-slate-400">미처리 구매는 전체, 수령·취소 이력은 최근 200건을 표시합니다.</p>
+                                            <p className="mt-1 text-xs font-bold text-slate-400">미처리 구매는 100건씩, 수령·취소 이력은 최근 200건을 표시합니다.</p>
                                         </div>
                                         <select
                                             value={purchaseFilter}
@@ -332,6 +334,9 @@ const TalentShopTab = ({ ctx }) => {
                                             <option value="all">전체</option>
                                         </select>
                                     </div>
+                                    {purchaseLoadWarning && (
+                                        <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">{purchaseLoadWarning}</p>
+                                    )}
                                     {filteredPurchases.length === 0 ? (
                                         <p className="py-10 text-center text-xs font-bold text-slate-300">표시할 구매 내역이 없습니다.</p>
                                     ) : (
@@ -398,6 +403,16 @@ const TalentShopTab = ({ ctx }) => {
                                                 </tbody>
                                             </table>
                                         </div>
+                                    )}
+                                    {hasMorePendingPurchases && (
+                                        <button
+                                            type="button"
+                                            onClick={loadMorePendingPurchases}
+                                            disabled={loadingMorePendingPurchases}
+                                            className="mt-4 w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 text-xs font-black text-slate-600 disabled:opacity-50"
+                                        >
+                                            {loadingMorePendingPurchases ? '불러오는 중...' : '미처리 구매 100건 더 보기'}
+                                        </button>
                                     )}
                                 </div>
                             </div>

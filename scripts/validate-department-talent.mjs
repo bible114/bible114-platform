@@ -11,6 +11,7 @@ import {
     resolveTalentProgram,
 } from '../src/utils/talentProgram.js';
 import {
+    hasValidV2RefundWalletSnapshot,
     mergeAdminTalentPurchases,
     resolvePurchaseRefundWalletKind,
 } from '../src/utils/talentPurchases.js';
@@ -162,6 +163,10 @@ assert.equal(resolvePurchaseRefundWalletKind({ schemaVersion: 2 }, 'user'), null
 assert.equal(resolvePurchaseRefundWalletKind({}, null), null);
 assert.equal(resolvePurchaseRefundWalletKind({}, 'user'), 'user');
 assert.equal(resolvePurchaseRefundWalletKind({}, 'roster'), 'roster');
+assert.equal(hasValidV2RefundWalletSnapshot({ schemaVersion: 2, walletKind: 'roster' }, 'church-1'), false);
+assert.equal(hasValidV2RefundWalletSnapshot({ schemaVersion: 2, walletKind: 'roster', walletOrgId: 'church-2' }, 'church-1'), false);
+assert.equal(hasValidV2RefundWalletSnapshot({ schemaVersion: 2, walletKind: 'roster', walletOrgId: 'church-1' }, 'church-1'), true);
+assert.equal(hasValidV2RefundWalletSnapshot({ schemaVersion: 2, walletKind: 'user', walletOrgId: 'church-1' }, 'church-1'), true);
 
 const normalized = normalizeTalentProgram(v2);
 normalized.markets.children.items[0].name = 'changed';
@@ -172,6 +177,7 @@ const readActions = read('src/hooks/useUserBibleActions.js');
 const quizCard = read('src/components/dashboard/BibleQuizCard.jsx');
 const memberShop = read('src/components/dashboard/TalentShop.jsx');
 const adminView = read('src/components/ChurchAdminView.jsx');
+const adminTalentTab = read('src/components/churchAdmin/TalentShopTab.jsx');
 const rules = read('firestore.rules');
 
 assert.match(readActions, /loadTalentProgramsStrict/);
@@ -183,14 +189,21 @@ assert.match(quizCard, /resolveTalentProgram[\s\S]*rewardedRosterWallets/);
 assert.match(memberShop, /schemaVersion: 2[\s\S]*departmentId:[\s\S]*marketId:[\s\S]*walletKind/);
 assert.match(adminView, /setDepartmentTalentEnabled/);
 assert.match(adminView, /setDepartmentTalentMarketMode/);
-assert.match(adminView, /where\('status', '==', 'pending'\)[\s\S]*orderBy\('createdAt', 'desc'\)\.limit\(200\)/,
-    '미처리 구매는 전체를 불러오고 완료 이력만 최근 범위로 제한해야 한다.');
+assert.match(adminView, /where\('status', '==', 'pending'\)[\s\S]*FieldPath\.documentId\(\)[\s\S]*PENDING_PURCHASE_PAGE_SIZE \+ 1/,
+    '미처리 구매는 안정적인 문서 id 기준으로 상한 페이징해야 한다.');
+assert.match(adminView, /Promise\.allSettled\([\s\S]*pendingResult\.status === 'fulfilled'[\s\S]*recentResult\.status === 'fulfilled'/,
+    '미처리와 이력 중 한 조회가 실패해도 다른 결과를 보존해야 한다.');
+assert.match(adminView, /startAfter\(pendingPurchaseCursor\)[\s\S]*PENDING_PURCHASE_PAGE_SIZE \+ 1/,
+    '미처리 대량 데이터는 관리자가 페이지별로 추가 로드할 수 있어야 한다.');
+assert.match(adminTalentTab, /미처리 구매 100건 더 보기/);
 assert.doesNotMatch(adminView, /\.filter\(p => memberIds\.has\(p\.uid\)\)/,
     '탈퇴·제명 회원의 미처리 구매를 관리자 목록에서 숨기면 안 된다.');
 assert.match(adminView, /purchase\.status === 'pending' \|\| !talentMarketId/,
     '미처리 구매는 삭제·변경된 시장 기록이어도 관리자가 볼 수 있어야 한다.');
 assert.match(adminView, /refundLegacyPurchase[\s\S]*legacyWalletKind[\s\S]*PURCHASE_WALLET_UNRESOLVED/,
     '레거시 구매는 현재 소속으로 지갑을 추론하지 말고 명시 선택을 강제해야 한다.');
+assert.match(adminView, /PURCHASE_WALLET_MOVED_TO_ROSTER[\s\S]*refundMigratedPurchase[\s\S]*명부 지갑으로 환불/,
+    '직접 교인 구매 후 개인 계정으로 전환되면 현재 roster 지갑으로 명시 확인 후 환불해야 한다.');
 assert.match(rules, /request\.resource\.data\.schemaVersion == 2/);
 assert.match(rules, /request\.resource\.data\.walletKind in \['user', 'roster'\]/);
 

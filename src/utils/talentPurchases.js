@@ -34,3 +34,10 @@ export const resolvePurchaseRefundWalletKind = (purchase, legacyWalletKind = nul
     if (purchase?.schemaVersion === 2) return null;
     return VALID_WALLET_KINDS.has(legacyWalletKind) ? legacyWalletKind : null;
 };
+
+export const hasValidV2RefundWalletSnapshot = (purchase, expectedOrgId = null) => {
+    if (purchase?.schemaVersion !== 2 || !VALID_WALLET_KINDS.has(purchase?.walletKind)) return false;
+    const walletOrgId = typeof purchase.walletOrgId === 'string' ? purchase.walletOrgId.trim() : '';
+    if (!walletOrgId) return false;
+    return !expectedOrgId || walletOrgId === expectedOrgId;
+};

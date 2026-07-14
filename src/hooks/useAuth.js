@@ -1170,12 +1170,44 @@ export const useAuth = ({
 
             // 이메일 가입도 Google 가입과 동일하게 새 공동체·관리자 계정·소유 증명·동의를
             // 한 트랜잭션에서 만든다. 규칙은 이 원자적 생성만 churchAdmin 최초 등록으로 인정한다.
-            const cred = await auth.createUserWithEmailAndPassword(email, password).catch(err => {
-                if (err?.code === 'auth/email-already-in-use') setErrorMsg('이미 사용 중인 이메일입니다.');
-                else if (err?.code === 'auth/weak-password') setErrorMsg('비밀번호는 6자리 이상이어야 합니다.');
-                else setErrorMsg('가입 실패. 잠시 후 다시 시도해주세요.');
-                return null;
-            });
+            // 직전 제출에서 Auth 생성 뒤 Firestore transaction만 실패했다면 현재 인증 세션이
+            // 그대로 남아 있다. 같은 이메일의 password 세션만 재사용해 고아 Auth 계정 때문에
+            // email-already-in-use에 영구히 막히지 않고 공동체 등록을 이어서 처리한다.
+            const normalizedSignupEmail = String(email || '').trim().toLowerCase();
+            const currentAuthUser = auth.currentUser;
+            const canResumeEmailSignup = Boolean(
+                currentAuthUser?.uid
+                && String(currentAuthUser.email || '').trim().toLowerCase() === normalizedSignupEmail
+                && (currentAuthUser.providerData || []).some(provider => provider?.providerId === 'password')
+            );
+            let resumedEmailSignup = false;
+            let cred = null;
+            if (canResumeEmailSignup) {
+                const existingUserDoc = await db.collection('users').doc(currentAuthUser.uid).get();
+                if (existingUserDoc.exists && existingUserDoc.data()?.role === 'churchAdmin') {
+                    // transaction commit 응답만 유실된 모호한 네트워크 실패였다면 서버 문서를
+                    // 정답으로 삼아 새 공동체를 중복 생성하지 않고 가입 완료 화면으로 복구한다.
+                    const recoveredUser = existingUserDoc.data();
+                    invalidateChurchDirectoryCache();
+                    await loadChurchCommunities(recoveredUser.churchId);
+                    setTempUser({ ...recoveredUser, uid: currentAuthUser.uid });
+                    setView('plan_type_select');
+                    finalResult = { ok: true, recovered: true };
+                    return finalResult;
+                }
+                if (!existingUserDoc.exists) {
+                    cred = { user: currentAuthUser };
+                    resumedEmailSignup = true;
+                }
+            }
+            if (!cred) {
+                cred = await auth.createUserWithEmailAndPassword(email, password).catch(err => {
+                    if (err?.code === 'auth/email-already-in-use') setErrorMsg('이미 사용 중인 이메일입니다.');
+                    else if (err?.code === 'auth/weak-password') setErrorMsg('비밀번호는 6자리 이상이어야 합니다.');
+                    else setErrorMsg('가입 실패. 잠시 후 다시 시도해주세요.');
+                    return null;
+                });
+            }
             if (!cred) return finalResult;
 
             const churchRef = db.collection('churches').doc();
@@ -1196,33 +1228,41 @@ export const useAuth = ({
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             };
-            await db.runTransaction(async transaction => {
-                const existingUser = await transaction.get(userRef);
-                if (existingUser.exists) throw new Error('이미 등록된 계정입니다. 다시 로그인해주세요.');
+            try {
+                await db.runTransaction(async transaction => {
+                    const existingUser = await transaction.get(userRef);
+                    if (existingUser.exists) throw new Error('이미 등록된 계정입니다. 다시 로그인해주세요.');
 
-                const now = firebase.firestore.FieldValue.serverTimestamp();
-                transaction.set(churchRef, {
-                    name: churchName, pastorName: pastorName || '', denomination: denomination || '',
-                    churchCodeHash,
-                    departments: departments || [],
-                    createdAt: now,
+                    const now = firebase.firestore.FieldValue.serverTimestamp();
+                    transaction.set(churchRef, {
+                        name: churchName, pastorName: pastorName || '', denomination: denomination || '',
+                        churchCodeHash,
+                        departments: departments || [],
+                        createdAt: now,
+                    });
+                    transaction.set(userRef, newUser);
+                    transaction.set(consentRef, { ...signupConsent, recordedAt: now });
+                    transaction.set(churchAdminRef, {
+                        adminUid: cred.user.uid,
+                        adminEmail: email,
+                        updatedAt: now,
+                    });
+                    transaction.set(directoryRef, {
+                        churches: firebase.firestore.FieldValue.arrayUnion({
+                            id: churchRef.id,
+                            name: churchName,
+                            codeHash: churchCodeHash,
+                        }),
+                        updatedAt: now,
+                    }, { merge: true });
                 });
-                transaction.set(userRef, newUser);
-                transaction.set(consentRef, { ...signupConsent, recordedAt: now });
-                transaction.set(churchAdminRef, {
-                    adminUid: cred.user.uid,
-                    adminEmail: email,
-                    updatedAt: now,
-                });
-                transaction.set(directoryRef, {
-                    churches: firebase.firestore.FieldValue.arrayUnion({
-                        id: churchRef.id,
-                        name: churchName,
-                        codeHash: churchCodeHash,
-                    }),
-                    updatedAt: now,
-                }, { merge: true });
-            });
+            } catch (transactionError) {
+                const authSessionPreserved = auth.currentUser?.uid === cred.user.uid;
+                transactionError.emailAdminSignupIncomplete = true;
+                transactionError.emailAdminSignupResumable = authSessionPreserved;
+                transactionError.emailAdminSignupWasResume = resumedEmailSignup;
+                throw transactionError;
+            }
             invalidateChurchDirectoryCache();
             setChurchCommunities(departments || []);
             // 신규 교회 + 관리자 → 통계 증가
@@ -1236,7 +1276,15 @@ export const useAuth = ({
             return finalResult;
         } catch (err) {
             console.error(err);
-            setErrorMsg('가입 처리 중 오류가 발생했습니다.');
+            if (err?.emailAdminSignupResumable) {
+                setErrorMsg(err.emailAdminSignupWasResume
+                    ? '공동체 정보 저장을 다시 완료하지 못했습니다. 현재 인증 상태는 유지되어 있으니 잠시 후 이 버튼을 다시 눌러주세요.'
+                    : '인증 계정은 만들어졌지만 공동체 정보 저장이 완료되지 않았습니다. 입력 내용을 유지한 채 이 버튼을 다시 누르면 이어서 처리합니다.');
+            } else if (err?.emailAdminSignupIncomplete) {
+                setErrorMsg('인증 계정 생성 후 로그인 상태가 변경되어 자동 재개할 수 없습니다. 같은 이메일로 다시 로그인해 재시도하거나 플랫폼 관리자에게 계정 정리를 요청해주세요.');
+            } else {
+                setErrorMsg('가입 처리 중 오류가 발생했습니다.');
+            }
             finalResult = { ok: false, retryable: true };
             return finalResult;
         } finally {
