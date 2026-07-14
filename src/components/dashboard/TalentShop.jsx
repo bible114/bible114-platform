@@ -1,8 +1,50 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { db, firebase } from '../../utils/firebase';
+import { db } from '../../utils/firebase';
 import { getMembershipList } from '../../utils/memberships';
-import { normalizeTalentProgram, resolveTalentProgram } from '../../utils/talentProgram';
-import { updateRosterTalents, usesRosterTalentWallet } from '../../utils/talentWallet';
+import { LEGACY_TALENT_MARKET_ID, normalizeTalentProgram, resolveTalentProgram } from '../../utils/talentProgram';
+import { updateRosterTalents } from '../../utils/talentWallet';
+import { isValidTalentPurchasePrice } from '../../utils/talentPurchases';
+import { createRequestId, purchaseItem as purchaseItemViaApi } from '../../utils/platformApi';
+
+const LEGACY_TALENT_DEPARTMENT_ID = 'legacy_shared';
+const PURCHASE_REQUEST_STORAGE_PREFIX = 'b114_purchase_request_v1:';
+const purchaseRequestFallback = new Map();
+
+const purchaseRequestKey = ({ uid, churchId, departmentId, marketId, itemId }) => (
+    `${PURCHASE_REQUEST_STORAGE_PREFIX}${[uid, churchId, departmentId, marketId, itemId]
+        .map(value => encodeURIComponent(String(value || ''))).join(':')}`
+);
+
+const getOrCreatePurchaseRequestId = (key) => {
+    try {
+        const stored = window.sessionStorage.getItem(key);
+        if (stored) {
+            purchaseRequestFallback.set(key, stored);
+            return stored;
+        }
+    } catch {
+        // sessionStorage를 막는 브라우저에서도 현재 페이지 재시도는 멱등을 유지한다.
+    }
+    const pending = purchaseRequestFallback.get(key);
+    if (pending) return pending;
+    const requestId = createRequestId();
+    purchaseRequestFallback.set(key, requestId);
+    try {
+        window.sessionStorage.setItem(key, requestId);
+    } catch {
+        // in-memory fallback 유지
+    }
+    return requestId;
+};
+
+const clearPurchaseRequestId = (key) => {
+    purchaseRequestFallback.delete(key);
+    try {
+        window.sessionStorage.removeItem(key);
+    } catch {
+        // in-memory fallback은 이미 정리됨
+    }
+};
 
 const statusLabel = {
     pending: '대기',
@@ -162,7 +204,12 @@ const TalentShop = ({
             setMessage({ type: 'error', text: '미리보기 모드에서는 구매할 수 없어요.' });
             return;
         }
-        if ((currentUser.talent || 0) < item.price) {
+        const purchasePrice = Number(item?.price);
+        if (!isValidTalentPurchasePrice(purchasePrice)) {
+            setMessage({ type: 'error', text: '상품 가격이 올바르지 않습니다. 관리자에게 문의해주세요.' });
+            return;
+        }
+        if ((currentUser.talent || 0) < purchasePrice) {
             setMessage({ type: 'error', text: '달란트가 부족합니다.' });
             return;
         }
@@ -170,56 +217,38 @@ const TalentShop = ({
             setMessage({ type: 'error', text: '이 부서의 달란트 시장을 이용할 수 없습니다.' });
             return;
         }
-        if (!window.confirm(`${item.name}을(를) ${item.price}달란트로 구매할까요?\n\n구매한 상품은 교회에서 직접 받아요.`)) return;
+        if (!window.confirm(`${item.name}을(를) ${purchasePrice}달란트로 구매할까요?\n\n구매한 상품은 교회에서 직접 받아요.`)) return;
 
         const buyingKey = baseResolution.legacy ? item.id : `${selectedResolution.selectedMarketId}:${item.id}`;
         setBuyingId(buyingKey);
         setMessage(null);
         try {
-            const purchaseRef = db.collection('churches').doc(currentUser.churchId)
-                .collection('talentPurchases').doc();
-            const result = await db.runTransaction(async (transaction) => {
-                const rosterWallet = currentUser.talentWalletType === 'roster'
-                    || usesRosterTalentWallet(currentUser);
-                const walletRef = rosterWallet
-                    ? db.collection('churches').doc(currentUser.churchId).collection('roster').doc(currentUser.uid)
-                    : db.collection('users').doc(currentUser.uid);
-                const walletSnap = await transaction.get(walletRef);
-                if (!walletSnap.exists) throw new Error('USER_NOT_FOUND');
-                const balance = walletSnap.data().talent || 0;
-                if (balance < item.price) throw new Error('INSUFFICIENT_TALENT');
-                const nextTalent = balance - item.price;
-                const walletKind = rosterWallet ? 'roster' : 'user';
-                const v2PurchaseContext = baseResolution.legacy ? {} : {
-                    schemaVersion: 2,
-                    departmentId: selectedMarketContext.departmentId,
-                    departmentName: selectedMarketContext.departmentName,
-                    marketId: selectedMarketContext.marketId,
-                    walletKind,
-                    walletOrgId: currentUser.churchId,
-                };
-
-                transaction.update(walletRef, {
-                    talent: nextTalent,
-                    ...(rosterWallet ? { updatedAt: firebase.firestore.FieldValue.serverTimestamp() } : {}),
-                });
-                transaction.set(purchaseRef, {
-                    uid: currentUser.uid,
-                    memberName: currentUser.name,
-                    itemId: item.id,
-                    itemName: item.name,
-                    price: item.price,
-                    status: 'pending',
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    ...v2PurchaseContext,
-                });
-                return { nextTalent, rosterWallet, v2PurchaseContext };
+            const purchaseDepartmentId = baseResolution.legacy
+                ? (baseResolution.selectedDepartmentId || LEGACY_TALENT_DEPARTMENT_ID)
+                : selectedMarketContext.departmentId;
+            const purchaseMarketId = baseResolution.legacy
+                ? (baseResolution.selectedMarketId || LEGACY_TALENT_MARKET_ID)
+                : selectedMarketContext.marketId;
+            const requestKey = purchaseRequestKey({
+                uid: currentUser.uid,
+                churchId: currentUser.churchId,
+                departmentId: purchaseDepartmentId,
+                marketId: purchaseMarketId,
+                itemId: item.id,
             });
+            const requestId = getOrCreatePurchaseRequestId(requestKey);
+            const result = await purchaseItemViaApi({
+                churchId: currentUser.churchId,
+                itemId: item.id,
+                departmentId: purchaseDepartmentId,
+                marketId: purchaseMarketId,
+            }, { requestId });
+            clearPurchaseRequestId(requestKey);
 
             if (typeof setCurrentUser === 'function') {
                 setCurrentUser(prev => {
                     if (prev?.uid !== currentUser.uid) return prev;
-                    if (result.rosterWallet) {
+                    if (result.walletKind === 'roster') {
                         return updateRosterTalents(prev, { [currentUser.churchId]: result.nextTalent });
                     }
                     return { ...prev, talent: result.nextTalent };
@@ -227,21 +256,38 @@ const TalentShop = ({
             }
             setMessage({ type: 'success', text: '구매 완료! 교회에서 상품을 받아가세요.' });
             setPurchases(prev => [{
-                id: purchaseRef.id,
+                ...result.purchase,
                 uid: currentUser.uid,
                 memberName: currentUser.name,
-                itemId: item.id,
-                itemName: item.name,
-                price: item.price,
-                status: 'pending',
-                createdAt: new Date(),
-                ...result.v2PurchaseContext,
+                walletKind: result.walletKind,
+                walletOrgId: currentUser.churchId,
             }, ...prev]);
         } catch (e) {
             console.error('달란트 상품 구매 실패:', e);
+            const purchaseDepartmentId = baseResolution.legacy
+                ? (baseResolution.selectedDepartmentId || LEGACY_TALENT_DEPARTMENT_ID)
+                : selectedMarketContext?.departmentId;
+            const purchaseMarketId = baseResolution.legacy
+                ? (baseResolution.selectedMarketId || LEGACY_TALENT_MARKET_ID)
+                : selectedMarketContext?.marketId;
+            const requestKey = purchaseRequestKey({
+                uid: currentUser.uid,
+                churchId: currentUser.churchId,
+                departmentId: purchaseDepartmentId,
+                marketId: purchaseMarketId,
+                itemId: item.id,
+            });
+            const definiteClientFailure = e.status >= 400 && e.status < 500 && e.retryable !== true;
+            if (definiteClientFailure) clearPurchaseRequestId(requestKey);
+            const resultUnknown = !definiteClientFailure && (
+                e.retryable === true || e.status >= 500 || e.code === 'TIMEOUT' || e.code === 'NETWORK_ERROR'
+            );
             setMessage({
                 type: 'error',
-                text: e.message === 'INSUFFICIENT_TALENT' ? '달란트가 부족합니다.' : '구매 처리에 실패했습니다.',
+                text: resultUnknown
+                    ? '구매 결과를 확인하지 못했어요. 같은 상품을 다시 누르면 중복 차감 없이 구매 결과를 다시 확인합니다.'
+                    : e.code === 'CONFLICT' || e.message === '달란트가 부족합니다.'
+                    ? '달란트가 부족합니다.' : (e.message || '구매 처리에 실패했습니다.'),
             });
         } finally {
             setBuyingId(null);

@@ -67,12 +67,15 @@ export const migrateTalentIfNeeded = async (uid, data) => {
     });
 };
 
-// 개인 계정이 공동체별 지갑 모델을 처음 사용할 때 기존 users.talent를
-// 기준 공동체 roster.talent로 한 번만 옮긴다. 트랜잭션 안의 플래그 재확인으로 멱등성을 보장한다.
+// 개인 계정이 공동체별 지갑 모델을 사용할 때 users.talent를 기준 공동체 roster로 옮긴다.
+// 최초 이관 뒤 과거 구매 환불이 원래 users 지갑에 늦게 들어올 수 있으므로,
+// talentWalletMigrated가 true여도 users.talent가 다시 생기면 같은 트랜잭션으로 재이관한다.
+// users와 roster의 증감은 반드시 한 트랜잭션 안에서 같은 금액으로 처리한다.
+
 export const migratePersonalTalentWalletIfNeeded = async (uid, primaryOrgId, knownUserData = null) => {
     if (knownUserData && (
-        knownUserData.talentWalletMigrated === true ||
-        knownUserData.accountType !== 'personal'
+        knownUserData.accountType !== 'personal' ||
+        (knownUserData.talentWalletMigrated === true && (Number(knownUserData.talent) || 0) <= 0)
     )) return null;
     const normalizedOrgId = String(primaryOrgId || '').trim();
     if (!uid || !normalizedOrgId) return null;
@@ -86,17 +89,27 @@ export const migratePersonalTalentWalletIfNeeded = async (uid, primaryOrgId, kno
         ]);
         if (!userSnap.exists || !rosterSnap.exists) return null;
         const user = userSnap.data();
-        if (user.accountType !== 'personal' || user.talentWalletMigrated === true) return null;
+        const outstandingTalent = Math.max(0, Number(user.talent) || 0);
+        if (
+            user.accountType !== 'personal'
+            || (user.talentWalletMigrated === true && outstandingTalent <= 0)
+        ) return null;
 
-        const movedTalent = Number(user.talent) || 0;
         const rosterTalent = Number(rosterSnap.data()?.talent) || 0;
-        const nextRosterTalent = rosterTalent + movedTalent;
-        transaction.update(userRef, {
-            talent: 0,
-            talentWalletMigrated: true,
-        });
+        if (outstandingTalent <= 0) {
+            transaction.update(userRef, { talent: 0, talentWalletMigrated: true });
+            return { orgId: normalizedOrgId, talent: rosterTalent, movedTalent: 0, remainingTalent: 0 };
+        }
+
+        const nextRosterTalent = rosterTalent + outstandingTalent;
+        transaction.update(userRef, { talent: 0, talentWalletMigrated: true });
         transaction.update(rosterRef, { talent: nextRosterTalent });
-        return { orgId: normalizedOrgId, talent: nextRosterTalent, movedTalent };
+        return {
+            orgId: normalizedOrgId,
+            talent: nextRosterTalent,
+            movedTalent: outstandingTalent,
+            remainingTalent: 0,
+        };
     });
 };
 

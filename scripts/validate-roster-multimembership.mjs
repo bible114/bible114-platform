@@ -57,13 +57,33 @@ assert.match(rules, /'subgroupId', 'subgroupName', 'extraMemberships'/);
 assert.match(rules, /request\.resource\.data\.extraMemberships\.size\(\) == 0/);
 assert.match(rules, /request\.resource\.data\.get\('extraMemberships', \[\]\) ==[\s\S]*resource\.data\.get\('extraMemberships', \[\]\)/);
 assert.match(rules, /affectedKeys\(\)\.hasAny\(\['extraMemberships'\]\)[\s\S]*extraMemberships\.size\(\) <= 3/);
-assert.match(rules, /hasAny\(\['role', 'churchId', 'accountType', 'isDeleted', 'extraMemberships'\]\)/,
+assert.match(rules, /hasAny\(\['role', 'churchId', 'accountType', 'isDeleted', 'extraMemberships',[\s\S]*'talentWalletMigrated', 'departmentId', 'departmentName',[\s\S]*'subgroupId', 'subgroupName'\]\)/,
     '일반 사용자가 users 문서의 추가 소속을 직접 바꾸지 못해야 한다.');
+assert.match(rules, /request\.resource\.data\.talent == 0[\s\S]*extraMemberships\.size\(\) == 0/,
+    '직접 생성 roster는 잔액 0, 추가 소속 없음으로 시작해야 한다.');
+assert.match(rules, /request\.resource\.data\.churchId == 'unaffiliated_v1'[\s\S]*request\.resource\.data\.get\('primaryOrgId', null\) == null[\s\S]*request\.resource\.data\.get\('score', 0\) == 0[\s\S]*request\.resource\.data\.get\('talent', 0\) == 0/,
+    '무소속 users 직접 생성은 임의 점수·달란트 seed로 시작할 수 없어야 한다.');
+assert.match(rules, /churchId == 'unaffiliated_v1'[\s\S]*\.data\.churchId == churchId/,
+    '기존 사용자의 임의 타 공동체 roster 직접 생성은 차단해야 한다.');
+assert.match(rules, /churchId == 'unaffiliated_v1'[\s\S]*\.data\.get\('isDeleted', false\) != true[\s\S]*request\.resource\.data\.score == get\(/,
+    '무소속 roster도 활성 users 원장의 점수·소속을 그대로 복사해야 한다.');
+assert.match(rules, /resource\.data\.churchId != 'unaffiliated_v1'[\s\S]*request\.resource\.data\.get\('primaryOrgId', null\) == resource\.data\.churchId[\s\S]*affectedKeys\(\)\.hasOnly\([\s\S]*'accountType', 'email', 'churchId', 'churchName', 'primaryOrgId', 'updatedAt'/,
+    '개인계정 전환은 정상 필드만 바꾸고 무소속 seed 전환을 허용하지 않아야 한다.');
+assert.doesNotMatch(rules, /신규 소셜 가입은 users \+ roster/);
 
 const membershipCard = read('src/components/dashboard/CommunityMembershipCard.jsx');
+const joinCore = read('supabase/functions/platform-api/joinCore.ts');
 const app = read('src/App.jsx');
 const adminView = read('src/components/ChurchAdminView.jsx');
-assert.match(membershipCard, /const rosterData = \{[\s\S]*extraMemberships: \[\]/);
+const authHook = read('src/hooks/useAuth.js');
+const personalMigration = read('src/utils/personalAccountMigration.js');
+assert.match(membershipCard, /joinCommunityViaApi\(\{/,
+    '일반 추가 공동체 참여는 서버 API를 사용해야 한다.');
+assert.match(joinCore, /membership:\s*\{[\s\S]*extraMemberships:\s*\[\]/,
+    '서버가 새 roster를 추가 소속 빈 배열로 시작해야 한다.');
+assert.match(authHook, /completePersonalSignupViaApi\(\{[\s\S]*departmentId: organization\.departmentId[\s\S]*subgroupId: organization\.subgroupId/);
+assert.match(personalMigration, /transaction\.get\(userRef\)[\s\S]*latestUser = userSnap\.data\(\)[\s\S]*subgroupName: latestUser\.subgroupName \?\? null,[\s\S]*extraMemberships: \[\]/,
+    '개인계정 전환 roster는 보안 규칙과 일치하도록 최신 users 소속을 복사해야 한다.');
 assert.match(membershipCard, /UNAFFILIATED_CHURCH_ID[\s\S]*extraMemberships: \[\]/);
 assert.match(app, /extraMemberships: Array\.isArray\(activeRosterOrg\.extraMemberships\)/);
 assert.match(adminView, /isExternalOrgMember[\s\S]*collection\('roster'\)/,

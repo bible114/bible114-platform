@@ -18,7 +18,7 @@ const TalentShopTab = ({ ctx }) => {
         submitShopItem, resetShopItemDraft, editShopItem, deleteShopItem, printShopItems,
         deductForm, setDeductForm, members, requestManualDeduct, deducting,
         purchaseFilter, setPurchaseFilter, filteredPurchases, memberById,
-        purchaseLoadWarning, hasMorePendingPurchases, loadingMorePendingPurchases,
+        purchaseLoadWarning, pendingPurchaseCount, hasMorePendingPurchases, loadingMorePendingPurchases,
         loadMorePendingPurchases,
         formatAnyDate, setConfirmAction, requestPurchaseRefund, deliverPurchase, refundPurchase,
     } = ctx;
@@ -321,7 +321,9 @@ const TalentShopTab = ({ ctx }) => {
                                     <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div>
                                             <h3 className="text-sm font-black text-slate-800">구매 내역</h3>
-                                            <p className="mt-1 text-xs font-bold text-slate-400">미처리 구매는 100건씩, 수령·취소 이력은 최근 200건을 표시합니다.</p>
+                                            <p className="mt-1 text-xs font-bold text-slate-400">
+                                                미처리 구매는 100건씩, 수령·취소 이력은 최근 200건을 표시합니다. 현재 미처리 {pendingPurchaseCount}건을 불러왔습니다.
+                                            </p>
                                         </div>
                                         <select
                                             value={purchaseFilter}
@@ -404,14 +406,16 @@ const TalentShopTab = ({ ctx }) => {
                                             </table>
                                         </div>
                                     )}
-                                    {hasMorePendingPurchases && (
+                                    {(purchaseFilter === 'pending' || purchaseFilter === 'all') && hasMorePendingPurchases && (
                                         <button
                                             type="button"
                                             onClick={loadMorePendingPurchases}
                                             disabled={loadingMorePendingPurchases}
                                             className="mt-4 w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 text-xs font-black text-slate-600 disabled:opacity-50"
                                         >
-                                            {loadingMorePendingPurchases ? '불러오는 중...' : '미처리 구매 100건 더 보기'}
+                                            {loadingMorePendingPurchases
+                                                ? '불러오는 중...'
+                                                : `미처리 구매 100건 더 보기 (현재 ${pendingPurchaseCount}건)`}
                                         </button>
                                     )}
                                 </div>

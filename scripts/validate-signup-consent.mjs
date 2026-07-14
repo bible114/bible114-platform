@@ -131,7 +131,10 @@ const policyIndex = read('src/components/policies/index.js');
 const loginView = read('src/components/LoginView.jsx');
 const socialOnboarding = read('src/components/SocialOnboardingView.jsx');
 const authHook = read('src/hooks/useAuth.js');
+const userAuthHook = read('src/hooks/useUserAuth.js');
 const firestoreRules = read('firestore.rules');
+assert.match(firestoreRules, /function isChurchAdmin\(churchId\)[\s\S]*myData\(\)\.get\('isDeleted', false\) != true/);
+assert.match(firestoreRules, /function isChurchAdminAfter\(churchId\)[\s\S]*\.get\('isDeleted', false\) != true/);
 assert.match(guardianComponent, /getAgeAssessment\(normalizedBirthdate\)/, '보호자 UI는 공용 만14세 판정을 사용해야 한다.');
 assert.match(guardianComponent, /if \(!assessment\.under14\) return null;/, '만14세 이상에게 보호자 입력을 표시하면 안 된다.');
 assert.match(guardianComponent, /GUARDIAN_CONSENT_METHODS\.GUARDIAN_ASSERTION/, 'UI payload는 guardian_assertion 방식이어야 한다.');
@@ -148,6 +151,18 @@ assert.match(socialOnboarding, /<GuardianConsent/);
 assert.match(socialOnboarding, /<PolicyConsent/);
 assert.match(authHook, /writeSignupConsent\(/);
 assert.match(authHook, /consentSummary: buildSignupConsentSummary\(signupConsent\)/);
+assert.match(authHook, /completeMemberSignupViaApi\(\{[\s\S]*churchId,[\s\S]*entryCode:\s*churchCode,[\s\S]*name:\s*newUser\.name,[\s\S]*birthdate:\s*newUser\.birthdate,[\s\S]*guestProgress:/);
+assert.match(authHook, /created = result\.created === true;[\s\S]*if \(created\)[\s\S]*total_readers/);
+assert.match(authHook, /const migrateGuest = shouldMigrateGuestState\(\);[\s\S]*if \(migrateGuest\)[\s\S]*migratedAt/);
+assert.match(authHook, /finishMemberSignup\(\{\s*user:\s*cred\.user,[\s\S]*churchCode,[\s\S]*signupConsent\s*\}\)/);
+assert.match(
+    firestoreRules,
+    /request\.resource\.data\.role == 'member'[\s\S]*request\.resource\.data\.churchId == 'unaffiliated_v1'[\s\S]*accountType', null\) != 'personal'/,
+    '개인 계정의 users 직접 create는 닫고 기존 무소속 교인 예외만 남겨야 한다.',
+);
+assert.doesNotMatch(firestoreRules, /request\.resource\.data\.accountType == 'personal'[\s\S]*request\.resource\.data\.churchId == null/);
+assert.match(authHook, /completePersonalSignupViaApi\(\{[\s\S]*authProvider:[\s\S]*guestProgress:/);
+assert.doesNotMatch(authHook, /transaction\.set\(rosterRef,[\s\S]*transaction\.set\(userRef, newUser\)/);
 assert.match(
     firestoreRules,
     /request\.resource\.data\.role == 'churchAdmin'[\s\S]*!exists\(\/databases\/\$\(database\)\/documents\/churches\/\$\(request\.resource\.data\.churchId\)\)[\s\S]*getAfter\(\/databases\/\$\(database\)\/documents\/churches\/\$\(request\.resource\.data\.churchId\)\/private\/admin\)\.data\.adminUid == uid/,
@@ -175,7 +190,7 @@ assert.match(
 );
 assert.match(
     authHook,
-    /existingUserDoc\.exists && existingUserDoc\.data\(\)\?\.role === 'churchAdmin'[\s\S]*loadChurchCommunities\(recoveredUser\.churchId\)[\s\S]*recovered: true/,
+    /const existingUserData = existingUserDoc\.exists \? existingUserDoc\.data\(\) : null;[\s\S]*if \(existingUserData\?\.role === 'churchAdmin'\)[\s\S]*loadChurchCommunities\(recoveredUser\.churchId\)[\s\S]*recovered: true/,
     'commit 응답 유실 시 이미 생성된 관리자 문서를 복구하고 공동체를 중복 생성하면 안 된다.',
 );
 assert.match(
@@ -185,5 +200,21 @@ assert.match(
 );
 assert.match(authHook, /인증 계정은 만들어졌지만 공동체 정보 저장이 완료되지 않았습니다/);
 assert.match(authHook, /로그인 상태가 변경되어 자동 재개할 수 없습니다/);
+assert.match(
+    userAuthHook,
+    /userData\.isDeleted === true[\s\S]*setCurrentUser\(null\)[\s\S]*auth\.signOut\(\)[\s\S]*return;/,
+    '삭제된 모든 계정은 남아 있는 Auth 세션으로 화면에 복원되면 안 된다.',
+);
+assert.match(
+    authHook,
+    /data\.isDeleted === true[\s\S]*rejectDeletedUser\([\s\S]*return false;/,
+    '삭제된 계정의 이메일·Google 로그인을 차단해야 한다.',
+);
+assert.match(
+    authHook,
+    /existingUserData\?\.isDeleted === true[\s\S]*rejectDeletedUser\([\s\S]*retryable: false/,
+    '삭제된 공동체 관리자 문서를 이메일 가입 복구 성공으로 취급하면 안 된다.',
+);
+assert.match(authHook, /삭제된 공동체 관리자 계정입니다/);
 
 console.log('가입 동의 모델 검증 통과: 정책 버전·필수 동의·만14세·보호자 방식·Firestore snapshot');

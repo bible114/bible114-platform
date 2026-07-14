@@ -6,6 +6,7 @@ import { db, firebase } from '../../utils/firebase';
 import { getChurchDirectory } from '../../utils/churchDirectory';
 import { loadUserExtraOrgsStrict } from '../../utils/roster';
 import { migratePersonalTalentWalletIfNeeded } from '../../utils/helpers';
+import { joinCommunity as joinCommunityViaApi, PlatformApiError } from '../../utils/platformApi';
 
 const emptySelection = { departmentId: '', departmentName: '', subgroupId: '', subgroupName: '' };
 
@@ -143,62 +144,48 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
             return;
         }
         if (selectionOnly) {
-            onJoinComplete?.({ orgId, orgName: orgName(orgId), ...selection });
+            onJoinComplete?.({ orgId, orgName: orgName(orgId), entryCode, ...selection });
             setShowJoin(false);
             return;
         }
         setBusy(true);
         setNotice(null);
-        const rosterRef = db.collection('churches').doc(orgId).collection('roster').doc(currentUser.uid);
-        const now = firebase.firestore.FieldValue.serverTimestamp();
         try {
-            const latestExtraOrgs = await loadUserExtraOrgsStrict(currentUser.uid);
-            if (latestExtraOrgs.some(org => org.orgId === orgId)) {
-                setCurrentUser(user => user?.uid === currentUser.uid ? { ...user, extraOrgs: latestExtraOrgs } : user);
-                setNotice({ type: 'error', text: '이미 참여 중인 공동체입니다.' });
-                return;
-            }
-            if (latestExtraOrgs.length >= 3) {
-                setCurrentUser(user => user?.uid === currentUser.uid ? { ...user, extraOrgs: latestExtraOrgs } : user);
-                setNotice({ type: 'error', text: '공동체는 최대 3개까지 추가할 수 있습니다.' });
-                return;
-            }
-            const rosterData = {
-                uid: currentUser.uid,
-                name: currentUser.name || '',
-                score: currentUser.score || 0,
-                talent: 0,
-                currentDay: currentUser.currentDay || 1,
-                streak: currentUser.streak || 0,
-                readCount: currentUser.readCount || 1,
-                lastReadDate: currentUser.lastReadDate || null,
-                extraMemberships: [],
-                ...selection,
-                joinedAt: now,
-                updatedAt: now,
-            };
-            const shouldAssignPrimary = onboarding || (currentUser.accountType === 'personal' && !currentUser.primaryOrgId);
-            if (shouldAssignPrimary) {
-                const userRef = db.collection('users').doc(currentUser.uid);
-                await db.runTransaction(async transaction => {
-                    const userSnap = await transaction.get(userRef);
-                    if (!userSnap.exists || userSnap.data()?.accountType !== 'personal') throw new Error('personal user unavailable');
-                    transaction.set(rosterRef, rosterData);
-                    transaction.update(userRef, { primaryOrgId: orgId, planId: currentUser.planId, updatedAt: now });
-                });
-            } else {
-                await rosterRef.set(rosterData);
-            }
+            const joinResult = await joinCommunityViaApi({
+                churchId: orgId,
+                entryCode,
+                departmentId: selection.departmentId,
+                subgroupId: selection.subgroupId || '',
+            });
+            const shouldAssignPrimary = currentUser.accountType === 'personal'
+                && !currentUser.primaryOrgId
+                && joinResult.primaryOrgId === orgId;
             const walletMigration = shouldAssignPrimary
                 ? await migratePersonalTalentWalletIfNeeded(currentUser.uid, orgId)
                 : null;
+            const membership = joinResult.membership || {};
             const runtimeOrg = {
-                uid: currentUser.uid, orgId, rosterPath: rosterRef.path, ...selection,
-                extraMemberships: [],
+                uid: currentUser.uid,
+                orgId,
+                rosterPath: `churches/${orgId}/roster/${currentUser.uid}`,
+                departmentId: membership.departmentId || selection.departmentId,
+                departmentName: membership.departmentName || selection.departmentName,
+                subgroupId: membership.subgroupId || '',
+                subgroupName: membership.subgroupName || '',
+                extraMemberships: Array.isArray(membership.extraMemberships) ? membership.extraMemberships : [],
                 talent: walletMigration?.talent || 0,
-                joinedAt: null, updatedAt: null,
+                joinedAt: membership.joinedAt || null,
+                updatedAt: membership.updatedAt || null,
             };
             if (onboarding && onJoinComplete) {
+                // 신규 개인 계정은 성경 버전을 아직 로컬 온보딩 상태에만 들고 있다.
+                // 소속 생성은 서버가 담당하되 planId 저장은 기존 온보딩 계약을 유지한다.
+                if (currentUser.planId) {
+                    await db.collection('users').doc(currentUser.uid).set({
+                        planId: currentUser.planId,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    }, { merge: true });
+                }
                 onJoinComplete(runtimeOrg);
                 return;
             }
@@ -206,8 +193,11 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
                 ? {
                     ...user,
                     ...(walletMigration ? { talent: 0, talentWalletMigrated: true } : {}),
-                    extraOrgs: [...latestExtraOrgs, runtimeOrg].sort((a, b) => a.orgId.localeCompare(b.orgId)),
-                    primaryOrgId: shouldAssignPrimary ? orgId : user.primaryOrgId,
+                    extraOrgs: [
+                        ...(user.extraOrgs || []).filter(item => item.orgId !== orgId),
+                        runtimeOrg,
+                    ].sort((a, b) => a.orgId.localeCompare(b.orgId)),
+                    primaryOrgId: joinResult.primaryOrgId || user.primaryOrgId,
                 }
                 : user);
             setShowJoin(false);
@@ -219,7 +209,12 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
             setNotice(null);
         } catch (error) {
             console.error('공동체 참여 실패:', error);
-            setNotice({ type: 'error', text: error?.code === 'permission-denied' ? '공동체 참여 권한을 확인해주세요.' : '현재 소속을 확인하지 못했습니다. 잠시 후 다시 시도해주세요.' });
+            setNotice({
+                type: 'error',
+                text: error instanceof PlatformApiError && [400, 403, 404, 409].includes(error.status)
+                    ? error.message
+                    : '현재 소속을 확인하지 못했습니다. 잠시 후 다시 시도해주세요.',
+            });
         } finally {
             setBusy(false);
         }

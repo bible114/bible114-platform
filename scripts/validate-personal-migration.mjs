@@ -30,6 +30,8 @@ assert.match(migrationSource, /auth\/email-already-in-use/);
 assert.match(migrationSource, /같은 이름·생년월일·전화번호 조합의 계정이 이미 있어요/);
 assert.match(migrationSource, /auth\/requires-recent-login/);
 assert.match(migrationSource, /rosterSnap\.exists/);
+assert.match(migrationSource, /db\.runTransaction\(async transaction =>[\s\S]*transaction\.get\(userRef\)[\s\S]*transaction\.get\(rosterRef\)[\s\S]*latestUser = userSnap\.data\(\)[\s\S]*transaction\.set\(rosterRef/,
+    '전환용 roster는 최신 users 원장을 같은 트랜잭션에서 읽고 복사해야 한다.');
 assert.match(migrationSource, /accountType: 'personal'/);
 assert.match(migrationSource, /churchId: null/);
 assert.match(migrationSource, /primaryOrgId: source\.churchId/);

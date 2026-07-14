@@ -185,3 +185,130 @@ export const previewQuizSubmission = (progressKey, quizKey, selectedIndex, optio
     }
     return callPlatformApi('previewQuizSubmission', { progressKey, quizKey, selectedIndex }, options);
 };
+
+export const joinCommunity = ({ churchId, entryCode, departmentId, subgroupId = '' }, options = {}) => {
+    const safeId = (value, { optional = false } = {}) => {
+        if (typeof value !== 'string') return null;
+        const normalized = value.trim();
+        if (optional && !normalized) return '';
+        if (!normalized || normalized.length > 128 || normalized.includes('/') || /[\u0000-\u001f\u007f]/.test(normalized)) return null;
+        return normalized;
+    };
+    const normalizedChurchId = safeId(churchId);
+    const normalizedDepartmentId = safeId(departmentId);
+    const normalizedSubgroupId = safeId(subgroupId, { optional: true });
+    const normalizedEntryCode = typeof entryCode === 'string' ? entryCode.trim() : '';
+    if (!normalizedChurchId || !normalizedDepartmentId || normalizedSubgroupId === null
+        || normalizedEntryCode.length < 4 || normalizedEntryCode.length > 128) {
+        throw new PlatformApiError('공동체 참여 정보가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('joinCommunity', {
+        churchId: normalizedChurchId,
+        entryCode: normalizedEntryCode,
+        departmentId: normalizedDepartmentId,
+        subgroupId: normalizedSubgroupId,
+    }, options);
+};
+
+export const purchaseItem = ({ churchId, itemId, departmentId, marketId }, options = {}) => {
+    const safeId = value => {
+        if (typeof value !== 'string') return null;
+        const normalized = value.trim();
+        return normalized && normalized.length <= 128 && !normalized.includes('/')
+            && !/[\u0000-\u001f\u007f]/.test(normalized) ? normalized : null;
+    };
+    const payload = {
+        churchId: safeId(churchId), itemId: safeId(itemId),
+        departmentId: safeId(departmentId), marketId: safeId(marketId),
+    };
+    if (Object.values(payload).some(value => !value)) {
+        throw new PlatformApiError('상품 구매 정보가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('purchaseItem', payload, options);
+};
+
+export const completeMemberSignup = ({ churchId, entryCode, name, birthdate, guestProgress }, options = {}) => {
+    const normalizedChurchId = typeof churchId === 'string' ? churchId.trim() : '';
+    const normalizedEntryCode = typeof entryCode === 'string' ? entryCode.trim() : '';
+    const normalizedName = typeof name === 'string' ? name.trim() : '';
+    const normalizedBirthdate = typeof birthdate === 'string' ? birthdate.trim() : '';
+    const normalizedGuestProgress = guestProgress && typeof guestProgress === 'object' && !Array.isArray(guestProgress)
+        ? {
+            currentDay: Number(guestProgress.currentDay),
+            streak: Number(guestProgress.streak),
+            lastReadDate: guestProgress.lastReadDate === null ? null : String(guestProgress.lastReadDate || ''),
+            planId: String(guestProgress.planId || ''),
+        }
+        : null;
+    if (!normalizedChurchId || normalizedChurchId === 'unaffiliated_v1'
+        || normalizedChurchId.length > 128 || normalizedChurchId.includes('/')
+        || /[\u0000-\u001f\u007f]/.test(normalizedChurchId)
+        || normalizedEntryCode.length < 4 || normalizedEntryCode.length > 128
+        || !normalizedName || normalizedName.length > 50
+        || !/^\d{8}$/.test(normalizedBirthdate)
+        || !normalizedGuestProgress
+        || !Number.isInteger(normalizedGuestProgress.currentDay)
+        || normalizedGuestProgress.currentDay < 1 || normalizedGuestProgress.currentDay > 365
+        || !Number.isInteger(normalizedGuestProgress.streak)
+        || normalizedGuestProgress.streak < 0 || normalizedGuestProgress.streak > 400
+        || !['1year_sequential', '1year_revised', '1year_new', 'nt_new'].includes(normalizedGuestProgress.planId)
+        || (normalizedGuestProgress.lastReadDate !== null
+            && !/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) /.test(normalizedGuestProgress.lastReadDate))) {
+        throw new PlatformApiError('교회 교인 가입 정보가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('completeMemberSignup', {
+        churchId: normalizedChurchId,
+        entryCode: normalizedEntryCode,
+        name: normalizedName,
+        birthdate: normalizedBirthdate,
+        guestProgress: normalizedGuestProgress,
+    }, options);
+};
+
+export const completePersonalSignup = ({
+    churchId = '', entryCode = '', departmentId = '', subgroupId = '',
+    name, birthdate, authProvider, guestProgress,
+}, options = {}) => {
+    const safeId = value => {
+        if (typeof value !== 'string') return null;
+        const normalized = value.trim();
+        return normalized.length <= 128 && !normalized.includes('/')
+            && !/[\u0000-\u001f\u007f]/.test(normalized) ? normalized : null;
+    };
+    const payload = {
+        churchId: safeId(churchId),
+        entryCode: typeof entryCode === 'string' ? entryCode.trim() : '',
+        departmentId: safeId(departmentId),
+        subgroupId: safeId(subgroupId),
+        name: typeof name === 'string' ? name.trim() : '',
+        birthdate: typeof birthdate === 'string' ? birthdate.trim() : '',
+        authProvider: typeof authProvider === 'string' ? authProvider.trim() : '',
+        guestProgress: guestProgress && typeof guestProgress === 'object' && !Array.isArray(guestProgress)
+            ? {
+                currentDay: Number(guestProgress.currentDay),
+                streak: Number(guestProgress.streak),
+                lastReadDate: guestProgress.lastReadDate === null ? null : String(guestProgress.lastReadDate || ''),
+                planId: String(guestProgress.planId || ''),
+            }
+            : null,
+    };
+    const realChurch = Boolean(payload.churchId && payload.churchId !== 'unaffiliated_v1');
+    if (payload.churchId === null || payload.departmentId === null || payload.subgroupId === null
+        || !payload.name || payload.name.length > 50 || !/^\d{8}$/.test(payload.birthdate)
+        || !['password', 'google.com', 'kakao.com'].includes(payload.authProvider)
+        || !payload.guestProgress || (realChurch && (payload.entryCode.length < 4
+            || payload.entryCode.length > 128 || /[\u0000-\u001f\u007f]/.test(payload.entryCode)
+            || !payload.departmentId))
+        || (!realChurch && (payload.entryCode || payload.departmentId || payload.subgroupId))) {
+        throw new PlatformApiError('개인 계정 가입 정보가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('completePersonalSignup', payload, options);
+};

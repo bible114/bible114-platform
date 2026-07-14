@@ -29,6 +29,11 @@ import { updateRosterTalents } from '../utils/talentWallet';
 import { getPendingPersonalMigration } from '../utils/personalAccountMigration';
 import { buildSignupConsentSnapshot, buildSignupConsentSummary } from '../utils/signupConsent';
 import { writeSignupConsent } from '../utils/signupConsentStore';
+import {
+    completeMemberSignup as completeMemberSignupViaApi,
+    completePersonalSignup as completePersonalSignupViaApi,
+    PlatformApiError,
+} from '../utils/platformApi';
 
 const GOOGLE_ADMIN_ROLES = new Set(['churchAdmin', 'platformAdmin', 'superAdmin']);
 const GOOGLE_ADMIN_NOT_FOUND_MESSAGE = "이 구글 계정으로 등록된 관리자가 없습니다. 기존 관리자는 이메일·비밀번호로 로그인하시고, 새 교회는 '교회 등록'을 이용하세요.";
@@ -72,8 +77,8 @@ export const useAuth = ({
         if (!result) return user;
         return updateRosterTalents({
             ...user,
-            talent: 0,
-            talentWalletMigrated: true,
+            talent: result.remainingTalent || 0,
+            talentWalletMigrated: result.remainingTalent <= 0,
         }, { [result.orgId]: result.talent });
     };
     const googleAdminSignupFlowRef = useRef(null);
@@ -174,28 +179,52 @@ export const useAuth = ({
         };
     };
 
-    const finishMemberSignup = async ({ user, newUser, churchId, credentials, signupConsent }) => {
+    const finishMemberSignup = async ({ user, newUser, churchId, churchCode, credentials, signupConsent }) => {
         setErrorMsg('');
+        const migrateGuest = shouldMigrateGuestState();
         await writeSignupConsent(user.uid, signupConsent);
         if (credentials) {
             try {
                 await writeMemberCredentials(user.uid, credentials);
-            } catch {
+            } catch (credentialError) {
+                if (churchId !== UNAFFILIATED_CHURCH_ID) throw credentialError;
                 // 규칙 미배포 등으로 private 쓰기가 거부되면 구 방식(본문서 평문)으로 남긴다.
                 // 이후 로그인/세션 복원/관리자 백필의 지연 이관이 다시 옮긴다.
                 newUser.password = credentials.password ?? null;
                 if (credentials.phone4) newUser.phone4 = credentials.phone4;
             }
         }
-        await db.collection('users').doc(user.uid).set(newUser);
+        let runtimeUser = newUser;
+        let created = true;
+        if (churchId === UNAFFILIATED_CHURCH_ID) {
+            await db.collection('users').doc(user.uid).set(newUser);
+        } else {
+            const result = await completeMemberSignupViaApi({
+                churchId,
+                entryCode: churchCode,
+                name: newUser.name,
+                birthdate: newUser.birthdate,
+                guestProgress: {
+                    currentDay: newUser.currentDay,
+                    streak: newUser.streak,
+                    lastReadDate: newUser.lastReadDate,
+                    planId: newUser.planId,
+                },
+            });
+            if (!result?.user) throw new Error('MEMBER_SIGNUP_RESPONSE_INVALID');
+            runtimeUser = result.user;
+            created = result.created === true;
+        }
         // 신규 성도 → 통계 증가
-        db.collection('settings').doc('platformStats').set({
-            total_readers: firebase.firestore.FieldValue.increment(1),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true }).catch(() => {});
+        if (created) {
+            db.collection('settings').doc('platformStats').set({
+                total_readers: firebase.firestore.FieldValue.increment(1),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true }).catch(() => {});
+        }
         await loadChurchCommunities(churchId);
-        setTempUser({ ...newUser, uid: user.uid });
-        if (shouldMigrateGuestState()) {
+        setTempUser({ ...runtimeUser, uid: user.uid });
+        if (migrateGuest) {
             saveGuestState({ migratedAt: new Date().toISOString() });
         }
         setView('plan_type_select');
@@ -216,20 +245,45 @@ export const useAuth = ({
         if (credentials) {
             await writeMemberCredentials(user.uid, credentials);
         }
-        await db.collection('users').doc(user.uid).set(newUser);
-        db.collection('settings').doc('platformStats').set({
-            total_readers: firebase.firestore.FieldValue.increment(1),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true }).catch(() => {});
-        const runtimeUser = { ...newUser, uid: user.uid, extraOrgs: [] };
+        const result = await completePersonalSignupViaApi({
+            name: newUser.name,
+            birthdate: newUser.birthdate,
+            authProvider: 'password',
+            guestProgress: {
+                currentDay: newUser.currentDay,
+                streak: newUser.streak,
+                lastReadDate: newUser.lastReadDate,
+                planId: newUser.planId,
+            },
+        });
+        if (!result?.user) throw new Error('PERSONAL_SIGNUP_RESPONSE_INVALID');
+        if (result.created === true) {
+            db.collection('settings').doc('platformStats').set({
+                total_readers: firebase.firestore.FieldValue.increment(1),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true }).catch(() => {});
+        }
+        const runtimeUser = { ...result.user, uid: user.uid, extraOrgs: [] };
         setCurrentUser(runtimeUser);
         setTempUser(runtimeUser);
         if (shouldMigrateGuestState()) saveGuestState({ migratedAt: new Date().toISOString() });
         setView('plan_type_select');
     };
 
+    const rejectDeletedUser = async (message = '삭제 처리된 계정입니다. 관리자에게 복원을 요청해주세요.') => {
+        setCurrentUser(null);
+        await auth.signOut().catch(signOutError => {
+            console.error('삭제된 계정 세션 종료 실패:', signOutError);
+        });
+        setErrorMsg(message);
+    };
+
     const openExistingPersonalUser = async (firebaseUser, doc, loginTiming = null) => {
         const data = doc.data();
+        if (data.isDeleted === true) {
+            await rejectDeletedUser();
+            return false;
+        }
         const pendingMigration = getPendingPersonalMigration(firebaseUser.uid);
         if (data.accountType !== 'personal' && !pendingMigration) throw new Error('NOT_PERSONAL_ACCOUNT');
         let user = userDocToState(doc);
@@ -246,10 +300,15 @@ export const useAuth = ({
         setTempUser(null);
         setView('dashboard');
         finishLoginTiming(loginTiming, 'dashboard');
+        return true;
     };
 
     const openExistingSocialUser = async (firebaseUser, doc, loginTiming = null) => {
         const data = doc.data();
+        if (data.isDeleted === true) {
+            await rejectDeletedUser();
+            return false;
+        }
         const pendingMigration = getPendingPersonalMigration(firebaseUser.uid);
         if (data.accountType === 'personal' || pendingMigration) {
             await openExistingPersonalUser(firebaseUser, doc, loginTiming);
@@ -271,6 +330,7 @@ export const useAuth = ({
         const targetView = user.role === 'churchAdmin' ? getChurchAdminEntryView() : 'dashboard';
         setView(targetView);
         finishLoginTiming(loginTiming, targetView);
+        return true;
     };
 
     const openSocialOnboarding = (firebaseUser, provider, profile = {}, signupDraft = null) => {
@@ -500,10 +560,7 @@ export const useAuth = ({
             consents,
             audience: 'personal',
         }, { source: `${socialProviderRef.current || 'social'}_personal_signup` });
-        const userRef = db.collection('users').doc(socialUser.uid);
-        const consentRef = userRef.collection('private').doc('consent');
-        const rosterRef = db.collection('churches').doc(organization.orgId).collection('roster').doc(socialUser.uid);
-        const providerId = (socialUser.providerData || [])[0]?.providerId || socialProviderRef.current || 'social';
+        const providerId = socialProviderRef.current || (socialUser.providerData || [])[0]?.providerId;
         const newUser = {
             ...buildPersonalUser({ name: name.trim(), birthdate, email: socialUser.email || null, google: true, signupConsent }),
             planId,
@@ -513,41 +570,37 @@ export const useAuth = ({
         if (!isPlanIdAllowedForUser(planId, newUser)) {
             throw new Error('선택할 수 없는 성경 버전입니다. 버전을 다시 선택해주세요.');
         }
-        const now = firebase.firestore.FieldValue.serverTimestamp();
-        await db.runTransaction(async transaction => {
-            const existing = await transaction.get(userRef);
-            if (existing.exists) throw new Error('이미 등록된 계정입니다. 다시 로그인해주세요.');
-            if (auth.currentUser?.uid !== socialUser.uid) throw new Error('로그인 상태가 변경되었습니다.');
-            transaction.set(rosterRef, {
-                uid: socialUser.uid, name: name.trim(),
-                score: newUser.score || 0, currentDay: newUser.currentDay || 1,
-                talent: 0,
-                streak: newUser.streak || 0, readCount: newUser.readCount || 1,
-                lastReadDate: newUser.lastReadDate || null,
-                departmentId: organization.departmentId || null,
-                departmentName: organization.departmentName || null,
-                subgroupId: organization.subgroupId || null,
-                subgroupName: organization.subgroupName || null,
-                joinedAt: now, updatedAt: now,
-            });
-            transaction.set(userRef, newUser);
-            transaction.set(consentRef, {
-                ...signupConsent,
-                recordedAt: now,
-            });
+        await writeSignupConsent(socialUser.uid, signupConsent);
+        const result = await completePersonalSignupViaApi({
+            churchId: organization.orgId,
+            entryCode: organization.entryCode || '',
+            departmentId: organization.departmentId || '',
+            subgroupId: organization.subgroupId || '',
+            name: name.trim(),
+            birthdate,
+            authProvider: providerId,
+            guestProgress: {
+                currentDay: newUser.currentDay,
+                streak: newUser.streak,
+                lastReadDate: newUser.lastReadDate,
+                planId,
+            },
         });
-        db.collection('settings').doc('platformStats').set({
-            total_readers: firebase.firestore.FieldValue.increment(1),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true }).catch(() => {});
+        if (!result?.user || !result?.membership) throw new Error('PERSONAL_SIGNUP_RESPONSE_INVALID');
+        if (result.created === true) {
+            db.collection('settings').doc('platformStats').set({
+                total_readers: firebase.firestore.FieldValue.increment(1),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true }).catch(() => {});
+        }
         if (shouldMigrateGuestState()) saveGuestState({ migratedAt: new Date().toISOString() });
         setCurrentUser({
-            ...newUser, uid: socialUser.uid,
+            ...result.user, uid: socialUser.uid,
             extraOrgs: [{
-                uid: socialUser.uid, orgId: organization.orgId, rosterPath: rosterRef.path,
-                talent: 0,
-                departmentId: organization.departmentId || null, departmentName: organization.departmentName || null,
-                subgroupId: organization.subgroupId || null, subgroupName: organization.subgroupName || null,
+                ...result.membership,
+                uid: socialUser.uid,
+                orgId: organization.orgId,
+                rosterPath: `churches/${organization.orgId}/roster/${socialUser.uid}`,
             }],
         });
         setTempUser(null);
@@ -695,7 +748,7 @@ export const useAuth = ({
             if (!cred) return;
             const doc = await db.collection('users').doc(cred.user.uid).get();
             if (!doc.exists) { setErrorMsg('사용자 정보를 찾을 수 없습니다.'); return; }
-            if (doc.data().isDeleted) { setErrorMsg('삭제 처리된 계정입니다. 공동체 관리자에게 복원을 요청해주세요.'); return; }
+            if (doc.data().isDeleted) { await rejectDeletedUser(); return; }
             let user = userDocToState(doc);
             const extraOrgsPromise = loadUserExtraOrgs(cred.user.uid);
             // [랭킹] 자격증명 지연 이관 — 본문서에 평문이 남아 있으면 private로 옮긴다.
@@ -743,6 +796,10 @@ export const useAuth = ({
         setErrorMsg(GOOGLE_ADMIN_NOT_FOUND_MESSAGE);
     };
 
+    const rejectDeletedCommunityAdmin = async () => {
+        await rejectDeletedUser('삭제된 공동체 관리자 계정입니다. 플랫폼 관리자에게 문의해주세요.');
+    };
+
     // 이메일/비밀번호와 Google 관리자가 공유하는 문서 로드·마이그레이션·화면 전환 경로.
     // requireRegisteredAdmin은 Google 로그인에만 적용해 기존 이메일 로그인 동작을 보존한다.
     const finishAdminLogin = async (cred, { requireRegisteredAdmin = false, loginTiming = null } = {}) => {
@@ -757,6 +814,12 @@ export const useAuth = ({
         }
 
         const data = doc.data();
+        if (data.isDeleted === true) {
+            await rejectDeletedUser(data.role === 'churchAdmin'
+                ? '삭제된 공동체 관리자 계정입니다. 플랫폼 관리자에게 문의해주세요.'
+                : undefined);
+            return false;
+        }
         // Google은 관리자 역할을 확인한 뒤에만 자격증명·달란트 마이그레이션을 실행한다.
         if (requireRegisteredAdmin && !GOOGLE_ADMIN_ROLES.has(data.role)) {
             await rejectUnregisteredGoogleAdmin();
@@ -1003,7 +1066,7 @@ export const useAuth = ({
             };
 
             if (cred) {
-                await finishMemberSignup({ user: cred.user, newUser, churchId, credentials, signupConsent });
+                await finishMemberSignup({ user: cred.user, newUser, churchId, churchCode, credentials, signupConsent });
                 return;
             }
 
@@ -1020,17 +1083,19 @@ export const useAuth = ({
             const existingDoc = await db.collection('users').doc(orphanCred.user.uid).get();
             if (existingDoc.exists) {
                 if (existingDoc.data().isDeleted) {
-                    await finishMemberSignup({ user: orphanCred.user, newUser, churchId, credentials, signupConsent });
+                    await finishMemberSignup({ user: orphanCred.user, newUser, churchId, churchCode, credentials, signupConsent });
                     return;
                 }
                 setErrorMsg('이미 가입된 이름+생년월일입니다. 로그인해주세요.');
                 return;
             }
 
-            await finishMemberSignup({ user: orphanCred.user, newUser, churchId, signupConsent });
+            await finishMemberSignup({ user: orphanCred.user, newUser, churchId, churchCode, credentials, signupConsent });
         } catch (err) {
             console.error(err);
-            setErrorMsg('가입 처리 중 오류가 발생했습니다.');
+            setErrorMsg(err instanceof PlatformApiError
+                ? err.message
+                : '가입 처리 중 오류가 발생했습니다.');
         }
     };
 
@@ -1184,10 +1249,18 @@ export const useAuth = ({
             let cred = null;
             if (canResumeEmailSignup) {
                 const existingUserDoc = await db.collection('users').doc(currentAuthUser.uid).get();
-                if (existingUserDoc.exists && existingUserDoc.data()?.role === 'churchAdmin') {
+                const existingUserData = existingUserDoc.exists ? existingUserDoc.data() : null;
+                if (existingUserData?.isDeleted === true) {
+                    await rejectDeletedUser(existingUserData.role === 'churchAdmin'
+                        ? '삭제된 공동체 관리자 계정입니다. 플랫폼 관리자에게 문의해주세요.'
+                        : undefined);
+                    finalResult = { ok: false, retryable: false };
+                    return finalResult;
+                }
+                if (existingUserData?.role === 'churchAdmin') {
                     // transaction commit 응답만 유실된 모호한 네트워크 실패였다면 서버 문서를
                     // 정답으로 삼아 새 공동체를 중복 생성하지 않고 가입 완료 화면으로 복구한다.
-                    const recoveredUser = existingUserDoc.data();
+                    const recoveredUser = existingUserData;
                     invalidateChurchDirectoryCache();
                     await loadChurchCommunities(recoveredUser.churchId);
                     setTempUser({ ...recoveredUser, uid: currentAuthUser.uid });

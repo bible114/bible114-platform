@@ -1,5 +1,9 @@
 const VALID_WALLET_KINDS = new Set(['user', 'roster']);
 
+export const isValidTalentPurchasePrice = value => (
+    typeof value === 'number' && Number.isFinite(value) && value > 0
+);
+
 const toMillis = value => {
     if (typeof value?.toMillis === 'function') return value.toMillis();
     const raw = typeof value?.toDate === 'function' ? value.toDate() : value;

@@ -83,26 +83,34 @@ const runMigration = async ({ currentUser, phone4 }) => {
 
     const rosterRef = db.collection('churches').doc(source.churchId).collection('roster').doc(currentUser.uid);
     if (state.step === 'credentials') {
-        const rosterSnap = await rosterRef.get();
-        if (!rosterSnap.exists) {
+        const userRef = db.collection('users').doc(currentUser.uid);
+        await db.runTransaction(async transaction => {
+            const [userSnap, rosterSnap] = await Promise.all([
+                transaction.get(userRef),
+                transaction.get(rosterRef),
+            ]);
+            if (rosterSnap.exists) return;
+            if (!userSnap.exists) throw migrationError('migration/user-missing', '회원 정보를 확인할 수 없습니다.');
+            const latestUser = userSnap.data();
             const now = firebase.firestore.FieldValue.serverTimestamp();
-            await rosterRef.set({
+            transaction.set(rosterRef, {
                 uid: currentUser.uid,
-                name: currentUser.name || '',
-                score: currentUser.score || 0,
+                name: latestUser.name ?? '',
+                score: latestUser.score ?? 0,
                 talent: 0,
-                currentDay: currentUser.currentDay || 1,
-                streak: currentUser.streak || 0,
-                readCount: currentUser.readCount || 1,
-                lastReadDate: currentUser.lastReadDate || null,
-                departmentId: source.departmentId,
-                departmentName: source.departmentName,
-                subgroupId: source.subgroupId,
-                subgroupName: source.subgroupName,
+                currentDay: latestUser.currentDay ?? 1,
+                streak: latestUser.streak ?? 0,
+                readCount: latestUser.readCount ?? 1,
+                lastReadDate: latestUser.lastReadDate ?? null,
+                departmentId: latestUser.departmentId ?? null,
+                departmentName: latestUser.departmentName ?? null,
+                subgroupId: latestUser.subgroupId ?? null,
+                subgroupName: latestUser.subgroupName ?? null,
+                extraMemberships: [],
                 joinedAt: now,
                 updatedAt: now,
             });
-        }
+        });
         state = { ...state, step: nextPersonalMigrationStep(state.step) };
         writeState(state);
     }

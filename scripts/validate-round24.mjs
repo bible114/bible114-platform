@@ -21,6 +21,7 @@ for (const pattern of [
     /export const callPlatformApi = async \(action, payload = \{\}, options = \{\}\)/,
     /export const preflightPlatformApi =/,
     /export const previewReadCompletion = \(cycle, day, options = \{\}\)/,
+    /export const joinCommunity = \(\{ churchId, entryCode, departmentId, subgroupId = '' \}, options = \{\}\)/,
     /Number\.isInteger\(cycle\)/,
     /Number\.isInteger\(day\)/,
     /callPlatformApi\('previewReadCompletion', \{ cycle, day \}, options\)/,
@@ -335,7 +336,10 @@ assert.doesNotMatch(
     '퀴즈 preview 응답에 정답 위치, 원본 인덱스, 잔액, 조직 정보를 노출하면 안 된다.',
 );
 assert.doesNotMatch(
-    `${serverCore}\n${serverIndex}`,
+    serverIndex.slice(
+        quizPreviewBranchStart,
+        serverIndex.indexOf('\n    return jsonResponse(origin, 200, {', quizPreviewResponseEnd),
+    ),
     /\b(?:beginTransaction|commitWrites|rollbackTransaction|createDocument|patchDocument|deleteDocument)\s*\(/,
     '퀴즈 preview는 Firestore를 쓰지 않아야 한다.',
 );
@@ -511,12 +515,123 @@ assert.match(serverIndex, /calculateReadCompletion/);
 assert.match(serverIndex, /rosterCount:\s*rosterDocuments\.length/);
 assert.match(serverIndex, /\bresult\b/);
 
-// T122-T123 shadow 단계에서는 서버 공통 쓰기 도구가 존재만 하며 platform-api 경로가 호출하면 안 된다.
-const platformServer = `${serverCore}\n${serverIndex}`;
+// 읽기·퀴즈 preview는 계속 shadow-only이고, 명시적 server action만 트랜잭션 쓰기를 허용한다.
+const readPreviewStart = serverIndex.indexOf('if (parsed.action === "previewReadCompletion")');
+const readPreviewEnd = serverIndex.indexOf('if (parsed.action === "previewQuizSubmission")', readPreviewStart);
+assert.ok(readPreviewStart >= 0 && readPreviewEnd > readPreviewStart, '읽기 preview 분기가 필요하다.');
 assert.doesNotMatch(
-    platformServer,
-    /\b(?:beginTransaction|commitWrites|rollbackTransaction|createDocument|patchDocument|deleteDocument)\s*\(/,
-    'T122-T123 platform-api는 Firestore를 쓰지 않는 shadow-only여야 한다.',
+    serverIndex.slice(readPreviewStart, readPreviewEnd),
+    /\b(?:beginTransaction|commitWrites|rollbackTransaction|updateWrite|deleteWrite)\s*\(/,
+    '읽기 preview는 Firestore를 쓰지 않아야 한다.',
 );
 
-console.log('✅ Round 24 T122-T123 client/server shadow contract validation passed');
+const memberSignupCorePath = 'supabase/functions/platform-api/memberSignupCore.ts';
+const memberSignupCoreTestPath = 'supabase/functions/platform-api/memberSignupCore_test.ts';
+assert.equal(exists(memberSignupCorePath), true, `${memberSignupCorePath}가 필요하다.`);
+assert.equal(exists(memberSignupCoreTestPath), true, `${memberSignupCoreTestPath}가 필요하다.`);
+const memberSignupCore = read(memberSignupCorePath);
+assert.doesNotMatch(
+    memberSignupCore,
+    /(?:\bfetch\s*\(|\bDeno\.|db\.collection|firebase\.firestore|\bgetDocument\s*\(|\bbeginTransaction\s*\(|\bcommitWrites\s*\(|\brollbackTransaction\s*\()/,
+    'memberSignupCore는 외부 I/O가 없는 순수 검증 모듈이어야 한다.',
+);
+assert.match(serverCore, /COMPLETE_MEMBER_SIGNUP_ACTION\s*=\s*['"]completeMemberSignup['"]/);
+for (const field of ['churchId', 'entryCode', 'name', 'birthdate', 'guestProgress']) {
+    assert.match(serverCore, new RegExp(`action\\s*===\\s*COMPLETE_MEMBER_SIGNUP_ACTION[\\s\\S]*\\b${field}\\b`));
+}
+const signupBranchStart = serverIndex.indexOf('if (parsed.action === "completeMemberSignup")');
+const firstUserRead = serverIndex.indexOf('const userDocument = await getDocument<UserDocument>');
+assert.ok(signupBranchStart >= 0 && firstUserRead > signupBranchStart, '최초 가입은 users 존재 검사보다 먼저 처리해야 한다.');
+const signupBranch = serverIndex.slice(signupBranchStart, firstUserRead);
+for (const pattern of [
+    /beginTransaction\(/,
+    /getDocument<MemberSignupUser>/,
+    /getDocument<MemberSignupChurch>/,
+    /getDocument<MemberSignupConsent>/,
+    /sha256Hex\(parsed\.entryCode\)/,
+    /validateMemberSignup\(/,
+    /updateWrite\(service\.projectId, userPath/,
+    /commitWrites\(/,
+]) assert.match(signupBranch, pattern);
+assert.match(client, /callPlatformApi\(['"]completeMemberSignup['"],\s*\{/);
+
+const personalSignupCorePath = 'supabase/functions/platform-api/personalSignupCore.ts';
+const personalSignupCoreTestPath = 'supabase/functions/platform-api/personalSignupCore_test.ts';
+assert.equal(exists(personalSignupCorePath), true, `${personalSignupCorePath}가 필요하다.`);
+assert.equal(exists(personalSignupCoreTestPath), true, `${personalSignupCoreTestPath}가 필요하다.`);
+const personalSignupCore = read(personalSignupCorePath);
+assert.doesNotMatch(personalSignupCore, /(?:\bfetch\s*\(|\bDeno\.|db\.collection|firebase\.firestore|\bgetDocument\s*\(|\bbeginTransaction\s*\(|\bcommitWrites\s*\(|\brollbackTransaction\s*\()/);
+assert.match(serverCore, /COMPLETE_PERSONAL_SIGNUP_ACTION\s*=\s*['"]completePersonalSignup['"]/);
+assert.match(serverIndex, /if \(parsed\.action === "completePersonalSignup"\)[\s\S]*validatePersonalSignup\([\s\S]*updateWrite\(service\.projectId, userPath[\s\S]*updateWrite\(service\.projectId, rosterPath[\s\S]*commitWrites\(/);
+assert.match(client, /callPlatformApi\(['"]completePersonalSignup['"],\s*payload/);
+for (const args of [
+    { churchId: '', entryCode: '1234', name: '홍길동', birthdate: '20000101' },
+    { churchId: 'bad/path', entryCode: '1234', name: '홍길동', birthdate: '20000101' },
+    { churchId: 'church-1', entryCode: '123', name: '홍길동', birthdate: '20000101' },
+    { churchId: 'church-1', entryCode: '1234', name: '', birthdate: '20000101' },
+    { churchId: 'church-1', entryCode: '1234', name: '홍길동', birthdate: '200001' },
+]) {
+    assert.throws(
+        () => platformApi.completeMemberSignup(args),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_PAYLOAD'
+            && error.status === 0,
+        `잘못된 최초 교인 가입 입력(${JSON.stringify(args)})은 네트워크 전에 거부해야 한다.`,
+    );
+}
+
+const joinCorePath = 'supabase/functions/platform-api/joinCore.ts';
+const joinCoreTestPath = 'supabase/functions/platform-api/joinCore_test.ts';
+const membershipCardPath = 'src/components/dashboard/CommunityMembershipCard.jsx';
+assert.equal(exists(joinCorePath), true, `${joinCorePath}가 필요하다.`);
+assert.equal(exists(joinCoreTestPath), true, `${joinCoreTestPath}가 필요하다.`);
+const joinCore = read(joinCorePath);
+const membershipCard = read(membershipCardPath);
+assert.doesNotMatch(
+    joinCore,
+    /(?:\bfetch\s*\(|\bDeno\.|db\.collection|firebase\.firestore|\bgetDocument\s*\(|\bbeginTransaction\s*\(|\bcommitWrites\s*\(|\brollbackTransaction\s*\()/,
+    'joinCore는 외부 I/O가 없는 순수 검증 모듈이어야 한다.',
+);
+assert.match(serverCore, /JOIN_COMMUNITY_ACTION\s*=\s*['"]joinCommunity['"]/);
+for (const field of ['churchId', 'entryCode', 'departmentId', 'subgroupId']) {
+    assert.match(serverCore, new RegExp(`action\\s*===\\s*JOIN_COMMUNITY_ACTION[\\s\\S]*\\b${field}\\b`));
+}
+const joinBranchStart = serverIndex.indexOf('if (parsed.action === "joinCommunity")');
+const joinBranchEnd = serverIndex.indexOf('if (parsed.action === "previewReadCompletion")', joinBranchStart);
+assert.ok(joinBranchStart >= 0 && joinBranchEnd > joinBranchStart, 'joinCommunity 서버 분기가 필요하다.');
+const joinBranch = serverIndex.slice(joinBranchStart, joinBranchEnd);
+for (const pattern of [
+    /beginTransaction\(/,
+    /getDocument<JoinCommunityUser>/,
+    /getDocument<JoinCommunityChurch>/,
+    /runCollectionGroupQuery<Record<string, unknown>>/,
+    /validateJoinCommunity\(/,
+    /updateWrite\(service\.projectId, rosterPath/,
+    /commitWrites\(/,
+]) assert.match(joinBranch, pattern);
+assert.match(client, /callPlatformApi\(['"]joinCommunity['"],\s*\{/);
+for (const args of [
+    { churchId: '', entryCode: '1234', departmentId: 'kids' },
+    { churchId: 'bad/path', entryCode: '1234', departmentId: 'kids' },
+    { churchId: 'church-2', entryCode: '123', departmentId: 'kids' },
+    { churchId: 'church-2', entryCode: '1234', departmentId: '' },
+]) {
+    assert.throws(
+        () => platformApi.joinCommunity(args),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_PAYLOAD'
+            && error.status === 0,
+        `잘못된 공동체 참여 입력(${JSON.stringify(args)})은 네트워크 전에 거부해야 한다.`,
+    );
+}
+assert.match(membershipCard, /joinCommunityViaApi\(\{[\s\S]*churchId:\s*orgId[\s\S]*entryCode[\s\S]*departmentId[\s\S]*subgroupId/);
+const clientJoinStart = membershipCard.indexOf('const joinCommunity = async () =>');
+const clientLeaveStart = membershipCard.indexOf('const leaveCommunity = async', clientJoinStart);
+assert.ok(clientJoinStart >= 0 && clientLeaveStart > clientJoinStart, '추가 공동체 참여 클라이언트 분기가 필요하다.');
+assert.doesNotMatch(
+    membershipCard.slice(clientJoinStart, clientLeaveStart),
+    /(?:rosterRef\.set|transaction\.set\(rosterRef|db\.runTransaction)/,
+    '일반 추가 공동체 참여는 roster를 클라이언트에서 직접 쓰면 안 된다.',
+);
+
+console.log('✅ Round 24 shadow + server-authoritative community join validation passed');

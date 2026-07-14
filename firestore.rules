@@ -19,12 +19,15 @@ service cloud.firestore {
     function isChurchAdmin(churchId) {
       return isSignedIn() &&
         myData().role == 'churchAdmin' &&
-        myData().churchId == churchId;
+        myData().churchId == churchId &&
+        myData().get('isDeleted', false) != true;
     }
     function isChurchAdminAfter(churchId) {
       return isSignedIn() &&
         getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'churchAdmin' &&
-        getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.churchId == churchId;
+        getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.churchId == churchId &&
+        getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data
+          .get('isDeleted', false) != true;
     }
     function sameChurch(churchId) {
       return isSignedIn() && myData().churchId == churchId;
@@ -34,6 +37,45 @@ service cloud.firestore {
     function isRosterMember(churchId) {
       return isRealUser() &&
         exists(/databases/$(database)/documents/churches/$(churchId)/roster/$(request.auth.uid));
+    }
+    // 개인 users 지갑에서 primary roster 지갑으로 옮기는 쓰기는 양쪽 문서가 같은
+    // 트랜잭션에서 정확히 같은 양만큼 감소/증가할 때만 인정한다.
+    function isExactPersonalTalentTransfer(churchId, uid) {
+      let userBefore = get(/databases/$(database)/documents/users/$(uid)).data;
+      let userAfter = getAfter(/databases/$(database)/documents/users/$(uid)).data;
+      let rosterBefore = get(/databases/$(database)/documents/churches/$(churchId)/roster/$(uid)).data;
+      let rosterAfter = getAfter(/databases/$(database)/documents/churches/$(churchId)/roster/$(uid)).data;
+      return userBefore.accountType == 'personal' &&
+        userBefore.get('primaryOrgId', null) == churchId &&
+        userAfter.accountType == 'personal' &&
+        userAfter.get('primaryOrgId', null) == churchId &&
+        userAfter.diff(userBefore).affectedKeys()
+          .hasOnly(['talent', 'talentWalletMigrated']) &&
+        rosterAfter.diff(rosterBefore).affectedKeys().hasOnly(['talent']) &&
+        userBefore.get('talent', 0) is number &&
+        userAfter.get('talent', 0) is number &&
+        rosterBefore.get('talent', 0) is number &&
+        rosterAfter.get('talent', 0) is number &&
+        userAfter.get('talent', 0) >= 0 &&
+        rosterAfter.get('talent', 0) >= 0 &&
+        userBefore.get('talent', 0) > userAfter.get('talent', 0) &&
+        rosterAfter.get('talent', 0) - rosterBefore.get('talent', 0) ==
+          userBefore.get('talent', 0) - userAfter.get('talent', 0) &&
+        userAfter.get('talentWalletMigrated', false) ==
+          (userAfter.get('talent', 0) == 0);
+    }
+    // 옮길 잔액이 0인 개인계정은 roster 쓰기 없이 완료 플래그만 닫는다.
+    function isZeroPersonalTalentFinalization(uid) {
+      let userBefore = get(/databases/$(database)/documents/users/$(uid)).data;
+      let userAfter = getAfter(/databases/$(database)/documents/users/$(uid)).data;
+      return userBefore.accountType == 'personal' &&
+        userBefore.get('primaryOrgId', null) is string &&
+        exists(/databases/$(database)/documents/churches/$(userBefore.primaryOrgId)/roster/$(uid)) &&
+        userBefore.get('talent', 0) == 0 &&
+        userAfter.get('talent', 0) == 0 &&
+        userAfter.get('talentWalletMigrated', false) == true &&
+        userAfter.diff(userBefore).affectedKeys()
+          .hasOnly(['talent', 'talentWalletMigrated']);
     }
     // dailyVideos의 adult/kids 항목 검증: 없거나(null), url 필드가 없거나, url이 빈 문자열이면
     // 통과(자동 채움 실패 시 그런 형태로 기록됨). url이 있으면 반드시 유튜브 도메인이어야 한다.
@@ -65,11 +107,20 @@ service cloud.firestore {
           resource.data.churchId != 'unaffiliated_v1' &&
           resource.data.password == null &&
           exists(/databases/$(database)/documents/churches/$(resource.data.churchId)/roster/$(request.auth.uid)));
-      // 일반 회원은 본인 문서만 만들 수 있다. 공동체 관리자는 반드시 "아직 존재하지 않는"
+      // 교회 교인 최초 문서는 completeMemberSignup 서버만 생성한다.
+      // 클라이언트 직접 생성은 기존 무소속 교인과 공동체 관리자 원자 생성만 남긴다.
+      // 개인계정은 completePersonalSignup 서버만 생성한다.
+      // 공동체 관리자는 반드시 "아직 존재하지 않는"
       // 공동체와 관리자 소유 증명 문서를 같은 원자적 쓰기에서 함께 만들어야 한다.
       // 이미 존재하는 공동체 ID를 골라 churchAdmin 역할을 자가 지정하는 권한 상승을 막는다.
       allow create: if isRealUser() && request.auth.uid == uid && (
-        request.resource.data.role == 'member' ||
+        (request.resource.data.role == 'member' &&
+          request.resource.data.churchId == 'unaffiliated_v1' &&
+          request.resource.data.get('accountType', null) != 'personal' &&
+          request.resource.data.get('primaryOrgId', null) == null &&
+          request.resource.data.get('score', 0) == 0 &&
+          request.resource.data.get('talent', 0) == 0 &&
+          request.resource.data.get('isDeleted', false) == false) ||
         (request.resource.data.role == 'churchAdmin' &&
           request.resource.data.churchId is string &&
           !exists(/databases/$(database)/documents/churches/$(request.resource.data.churchId)) &&
@@ -81,11 +132,17 @@ service cloud.firestore {
       // 포함해 문서 전체를 다시 쓰는 정상 흐름(App.jsx의 setCurrentUser 반영 저장 등)은 영향 없다.
       allow update: if (request.auth.uid == uid &&
           !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(['role', 'churchId', 'accountType', 'isDeleted', 'extraMemberships']) &&
+            .hasAny(['role', 'churchId', 'accountType', 'isDeleted', 'extraMemberships',
+              'talentWalletMigrated', 'departmentId', 'departmentName',
+              'subgroupId', 'subgroupName']) &&
+          // 부서·소그룹은 서버 가입 또는 공동체 관리자만 배정한다.
           // 기준 공동체는 실제 내 roster가 있는 조직 또는 null로만 바꿀 수 있다.
           (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['primaryOrgId']) ||
             request.resource.data.get('primaryOrgId', null) == null ||
             existsAfter(/databases/$(database)/documents/churches/$(request.resource.data.primaryOrgId)/roster/$(request.auth.uid))) &&
+          // personal users 지갑의 감소는 아래의 정확한 roster 원자 이관 분기만 사용한다.
+          (resource.data.get('accountType', null) != 'personal' ||
+            request.resource.data.get('talent', 0) >= resource.data.get('talent', 0)) &&
           // 클라이언트 직접 적립 구조의 임시 방어: 정상 1회 보상 상한을 넘는 증가는 거부한다.
           // 예외: [점수 이중화] 1회성 talent 마이그레이션(talentMigrated false→true)은
           // 기존 score를 talent로 통째로 옮기고 사용분을 score에 되돌리므로 상한을 적용하지 않는다.
@@ -98,6 +155,11 @@ service cloud.firestore {
             request.resource.data.get('score', 0) <= resource.data.get('score', 0) + 15))) ||
         (isSignedIn() && isChurchAdmin(resource.data.churchId)) ||
         isPlatformAdmin();
+      // users.talent → primary roster.talent 이관은 두 지갑의 동일 금액 원자 이동만 허용한다.
+      allow update: if request.auth.uid == uid &&
+        ((resource.data.get('primaryOrgId', null) is string &&
+          isExactPersonalTalentTransfer(resource.data.primaryOrgId, uid)) ||
+          isZeroPersonalTalentFinalization(uid));
       // [라운드 14] 개인 계정 달란트 창구 지원: 기준 공동체(primaryOrgId) 관리자는
       // 개인 계정의 talent(+updatedAt)만 수정할 수 있다 — 창구 판매 차감·구매 환불용.
       // 다른 필드(score/진도/role 등)는 이 분기로 열리지 않는다.
@@ -115,9 +177,16 @@ service cloud.firestore {
       allow update: if request.auth.uid == uid &&
         resource.data.role == 'member' &&
         request.resource.data.role == 'member' &&
+        resource.data.get('isDeleted', false) != true &&
+        request.resource.data.get('isDeleted', false) != true &&
+        resource.data.get('accountType', null) != 'personal' &&
         resource.data.churchId is string &&
+        resource.data.churchId != 'unaffiliated_v1' &&
         request.resource.data.churchId == null &&
         request.resource.data.accountType == 'personal' &&
+        request.resource.data.get('primaryOrgId', null) == resource.data.churchId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          ['accountType', 'email', 'churchId', 'churchName', 'primaryOrgId', 'updatedAt']) &&
         exists(/databases/$(database)/documents/churches/$(resource.data.churchId)/roster/$(request.auth.uid));
       // 무료 플랜에서는 실제 삭제 대신 isDeleted로 숨긴다.
       // seed_ 테스트 문서만 플랫폼 관리자가 클라이언트에서 직접 지울 수 있다.
@@ -179,7 +248,9 @@ service cloud.firestore {
       // [라운드 8] 조직 명부(roster) — 조직 간 소속의 유일한 표현.
       // 계정(users)은 건드리지 않고, 각 조직이 자기 명부 행만 본다.
       // read: 그 조직의 자체 교인 / 그 조직 명부에 오른 사람(exists) / 그 조직 관리자.
-      // create: 본인 행만(필드 화이트리스트 — 입장코드 검증은 클라이언트 codeHash 방식, 가입과 동일한 수용 리스크).
+      // create: 일반 추가 공동체 가입은 서버 joinCommunity만 처리한다. 클라이언트 직접 생성은
+      // 무소속과 자기 원래 교회의 개인계정 전환만 남긴다.
+      // 신규 개인/소셜 가입은 completePersonalSignup 서버만 처리한다.
       // update: 본인(uid 변조 금지) 또는 그 조직 관리자(소그룹 배정). delete: 본인(탈퇴)·관리자(제명).
       match /roster/{memberUid} {
         allow read: if isRealUser() && (
@@ -192,11 +263,39 @@ service cloud.firestore {
             ['uid', 'name', 'score', 'currentDay', 'streak', 'readCount', 'lastReadDate', 'talent',
              'departmentId', 'departmentName', 'subgroupId', 'subgroupName', 'extraMemberships',
              'joinedAt', 'updatedAt']) &&
-          // 가입자가 직접 만드는 명부 행은 주 소속 1개로만 시작한다.
-          // 추가 소속은 이후 해당 공동체 관리자만 배정할 수 있다.
-          (!('extraMemberships' in request.resource.data) ||
-            (request.resource.data.extraMemberships is list &&
-              request.resource.data.extraMemberships.size() == 0));
+          request.resource.data.talent == 0 &&
+          request.resource.data.extraMemberships is list &&
+          request.resource.data.extraMemberships.size() == 0 &&
+          (
+            (churchId == 'unaffiliated_v1' &&
+              exists(/databases/$(database)/documents/users/$(memberUid)) &&
+              get(/databases/$(database)/documents/users/$(memberUid)).data.churchId == churchId &&
+              get(/databases/$(database)/documents/users/$(memberUid)).data.get('isDeleted', false) != true &&
+              request.resource.data.name == get(/databases/$(database)/documents/users/$(memberUid)).data.get('name', '') &&
+              request.resource.data.score == get(/databases/$(database)/documents/users/$(memberUid)).data.get('score', 0) &&
+              request.resource.data.currentDay == get(/databases/$(database)/documents/users/$(memberUid)).data.get('currentDay', 1) &&
+              request.resource.data.streak == get(/databases/$(database)/documents/users/$(memberUid)).data.get('streak', 0) &&
+              request.resource.data.readCount == get(/databases/$(database)/documents/users/$(memberUid)).data.get('readCount', 1) &&
+              request.resource.data.lastReadDate == get(/databases/$(database)/documents/users/$(memberUid)).data.get('lastReadDate', null) &&
+              request.resource.data.get('departmentId', null) == get(/databases/$(database)/documents/users/$(memberUid)).data.get('departmentId', null) &&
+              request.resource.data.get('departmentName', null) == get(/databases/$(database)/documents/users/$(memberUid)).data.get('departmentName', null) &&
+              request.resource.data.get('subgroupId', null) == get(/databases/$(database)/documents/users/$(memberUid)).data.get('subgroupId', null) &&
+              request.resource.data.get('subgroupName', null) == get(/databases/$(database)/documents/users/$(memberUid)).data.get('subgroupName', null)) ||
+            // 교회 회원 → 개인 계정 전환은 기존 교회 명부를 먼저 만든 뒤 users를 전환한다.
+            (exists(/databases/$(database)/documents/users/$(memberUid)) &&
+              get(/databases/$(database)/documents/users/$(memberUid)).data.churchId == churchId &&
+              get(/databases/$(database)/documents/users/$(memberUid)).data.get('isDeleted', false) != true &&
+              request.resource.data.name == get(/databases/$(database)/documents/users/$(memberUid)).data.get('name', '') &&
+              request.resource.data.score == get(/databases/$(database)/documents/users/$(memberUid)).data.get('score', 0) &&
+              request.resource.data.currentDay == get(/databases/$(database)/documents/users/$(memberUid)).data.get('currentDay', 1) &&
+              request.resource.data.streak == get(/databases/$(database)/documents/users/$(memberUid)).data.get('streak', 0) &&
+              request.resource.data.readCount == get(/databases/$(database)/documents/users/$(memberUid)).data.get('readCount', 1) &&
+              request.resource.data.lastReadDate == get(/databases/$(database)/documents/users/$(memberUid)).data.get('lastReadDate', null) &&
+              request.resource.data.get('departmentId', null) == get(/databases/$(database)/documents/users/$(memberUid)).data.get('departmentId', null) &&
+              request.resource.data.get('departmentName', null) == get(/databases/$(database)/documents/users/$(memberUid)).data.get('departmentName', null) &&
+              request.resource.data.get('subgroupId', null) == get(/databases/$(database)/documents/users/$(memberUid)).data.get('subgroupId', null) &&
+              request.resource.data.get('subgroupName', null) == get(/databases/$(database)/documents/users/$(memberUid)).data.get('subgroupName', null))
+          );
         // 본인 update: create와 같은 필드 화이트리스트 + joinedAt 불변.
         // (T46 경합 방어 — 기존 행 위에 set()이 오면 joinedAt(serverTimestamp)이 기존 값과
         //  달라져 거부된다 → 관리자 배정·가입 시각의 조용한 덮어쓰기가 안전한 실패로 바뀐다.)
@@ -206,6 +305,8 @@ service cloud.firestore {
               ['uid', 'name', 'score', 'currentDay', 'streak', 'readCount', 'lastReadDate', 'talent',
                'departmentId', 'departmentName', 'subgroupId', 'subgroupName', 'extraMemberships',
                'joinedAt', 'updatedAt']) &&
+            !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['departmentId', 'departmentName', 'subgroupId', 'subgroupName']) &&
             request.resource.data.joinedAt == resource.data.joinedAt &&
             // 회원의 읽기·퀴즈 동기화는 추가 소속을 그대로 보존해야 한다.
             // 필드가 없는 레거시 행은 빈 배열과 동일하게 취급한다.
@@ -220,10 +321,7 @@ service cloud.firestore {
                 getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('score', 0)) &&
             request.resource.data.get('talent', 0) >= 0 &&
             (request.resource.data.get('talent', 0) <= resource.data.get('talent', 0) + 17 ||
-              // 개인 users 지갑을 primary roster로 한 번에 옮기는 기존 마이그레이션 예외.
-              (resource.data.get('talent', 0) == 0 &&
-                getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data
-                  .get('talentWalletMigrated', false) == true))) ||
+              isExactPersonalTalentTransfer(churchId, memberUid))) ||
           ((isChurchAdmin(churchId) || isPlatformAdmin()) &&
             (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['extraMemberships']) ||
               (request.resource.data.extraMemberships is list &&
@@ -235,27 +333,12 @@ service cloud.firestore {
           isChurchAdmin(churchId) || isPlatformAdmin();
       }
 
-      // 달란트 상점 구매 내역 — 교인이 자기 구매만 생성(필드 화이트리스트),
+      // 달란트 상점 구매 내역 — 일반 구매는 서버 purchaseItem만 생성한다.
+      // 클라이언트가 상품명·가격을 위조할 수 있으므로 교인의 직접 create는 허용하지 않는다.
       // 조회는 본인 것 + 교회 관리자 전체, 수령 처리(update)는 관리자만.
-      // 알려진 한계: 구매 생성과 talent 차감이 별개 문서라 규칙만으로 원자성을
-      // 강제할 수 없다(악의적 무결제 구매 생성 가능). 교회 공동체 맥락에서 수용 —
-      // 관리자 화면에 구매자 잔여 달란트를 함께 표시해 수령 시 확인하게 한다.
       match /talentPurchases/{purchaseId} {
         allow read: if isChurchAdmin(churchId) || isPlatformAdmin() ||
           (isSignedIn() && resource.data.uid == request.auth.uid);
-        allow create: if isRealUser() &&
-          (sameChurch(churchId) || isRosterMember(churchId)) &&
-          request.resource.data.uid == request.auth.uid &&
-          request.resource.data.status == 'pending' &&
-          request.resource.data.keys().hasOnly(
-            ['uid', 'memberName', 'itemId', 'itemName', 'price', 'status', 'createdAt',
-             'schemaVersion', 'departmentId', 'departmentName', 'marketId', 'walletKind', 'walletOrgId']) &&
-          (!('schemaVersion' in request.resource.data) ||
-            (request.resource.data.schemaVersion == 2 &&
-              request.resource.data.departmentId is string &&
-              request.resource.data.marketId is string &&
-              request.resource.data.walletKind in ['user', 'roster'] &&
-              request.resource.data.walletOrgId == churchId));
         // 창구 판매(관리자 대리 차감): 앱 사용이 어려운 어르신 교인을 대신해 관리자가
         // 달란트를 차감하며 구입 물품을 기록한다. 즉시 수령이므로 delivered로 생성.
         allow create: if (isChurchAdmin(churchId) || isPlatformAdmin()) &&

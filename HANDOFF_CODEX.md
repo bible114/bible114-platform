@@ -2039,7 +2039,17 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 - 직접 교인 구매 뒤 개인 계정 전환으로 동일 공동체 roster 지갑이 생긴 경우, 관리자 2차 확인과 transaction 내 재검증 뒤 roster로 환불한다.
 - 검증: 전체 validate, production build, Firestore rules dry-run compile, diff-check 통과.
 
-### [ ] R25-3. 3차 — 2차 독립 재감사 발견 수정·최종 감사
+### [x] R25-3. 3차 — 2차 독립 재감사 발견 수정·최종 감사
+
+- 최초 교회 교인 가입, 개인·Google·카카오 가입, 추가 공동체 참여를 `platform-api` 서버 검증 경로로 전환했다. 서버가 Firebase 사용자, 삭제 상태, 동의·보호자 동의, 입장코드, 실제 부서·소그룹, 공동체 수 상한을 다시 검증하고 필요한 users/roster를 원자 생성한다.
+- 일반 회원의 임의 타 공동체 roster 생성, 개인/소셜 users 직접 생성, 일반 구매 문서 직접 생성을 Firestore 규칙에서 닫았다. 기존 교인의 개인계정 전환용 base roster는 최신 users 원장과 정확히 일치할 때만 허용한다.
+- 달란트 구매는 서버가 실제 활성 시장·상품·가격·지갑·잔액을 읽어 원자 차감·생성한다. 요청 ID를 구매 문서 ID로 사용하고, 브라우저는 결과 불명 재시도에 같은 ID를 보존해 이중 차감을 막는다.
+- 삭제된 관리자뿐 아니라 일반·개인 회원도 세션 복원과 각 로그인 경로에서 즉시 로그아웃한다. 부서·소그룹은 서버 가입 또는 관리자만 배정할 수 있고 회원의 최초 입력·후속 변경을 모두 차단한다.
+- 최종 교차감사에서 확인한 개인계정 전환 규칙 우회도 닫았다. 전환 시 허용된 6개 필드 외 달란트·점수·삭제 상태·역할 변경을 금지하고, 삭제/무소속 계정 전환과 무소속 계정의 임의 초기 잔액 발행을 막았다. 무소속·기본 공동체 roster도 활성 users 원장과 정확히 일치해야 생성된다.
+- 자동 영상은 안전한 당일 캐시 우선, 누락 모드만 조회, 2/5/15/30분 뒤 시간당 재시도와 포커스 재개를 적용했다. 관리자 구매 목록은 미처리 100건 페이징과 완료·취소 최근 200건을 분리했고 인덱스를 선언했다.
+- 검증: `npm run validate`, production build, Deno platform-api 47 tests, `deno check`, Firestore rules dry-run compile, diff-check 통과.
+- **배포 순서 필수:** `platform-api Edge Function → Firestore indexes → 새 웹 → Firestore rules`. 규칙을 먼저 배포하면 열린 구버전 탭의 가입·공동체 추가·구매가 실패한다.
+- **남은 별도 보안 과제:** 공개 `codeHash`와 4자리 코드 추측/속도 제한은 T125의 private access + join ticket 백필로 해결해야 한다. 읽기·퀴즈 보상의 클라이언트 직접 증가(+17/+15 반복)는 T123b/d2 실계정 shadow 일치 확인 뒤 T123c/d3 서버 commit으로 닫는다.
 
 ---
 

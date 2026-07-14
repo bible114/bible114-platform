@@ -79,11 +79,23 @@ export const useUserAuth = () => {
                         if (discardStaleEvent()) return;
 
                         if (userDoc.exists) {
+                            const userData = userDoc.data() || {};
+                            // 삭제 처리된 계정은 역할과 관계없이 Firebase Auth 세션이 남아 있어도
+                            // 화면으로 복원하지 않는다. 마이그레이션 등 후속 쓰기도
+                            // 시작하기 전에 로컬 상태를 비우고 인증 세션을 종료한다.
+                            if (userData.isDeleted === true) {
+                                setCurrentUser(null);
+                                await auth.signOut().catch(signOutError => {
+                                    console.error('삭제된 공동체 관리자 세션 종료 실패:', signOutError);
+                                });
+                                setAuthLoading(false);
+                                return;
+                            }
                             const user = userDocToState(userDoc);
                             const extraOrgsPromise = loadUserExtraOrgs(firebaseUser.uid);
                             // [랭킹] 자격증명 지연 이관 — 재로그인 없이 세션 복원만 하는
                             // 상시 사용자가 가장 많으므로 이 경로가 핵심 이관 지점이다.
-                            const credentialsMigrated = await migrateCredentialsIfNeeded(firebaseUser.uid, userDoc.data());
+                            const credentialsMigrated = await migrateCredentialsIfNeeded(firebaseUser.uid, userData);
                             if (discardStaleEvent()) return;
                             if (credentialsMigrated) {
                                 user.password = null;
@@ -92,7 +104,7 @@ export const useUserAuth = () => {
                             // [점수 이중화] talent 지갑 지연 마이그레이션 (1회성)
                             // 마이그레이션이 끝나기 전에는 talent가 undefined이므로,
                             // score로 대체 표시하지 않고 완료를 기다린다 (구매 화면에서 잔액 0 오표시 방지).
-                            const migrated = await migrateTalentIfNeeded(firebaseUser.uid, userDoc.data());
+                            const migrated = await migrateTalentIfNeeded(firebaseUser.uid, userData);
                             if (discardStaleEvent()) return;
                             if (migrated) {
                                 user.talent = migrated.talent;
