@@ -18,7 +18,7 @@
 3. `npm run build`가 통과하는 상태로만 커밋한다.
 4. 설계에 없는 판단이 필요하거나 설계가 코드 현실과 안 맞으면, **임의로 설계를 바꾸지 말고** "Codex → Claude 메모"에 질문/제안을 남기고, 의존성 없는 다음 작업으로 넘어간다.
 5. 세션을 마칠 때(전체 완료가 아니어도) "Codex → Claude 메모"에 현재 상태·다음 작업자에게 할 말을 남긴다.
-6. **금지**: `firebase deploy`, `npm run deploy`, `git push`, firestore.rules의 `users` read 규칙 수정(별도 세션 담당), `users.password` 평문 필드 제거.
+6. **기본 금지**: `firebase deploy`, `npm run deploy`, `git push`는 사용자가 현재 작업에서 명시적으로 요청한 경우에만 검증 후 실행한다. firestore.rules의 `users` read 규칙 수정(별도 세션 담당)과 `users.password` 평문 필드 제거는 계속 금지한다.
 
 ---
 
@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-14 | 배포·push 지침 변경 및 운영 반영 | `AGENTS.md`, `HANDOFF_CODEX.md` | 사용자 명시 지시가 있으면 Codex가 push·배포·공개 검증까지 수행하도록 절대 금지를 조건부 허용으로 변경. `04d8d2f`를 main에 push하고 GitHub Pages `Published`, Firestore rules 컴파일·릴리스 완료. 공개 사이트가 새 번들 `index-B-T0nHlS.js`와 HTTP 200을 제공함을 확인. |
 | 2026-07-14 | 공동체 다중 소그룹·부서별 달란트 운영 | `src/{App.jsx,components/ChurchAdminView.jsx,components/DashboardView.jsx,components/churchAdmin/TalentShopTab.jsx,components/dashboard/{BibleQuizCard,BibleReader,CommunityMembershipCard,TalentShop}.jsx,hooks/useUserBibleActions.js,utils/{memberships,rosterMembers,rosterSnapshot,talentProgram,talentProgramStore}.js}`, `firestore.rules`, `scripts/validate-{roster-multimembership,department-talent}.mjs`, `scripts/validate-round{18,24}.mjs`, `package.json`, `HANDOFF_CODEX.md` | 직접 회원과 외부 roster 회원 모두 주 소속+추가 3개까지 배정. 부서별 달란트 사용 여부와 통합/전용 시장을 설정하고 공동체 지갑 하나는 유지. 달란트 미사용 부서도 읽기 진도·점수는 정상 반영하되 읽기·퀴즈 달란트와 상점만 제외. 구매에 부서·시장·지갑 snapshot을 기록해 이후 소속 변경 뒤 환불도 원래 지갑으로 복원. 전체 validate/build/diff와 로컬 게스트 렌더·브라우저 오류 0 통과. 인증 관리자 저장·실회원 보상/구매는 운영 데이터 변경 없이 미검증. rules 배포 전에는 roster 추가 소속 권한 강화가 운영에 반영되지 않음. |
 | 2026-07-14 | 회원가입 필수 동의·어린이 보호자 절차 | `src/{components/LoginView.jsx,components/SocialOnboardingView.jsx,components/policies/*,data/servicePolicies.js,hooks/useAuth.js,utils/signupConsent*.js}`, `scripts/validate-{service-policies,signup-consent}.mjs`, `scripts/validate-round11.mjs`, `package.json`, `HANDOFF_CODEX.md` | 회원·개인·소셜·공동체 관리자 신규 가입에 약관·개인정보·민감정보·공동체 운영정책 동의를 필수화하고 버전·시각을 private consent 문서에 기록. 만 14세 미만은 보호자 성명·관계·직접 동의가 없으면 진행 불가, 성인은 보호자 입력 미노출. 공동체 등록에는 복음주의 기준과 주요 교단 공식 결의의 이단·사이비 제한을 명시하고 통지·소명 기준을 정책 전문에 포함. 전체 validate/build/diff 및 로컬 브라우저 성인·아동·관리자 화면·정책 전문·오류 로그 검수 통과. 실제 계정 생성은 하지 않음. |
 | 2026-07-14 | 활동 공동체 전체 화면 전환 | `src/{App.jsx,hooks/useBibleLogic.js,hooks/useDepartment.js,components/DashboardView.jsx,components/dashboard/CommunityMembershipCard.jsx,components/modals/RankingModal.jsx}`, `scripts/validate-round{11,18}.mjs`, `HANDOFF_CODEX.md` | 공동체별 별도 순위 미리보기를 제거하고 카드 전체 클릭을 세션 활동 공간 전환에 연결. 기본 공동체는 로그인 기본값·탈퇴 보호로만 유지. 선택 공동체 기준으로 이름·구성원·조직·공지·카카오·지도·랭킹·달란트·상점을 다시 로드하고 본문·진도·퀴즈·묵상은 공통 유지. 빠른 전환 stale 응답과 이전 카카오 링크 잔존 방어. 전체 validate/build/diff 통과. 로컬 브라우저는 게스트·로그아웃 세션뿐이라 실제 다중 공동체 계정 클릭은 배포 전 사용자 확인 필요. |
@@ -340,6 +341,10 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-14 배포·push 지침 변경:
+- 사용자가 기존 절대 금지를 해제했다. 앞으로 `firebase deploy`, `npm run deploy`, `git push`는 평소에는 하지 않되 사용자가 현재 작업에서 명시적으로 요청하면 Codex가 검증 후 직접 실행하고 공개 결과까지 확인한다.
+- 이번 변경은 `04d8d2f` main push, GitHub Pages Published, Firestore rules 컴파일·릴리스, 공개 번들 `index-B-T0nHlS.js` HTTP 200까지 완료했다.
 
 2026-07-14 공동체 다중 소그룹·부서별 달란트 운영:
 - 회원 한 명의 공동체 내 소속은 기존 한도를 유지해 주 소속 1개+추가 소속 3개로 통일했다. 직접 users 회원뿐 아니라 개인/타 교회 계정으로 들어온 roster 회원도 같은 관리자 화면에서 추가 배정할 수 있고, 외부 회원의 값은 해당 공동체 roster 원장에 저장한다. 본인은 추가 소속을 직접 바꿀 수 없도록 rules를 강화했다.
@@ -1270,7 +1275,7 @@ T60~T66 7개 커밋 검토 완료 — **조건부: 블로커 2건 수정 후 병
 > 2. 아래 단계를 **한 번에 하나씩** 안내하고, 사용자가 "됐어" / 스크린샷 / 결과를 알려주면 다음 단계로 넘어가라. 한꺼번에 전부 쏟아내지 말 것.
 > 3. 사용자가 에러 메시지를 보여주면 아래 "문제 해결" 표에서 먼저 찾아 진단하라.
 > 4. 각 단계 완료 시 이 문서의 체크박스를 `[x]`로 갱신하라 (이건 커밋해도 된다 — docs 커밋).
-> 5. 여전히 금지: `firebase deploy`, `npm run deploy`, `git push`를 **Codex가 직접 실행하는 것**. 명령어를 알려주고 사용자가 자기 터미널에서 치게 하라.
+> 5. `firebase deploy`, `npm run deploy`, `git push`는 기본적으로 사용자 확인을 기다리되, 사용자가 현재 작업에서 명시적으로 요청하면 Codex가 직접 실행하고 실제 공개 결과까지 확인한다.
 
 ### 사전 지식 (사용자에게 먼저 설명해줄 것)
 
@@ -2013,4 +2018,4 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 - 이 설계는 3차 자체 점검을 거친 확정본이다. "더 나은 방법"이 보여도 위 설계 결정 4가지(가상 교회/익명 인증/localStorage 전용/클라이언트 상수)는 바꾸지 말고, 제안은 위 메모란에 적어라.
 - ~~firestore.rules의 `users` read 규칙 버그 — 건드리지 말 것~~ (해결됨 — 현행 규칙 49~62행에 랭킹 read 분기 반영 완료). 2026-07-14부터 규칙 수정은 **라운드 20 T108·T109 범위 안에서만** 허용, 로컬 수정까지만 하고 배포는 Claude 담당.
 - Firebase는 compat(v8 스타일) API만 쓴다. `import { doc, getDoc }` 같은 modular API를 섞지 마라.
-- 커밋 푸시·배포는 전부 사용자 몫이다. 로컬 커밋까지만.
+- 커밋은 로컬에서 진행한다. push·배포는 기본적으로 사용자 확인을 기다리되, 사용자가 현재 작업에서 명시적으로 요청하면 Codex가 직접 실행하고 공개 결과까지 확인한다.
