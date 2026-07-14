@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PLAN_TYPES, BIBLE_VERSIONS } from '../data/bible_options';
+import { PLAN_TYPES, getVisibleBibleVersions } from '../data/bible_options';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
 import { CommunityMembershipCard } from './dashboard';
 
@@ -62,7 +62,7 @@ const SocialOnboardingView = ({ tempUser, onComplete }) => {
                     <p className="text-xs font-bold text-blue-600">3단계 / 3단계</p>
                     <h1 className="mt-2 text-2xl font-black text-slate-900">읽을 버전을 선택해주세요</h1>
                     {!planType ? <div className="mt-5 space-y-3">{PLAN_TYPES.map(plan => <button type="button" key={plan.id} onClick={() => setPlanType(plan.id)} className="w-full rounded-xl border border-slate-200 p-4 text-left hover:border-blue-400"><p className="font-bold text-slate-800">{plan.title}</p><p className="mt-1 text-xs text-slate-500">{plan.desc}</p></button>)}</div>
-                        : <div className="mt-5 space-y-3"><button type="button" onClick={() => setPlanType(null)} className="text-xs font-bold text-slate-500">← 계획 다시 선택</button>{(BIBLE_VERSIONS[planType] || []).map(version => <button type="button" key={version.id} disabled={busy} onClick={() => finish(version.id)} className="w-full rounded-xl border border-slate-200 p-4 text-left hover:border-blue-400 disabled:opacity-50"><p className="font-bold text-slate-800">{version.name}</p><p className="mt-1 text-xs text-slate-500">{version.desc}</p></button>)}</div>}
+                        : <div className="mt-5 space-y-3"><button type="button" onClick={() => setPlanType(null)} className="text-xs font-bold text-slate-500">← 계획 다시 선택</button>{getVisibleBibleVersions(planType, { ...tempUser, name }).map(version => <button type="button" key={version.id} disabled={busy} onClick={() => finish(version.id)} className="w-full rounded-xl border border-slate-200 p-4 text-left hover:border-blue-400 disabled:opacity-50"><p className="font-bold text-slate-800">{version.name}</p><p className="mt-1 text-xs text-slate-500">{version.desc}</p></button>)}</div>}
                     {error && <p role="alert" className="mt-4 text-xs font-bold text-red-600">{error}</p>}
                 </section>}
             </div>

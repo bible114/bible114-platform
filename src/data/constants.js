@@ -11,12 +11,13 @@ export const AUDIO_BASE_URL = "https://bible114.net/html/audio";
 // window.location.origin 대신 이 고정 주소를 사용한다.
 export const SITE_URL = "https://www.bible114.net";
 // 카카오톡 채널 상담 URL (실제 채널 ID로 교체 필요)
-export const KAKAO_CHANNEL_URL = "http://pf.kakao.com/_xdJrRX/chat";
+export const KAKAO_CHANNEL_URL = "https://pf.kakao.com/_xdJrRX/chat";
 // 카카오 REST API 키는 브라우저 OAuth 요청에 포함되는 공개 식별자다.
 // 실제 값은 배포 빌드의 VITE_KAKAO_REST_KEY로 주입한다.
 export const KAKAO_REST_KEY = import.meta.env?.VITE_KAKAO_REST_KEY || '';
 export const KAKAO_AUTH_URL = import.meta.env?.VITE_KAKAO_AUTH_URL || '';
 export const ADMIN_SET_PASSWORD_URL = import.meta.env?.VITE_ADMIN_SET_PASSWORD_URL || '';
+export const ADMIN_ENTRY_SESSION_KEY = 'b114_admin_entry_v1';
 
 // 무소속(개인) 성도 가상 교회 — 문서 ID를 클라이언트 상수로 고정한다.
 // 입장코드 검증 스킵은 "이 상수와의 ID 일치"로만 판단한다.

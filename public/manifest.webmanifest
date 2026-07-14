@@ -2,7 +2,7 @@
   "name": "성경통독 114",
   "short_name": "성경통독",
   "description": "성경통독 114",
-  "start_url": "/?v=20260622-read-label-v1",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f8fafc",

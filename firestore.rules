@@ -21,6 +21,11 @@ service cloud.firestore {
         myData().role == 'churchAdmin' &&
         myData().churchId == churchId;
     }
+    function isChurchAdminAfter(churchId) {
+      return isSignedIn() &&
+        getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'churchAdmin' &&
+        getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.churchId == churchId;
+    }
     function sameChurch(churchId) {
       return isSignedIn() && myData().churchId == churchId;
     }
@@ -62,11 +67,26 @@ service cloud.firestore {
           exists(/databases/$(database)/documents/churches/$(resource.data.churchId)/roster/$(request.auth.uid)));
       allow create: if isRealUser() && request.auth.uid == uid &&
         request.resource.data.role in ['member', 'churchAdmin'];
-      // 본인 수정은 role/churchId "값"을 바꿀 수 없다 (권한 상승 차단).
+      // 본인 수정은 정체성·삭제 상태를 바꿀 수 없다 (권한 상승·탈퇴 복구 차단).
       // affectedKeys()는 값이 실제로 바뀐 필드만 보고하므로, 기존 값과 동일한 role/churchId를
       // 포함해 문서 전체를 다시 쓰는 정상 흐름(App.jsx의 setCurrentUser 반영 저장 등)은 영향 없다.
       allow update: if (request.auth.uid == uid &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'churchId'])) ||
+          !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['role', 'churchId', 'accountType', 'isDeleted']) &&
+          // 기준 공동체는 실제 내 roster가 있는 조직 또는 null로만 바꿀 수 있다.
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['primaryOrgId']) ||
+            request.resource.data.get('primaryOrgId', null) == null ||
+            existsAfter(/databases/$(database)/documents/churches/$(request.resource.data.primaryOrgId)/roster/$(request.auth.uid))) &&
+          // 클라이언트 직접 적립 구조의 임시 방어: 정상 1회 보상 상한을 넘는 증가는 거부한다.
+          // 예외: [점수 이중화] 1회성 talent 마이그레이션(talentMigrated false→true)은
+          // 기존 score를 talent로 통째로 옮기고 사용분을 score에 되돌리므로 상한을 적용하지 않는다.
+          // 플래그가 이미 true인 계정은 이 예외를 다시 쓸 수 없다.
+          ((request.resource.data.get('talentMigrated', false) == true &&
+            resource.data.get('talentMigrated', false) != true) ||
+           (request.resource.data.get('talent', 0) >= 0 &&
+            request.resource.data.get('talent', 0) <= resource.data.get('talent', 0) + 17 &&
+            request.resource.data.get('score', 0) >= 0 &&
+            request.resource.data.get('score', 0) <= resource.data.get('score', 0) + 15))) ||
         (isSignedIn() && isChurchAdmin(resource.data.churchId)) ||
         isPlatformAdmin();
       // [라운드 14] 개인 계정 달란트 창구 지원: 기준 공동체(primaryOrgId) 관리자는
@@ -120,10 +140,16 @@ service cloud.firestore {
 
     // 교회 문서 (Phase 3: 가입 전 조회는 settings/churchDirectory 공개 문서로 대체 → 인증 필수로 축소)
     match /churches/{churchId} {
-      allow read: if isSignedIn();
+      allow read: if isRealUser();
       allow create: if isRealUser();
       allow update: if isChurchAdmin(churchId) || isPlatformAdmin();
       allow delete: if false;
+
+      // 관리자 식별 정보는 교회 공개 본문서와 분리한다.
+      match /private/{privateId} {
+        allow read: if isChurchAdmin(churchId) || isPlatformAdmin();
+        allow write: if isChurchAdminAfter(churchId) || isPlatformAdmin();
+      }
 
       match /settings/{settingId} {
         // [라운드 10] roster 멤버도 읽기 허용 — 개인 계정이 소속 공동체의
@@ -155,7 +181,20 @@ service cloud.firestore {
             request.resource.data.keys().hasOnly(
               ['uid', 'name', 'score', 'currentDay', 'streak', 'readCount', 'lastReadDate', 'talent',
                'departmentId', 'departmentName', 'subgroupId', 'subgroupName', 'joinedAt', 'updatedAt']) &&
-            request.resource.data.joinedAt == resource.data.joinedAt) ||
+            request.resource.data.joinedAt == resource.data.joinedAt &&
+            request.resource.data.get('score', 0) >= 0 &&
+            // roster.score는 users.score의 미러다. 증분 상한(+15) 또는 users 문서와의
+            // 절대값 동기화까지 허용한다 — 과거 명부 미로드로 며칠 밀린 행을 다음 읽기가
+            // 한 번에 복구하는 경로(라운드 19)가 상한에 막히면 읽기 완료가 영구 실패한다.
+            (request.resource.data.get('score', 0) <= resource.data.get('score', 0) + 15 ||
+              request.resource.data.get('score', 0) <=
+                getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('score', 0)) &&
+            request.resource.data.get('talent', 0) >= 0 &&
+            (request.resource.data.get('talent', 0) <= resource.data.get('talent', 0) + 17 ||
+              // 개인 users 지갑을 primary roster로 한 번에 옮기는 기존 마이그레이션 예외.
+              (resource.data.get('talent', 0) == 0 &&
+                getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data
+                  .get('talentWalletMigrated', false) == true))) ||
           ((isChurchAdmin(churchId) || isPlatformAdmin()) &&
             // [라운드 18] 조직 지갑(talent)을 관리자가 갱신할 때 음수 금지 (창구 판매·환불)
             (!('talent' in request.resource.data) ||

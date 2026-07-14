@@ -8,7 +8,8 @@ import {
     invalidateChurchDirectoryCache,
     saveLastChurch,
 } from '../utils/churchDirectory';
-import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
+import { ADMIN_ENTRY_SESSION_KEY, UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
+import { isPlanIdAllowedForUser } from '../data/bible_options';
 import {
     KAKAO_RETURNING_KEY,
     KAKAO_LINK_RETURNING_KEY,
@@ -34,6 +35,22 @@ const GOOGLE_ADMIN_SIGNUP_FLOW_NAME = 'googleAdminSignup';
 const GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE = '이미 등록된 계정입니다. 공동체 관리자 로그인에서 구글로 로그인해주세요.';
 const KAKAO_GOOGLE_AUTH_MESSAGE = "카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 우측 하단 ⋯ 메뉴에서 '다른 브라우저로 열기'를 눌러주세요.";
 
+const beginLoginTiming = label => import.meta.env.DEV && typeof performance !== 'undefined'
+    ? { label, startedAt: performance.now() }
+    : null;
+
+const finishLoginTiming = (timing, targetView) => {
+    if (!timing || typeof performance === 'undefined') return;
+    console.info(`[로그인 속도] ${timing.label}: ${Math.round(performance.now() - timing.startedAt)}ms → ${targetView}`);
+};
+
+const getChurchAdminEntryView = () => {
+    const saved = typeof sessionStorage !== 'undefined'
+        ? sessionStorage.getItem(ADMIN_ENTRY_SESSION_KEY)
+        : null;
+    return ['dashboard', 'church_admin'].includes(saved) ? saved : 'admin_entry';
+};
+
 export const useAuth = ({
     setCurrentUser,
     setTempUser,
@@ -49,7 +66,7 @@ export const useAuth = ({
 
     const migratePersonalWallet = async user => {
         if (user?.accountType !== 'personal' || !user?.uid) return user;
-        const result = await migratePersonalTalentWalletIfNeeded(user.uid, user.primaryOrgId);
+        const result = await migratePersonalTalentWalletIfNeeded(user.uid, user.primaryOrgId, user);
         if (!result) return user;
         return updateRosterTalents({
             ...user,
@@ -146,7 +163,7 @@ export const useAuth = ({
             dailyAdvanceDate: null,
             dailyAdvanceCount: 0,
             gender: 'male',
-            planId: guest.planId || '1year_revised',
+            planId: isPlanIdAllowedForUser(guest.planId, null) ? guest.planId : '1year_revised',
             departmentId: null, departmentName: null, subgroupId: null,
             isDeleted: false, deletedAt: null, deletedBy: null,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -206,44 +223,49 @@ export const useAuth = ({
         setView('plan_type_select');
     };
 
-    const openExistingPersonalUser = async (firebaseUser, doc) => {
+    const openExistingPersonalUser = async (firebaseUser, doc, loginTiming = null) => {
         const data = doc.data();
         const pendingMigration = getPendingPersonalMigration(firebaseUser.uid);
         if (data.accountType !== 'personal' && !pendingMigration) throw new Error('NOT_PERSONAL_ACCOUNT');
         let user = userDocToState(doc);
+        const extraOrgsPromise = loadUserExtraOrgs(firebaseUser.uid);
         const legacyTalent = await migrateTalentIfNeeded(firebaseUser.uid, data);
         if (legacyTalent) {
             user.talent = legacyTalent.talent;
             user.score = legacyTalent.score;
             user.talentMigrated = true;
         }
-        user.extraOrgs = await loadUserExtraOrgs(firebaseUser.uid);
+        user.extraOrgs = await extraOrgsPromise;
         user = await migratePersonalWallet(user);
         setCurrentUser(user);
         setTempUser(null);
         setView('dashboard');
+        finishLoginTiming(loginTiming, 'dashboard');
     };
 
-    const openExistingSocialUser = async (firebaseUser, doc) => {
+    const openExistingSocialUser = async (firebaseUser, doc, loginTiming = null) => {
         const data = doc.data();
         const pendingMigration = getPendingPersonalMigration(firebaseUser.uid);
         if (data.accountType === 'personal' || pendingMigration) {
-            await openExistingPersonalUser(firebaseUser, doc);
+            await openExistingPersonalUser(firebaseUser, doc, loginTiming);
             return;
         }
         if (!['member', 'churchAdmin'].includes(data.role)) throw new Error('NOT_MEMBER_ACCOUNT');
         let user = userDocToState(doc);
+        const extraOrgsPromise = loadUserExtraOrgs(firebaseUser.uid);
         const legacyTalent = await migrateTalentIfNeeded(firebaseUser.uid, data);
         if (legacyTalent) {
             user.talent = legacyTalent.talent;
             user.score = legacyTalent.score;
             user.talentMigrated = true;
         }
-        user.extraOrgs = await loadUserExtraOrgs(firebaseUser.uid);
+        user.extraOrgs = await extraOrgsPromise;
         user = await migratePersonalWallet(user);
         setCurrentUser(user);
         setTempUser(null);
-        setView('dashboard');
+        const targetView = user.role === 'churchAdmin' ? getChurchAdminEntryView() : 'dashboard';
+        setView(targetView);
+        finishLoginTiming(loginTiming, targetView);
     };
 
     const openSocialOnboarding = (firebaseUser, provider, profile = {}) => {
@@ -262,19 +284,20 @@ export const useAuth = ({
         setView('social_onboarding');
     };
 
-    const finishSocialStart = async (cred, provider, profile = {}) => {
+    const finishSocialStart = async (cred, provider, profile = {}, loginTiming = null) => {
         const firebaseUser = cred?.user;
         if (!firebaseUser?.uid || auth.currentUser?.uid !== firebaseUser.uid) throw new Error('INVALID_SOCIAL_PROFILE');
         const doc = await db.collection('users').doc(firebaseUser.uid).get();
         if (auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
         if (doc.exists) {
-            await openExistingSocialUser(firebaseUser, doc);
+            await openExistingSocialUser(firebaseUser, doc, loginTiming);
             return;
         }
         openSocialOnboarding(firebaseUser, provider, profile);
     };
 
     const handlePersonalSignup = async ({ name, birthdate, phone4, password }) => {
+        const loginTiming = beginLoginTiming('개인 계정 비밀번호');
         if (passwordPersonalSignupRef.current) return;
         passwordPersonalSignupRef.current = true;
         setErrorMsg('');
@@ -292,7 +315,7 @@ export const useAuth = ({
                 cred = await auth.signInWithEmailAndPassword(email, password);
                 const existingDoc = await db.collection('users').doc(cred.user.uid).get();
                 if (existingDoc.exists) {
-                    await openExistingPersonalUser(cred.user, existingDoc);
+                    await openExistingPersonalUser(cred.user, existingDoc, loginTiming);
                     completed = true;
                     return;
                 }
@@ -327,6 +350,7 @@ export const useAuth = ({
         setErrorMsg('');
         if (personalSignupRef.current) return personalSignupRef.current;
         const request = (async () => {
+            const loginTiming = beginLoginTiming('Google 개인/소셜');
             const flowName = 'googlePersonalSignup';
             beginInteractiveAuthFlow(flowName);
             try {
@@ -341,7 +365,7 @@ export const useAuth = ({
                 const userRef = db.collection('users').doc(cred.user.uid);
                 const existingDoc = await userRef.get();
                 if (existingDoc.exists) {
-                    await openExistingSocialUser(cred.user, existingDoc);
+                    await openExistingSocialUser(cred.user, existingDoc, loginTiming);
                     return;
                 }
                 openSocialOnboarding(cred.user, 'google.com');
@@ -450,6 +474,9 @@ export const useAuth = ({
             primaryOrgId: organization.orgId,
             authProvider: providerId,
         };
+        if (!isPlanIdAllowedForUser(planId, newUser)) {
+            throw new Error('선택할 수 없는 성경 버전입니다. 버전을 다시 선택해주세요.');
+        }
         const now = firebase.firestore.FieldValue.serverTimestamp();
         await db.runTransaction(async transaction => {
             const existing = await transaction.get(userRef);
@@ -515,6 +542,7 @@ export const useAuth = ({
         sessionStorage.setItem(KAKAO_RETURNING_KEY, 'processing');
         beginInteractiveAuthFlow('kakaoCustomTokenResult');
         authReady.then(async () => {
+            const loginTiming = beginLoginTiming('Kakao 개인/소셜');
             const linkIdToken = isLinkReturn ? await auth.currentUser?.getIdToken(true) : null;
             if (isLinkReturn && !linkIdToken) throw new Error('AUTH_REQUIRED');
             const profile = await exchangeKakaoCode({ code: callback.code, redirectUri: getKakaoRedirectUri(), linkIdToken });
@@ -538,7 +566,7 @@ export const useAuth = ({
             const cred = await auth.signInWithCustomToken(profile.token);
             if (!alive) return;
             try {
-                await finishSocialStart(cred, 'kakao.com', profile);
+                await finishSocialStart(cred, 'kakao.com', profile, loginTiming);
             } catch (error) {
                 console.error('카카오 커스텀 토큰 처리 실패:', error);
                 if (alive) setErrorMsg('카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요.');
@@ -569,6 +597,7 @@ export const useAuth = ({
 
     // ── 교인 로그인 ──
     const handleMemberLogin = async (name, birthdate, pw, churchId, phone4) => {
+        const loginTiming = beginLoginTiming('기존 회원');
         setErrorMsg('');
         try {
             await authReady;
@@ -635,13 +664,20 @@ export const useAuth = ({
             if (auth.currentUser?.uid !== cred.user.uid) return;
             setCurrentUser(user);
             setHasReadToday(user.lastReadDate === new Date().toDateString());
-            if (user.churchId) await loadChurchCommunities(user.churchId);
+            if (user.churchId) loadChurchCommunities(user.churchId);
             // [Phase 3] 로그인 성공 → 다음 방문에서 교회 자동 선택되도록 최근 교회 기억
             if (user.churchId && user.churchName) {
                 saveLastChurch({ id: user.churchId, name: user.churchName });
             }
-            if (!user.departmentId || !user.subgroupId) { setTempUser(user); setView('plan_type_select'); }
-            else setView('dashboard');
+            let targetView = 'dashboard';
+            if (user.role === 'churchAdmin') {
+                targetView = getChurchAdminEntryView();
+            } else if (!user.departmentId || !user.subgroupId) {
+                setTempUser(user);
+                targetView = 'plan_type_select';
+            }
+            setView(targetView);
+            finishLoginTiming(loginTiming, targetView);
         } catch (err) {
             console.error(err);
             setErrorMsg('로그인 처리 중 오류가 발생했습니다.');
@@ -661,7 +697,7 @@ export const useAuth = ({
 
     // 이메일/비밀번호와 Google 관리자가 공유하는 문서 로드·마이그레이션·화면 전환 경로.
     // requireRegisteredAdmin은 Google 로그인에만 적용해 기존 이메일 로그인 동작을 보존한다.
-    const finishAdminLogin = async (cred, { requireRegisteredAdmin = false } = {}) => {
+    const finishAdminLogin = async (cred, { requireRegisteredAdmin = false, loginTiming = null } = {}) => {
         const doc = await db.collection('users').doc(cred.user.uid).get();
         if (!doc.exists) {
             if (requireRegisteredAdmin) {
@@ -703,13 +739,16 @@ export const useAuth = ({
 
         setCurrentUser(user);
         setHasReadToday(user.lastReadDate === new Date().toDateString());
-        if (user.churchId) await loadChurchCommunities(user.churchId);
-        setView('dashboard');
+        if (user.churchId) loadChurchCommunities(user.churchId);
+        const targetView = getChurchAdminEntryView();
+        setView(targetView);
+        finishLoginTiming(loginTiming, targetView);
         return true;
     };
 
     // ── 교회 관리자 / 슈퍼 관리자 로그인 ──
     const handleChurchAdminLogin = async (email, pw) => {
+        const loginTiming = beginLoginTiming('공동체 관리자 이메일');
         setErrorMsg('');
         try {
             await authReady;
@@ -724,7 +763,7 @@ export const useAuth = ({
                 return null;
             });
             if (!cred) return;
-            await finishAdminLogin(cred);
+            await finishAdminLogin(cred, { loginTiming });
         } catch (err) {
             console.error(err);
             setErrorMsg('로그인 처리 중 오류가 발생했습니다.');
@@ -732,6 +771,7 @@ export const useAuth = ({
     };
 
     const handleGoogleAdminLogin = async () => {
+        const loginTiming = beginLoginTiming('공동체 관리자 Google');
         setErrorMsg('');
         if (isKakaoTalkBrowser()) {
             setErrorMsg(KAKAO_GOOGLE_AUTH_MESSAGE);
@@ -748,7 +788,7 @@ export const useAuth = ({
                 return;
             }
 
-            const didLogin = await finishAdminLogin(cred, { requireRegisteredAdmin: true });
+            const didLogin = await finishAdminLogin(cred, { requireRegisteredAdmin: true, loginTiming });
             if (!didLogin) return;
 
             const hasPasswordProvider = (cred.user.providerData || [])
@@ -981,6 +1021,7 @@ export const useAuth = ({
 
                 const userRef = db.collection('users').doc(profileUid);
                 const churchRef = db.collection('churches').doc();
+                const churchAdminRef = churchRef.collection('private').doc('admin');
                 const directoryRef = db.collection('settings').doc('churchDirectory');
                 const churchCodeHash = await sha256(churchCode);
 
@@ -1010,11 +1051,16 @@ export const useAuth = ({
 
                     transaction.set(churchRef, {
                         name: churchName, pastorName: pastorName || '', denomination: denomination || '',
-                        churchCodeHash, adminUid: googleUser.uid, adminEmail: resolvedEmail,
+                        churchCodeHash,
                         departments: departments || [],
                         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     });
                     transaction.set(userRef, newUser);
+                    transaction.set(churchAdminRef, {
+                        adminUid: googleUser.uid,
+                        adminEmail: resolvedEmail,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    });
                     transaction.set(directoryRef, {
                         churches: firebase.firestore.FieldValue.arrayUnion({
                             id: churchRef.id,
@@ -1068,7 +1114,7 @@ export const useAuth = ({
             const churchCodeHash = await sha256(churchCode);
             await churchRef.set({
                 name: churchName, pastorName: pastorName || '', denomination: denomination || '',
-                churchCodeHash, adminUid: cred.user.uid, adminEmail: email,
+                churchCodeHash,
                 departments: departments || [],
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             });
@@ -1090,6 +1136,11 @@ export const useAuth = ({
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             };
             await db.collection('users').doc(cred.user.uid).set(newUser);
+            await churchRef.collection('private').doc('admin').set({
+                adminUid: cred.user.uid,
+                adminEmail: email,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            });
             // 신규 교회 + 관리자 → 통계 증가
             db.collection('settings').doc('platformStats').set({
                 total_churches: firebase.firestore.FieldValue.increment(1),

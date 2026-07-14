@@ -66,7 +66,11 @@ export const migrateTalentIfNeeded = async (uid, data) => {
 
 // 개인 계정이 공동체별 지갑 모델을 처음 사용할 때 기존 users.talent를
 // 기준 공동체 roster.talent로 한 번만 옮긴다. 트랜잭션 안의 플래그 재확인으로 멱등성을 보장한다.
-export const migratePersonalTalentWalletIfNeeded = async (uid, primaryOrgId) => {
+export const migratePersonalTalentWalletIfNeeded = async (uid, primaryOrgId, knownUserData = null) => {
+    if (knownUserData && (
+        knownUserData.talentWalletMigrated === true ||
+        knownUserData.accountType !== 'personal'
+    )) return null;
     const normalizedOrgId = String(primaryOrgId || '').trim();
     if (!uid || !normalizedOrgId) return null;
     const userRef = db.collection('users').doc(uid);

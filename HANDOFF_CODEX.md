@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: "🔁 라운드 18" T93~T102 로컬 구현·검증 완료.** T97r 활성 규칙셋 확인 후 T97까지 완료했으며, 커밋·배포는 Claude/사용자 대기. 라운드 17 T88~T92 완료. git 커밋 금지 — 구현+검증+로그까지만, 커밋은 Claude 담당.
+> **현재 활성 작업 없음.** 라운드 19~21 커밋·배포 완료(2026-07-14, Claude — 규칙 보강 2건 포함). 다음 라운드는 Claude가 설계한다. git 커밋 금지 — 구현+검증+로그까지만, 커밋은 Claude 담당.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -180,6 +180,14 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-14 | T112 재검수 보완 | `src/App.jsx`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | 읽기↔관리 상호 이동 뒤에도 현재 화면을 세션 진입값에 동기화해, 새로고침 시 최초 선택 화면으로 되돌아가는 회귀를 방지. |
+| 2026-07-14 | T112 관리자 진입 선택 화면 | `src/App.jsx`, `src/hooks/useAuth.js`, `src/data/constants.js`, `scripts/validate-round18.mjs`, `scripts/validate-kakao-custom-auth.mjs`, `HANDOFF_CODEX.md` | 공동체 관리자 로그인 경로를 세션당 1회 읽기/관리 선택 화면으로 통일하고 선택 마커·로그아웃 제거·역할 격리를 추가. 자동 계약·빌드 통과, 실 OAuth/계정 클릭은 미실행. |
+| 2026-07-14 | T111 로그인 지연 단축 | `src/utils/helpers.js`, `src/hooks/useAuth.js`, `src/hooks/useUserAuth.js`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | 이관 완료 지갑 transaction 사전 단락, extraOrgs 병렬 시작, 공동체 목록 비차단 로드, DEV 로그인 시간 로그 추가. 실계정 전/후 수치는 테스트 자격증명 없이 측정하지 않음. |
+| 2026-07-14 | T110 부수 정리 | `src/data/constants.js`, `index.html`, `public/manifest.webmanifest`, `vite.config.js`, `firebase.json`, `package-lock.json`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | 상담 링크 HTTPS, 빌드 시각 식별자, Firebase Hosting 보안 헤더+CSP Report-Only 초안, 호환 의존성 업데이트. 취약점 13건(고3)→10건(고1); 남은 Firebase·Vite 메이저와 GitHub Pages 헤더 적용 한계는 메모. |
+| 2026-07-14 | T109 교회 문서 노출 축소 | `firestore.rules`, `src/hooks/useAuth.js`, `src/App.jsx`, `src/components/PlatformAdminView.jsx`, `scripts/audit-legacy-church-fields.mjs`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | churches read를 실사용자로 제한하고 신규 adminEmail/adminUid를 private/admin으로 분리. 운영 9개 교회 전수 읽기 감사에서 admin 식별자 9곳, 평문 churchCode 2곳 확인(값 미출력·데이터 무변경). |
+| 2026-07-14 | T108 자기 데이터 조작 축소 | `firestore.rules`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | 본인 accountType/isDeleted 변조 차단, primaryOrgId roster 실재 검증, users/roster score +15·talent +17 상한 및 개인 지갑 1회 이관 예외 추가. 로컬 규칙만 수정, 배포 안 함. |
+| 2026-07-14 | T107 회수 성경 버전 완전 차단 | `src/data/bible_options.js`, `src/components/SocialOnboardingView.jsx`, `src/hooks/useAuth.js`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | 소셜 온보딩 필터와 저장 직전 재검증, 게스트 숨김 planId 기본값 전환. 기존 저장 사용자는 유지. 헬퍼 스냅샷·거부/허용 assert 통과. |
+| 2026-07-14 | T103~T106 명부 미로드 보상 소실 차단 | `src/hooks/useUserBibleActions.js`, `src/components/dashboard/BibleQuizCard.jsx`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | 읽기는 진행 transaction 전에, 퀴즈는 정답 보상 transaction 전에 `loadUserExtraOrgsStrict`로 실제 명부를 다시 확인한다. 조회·재조회 실패를 빈 배열로 폴백하지 않아 개인 계정의 보상 없는 완료와 퀴즈 보상일 선소진을 차단했다. 회귀 계약과 전체 검증·빌드 통과, 실계정 금액 변경은 미실행. |
 | 2026-07-14 | T102 관리자 읽기 기본·명칭 통일 | `src/App.jsx`, `src/hooks/useAuth.js`, `src/components/{LoginView,ChurchAdminView,PlatformAdminView,ChurchPicker,PlanSelectionView,ChurchAdminTutorial}.jsx`, `src/components/dashboard/{DashboardHeader,SocialLinkBanner}.jsx`, `src/components/churchAdmin/SettingsTab.jsx`, `scripts/validate-round18.mjs` | 공동체 관리자는 이메일·Google·카카오 로그인 모두 읽기 대시보드로 들어오고 헤더 `⚙️ 관리`로 관리 화면을 연다. 소셜 연결 배너 대상에 관리자를 포함하고 설정 탭의 중복 Google 연결 카드를 제거했으며 사용자 노출 명칭을 `공동체 관리자`로 통일했다. |
 | 2026-07-14 | T97 공동체별 달란트 지갑 | `src/utils/{talentWallet,helpers,rosterSnapshot,rosterMembers}.js`, `src/hooks/{useUserAuth,useAuth,useUserBibleActions}.js`, `src/components/dashboard/{BibleQuizCard,TalentShop,CommunityMembershipCard}.jsx`, `src/components/{ChurchAdminView,PlatformAdminView,DashboardView}.jsx`, `src/App.jsx`, `scripts/validate-round18.mjs` | Rules API로 활성 Firestore ruleset `c433bfb2-19e6-4073-9b84-fed16add4d98`의 roster talent 허용·음수 방지를 확인했다. 읽기·퀴즈 보상을 모든 소속 지갑에 적립하고 개인 users 잔액을 primary roster로 1회 이관한다. 현재 공동체 표시·구매, 관리자 창구/환불, 전체 초기화를 조직 지갑 기준으로 바꾸고 상점에 전체 지갑 목록·탭 전환을 추가했다. 실계정 금액 변경은 미실행. |
 | 2026-07-14 | T101 DAY별 퀴즈 | `src/components/dashboard/BibleQuizCard.jsx`, `src/utils/{quizEngine,quizProgress}.js`, `src/hooks/useUserBibleActions.js`, `scripts/validate-round18.mjs` | 퀴즈 완료 상태를 회차·DAY별 `quizProgress`로 분리하고 일일 보상은 `quizRewardDate`로 별도 제한했다. DAY 키·1/2차 보상·같은 날 추가 보상 0 픽스처 통과. |
@@ -307,6 +315,30 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-14 Codex 라운드 21 재검수 보완:
+- T112의 최초 선택 마커가 이후 읽기↔관리 상호 이동을 반영하지 않아, 반대 화면에서 새로고침하면 최초 선택 화면으로 되돌아가는 회귀 가능성을 확인했다. churchAdmin이 `dashboard` 또는 `church_admin`에 있을 때 현재 view를 같은 sessionStorage 키에 동기화하도록 보완했고 계약 검사를 추가했다.
+- 375px 첫 화면과 390px 관리자 로그인 화면은 가로 넘침 없이 렌더링됐다. 로컬 브라우저의 Firebase Auth 외부 통신이 차단돼 익명 로그인은 `auth/network-request-failed`로 끝났으며 앱 자체 오류로 판정하지 않았다. 실계정 관리자 진입 선택·로그인 속도 수치는 여전히 배포/테스트 자격증명 단계에서 확인 필요하다.
+
+2026-07-14 Codex 라운드 21 T111~T112 로컬 완료:
+- T111: `migratePersonalTalentWalletIfNeeded`에 knownUserData 사전 단락을 추가해 이미 이관됐거나 개인 계정이 아닌 사용자는 Firestore transaction을 만들지 않는다. useAuth/useUserAuth 로그인 경로만 known data를 전달했고 실제 이관을 시작하는 CommunityMembershipCard/personalAccountMigration은 유지했다.
+- 기존 개인·소셜 계정은 users 문서 직후 extraOrgs 요청을 먼저 시작해 legacy migration과 병렬화했다. 기존 회원·공동체 관리자 로그인에서 `loadChurchCommunities`는 화면 전환을 막지 않고 시작만 한다. DEV에서는 `[로그인 속도] ...ms → 대상화면` 한 줄이 남는다.
+- T112: 이메일·Google·Kakao/소셜 공동체 관리자가 모두 `admin_entry`를 거치며, 375px 전폭 세로 카드 2개로 읽기/관리를 고른다. 선택은 `b114_admin_entry_v1` sessionStorage에 저장하고 로그아웃 때 제거한다. 플랫폼/슈퍼관리자·일반 회원·개인·게스트 분기는 바꾸지 않았다.
+- 검증: `npm run validate`, `npm run build`, `git diff --check` 통과. 실계정 자격증명이 없고 OAuth 계정 선택은 외부 로그인 행위라 전/후 실수치, 세 관리자 로그인 방식, 읽기/상점 쓰기 클릭은 실행하지 않았다. 배포 후 DEV 또는 로컬 테스트 계정에서 콘솔 시간 2건(이관 완료 개인·교회 계정)을 기록해야 한다.
+
+2026-07-14 Codex 라운드 20 T107~T110 완료:
+- 완료: 새한글·쉬운성경·메시지 신규 노출/저장 차단, Firestore 본인 정체성·게임 필드 상한, 익명 churches read 차단, adminEmail/adminUid 신규 private/admin 저장, 링크·빌드 ID·보안 헤더·호환 의존성 정리를 로컬 구현했다. 배포·push·커밋은 하지 않았다.
+- T108 허용/차단 표: users/roster 점수 감소·달란트 감소·점수 +15 이하·달란트 +17 이하·관리자 정정·개인 지갑 1회 이관은 허용 의도, 본인 role/churchId/accountType/isDeleted 변경·roster 없는 primaryOrgId 지정·점수 +16 이상·달란트 +18 이상·음수 잔액은 차단 의도다. 실제 규칙 배포 후 Emulator/실계정 검증은 Claude 담당이다.
+- T109 운영 읽기 감사: 9개 교회 중 adminEmail/adminUid가 9곳 본문서에 있고, 평문 churchCode가 `test_church_kakao`, `xDiqdgaKKPCTd0tYIkdm` 2곳에 있다. 값은 출력하지 않았고 데이터는 변경하지 않았다. 추가 발견: `ChurchAdminView.saveChurchCode`가 현재도 인쇄 안내용으로 평문 churchCode를 본문서에 저장하므로 단순 1회 삭제만 하면 다시 생긴다. 평문 코드를 private 설정 문서로 옮기는 후속 설계가 필요하다.
+- T109c: 신규 Google 관리자 가입은 users/church/private 문서를 같은 transaction으로 쓰므로 private write 판정을 위해 `isChurchAdminAfter`를 추가했다. 이메일 가입은 users 생성 뒤 private/admin을 쓴다. 플랫폼 관리자는 private/admin을 병합 조회하고 기존 본문서 값을 폴백한다.
+- T110: `npm audit fix` 비강제 적용으로 13건(고위험 3)→10건(고위험 1)으로 축소했다. 남은 undici는 Firebase 11.9+ 메이저, 개발 서버 Vite/esbuild는 Vite 8 메이저가 필요해 보류했다. Firebase compat 유지 검토가 선행돼야 한다.
+- 보안 헤더 주의: 현재 운영은 GitHub Pages(`gh-pages`)라 `firebase.json`의 Hosting 헤더는 현 운영 배포에 적용되지 않는다. Firebase Hosting으로 옮기거나 헤더 제어 가능한 프록시/호스팅을 써야 실효가 있다. CSP Report-Only 초안에는 Google Fonts·jsDelivr·Kakao 광고/로그인·Google APIs/Firebase·Supabase·YouTube·오디오 출처를 포함했다.
+- 검증: `npm run validate`, `npm run validate:quiz`, `npm run build`, `git diff --check` 통과. 375/390px 공개 로그인·회원가입 화면 가로 넘침 0, 콘솔 warning/error 0, 빌드 ID 표시 확인. 소셜 OAuth·게스트 익명 계정 생성·읽기·퀴즈·상점·관리자 쓰기는 운영 데이터 변경을 피하려고 미실행했다. Firestore Emulator는 Java 미설치로 실행 불가했다.
+
+2026-07-14 Codex 라운드 19 T103~T106 완결:
+- 로그인 시 quiet 명부 조회가 실패해 `extraOrgs=[]`가 된 경우에도 읽기·정답 퀴즈가 캐시를 신뢰하지 않도록 수정했다. 읽기는 진행 커밋 전 실제 명부를 엄격 조회하고, transaction 재시도용 재조회도 실패 시 빈 배열로 낮추지 않는다. 퀴즈는 정답일 때 보상 transaction 전에 엄격 조회하므로 실패 시 `quizRewardDate`가 먼저 기록되지 않는다.
+- `scripts/validate-round18.mjs`에 두 보상 경로의 strict preflight와 빈 배열 폴백 금지 계약을 추가했다.
+- 검증: `npm run validate`, `npm run validate:quiz`, `npm run test:saehangul`, `npm run build`, `git diff --check` 통과. 실계정 읽기·퀴즈는 금액과 진도를 바꾸므로 미실행. 커밋·배포·push 없음.
 
 2026-07-14 Codex 라운드 18 T97·T102 완결:
 - 활성 Firestore ruleset `c433bfb2-19e6-4073-9b84-fed16add4d98`에서 roster `talent` 화이트리스트와 관리자 음수 방지를 읽기 전용 API로 확인한 뒤 T97을 구현했다. 개인 users 잔액 1회 이관, 모든 소속 지갑 보상, 현재 공동체 잔액·상점·구매, 창구 판매·환불, 플랫폼 전체 초기화, 공동체별 잔액 목록·전환까지 반영했다.
@@ -1499,9 +1531,136 @@ T88~T96·T98~T101 검토 완료 — **병합·배포 가능**. 확인: T91 탭 �
 
 ---
 
+## 🔁 라운드 20 — 전체 검수 대응: 새한글 완전 차단 + 규칙 강화 + 노출 축소 + 부수 정리 (2026-07-14 Claude 설계)
+
+> 배경: Codex 전체 검수(2026-07-14)에서 "운영 배포 부적합" 판정. 우선순위는 검수 제안대로 **T107(새한글) → T108(자기 데이터 조작 축소) → T109(교회 문서·개인정보 노출 축소) → T110(부수 정리)**.
+> 라운드 19(달란트 소실 차단)의 커밋·배포는 Claude/사용자 담당 — Codex 작업 아님.
+> **참고(충돌 주의)**: 팝업 광고 기능은 Claude가 2026-07-14 직접 구현했다 — `settings/platformPopup` 문서, 신규 `src/components/PlatformPopupAd.jsx`, App.jsx 렌더 1줄, PlatformAdminView의 '📣 팝업 광고' 탭(기존 슈퍼관리자 교회별 공지 작성 UI는 제거, 교회별 카카오 링크 관리와 교회 관리자 자체 공지 탭은 유지). 이 파일들을 수정할 때 해당 변경을 되돌리지 말 것.
+
+### [x] T107. 새한글·회수 버전 완전 차단
+
+현황: 일반 버전 선택(PlanSelectionView.jsx:79)·게스트(GuestReaderView.jsx:18)·버전 변경(App.jsx:439)은 이미 `isBibleVersionVisibleForUser`로 필터한다. **구멍은 2종**: ① SocialOnboardingView.jsx:65가 `(BIBLE_VERSIONS[planType] || [])`를 필터 없이 렌더 ② 저장 단계 재검증 부재 — useAuth.js `handleSocialOnboardingComplete`(441행)가 planId를 그대로 저장하고, 게스트 가입 이관(useAuth.js:149)도 localStorage의 planId를 무검증 통과시킨다.
+
+1. `src/data/bible_options.js`에 중앙 헬퍼 2개 추가:
+```js
+export const getVisibleBibleVersions = (planType, user) =>
+    (BIBLE_VERSIONS[planType] || []).filter(version => isBibleVersionVisibleForUser(version, user));
+
+// planId 형식: `${planType}_${versionId}` (예: '1year_revised')
+export const isPlanIdAllowedForUser = (planId, user) =>
+    Object.entries(BIBLE_VERSIONS).some(([planType, versions]) =>
+        versions.some(version => `${planType}_${version.id}` === planId &&
+            isBibleVersionVisibleForUser(version, user)));
+```
+2. SocialOnboardingView.jsx:65 — `getVisibleBibleVersions(planType, { ...tempUser, name })`로 교체.
+3. useAuth.js `handleSocialOnboardingComplete` 진입부에 재검증: `if (!isPlanIdAllowedForUser(planId, newUser)) throw new Error('선택할 수 없는 성경 버전입니다. 버전을 다시 선택해주세요.');`
+4. 게스트 이관(useAuth.js:149): `planId: isPlanIdAllowedForUser(guest.planId, null) ? guest.planId : '1year_revised'`
+5. **기존 사용자가 이미 저장한 새한글 planId는 강제 변경하지 않는다** (2026-07-11 결정은 "신규 노출 회수"이며 본문 데이터는 유지) — 읽기 화면 회귀 없어야 함.
+6. 검증: validate 스크립트에 ① `getVisibleBibleVersions` 결과 스냅샷(user=null 기준 1year → sequential·revised·new, nt → new) ② `isPlanIdAllowedForUser('1year_saehangul', null) === false`, `('nt_message', null) === false`, `('1year_revised', null) === true` assert 추가.
+
+### [x] T108. firestore.rules — 자기 데이터 조작 축소
+
+> **전제**: 점수·달란트·진도는 클라이언트가 직접 쓰는 구조라 규칙만으로는 완전 차단이 불가능하다. 이 라운드는 ①정체성 필드 보호 ②1회 쓰기 증분 상한(실수·단순 스크립트 차단, 남용 난이도 상승)까지만 한다. 완전 해결(Cloud Functions 이관)은 아래 "로드맵 R" — **이번 라운드에서 시도 금지**. 규칙 파일은 로컬 수정까지만, 배포·활성 룰셋 확인은 Claude 담당.
+
+- **T108a. 본인 update 보호 필드 확장** (users 63~71행 분기):
+  - 블랙리스트에 `accountType`, `isDeleted` 추가 (`role`, `churchId`는 기존 유지). `isDeleted`는 관리자 흐름(App.jsx:317, PlatformAdminView.jsx:579·588)에서만 쓰므로 본인 차단 안전. accountType 전환은 기존 별도 분기(86~92행)가 그대로 담당.
+  - `primaryOrgId`는 값 변경 시 **그 조직에 내 roster 행이 실재할 때만** 허용:
+```
+(!request.resource.data.diff(resource.data).affectedKeys().hasAny(['primaryOrgId']) ||
+  request.resource.data.primaryOrgId == null ||
+  existsAfter(/databases/$(database)/documents/churches/$(request.resource.data.primaryOrgId)/roster/$(request.auth.uid)))
+```
+    `exists`가 아닌 **`existsAfter`** 필수 — 첫 가입(CommunityMembershipCard)·소셜 온보딩이 roster set과 users 쓰기를 같은 트랜잭션으로 묶으므로 커밋 후 상태로 평가해야 통과한다.
+- **T108b. 게임 필드 1회 쓰기 증분 상한** (본인 분기에만 — 관리자 분기는 정정 용도로 상한 없음):
+  - users 본인 update: `request.resource.data.get('talent', 0) >= 0 && request.resource.data.get('talent', 0) <= resource.data.get('talent', 0) + 17`, score 동일 패턴 `+15` (읽기 최대 10+연속7 / 10+보너스5. 퀴즈 +10은 별도 쓰기라 상한 내. 감소는 구매·재시작 흐름이므로 허용).
+  - roster 본인 update(153~158행)에도 동일 상한. **예외 1개**: 개인 잔액 이관(`migratePersonalTalentWalletIfNeeded`)이 기존 users.talent를 roster.talent로 한 번에 옮기므로, `resource.data.get('talent', 0) == 0 && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('talentWalletMigrated', false) == true`이면 상한 없이 허용.
+  - 정상 흐름 회귀 확인 필수: 읽기 완료(다중 지갑 적립)·퀴즈 보상·상점 구매 차감·재시작(score 0)·개인 잔액 이관·관리자 창구 판매/환불/리셋.
+- 검증: 규칙은 로컬 수정 + 위 흐름들의 실동작 클릭 확인(로컬 앱은 운영 규칙을 쓰므로 규칙 자체 검증은 Claude가 배포 단계에서 수행). 규칙 diff와 함께 "허용/차단 표"를 작업 로그에 남길 것.
+
+### [x] T109. 교회 문서·개인정보 노출 축소
+
+- **T109a. churches read 축소**: `allow read: if isSignedIn()` → `isRealUser()` (익명 게스트 차단). 게스트 플로우(둘러보기 → 읽기 → 영상)가 churches를 읽는 지점이 없는지 grep + 실제 클릭으로 확인하고, 있으면 해당 기능을 게스트에서 숨기는 쪽으로(게스트에 교회 정보 필요 없음).
+- **T109b. 레거시 평문 입장코드 조사** (읽기 전용 스크립트): 현행 등록 코드는 `churchCodeHash`만 저장하지만(useAuth.js:1013·1071), 오래된 churches 문서에 평문 `churchCode`/`code` 필드가 남아 있는지 전수 조사 → 결과를 "Codex → Claude 메모"에 보고만 (필드 삭제 마이그레이션은 Claude/사용자 실행).
+- **T109c. adminEmail·adminUid 이관 설계**: churches 본문서의 `adminEmail`·`adminUid`를 `churches/{id}/private/admin` 하위문서로 이동 (규칙: 그 교회 관리자 + 플랫폼 관리자만 read/write). 쓰기 지점 3곳(useAuth.js:1013·1071, PlatformAdminView.jsx:367), 표시 지점 2곳(PlatformAdminView.jsx:821·932 — 플랫폼 관리자 화면이라 private 읽기 가능, 목록 화면은 필요 시 지연 조회). 신규 등록부터 private에 쓰고 본문서에는 쓰지 않는다. 기존 문서 표시는 본문서 값 폴백 유지, 백필·본문서 필드 제거는 Claude 실행.
+- **범위 밖 명시**: users 문서의 email·birthdate 같은-교회 노출은 규칙의 필드 단위 read 제어가 불가능해 구조 변경(민감 필드의 private/profile 이관 또는 랭킹의 roster 전환)이 필요하다 — **라운드 21 후보**로 보류, 이번 라운드에서 건드리지 말 것.
+
+### [x] T110. 부수 정리 일괄
+
+1. 카카오 상담 링크 `http` → `https` (src/data/constants.js:14).
+2. **배포 식별자 자동화**: index.html:8의 고정 문자열(`2026-06-22-read-label-v1`)을 빌드 시각 기반으로 — vite.config.js에 `transformIndexHtml` 미니 플러그인을 추가해 `%BUILD_ID%` 플레이스홀더를 빌드 시각(`new Date().toISOString()` 기반 `YYYY-MM-DD-HHmm`)으로 치환. public/manifest.webmanifest:5의 버전 문자열은 기능상 불필요하면 제거, 필요하면 동일하게 빌드 스크립트로 갱신.
+3. **보안 헤더** (firebase.json hosting.headers, 모든 경로): `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`, 클릭재킹 방지는 `Content-Security-Policy: frame-ancestors 'self'` 한 줄로. **전체 CSP는 이번에 강제하지 말고** `Content-Security-Policy-Report-Only`로 초안만 — 실동작에 필요한 외부 도메인(유튜브 embed, 카카오, 구글 로그인, gstatic, firestore/identitytoolkit 등)을 네트워크 요청 기준으로 수집해 초안 헤더와 함께 메모로 보고 (강제 적용은 다음 라운드에서 Claude 확인 후).
+4. **의존성 취약점**: `npm audit` high 3건 내역 확인 → semver 호환(breaking 없는) 업데이트만 적용하고 빌드+validate 재확인. major 업그레이드가 필요한 건은 목록만 메모로 보고.
+5. 번들 1.31MB: 주요인이 firebase compat 번들이라 "compat 유지" 방침과 충돌 — 이번 범위 밖, 손대지 말 것.
+
+### 로드맵 R — 서버 권위(Cloud Functions) 이관 (사용자 승인 대기 — Codex 시작 금지)
+
+규칙만으로 못 막는 항목의 근본 해결. kakao-auth로 함수 인프라는 이미 있다. 대상: ① 읽기 완료·퀴즈 보상 적립 ② 상점 구매(잔액 차감+구매 기록 원자화) ③ 가입 입장코드 서버 검증 ④ churchDirectory·platformStats 쓰기 회수 ⑤ dailyVideos lazy-fill(미래 날짜 선점 차단). 별도 라운드로 설계 예정.
+`videoAutoConfig`의 YouTube API 키 노출은 코드가 아니라 운영 조치 — Google Cloud 콘솔에서 키에 HTTP referrer 제한 + YouTube Data API 전용 스코프 적용 (Claude/사용자, 즉시 가능).
+
+완료 기준: `npm run build` + `npm run validate` 통과, 게스트·기존 회원 로그인·소셜 온보딩(버전 선택 화면에 새한글 부재 확인)·읽기 완료·상점 구매 흐름 클릭 확인, 375px 가로 넘침 없음. 커밋 금지(Claude 담당).
+
+---
+
+## 🔁 라운드 21 — 로그인 지연 단축 + 관리자 진입 선택 화면 (2026-07-14 사용자 지시, Claude 설계 — ⚠️ 라운드 20 완결 후 시작)
+
+> 사용자 보고: "로그인 후에 바로 안 들어가고 몇 초간 지연", "관리자는 로그인 후 관리 모드와 성경 읽기를 선택하고 싶다".
+> 참고: 라운드 20 T109에서 "라운드 21 후보"로 적어둔 개인정보 필드 이관은 **라운드 22 후보로 밀린다** — 이 라운드가 아니다.
+
+### [x] T111. 로그인 지연 단축 — 순차 네트워크 왕복 제거
+
+**원인 (Claude 분석)**: 로그인 확정까지 Firestore/Auth 왕복이 직렬로 6~7회다. 이관이 끝난 기존 사용자도 매번 다 낸다:
+`auth 로그인(1, 구포맷 재시도 시 2) → users 문서(1) → [자격증명·talent 이관: 이관 완료자는 0] → extraOrgs 대기(1, 병렬 시작이나 뒤에서 대기) → 개인 지갑 이관 트랜잭션(1~2, 이관 완료자도 매번 실행됨 ←낭비) → loadChurchCommunities await(1 ←불필요한 직렬화) → setView`.
+세션 복원(useUserAuth)도 같은 체인이라 재방문 첫 화면도 같이 느리다.
+
+- **T111a. `migratePersonalTalentWalletIfNeeded` 사전 단락** (src/utils/helpers.js:69):
+  - 시그니처에 3번째 선택 인자 `knownUserData` 추가. `knownUserData`가 주어지고 `knownUserData.talentWalletMigrated === true || knownUserData.accountType !== 'personal'`이면 **트랜잭션 없이 즉시 null 반환**. 트랜잭션 내부의 기존 재확인(82행)은 동시성 안전용으로 유지.
+  - 호출 지점 적용: useAuth.js `migratePersonalWallet`(53행 — `user` 전달), useUserAuth.js(124행 — `user` 전달). CommunityMembershipCard·personalAccountMigration의 호출은 "이관이 실제 필요한 시점"이므로 **건드리지 않는다**.
+  - 효과: 이관 완료된 개인 계정의 매 로그인마다 나가던 트랜잭션(get×2+커밋) 제거.
+- **T111b. `loadChurchCommunities` await 제거** (useAuth.js:642·710):
+  - `await loadChurchCommunities(...)` → `loadChurchCommunities(...)` 시작만 하고 화면 전환. App.jsx 390~394의 효과가 dashboard 진입 시 어차피 재호출하며, PlanSelectionView·DashboardView 모두 `churchCommunities`를 prop으로 반응형 수신하므로 늦게 채워져도 된다.
+  - 확인 필수: 부서·소그룹 선택 흐름(plan_type_select → community_select)에서 목록이 잠깐 비었다가 채워질 때 빈 상태 문구가 자연스러운지 클릭 확인 (어색하면 "불러오는 중..." 1줄만).
+- **T111c. 소셜 로그인 경로 병렬화** (useAuth.js `openExistingSocialUser` 236~248, `openExistingPersonalUser` ~221):
+  - `user.extraOrgs = await loadUserExtraOrgs(...)`가 migrateTalent 뒤에 직렬로 있다 → handleMemberLogin(627행)처럼 **문서 로드 직후 `extraOrgsPromise`를 먼저 시작**하고 마지막에 await.
+- **T111d. 전/후 계측**: `import.meta.env.DEV`일 때만 `performance.now()` 기반으로 "로그인 진입~setView" 구간을 console.info 1줄 로그. 작업 로그에 전/후 수치(이관 완료 개인 계정·교회 계정 각 1회) 기록 후, 계측 코드는 DEV 가드 안에 남겨둔다.
+- **알려진 한계 (수정 금지)**: ① 카카오 로그인의 Cloud Functions 콜드 스타트(1~3초)는 코드로 제거 불가 — min instances는 유료라 보류 ② auth 왕복 1회 + users 문서 1회는 필수 비용 ③ 구포맷 이메일 재시도(1회 추가)는 레거시 호환용이라 유지.
+- 기대: 이관 완료 사용자 기준 직렬 왕복 6~7회 → **3회**(auth → users 문서 → extraOrgs 병렬 대기).
+
+### [x] T112. 관리자 로그인 후 진입 선택 화면 (T102 개정)
+
+> T102의 "관리자도 무조건 읽기 대시보드 직행"을 **선택 화면**으로 바꾼다. 이 라운드 이후 T102 서술과 충돌하면 이 설계가 우선.
+
+- **신규 view `admin_entry`** (churchAdmin 전용):
+  - App.jsx 인증 효과의 churchAdmin 분기(현재 `setView('dashboard')` 직행, 250~256행 부근)를 `setView('admin_entry')`로.
+  - superAdmin/platformAdmin은 변경 없음(관리자 화면 직행). admin_signup_complete(등록 완료 → 관리 화면 유도) 흐름도 변경 없음.
+- **화면 구성** (어르신 친화, 로그인 화면과 같은 톤 — App.jsx에 인라인 섹션이면 충분, 별도 파일로 뺄 필요 없음):
+  - 상단 인사: "🙏 {이름}님, 어서 오세요" + 교회명 한 줄.
+  - 대형 카드 버튼 2개 (세로 배치, 전폭):
+    1. **📖 성경 읽기** — "오늘의 말씀을 읽어요" → `setView('dashboard')`
+    2. **⚙️ 공동체 관리** — "성도 현황·달란트 상점·설정" → `setView('church_admin')`
+  - 두 버튼은 시각적 비중 동급 (주/보조 구분 없음 — 사용자가 매일 고르는 화면).
+- **세션당 1회만 표시**: 선택 시 `sessionStorage.setItem('b114_admin_entry_v1', 'dashboard'|'church_admin')`. 인증 효과에서 마커가 있으면 그 화면으로 직행 — 읽기 중 새로고침할 때마다 선택 화면이 다시 뜨는 성가심 방지. 로그아웃 시 마커 제거(handleLogout).
+- 기존 상호 진입은 그대로: 대시보드 헤더 [⚙️ 관리] 버튼, 관리자 화면 [← 성경 읽기로] — 선택 후에도 언제든 오갈 수 있다.
+- 확인 필수: 카카오·구글·이메일 세 가지 관리자 로그인 모두 선택 화면 경유, 375px 레이아웃, 게스트/일반 교인/개인 계정은 이 화면을 절대 보지 않음.
+
+완료 기준: `npm run build` + `npm run validate` 통과, T111d 전/후 수치 기록, 관리자 3종 로그인·일반 로그인·소셜 로그인·부서 선택 흐름 클릭 확인, 375px 확인. 커밋 금지(Claude 담당).
+
+---
+
+## ✅ Claude 리뷰 결과 — 라운드 19·20·21 (2026-07-14)
+
+검토 완료 — **Claude 보강 2건 반영 후 병합·배포**. 라운드 19(보상 전 strict 명부 조회, 실패의 빈 목록 강등 제거), 라운드 20(새한글 이중 차단, 정체성 필드 보호, churches read 축소, private/admin 분리, 보안 헤더 초안, 빌드 ID 자동화), 라운드 21(지갑 이관 사전 단락, loadChurchCommunities 비대기, 소셜 경로 병렬화, admin_entry 선택 화면) 모두 설계 일치 확인. 검증기 5종+빌드 Claude 재실행 통과.
+
+**Claude 보강 2건 (firestore.rules — 배포 차단급이라 Claude가 직접 수정)**:
+1. **users 본인 update 상한이 [점수 이중화] 마이그레이션을 깨뜨림** — `migrateTalentIfNeeded`(helpers.js:32)는 미이관 계정 로그인 시 `talent = score`(수백 점프)·`score += 사용분`을 한 번에 쓰므로 +17/+15 상한에 걸려 **레거시 계정 로그인이 영구 실패**한다. `talentMigrated false→true` 전환 쓰기 1회에 한해 상한 예외 추가. 신규 계정은 생성 시 `talentMigrated: true`(useAuth.js:160)라 예외를 재사용할 수 없다.
+2. **roster 본인 update의 score +15 상한이 복구 경로를 깨뜨림** — 읽기 트랜잭션은 roster.score를 users.score 절대값으로 동기화하는데, 과거 명부 미로드 버그로 며칠 밀린 행(운영에 실존)은 점프가 +15를 넘어 **읽기 완료가 영구 실패**한다. "증분 +15 또는 `getAfter(users).score` 이하" 이중 조건으로 완화 — roster.score는 users.score(자체 상한 적용됨)의 미러라는 불변식을 규칙으로 표현.
+
+배포(2026-07-14, Claude): firestore.rules → Firebase, 클라이언트 → gh-pages. 배포 후 사용자 실환경 검증 항목: ① 첫 화면에서 새한글 미노출(소셜 온보딩 3단계 포함) ② 기존 계정 로그인 속도 체감 ③ 관리자 로그인 → 선택 화면 ④ 읽기 완료·퀴즈 보상 정상 적립 ⑤ DEV 콘솔 `[로그인 속도]` 수치 기록.
+
+---
+
 ## 📮 Claude → Codex 메모
 
 - 이 설계는 3차 자체 점검을 거친 확정본이다. "더 나은 방법"이 보여도 위 설계 결정 4가지(가상 교회/익명 인증/localStorage 전용/클라이언트 상수)는 바꾸지 말고, 제안은 위 메모란에 적어라.
-- firestore.rules의 `users` read 규칙에 일반 교인 멤버 쿼리가 거부되는 것으로 보이는 별개 버그가 있다. **이 저장소 작업에서 건드리지 말 것** — 별도 세션에서 처리 중이다. 랭킹이 빈 화면이어도 이번 작업의 회귀가 아니다.
+- ~~firestore.rules의 `users` read 규칙 버그 — 건드리지 말 것~~ (해결됨 — 현행 규칙 49~62행에 랭킹 read 분기 반영 완료). 2026-07-14부터 규칙 수정은 **라운드 20 T108·T109 범위 안에서만** 허용, 로컬 수정까지만 하고 배포는 Claude 담당.
 - Firebase는 compat(v8 스타일) API만 쓴다. `import { doc, getDoc }` 같은 modular API를 섞지 마라.
 - 커밋 푸시·배포는 전부 사용자 몫이다. 로컬 커밋까지만.

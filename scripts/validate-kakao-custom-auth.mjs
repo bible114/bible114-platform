@@ -31,7 +31,7 @@ assert.equal(sanitizeKakaoCallbackUrl('https://www.bible114.net/?error=access_de
 assert.match(auth, /sessionStorage\.setItem\(KAKAO_STATE_KEY/);
 assert.match(auth, /isValidKakaoState\(callback\.state, expectedState\)/);
 assert.match(auth, /auth\.signInWithCustomToken\(profile\.token\)/);
-assert.match(auth, /openExistingSocialUser\(firebaseUser, doc\)/);
+assert.match(auth, /openExistingSocialUser\(firebaseUser, doc, loginTiming\)/);
 assert.match(auth, /linkWithPopup\(new firebase\.auth\.GoogleAuthProvider\(\)\)/);
 assert.match(auth, /exchangeKakaoCode\(\{ code: callback\.code, redirectUri: getKakaoRedirectUri\(\), linkIdToken \}\)/);
 assert.match(auth, /authProviders: firebase\.firestore\.FieldValue\.arrayUnion\('kakao\.com'\)/);

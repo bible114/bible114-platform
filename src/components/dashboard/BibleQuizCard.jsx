@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { db, firebase } from '../../utils/firebase';
 import { QUIZ_BANK, getKstDateString } from '../../data/bibleQuiz';
 import { getQuizProgressKey, getQuizRewardForAnswer } from '../../utils/quizProgress';
+import { loadUserExtraOrgsStrict } from '../../utils/roster';
 import { getRosterOrgIds, updateRosterTalents } from '../../utils/talentWallet';
 import {
     getReadingRangeForDay,
@@ -209,6 +210,12 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
         if (!quiz || !quizKey || selectedIndex === null || submitting || finished || skipped) return;
         setSubmitting(true);
         try {
+            // 정답일 때만 보상 지갑이 필요하다. 로그인 시 명부 조회 실패로 캐시가
+            // 비어 있을 수 있으므로 보상 날짜를 기록하기 전에 실제 명부를 확인한다.
+            // 조회가 실패하면 transaction 자체를 시작하지 않아 당일 보상이 소진되지 않는다.
+            const rewardRosterOrgs = selectedIndex === quiz.answerIndex
+                ? (await loadUserExtraOrgsStrict(currentUser.uid)).slice(0, 3)
+                : null;
             const result = await db.runTransaction(async (transaction) => {
                 const userRef = db.collection('users').doc(currentUser.uid);
                 const snap = await transaction.get(userRef);
@@ -251,7 +258,10 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                 const nextTalent = (data.talent || 0) + (rewardsUserWallet ? reward : 0);
                 const rosterWallets = [];
                 if (reward > 0) {
-                    const refs = getRosterOrgIds(currentUser).map(orgId => ({
+                    const refs = getRosterOrgIds({
+                        ...currentUser,
+                        extraOrgs: rewardRosterOrgs || [],
+                    }).map(orgId => ({
                         orgId,
                         ref: db.collection('churches').doc(orgId).collection('roster').doc(currentUser.uid),
                     }));
@@ -315,6 +325,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                 },
                 ...(result.reward > 0 ? { quizRewardDate: todayKey, quizRewardAmount: result.reward } : {}),
                 ...(result.userTalent !== null && result.userTalent !== undefined ? { talent: result.userTalent } : {}),
+                ...(rewardRosterOrgs ? { extraOrgs: rewardRosterOrgs } : {}),
             }, result.rosterTalentByOrgId));
 
             if (result.alreadyDone) {

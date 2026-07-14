@@ -16,11 +16,13 @@ import LoginView from './components/LoginView';
 import PlanSelectionView from './components/PlanSelectionView';
 import DashboardView from './components/DashboardView';
 import GuestReaderView from './components/GuestReaderView';
+import PlatformPopupAd from './components/PlatformPopupAd';
 import SocialOnboardingView from './components/SocialOnboardingView';
 import { CommunityMembershipCard } from './components/dashboard';
 import { getPendingPersonalMigration, migrateChurchMemberToPersonal } from './utils/personalAccountMigration';
 import { ToastContainer, useToast } from './components/admin';
 import { useTTS } from './hooks/useTTS';
+import { ADMIN_ENTRY_SESSION_KEY } from './data/constants';
 
 const ChurchAdminView = lazy(() => import('./components/ChurchAdminView'));
 const PlatformAdminView = lazy(() => import('./components/PlatformAdminView'));
@@ -218,11 +220,6 @@ const App = () => {
     const [changingPassword, setChangingPassword] = useState(null); // 비밀번호 변경 대상
     const [newPassword, setNewPassword] = useState('');       // 새 비밀번호
     const [adminSortBy, setAdminSortBy] = useState('name'); // 'name', 'day', 'score', 'subgroup'
-    const [announcementInput, setAnnouncementInput] = useState({
-        text: '',
-        links: [{ url: '', text: '' }], // 여러 링크를 담을 수 있는 배열
-        enabled: false
-    }); // 공지 입력
     const [kakaoLinkInput, setKakaoLinkInput] = useState(''); // 카카오 링크 입력
     const [fontSize, setFontSize] = useState(() => {
         const saved = localStorage.getItem('bible_fontSize');
@@ -251,9 +248,10 @@ const App = () => {
                 if (currentUser.role === 'superAdmin' || currentUser.role === 'platformAdmin') {
                     loadSuperAdminData();
                 } else if (currentUser.role === 'churchAdmin') {
-                    // 교회 관리자는 부서/소그룹 없이 바로 대시보드로
+                    // 교회 관리자는 세션 첫 진입 때 읽기/관리 화면을 직접 고른다.
                     if (dashboardUser?.churchId) loadChurchCommunities(dashboardUser.churchId);
-                    setView('dashboard');
+                    const savedAdminEntry = sessionStorage.getItem(ADMIN_ENTRY_SESSION_KEY);
+                    setView(['dashboard', 'church_admin'].includes(savedAdminEntry) ? savedAdminEntry : 'admin_entry');
                 } else {
                     if (dashboardUser?.churchId) loadChurchCommunities(dashboardUser.churchId);
                     if (currentUser.accountType === 'personal' && currentUser.planId) {
@@ -273,6 +271,14 @@ const App = () => {
         }
     }, [currentUser, authLoading, resetReaderSessionState, view, tempUser?.uid]);
 
+    // 관리자가 선택 화면 이후 읽기/관리 화면을 오가면 현재 화면을 세션 기준으로 갱신한다.
+    // 그래야 관리 화면에서 새로고침했을 때 최초 선택 화면으로 되돌아가지 않는다.
+    useEffect(() => {
+        if (currentUser?.role !== 'churchAdmin') return;
+        if (!['dashboard', 'church_admin'].includes(view)) return;
+        sessionStorage.setItem(ADMIN_ENTRY_SESSION_KEY, view);
+    }, [currentUser?.role, view]);
+
     // getLevelInfo는 data/levels에서 import됨
 
 
@@ -283,21 +289,6 @@ const App = () => {
 
 
 
-
-    // 공지 저장 (슈퍼관리자용 - 특정 교회 선택 시 해당 교회 경로에 저장)
-    const saveAnnouncement = async (churchId) => {
-        if (!db || !churchId) return;
-        try {
-            await db.collection('churches').doc(churchId).collection('settings').doc('announcement').set({
-                ...announcementInput,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            alert('공지가 저장되었습니다!');
-        } catch (e) {
-            console.error("공지 저장 실패:", e);
-            alert('저장 실패');
-        }
-    };
 
     const saveKakaoLink = async (churchId) => {
         if (!db || !churchId) return;
@@ -417,8 +408,19 @@ const App = () => {
             db.collection('users').get(),
             db.collection('churches').get(),
         ]);
+        const churches = await Promise.all(churchesSnap.docs.map(async doc => {
+            const church = { id: doc.id, ...doc.data() };
+            try {
+                const adminDoc = await doc.ref.collection('private').doc('admin').get();
+                return adminDoc.exists ? { ...church, ...adminDoc.data() } : church;
+            } catch (error) {
+                console.error('교회 관리자 비공개 정보 로드 실패:', doc.id, error);
+                return church;
+            }
+        }));
         setAllUsers(usersSnap.docs.map(doc => userDocToState(doc)).filter(u => !u.isDeleted));
-        setAllChurches(churchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(c => !c.isDeleted));
+        // 기존 본문서 adminEmail/adminUid 값은 church에 남아 있어 자동 폴백된다.
+        setAllChurches(churches.filter(c => !c.isDeleted));
     };
 
     const {
@@ -569,6 +571,7 @@ const App = () => {
 
     const handleLogout = () => {
         if (auth) auth.signOut();
+        sessionStorage.removeItem(ADMIN_ENTRY_SESSION_KEY);
         resetReaderSessionState();
         setCurrentUser(null); setTempUser(null); setChurchCommunities([]);
         setLoginInitialTab('member');
@@ -645,9 +648,6 @@ const App = () => {
                     allChurches={allChurches}
                     DEFAULT_DEPARTMENTS={DEFAULT_DEPARTMENTS}
                     BIBLE_VERSIONS={BIBLE_VERSIONS}
-                    announcementInput={announcementInput}
-                    setAnnouncementInput={setAnnouncementInput}
-                    saveAnnouncement={saveAnnouncement}
                     editingUser={editingUser}
                     setEditingUser={setEditingUser}
                     startEditUser={startEditUser}
@@ -713,6 +713,33 @@ const App = () => {
                 handleSubgroupSelect={handleSubgroupSelect}
                 churchCommunities={churchCommunities}
             />
+        );
+    } else if (view === 'admin_entry' && currentUser?.role === 'churchAdmin') {
+        const chooseAdminEntry = target => {
+            sessionStorage.setItem(ADMIN_ENTRY_SESSION_KEY, target);
+            setView(target);
+        };
+        pageContent = (
+            <div className="min-h-screen bg-slate-50 px-5 py-10 flex items-center justify-center" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
+                <section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl border border-slate-100">
+                    <div className="text-center">
+                        <p className="text-4xl" aria-hidden="true">🙏</p>
+                        <h1 className="mt-3 text-2xl font-black text-slate-900">{currentUser.name}님, 어서 오세요</h1>
+                        <p className="mt-2 text-sm font-bold text-slate-500">{currentUser.churchName || '공동체 관리자'}</p>
+                    </div>
+                    <div className="mt-7 space-y-4">
+                        <button type="button" onClick={() => chooseAdminEntry('dashboard')} className="w-full rounded-2xl border-2 border-blue-200 bg-blue-50 px-5 py-5 text-left transition-colors hover:bg-blue-100">
+                            <span className="block text-xl font-black text-slate-900">📖 성경 읽기</span>
+                            <span className="mt-1 block text-sm font-bold text-slate-600">오늘의 말씀을 읽어요</span>
+                        </button>
+                        <button type="button" onClick={() => chooseAdminEntry('church_admin')} className="w-full rounded-2xl border-2 border-indigo-200 bg-indigo-50 px-5 py-5 text-left transition-colors hover:bg-indigo-100">
+                            <span className="block text-xl font-black text-slate-900">⚙️ 공동체 관리</span>
+                            <span className="mt-1 block text-sm font-bold text-slate-600">성도 현황·달란트 상점·설정</span>
+                        </button>
+                    </div>
+                    <button type="button" onClick={handleLogout} className="mt-6 w-full py-3 text-sm font-bold text-slate-500">로그아웃</button>
+                </section>
+            </div>
         );
     } else if (view === 'admin_signup_complete' && currentUser?.role === 'churchAdmin') {
         pageContent = (
@@ -835,6 +862,8 @@ const App = () => {
     return (
         <>
             {pageContent}
+            {/* 플랫폼 팝업 광고 — 성경 읽기 화면(회원·게스트)에서 모두에게 표시 */}
+            {((view === 'dashboard' && currentUser) || (view === 'guest' && currentUser?.role === 'guest')) && <PlatformPopupAd />}
             <ToastContainer toasts={adminAuthToasts.toasts} onClose={adminAuthToasts.removeToast} />
         </>
     );

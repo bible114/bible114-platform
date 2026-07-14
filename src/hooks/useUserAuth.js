@@ -123,7 +123,8 @@ export const useUserAuth = () => {
                             user.extraOrgs = await extraOrgsPromise;
                             const walletMigration = await migratePersonalTalentWalletIfNeeded(
                                 firebaseUser.uid,
-                                user.primaryOrgId
+                                user.primaryOrgId,
+                                user
                             );
                             if (walletMigration) {
                                 user.talent = 0;

@@ -32,3 +32,12 @@ export const BIBLE_VERSIONS = {
         { id: 'saehangul', name: '새한글 114', desc: '새한글성경으로 읽는 신약 일독', tagName: '새한글성경 신약일독', allowedChurchIds: ALL_VERSION_ALLOWED_CHURCH_IDS },
     ]
 };
+
+export const getVisibleBibleVersions = (planType, user) =>
+    (BIBLE_VERSIONS[planType] || []).filter(version => isBibleVersionVisibleForUser(version, user));
+
+// planId 형식: `${planType}_${versionId}` (예: '1year_revised')
+export const isPlanIdAllowedForUser = (planId, user) =>
+    Object.entries(BIBLE_VERSIONS).some(([planType, versions]) =>
+        versions.some(version => `${planType}_${version.id}` === planId &&
+            isBibleVersionVisibleForUser(version, user)));

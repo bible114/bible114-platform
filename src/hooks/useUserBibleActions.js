@@ -76,10 +76,10 @@ export const useUserBibleActions = (
         try {
             // Firestore Transaction: 동시 다중 클릭/멀티 디바이스 race condition 방지
             // 문서에서 최신 값을 읽어 계산하므로 점수/진도 손실 없음
-            let refreshedExtraOrgs = (Array.isArray(currentUser.extraOrgs) ? currentUser.extraOrgs : [])
-                .filter(org => org?.uid === uid && typeof org.orgId === 'string' && org.orgId)
-                .slice(0, 3);
-            let shouldRefreshExtraOrgs = true;
+            // 로그인 때의 quiet 명부 조회가 일시 실패하면 extraOrgs가 빈 배열일 수 있다.
+            // 그 캐시로 개인 계정 보상을 처리하면 users 지갑에도 roster 지갑에도
+            // 달란트가 남지 않으므로, 읽기 진행을 기록하기 전에 실제 명부를 확인한다.
+            let refreshedExtraOrgs = (await loadUserExtraOrgsStrict(uid)).slice(0, 3);
 
             const commitRead = (rosterOrgs) => db.runTransaction(async (transaction) => {
                 const userRef = db.collection('users').doc(uid);
@@ -241,14 +241,9 @@ export const useUserBibleActions = (
                 resultData = await commitRead(refreshedExtraOrgs);
             } catch (firstError) {
                 if (refreshedExtraOrgs.length === 0) throw firstError;
-                try {
-                    refreshedExtraOrgs = (await loadUserExtraOrgsStrict(uid)).slice(0, 3);
-                } catch {
-                    // 제명 행 때문에 첫 transaction이 원자 취소됐지만 명부 재조회도
-                    // 일시 실패하면 개인 읽기는 보존한다. 다음 읽기의 절대 진도값이 roster를 복구한다.
-                    refreshedExtraOrgs = [];
-                    shouldRefreshExtraOrgs = false;
-                }
+                // 명부 행이 첫 transaction 사이에 바뀐 경우 최신 목록으로 한 번만 재시도한다.
+                // 재조회 실패를 빈 목록으로 바꾸지 않는다. 그래야 보상 없는 완료가 커밋되지 않는다.
+                refreshedExtraOrgs = (await loadUserExtraOrgsStrict(uid)).slice(0, 3);
                 resultData = await commitRead(refreshedExtraOrgs);
             }
 
@@ -295,7 +290,7 @@ export const useUserBibleActions = (
                 ? updateRosterTalents({
                     ...previous,
                     ...updateData,
-                    ...(shouldRefreshExtraOrgs ? { extraOrgs: refreshedExtraOrgs } : {}),
+                    extraOrgs: refreshedExtraOrgs,
                 }, rosterTalentByOrgId)
                 : previous);
             setViewingDay(nextViewingDay);

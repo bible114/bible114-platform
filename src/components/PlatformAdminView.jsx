@@ -18,8 +18,6 @@ const PlatformAdminView = ({
     allUsers,
     allChurches,
     DEFAULT_DEPARTMENTS,
-    announcementInput, setAnnouncementInput,
-    saveAnnouncement,
     editingUser, setEditingUser,
     startEditUser, saveEditUser,
     changingPassword, setChangingPassword,
@@ -47,6 +45,9 @@ const PlatformAdminView = ({
     const [hiddenToggling, setHiddenToggling] = React.useState(false);
     const [platformKakaoInput, setPlatformKakaoInput] = React.useState('');
     const [savingPlatformKakao, setSavingPlatformKakao] = React.useState(false);
+    // 팝업 광고 (모든 사용자 대상, settings/platformPopup)
+    const [popupInput, setPopupInput] = React.useState({ enabled: false, title: '', text: '', imageUrl: '', links: [] });
+    const [popupSaving, setPopupSaving] = React.useState(false);
     const [directoryRebuilding, setDirectoryRebuilding] = React.useState(false);
     const [checkingUnaffiliatedChurch, setCheckingUnaffiliatedChurch] = React.useState(false);
     const [fetchedCurrentPassword, setFetchedCurrentPassword] = React.useState(null); // changingPassword 모달에서 조회한 현재 암호
@@ -121,6 +122,45 @@ const PlatformAdminView = ({
             alert('저장 실패: ' + e.message);
         } finally {
             setSavingAutoConfig(false);
+        }
+    };
+
+    React.useEffect(() => {
+        if (tab !== 'popup' || !db) return;
+        db.collection('settings').doc('platformPopup').get()
+            .then(doc => {
+                if (!doc.exists) return;
+                const d = doc.data();
+                setPopupInput({
+                    enabled: !!d.enabled,
+                    title: d.title || '',
+                    text: d.text || '',
+                    imageUrl: d.imageUrl || '',
+                    links: Array.isArray(d.links) ? d.links : [],
+                });
+            })
+            .catch(e => console.error('platformPopup 로드 실패:', e));
+    }, [tab, db]);
+
+    const savePlatformPopup = async () => {
+        if (!db || popupSaving) return;
+        setPopupSaving(true);
+        try {
+            await db.collection('settings').doc('platformPopup').set({
+                enabled: popupInput.enabled,
+                title: popupInput.title.trim(),
+                text: popupInput.text.trim(),
+                imageUrl: popupInput.imageUrl.trim(),
+                links: (popupInput.links || []).filter(link => link.url && link.text),
+                // updatedAt이 팝업 ID 역할 — 저장할 때마다 "오늘 하루 보지 않기"가 초기화되어 다시 노출된다.
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            });
+            alert('팝업 광고가 저장되었습니다!');
+        } catch (e) {
+            console.error('팝업 광고 저장 실패:', e);
+            alert('저장 실패');
+        } finally {
+            setPopupSaving(false);
         }
     };
 
@@ -323,8 +363,6 @@ const PlatformAdminView = ({
                 pastorName: '',
                 denomination: '',
                 churchCodeHash: null,
-                adminUid: null,
-                adminEmail: null,
                 isVirtual: true,
                 departments: [{
                     id: 'personal',
@@ -591,7 +629,7 @@ const PlatformAdminView = ({
         ['overview', '📊 전체 현황'],
         ['churches', '🏛️ 교회 목록'],
         ['members', '👥 회원 목록'],
-        ['announcement', '📢 공지 관리'],
+        ['popup', '📣 팝업 광고'],
         ['dailyVideo', '🎬 매일 영상'],
         ['sync', '🛠 시스템'],
     ];
@@ -1017,11 +1055,100 @@ const PlatformAdminView = ({
                     </div>
                 )}
 
-                {/* ── 공지 관리 ── */}
-                {tab === 'announcement' && (
+                {/* ── 팝업 광고 (모든 사용자) / 교회별 카카오 ── */}
+                {tab === 'popup' && (
                     <div className="space-y-5">
                         <div className="bg-white rounded-xl shadow-sm p-6">
-                            <h2 className="text-base font-bold text-slate-800 mb-4">📢 공지 / 카카오 관리</h2>
+                            <h2 className="text-base font-bold text-slate-800 mb-1">📣 팝업 광고 (모든 사용자)</h2>
+                            <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+                                활성화하면 모든 사용자(게스트 포함)의 성경 읽기 화면에 팝업으로 표시됩니다.
+                                내용을 다시 저장하면 &quot;오늘 하루 보지 않기&quot;를 눌렀던 사용자에게도 새 팝업으로 다시 보여요.
+                            </p>
+                            <label className="block text-sm font-bold text-slate-600 mb-2">제목</label>
+                            <input type="text" value={popupInput.title}
+                                onChange={e => setPopupInput(prev => ({ ...prev, title: e.target.value }))}
+                                placeholder="예: 가을 성경통독 챌린지 안내"
+                                className="w-full p-3 border rounded-xl text-sm bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none" />
+                            <label className="block text-sm font-bold text-slate-600 mb-2 mt-4">내용</label>
+                            <textarea value={popupInput.text}
+                                onChange={e => setPopupInput(prev => ({ ...prev, text: e.target.value }))}
+                                placeholder="팝업에 표시할 내용을 입력하세요..."
+                                rows={4}
+                                className="w-full p-3 border rounded-xl text-sm resize-none focus:ring-2 focus:ring-blue-500 outline-none" />
+                            <label className="block text-sm font-bold text-slate-600 mb-2 mt-4">이미지 URL (선택)</label>
+                            <input type="url" value={popupInput.imageUrl}
+                                onChange={e => setPopupInput(prev => ({ ...prev, imageUrl: e.target.value }))}
+                                placeholder="https://... (팝업 상단에 표시될 이미지)"
+                                className="w-full p-3 border rounded-xl text-sm bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none" />
+
+                            <div className="space-y-3 mt-4">
+                                <div className="flex justify-between items-center">
+                                    <label className="text-sm font-bold text-slate-600">링크 버튼</label>
+                                    <button onClick={() => setPopupInput(prev => ({ ...prev, links: [...(prev.links || []), { url: '', text: '' }] }))}
+                                        className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 hover:bg-blue-100">
+                                        <Icon name="plus" size={12} /> 버튼 추가
+                                    </button>
+                                </div>
+                                {(popupInput.links || []).map((link, idx) => (
+                                    <div key={idx} className="bg-slate-50 p-3 rounded-xl relative border border-slate-100">
+                                        <button onClick={() => setPopupInput(prev => ({ ...prev, links: prev.links.filter((_, i) => i !== idx) }))}
+                                            className="absolute -top-2 -right-2 bg-white text-red-500 p-1 rounded-full shadow border border-red-100">
+                                            <Icon name="trash" size={12} />
+                                        </button>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <input type="text" value={link.text}
+                                                onChange={e => { const links = [...popupInput.links]; links[idx] = { ...links[idx], text: e.target.value }; setPopupInput(prev => ({ ...prev, links })); }}
+                                                placeholder="버튼 글자 (예: 자세히 보기)"
+                                                className="w-full p-2 border rounded-lg text-sm bg-white" />
+                                            <input type="url" value={link.url}
+                                                onChange={e => { const links = [...popupInput.links]; links[idx] = { ...links[idx], url: e.target.value }; setPopupInput(prev => ({ ...prev, links })); }}
+                                                placeholder="https://..."
+                                                className="w-full p-2 border rounded-lg text-sm bg-white" />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-100">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" checked={popupInput.enabled}
+                                        onChange={e => setPopupInput(prev => ({ ...prev, enabled: e.target.checked }))}
+                                        className="w-5 h-5 rounded border-slate-300 text-blue-600" />
+                                    <span className="text-sm font-bold text-slate-600">팝업 활성화</span>
+                                </label>
+                                <button onClick={savePlatformPopup} disabled={popupSaving}
+                                    className="bg-blue-600 text-white px-8 py-2.5 rounded-xl font-bold hover:bg-blue-700 shadow-sm disabled:bg-slate-300">
+                                    {popupSaving ? '저장 중...' : '저장하기'}
+                                </button>
+                            </div>
+
+                            {(popupInput.title || popupInput.text) && (
+                                <div className="mt-4 p-4 bg-slate-100 rounded-xl border-2 border-dashed border-slate-300">
+                                    <p className="text-xs text-slate-400 mb-3 font-bold uppercase">팝업 미리보기</p>
+                                    <div className="mx-auto w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-lg">
+                                        {popupInput.imageUrl && (
+                                            <img src={popupInput.imageUrl} alt="" className="max-h-48 w-full object-cover" />
+                                        )}
+                                        <div className="p-5">
+                                            {popupInput.title && <p className="text-lg font-black text-slate-900">{popupInput.title}</p>}
+                                            {popupInput.text && <p className={`text-sm text-slate-700 whitespace-pre-wrap leading-relaxed ${popupInput.title ? 'mt-2' : ''}`}>{popupInput.text}</p>}
+                                            <div className="mt-4 space-y-2">
+                                                {(popupInput.links || []).map((link, idx) => link.text && (
+                                                    <div key={idx} className="w-full rounded-2xl bg-blue-600 px-5 py-3 text-center text-sm font-black text-white">{link.text}</div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="flex border-t border-slate-100">
+                                            <div className="flex-1 px-4 py-3 text-center text-xs font-bold text-slate-400">오늘 하루 보지 않기</div>
+                                            <div className="flex-1 border-l border-slate-100 px-4 py-3 text-center text-xs font-black text-slate-700">닫기</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="bg-white rounded-xl shadow-sm p-6">
+                            <h2 className="text-base font-bold text-slate-800 mb-4">💬 교회별 카카오 채널</h2>
                             <label className="block text-sm font-bold text-slate-600 mb-2">관리할 교회 선택</label>
                             <select value={announcementChurchId} onChange={e => setAnnouncementChurchId(e.target.value)}
                                 className="w-full border border-slate-200 rounded-xl p-3 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400">
@@ -1032,80 +1159,6 @@ const PlatformAdminView = ({
 
                         {announcementChurchId && (
                             <>
-                                <div className="bg-white rounded-xl shadow-sm p-6">
-                                    <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
-                                        📢 공지사항
-                                        <span className="text-xs text-blue-600 font-normal bg-blue-50 px-2 py-0.5 rounded-full">
-                                            {churches.find(c => c.id === announcementChurchId)?.name}
-                                        </span>
-                                    </h3>
-                                    <textarea value={announcementInput.text}
-                                        onChange={e => setAnnouncementInput(prev => ({ ...prev, text: e.target.value }))}
-                                        placeholder="공지사항 내용을 입력하세요..."
-                                        rows={4}
-                                        className="w-full p-3 border rounded-xl text-sm resize-none focus:ring-2 focus:ring-blue-500 outline-none" />
-
-                                    <div className="space-y-3 mt-4">
-                                        <div className="flex justify-between items-center">
-                                            <label className="text-sm font-bold text-slate-600">링크 버튼</label>
-                                            <button onClick={() => setAnnouncementInput(prev => ({ ...prev, links: [...(prev.links || []), { url: '', text: '' }] }))}
-                                                className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 hover:bg-blue-100">
-                                                <Icon name="plus" size={12} /> 버튼 추가
-                                            </button>
-                                        </div>
-                                        {(announcementInput.links || []).map((link, idx) => (
-                                            <div key={idx} className="bg-slate-50 p-3 rounded-xl relative border border-slate-100">
-                                                <button onClick={() => setAnnouncementInput(prev => ({ ...prev, links: prev.links.filter((_, i) => i !== idx) }))}
-                                                    className="absolute -top-2 -right-2 bg-white text-red-500 p-1 rounded-full shadow border border-red-100">
-                                                    <Icon name="trash" size={12} />
-                                                </button>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                    <input type="text" value={link.text}
-                                                        onChange={e => { const links = [...announcementInput.links]; links[idx] = { ...links[idx], text: e.target.value }; setAnnouncementInput(prev => ({ ...prev, links })); }}
-                                                        placeholder="버튼 글자 (예: 바로가기)"
-                                                        className="w-full p-2 border rounded-lg text-sm bg-white" />
-                                                    <input type="url" value={link.url}
-                                                        onChange={e => { const links = [...announcementInput.links]; links[idx] = { ...links[idx], url: e.target.value }; setAnnouncementInput(prev => ({ ...prev, links })); }}
-                                                        placeholder="https://..."
-                                                        className="w-full p-2 border rounded-lg text-sm bg-white" />
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-100">
-                                        <label className="flex items-center gap-2 cursor-pointer">
-                                            <input type="checkbox" checked={announcementInput.enabled}
-                                                onChange={e => setAnnouncementInput(prev => ({ ...prev, enabled: e.target.checked }))}
-                                                className="w-5 h-5 rounded border-slate-300 text-blue-600" />
-                                            <span className="text-sm font-bold text-slate-600">공지 활성화</span>
-                                        </label>
-                                        <button onClick={() => saveAnnouncement(announcementChurchId)}
-                                            className="bg-blue-600 text-white px-8 py-2.5 rounded-xl font-bold hover:bg-blue-700 shadow-sm">
-                                            저장하기
-                                        </button>
-                                    </div>
-
-                                    {announcementInput.text && (
-                                        <div className="mt-4 p-4 bg-slate-50 rounded-xl border-2 border-dashed border-slate-300">
-                                            <p className="text-xs text-slate-400 mb-3 font-bold uppercase">배너 미리보기</p>
-                                            <div className="bg-white border-2 border-slate-100 rounded-3xl p-6 shadow-sm">
-                                                <div className="flex flex-col md:flex-row items-center gap-4">
-                                                    <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-3xl border border-slate-100 shrink-0">📢</div>
-                                                    <div className="flex-1 text-center md:text-left">
-                                                        <p className="text-base text-slate-900 font-bold whitespace-pre-wrap">{announcementInput.text}</p>
-                                                        <div className="flex flex-wrap justify-center md:justify-start gap-2 mt-4">
-                                                            {(announcementInput.links || []).map((link, idx) => link.text && (
-                                                                <div key={idx} className="bg-[#03C75A] text-white px-6 py-2.5 rounded-2xl text-sm font-black shadow">{link.text}</div>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
                                 <div className="bg-white rounded-xl shadow-sm p-6">
                                     <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
                                         💬 카카오톡 채널
