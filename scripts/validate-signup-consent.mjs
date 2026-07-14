@@ -131,6 +131,7 @@ const policyIndex = read('src/components/policies/index.js');
 const loginView = read('src/components/LoginView.jsx');
 const socialOnboarding = read('src/components/SocialOnboardingView.jsx');
 const authHook = read('src/hooks/useAuth.js');
+const firestoreRules = read('firestore.rules');
 assert.match(guardianComponent, /getAgeAssessment\(normalizedBirthdate\)/, '보호자 UI는 공용 만14세 판정을 사용해야 한다.');
 assert.match(guardianComponent, /if \(!assessment\.under14\) return null;/, '만14세 이상에게 보호자 입력을 표시하면 안 된다.');
 assert.match(guardianComponent, /GUARDIAN_CONSENT_METHODS\.GUARDIAN_ASSERTION/, 'UI payload는 guardian_assertion 방식이어야 한다.');
@@ -147,5 +148,25 @@ assert.match(socialOnboarding, /<GuardianConsent/);
 assert.match(socialOnboarding, /<PolicyConsent/);
 assert.match(authHook, /writeSignupConsent\(/);
 assert.match(authHook, /consentSummary: buildSignupConsentSummary\(signupConsent\)/);
+assert.match(
+    firestoreRules,
+    /request\.resource\.data\.role == 'churchAdmin'[\s\S]*!exists\(\/databases\/\$\(database\)\/documents\/churches\/\$\(request\.resource\.data\.churchId\)\)[\s\S]*getAfter\(\/databases\/\$\(database\)\/documents\/churches\/\$\(request\.resource\.data\.churchId\)\/private\/admin\)\.data\.adminUid == uid/,
+    '이미 존재하는 공동체를 지정한 churchAdmin 자가 생성은 규칙에서 차단해야 한다.',
+);
+assert.match(
+    firestoreRules,
+    /match \/private\/consent \{[\s\S]*allow read: if isRealUser\(\) && \(request\.auth\.uid == uid \|\| isPlatformAdmin\(\)\);[\s\S]*allow create, update: if isRealUser\(\) && request\.auth\.uid == uid;[\s\S]*allow delete: if false;/,
+    '동의 원문은 공동체 관리자가 읽거나 수정할 수 없어야 한다.',
+);
+assert.match(
+    firestoreRules,
+    /match \/private\/\{privateId\} \{[\s\S]*allow read, write: if privateId != 'consent'/,
+    '포괄 private 규칙이 consent 전용 제한을 우회하면 안 된다.',
+);
+assert.match(
+    authHook,
+    /이메일 가입도 Google 가입과 동일하게[\s\S]*db\.runTransaction\(async transaction =>[\s\S]*transaction\.set\(churchRef,[\s\S]*transaction\.set\(userRef, newUser\);[\s\S]*transaction\.set\(consentRef,[\s\S]*transaction\.set\(churchAdminRef,/,
+    '이메일 공동체 관리자 가입도 소유 증명과 계정을 원자적으로 생성해야 한다.',
+);
 
 console.log('가입 동의 모델 검증 통과: 정책 버전·필수 동의·만14세·보호자 방식·Firestore snapshot');

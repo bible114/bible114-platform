@@ -9,6 +9,7 @@ const ConfirmDialog = ({
     cancelLabel = '취소',
     danger = false,
     loading = false,
+    confirmDisabled = false,
     onConfirm,
     onCancel,
 }) => {
@@ -35,7 +36,7 @@ const ConfirmDialog = ({
                     <button
                         type="button"
                         onClick={onConfirm}
-                        disabled={loading}
+                        disabled={loading || confirmDisabled}
                         className={`px-4 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-50 ${danger ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
                     >
                         {loading ? '처리 중...' : confirmLabel}

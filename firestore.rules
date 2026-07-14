@@ -65,8 +65,17 @@ service cloud.firestore {
           resource.data.churchId != 'unaffiliated_v1' &&
           resource.data.password == null &&
           exists(/databases/$(database)/documents/churches/$(resource.data.churchId)/roster/$(request.auth.uid)));
-      allow create: if isRealUser() && request.auth.uid == uid &&
-        request.resource.data.role in ['member', 'churchAdmin'];
+      // 일반 회원은 본인 문서만 만들 수 있다. 공동체 관리자는 반드시 "아직 존재하지 않는"
+      // 공동체와 관리자 소유 증명 문서를 같은 원자적 쓰기에서 함께 만들어야 한다.
+      // 이미 존재하는 공동체 ID를 골라 churchAdmin 역할을 자가 지정하는 권한 상승을 막는다.
+      allow create: if isRealUser() && request.auth.uid == uid && (
+        request.resource.data.role == 'member' ||
+        (request.resource.data.role == 'churchAdmin' &&
+          request.resource.data.churchId is string &&
+          !exists(/databases/$(database)/documents/churches/$(request.resource.data.churchId)) &&
+          existsAfter(/databases/$(database)/documents/churches/$(request.resource.data.churchId)) &&
+          getAfter(/databases/$(database)/documents/churches/$(request.resource.data.churchId)/private/admin).data.adminUid == uid)
+      );
       // 본인 수정은 정체성·삭제 상태를 바꿀 수 없다 (권한 상승·탈퇴 복구 차단).
       // affectedKeys()는 값이 실제로 바뀐 필드만 보고하므로, 기존 값과 동일한 role/churchId를
       // 포함해 문서 전체를 다시 쓰는 정상 흐름(App.jsx의 setCurrentUser 반영 저장 등)은 영향 없다.
@@ -114,12 +123,21 @@ service cloud.firestore {
       // seed_ 테스트 문서만 플랫폼 관리자가 클라이언트에서 직접 지울 수 있다.
       allow delete: if isPlatformAdmin() && uid.matches('^seed_.*');
 
+      // 가입 동의 원문 — 보호자 성명·관계 등 감사용 개인정보가 포함될 수 있으므로
+      // 공동체 관리자에게는 읽기·쓰기를 열지 않는다. 본인은 재가입 시 최신 동의로
+      // 갱신할 수 있고, 플랫폼 관리자는 분쟁 대응을 위한 읽기만 가능하다.
+      match /private/consent {
+        allow read: if isRealUser() && (request.auth.uid == uid || isPlatformAdmin());
+        allow create, update: if isRealUser() && request.auth.uid == uid;
+        allow delete: if false;
+      }
+
       // 자격증명 하위문서 (평문 비밀번호·phone4) — 본인, 같은 교회 관리자, 플랫폼 관리자만.
       // users 본문서 read가 같은 교회 교인에게 열려도 이 문서는 절대 열리지 않는다.
       // [라운드 10] 개인 계정 전환 교인은 churchId가 null이 되므로, 기준 공동체(primaryOrgId)
       // 관리자에게도 열어 어르신 비밀번호 지원이 전환 후에도 유지되게 한다.
       match /private/{privateId} {
-        allow read, write: if isRealUser() && (
+        allow read, write: if privateId != 'consent' && isRealUser() && (
           request.auth.uid == uid ||
           isChurchAdmin(get(/databases/$(database)/documents/users/$(uid)).data.churchId) ||
           isChurchAdmin(get(/databases/$(database)/documents/users/$(uid)).data.get('primaryOrgId', null)) ||

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { db, firebase } from '../../utils/firebase';
 import { getVideoDateKST, extractYouTubeId, parseAndMapChapters, titleMatchesDate } from '../../utils/helpers';
 import { saveGuestState } from '../../utils/guestStorage';
+import { selectDailyVideoCandidate } from '../../utils/dailyVideoPolicy';
 
 const CHAPTER_ORDER = [
     { key: '해설', label: '묵상 해설', emoji: '📖' },
@@ -16,8 +17,9 @@ const CHAPTER_ORDER = [
 // (1) 정렬 기준은 재생목록에 추가된 시각(snippet.publishedAt)이 아니라 영상이 실제로
 //     게시된 시각(contentDetails.videoPublishedAt)을 우선 사용하고 (contentDetails가
 //     없는 경우에만 snippet.publishedAt으로 폴백),
-// (2) 최대 5페이지(최대 250개)까지 페이지네이션해 후보를 모은 뒤 그중 이미 게시된
-//     (<= now) 영상 중 가장 최신을 택한다.
+// (2) 최대 5페이지(최대 250개)까지 페이지네이션해 후보를 모은다.
+// targetDateKey가 있으면 제목 날짜가 일치하는 게시 완료 영상만 택한다. 해당 영상이 아직 없을
+// 때 어제/과거 영상을 오늘 문서에 고정하지 않고 pending 오류로 호출부에 알린다.
 // 실패(쿼터 초과, 잘못된 키/ID, 후보 없음)하면 예외를 던지고 호출부에서 console.warn만 남긴다.
 const MAX_PLAYLIST_PAGES = 5;
 
@@ -49,19 +51,18 @@ export const fetchVideoDescriptionChapters = async (videoUrl, apiKey) => {
 
 export const fetchLatestFromPlaylist = async (playlistId, apiKey, targetDateKey) => {
     const items = await fetchPlaylistCandidates(playlistId, apiKey);
-    const now = Date.now();
-    const candidates = items
-        .map(it => ({
-            it,
-            publishedAt: it?.contentDetails?.videoPublishedAt || it?.snippet?.publishedAt || null,
-            title: it?.snippet?.title || '',
-        }))
-        .filter(({ publishedAt }) => publishedAt && new Date(publishedAt).getTime() <= now)
-        .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
-    const dateMatched = targetDateKey
-        ? candidates.filter(candidate => titleMatchesDate(candidate.title, targetDateKey))
-        : [];
-    const chosenCandidate = dateMatched[0] || candidates[0];
+    const selection = selectDailyVideoCandidate(items, {
+        targetDateKey,
+        matchesDate: titleMatchesDate,
+    });
+    const chosenCandidate = selection.candidate;
+    if (targetDateKey && !chosenCandidate) {
+        const pendingError = new Error(`${targetDateKey} 날짜와 일치하는 게시 영상이 아직 없음`);
+        pendingError.code = 'VIDEO_DATE_PENDING';
+        pendingError.pending = selection.pending;
+        pendingError.stale = selection.stale;
+        throw pendingError;
+    }
     const chosen = chosenCandidate?.it;
     const videoId = chosen?.contentDetails?.videoId || chosen?.snippet?.resourceId?.videoId;
     if (!videoId) throw new Error('재생목록에 사용 가능한 영상이 없음');
@@ -78,7 +79,7 @@ export const fetchLatestFromPlaylist = async (playlistId, apiKey, targetDateKey)
         chapters,
         title: snippet.title || chosenCandidate?.title || '',
         publishedAt: chosenCandidate?.publishedAt || snippet.publishedAt || null,
-        matchedDate: Boolean(dateMatched[0]),
+        matchedDate: selection.matchedDate,
     };
 };
 
@@ -161,7 +162,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
             }
         };
 
-        const tryAutoFill = async () => {
+        const tryAutoFill = async ({ persist = true } = {}) => {
             try {
                 const configDoc = await db.collection('settings').doc('videoAutoConfig').get();
                 if (cancelled) return;
@@ -181,7 +182,11 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
                         const entry = await fetchLatestFromPlaylist(playlistId, config.apiKey, dateKey);
                         return [key, entry];
                     } catch (e) {
-                        console.warn(`매일 영상 자동 채움 실패 (${key}):`, e);
+                        if (e?.code === 'VIDEO_DATE_PENDING') {
+                            console.info(`매일 영상 자동 채움 대기 (${key}):`, e.message);
+                        } else {
+                            console.warn(`매일 영상 자동 채움 실패 (${key}):`, e);
+                        }
                         return [key, null];
                     }
                 }));
@@ -194,6 +199,13 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
 
                 payload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
                 payload.autoFilled = true;
+
+                // 이미 생성된 과거 폴백 문서를 대체해 화면만 안전하게 복구하는 경우다.
+                // 일반 사용자는 dailyVideos update 권한이 없으므로 Firestore에는 쓰지 않는다.
+                if (!persist) {
+                    applyVideoDoc(payload);
+                    return;
+                }
 
                 // 이중 채움 방지: 쓰기 직전에 다시 한번 문서 존재 여부를 확인한다.
                 // (동시 접속 시 완벽한 레이스 방지는 아니지만, Firestore create 규칙이
@@ -237,6 +249,14 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
                 if (cancelled) return;
                 if (doc.exists) {
                     const storedVideo = doc.data();
+                    // 수동 등록(autoFilled !== true)은 관리자 오버라이드이므로 날짜 표시와 관계없이 그대로 유지한다.
+                    // 반면 이전 버전이 최신 폴백을 저장한 자동 문서는 노출하지 않고,
+                    // 오늘 날짜를 엄격히 맞춘 임시 결과로만 복구한다.
+                    const hasUnsafeAutoEntry = storedVideo?.autoFilled === true
+                        && ['adult', 'kids'].some(key => storedVideo?.[key]?.url && storedVideo[key].matchedDate !== true);
+                    if (hasUnsafeAutoEntry) {
+                        return tryAutoFill({ persist: false });
+                    }
                     applyVideoDoc(storedVideo);
                     refreshDescriptionChapters(storedVideo);
                     return;

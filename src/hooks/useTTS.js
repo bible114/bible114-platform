@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { toSinoKorean } from '../utils/helpers';
-import { getTTSUnavailableApp } from '../utils/ttsAvailability';
+import { getTTSLegacyBlockedApp, getTTSUnavailableApp } from '../utils/ttsAvailability';
 
 export const useTTS = (verseText) => {
     const [isSpeaking, setIsSpeaking] = useState(false);
@@ -13,8 +13,8 @@ export const useTTS = (verseText) => {
         return localStorage.getItem('bible_selectedVoiceURI') || '';
     });
     const [activeChunkIndex, setActiveChunkIndex] = useState(-1);
-    const [isInAppBrowser, setIsInAppBrowser] = useState(false);
     const [ttsUnavailableApp] = useState(() => getTTSUnavailableApp(navigator.userAgent));
+    const [ttsLegacyBlockedApp] = useState(() => getTTSLegacyBlockedApp(navigator.userAgent));
 
     const speakQueueRef = useRef([]);
     const currentChunkIndexRef = useRef(0);
@@ -30,13 +30,9 @@ export const useTTS = (verseText) => {
 
     // 1. 목소리 목록 로드 및 업데이트 - 의존성 제거
     useEffect(() => {
-        const ua = navigator.userAgent;
-        if (ua.indexOf('NAVER') > -1 || ua.indexOf('KAKAOTALK') > -1 || /GSA\//i.test(ua)) {
-            setIsInAppBrowser(true);
-        }
-
-        // 안내 대상 앱에서는 불완전한 WebView TTS API에 접근하지 않는다.
-        if (ttsUnavailableApp || !window.speechSynthesis) return undefined;
+        // 작은 안내 대상(네이버/Google)과 기존 알림 대상(카카오) 모두
+        // 불완전한 WebView TTS API에는 접근하지 않는다.
+        if (ttsUnavailableApp || ttsLegacyBlockedApp || !window.speechSynthesis) return undefined;
 
         const loadVoices = () => {
             const voices = window.speechSynthesis.getVoices();
@@ -172,8 +168,8 @@ export const useTTS = (verseText) => {
     };
 
     const handleSpeak = (text, startFromIndex = 0, overrideSpeed = null) => {
-        if (isInAppBrowser) {
-            alert("네이버/카카오 앱에서는 읽기 기능이 지원되지 않습니다.\n\n화면 하단의 '외부 브라우저 열기'를 통해\n크롬이나 사파리로 접속해주세요.");
+        if (ttsLegacyBlockedApp === 'kakao') {
+            alert("카카오톡 앱에서는 읽기 기능이 지원되지 않습니다.\n\n화면 하단의 '외부 브라우저 열기'를 통해\n크롬이나 사파리로 접속해주세요.");
             return;
         }
 

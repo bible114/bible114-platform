@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "validate": "npm run validate:round11 && npm run validate:round15 && npm run validate:round18 && npm run validate:kakao-auth && npm run validate:personal-migration && npm run validate:quiz-answer-index && npm run validate:service-policies && npm run validate:signup-consent && npm run validate:roster-multimembership && npm run validate:department-talent && npm run validate:round24",
+    "validate": "npm run validate:round11 && npm run validate:round15 && npm run validate:round18 && npm run validate:kakao-auth && npm run validate:personal-migration && npm run validate:quiz-answer-index && npm run validate:quiz && npm run validate:nt-easy && npm run validate:service-policies && npm run validate:signup-consent && npm run validate:roster-multimembership && npm run validate:department-talent && npm run validate:round24",
     "validate:round11": "node scripts/validate-round11.mjs",
     "validate:round15": "node scripts/validate-round15.mjs",
     "validate:round18": "node scripts/validate-round18.mjs",

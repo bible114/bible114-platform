@@ -4,7 +4,6 @@ import { makePseudoEmail, makeUnaffiliatedIdentity, userDocToState, migrateTalen
 import { sha256 } from '../utils/crypto';
 import {
     getChurchDirectory,
-    addChurchToDirectory,
     invalidateChurchDirectoryCache,
     saveLastChurch,
 } from '../utils/churchDirectory';
@@ -1169,7 +1168,8 @@ export const useAuth = ({
                 return finalResult;
             }
 
-            // 이메일 가입은 기존 Auth 생성 + 순차 Firestore 쓰기 흐름을 유지한다.
+            // 이메일 가입도 Google 가입과 동일하게 새 공동체·관리자 계정·소유 증명·동의를
+            // 한 트랜잭션에서 만든다. 규칙은 이 원자적 생성만 churchAdmin 최초 등록으로 인정한다.
             const cred = await auth.createUserWithEmailAndPassword(email, password).catch(err => {
                 if (err?.code === 'auth/email-already-in-use') setErrorMsg('이미 사용 중인 이메일입니다.');
                 else if (err?.code === 'auth/weak-password') setErrorMsg('비밀번호는 6자리 이상이어야 합니다.');
@@ -1178,21 +1178,12 @@ export const useAuth = ({
             });
             if (!cred) return finalResult;
 
-            // 교회 문서 생성
             const churchRef = db.collection('churches').doc();
+            const userRef = db.collection('users').doc(cred.user.uid);
+            const consentRef = userRef.collection('private').doc('consent');
+            const churchAdminRef = churchRef.collection('private').doc('admin');
+            const directoryRef = db.collection('settings').doc('churchDirectory');
             const churchCodeHash = await sha256(churchCode);
-            await churchRef.set({
-                name: churchName, pastorName: pastorName || '', denomination: denomination || '',
-                churchCodeHash,
-                departments: departments || [],
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            });
-            setChurchCommunities(departments || []);
-            // [Phase 3] 공개 교회 디렉토리에 신규 교회 등록 (로그인 화면 검색용)
-            await addChurchToDirectory({ id: churchRef.id, name: churchName, codeHash: churchCodeHash }).catch(err => {
-                console.error('교회 디렉토리 등록 실패:', err);
-            });
-
             const newUser = {
                 name, email, password, birthdate: null,
                 role: 'churchAdmin', churchId: churchRef.id, churchName,
@@ -1205,13 +1196,35 @@ export const useAuth = ({
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             };
-            await writeSignupConsent(cred.user.uid, signupConsent);
-            await db.collection('users').doc(cred.user.uid).set(newUser);
-            await churchRef.collection('private').doc('admin').set({
-                adminUid: cred.user.uid,
-                adminEmail: email,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            await db.runTransaction(async transaction => {
+                const existingUser = await transaction.get(userRef);
+                if (existingUser.exists) throw new Error('이미 등록된 계정입니다. 다시 로그인해주세요.');
+
+                const now = firebase.firestore.FieldValue.serverTimestamp();
+                transaction.set(churchRef, {
+                    name: churchName, pastorName: pastorName || '', denomination: denomination || '',
+                    churchCodeHash,
+                    departments: departments || [],
+                    createdAt: now,
+                });
+                transaction.set(userRef, newUser);
+                transaction.set(consentRef, { ...signupConsent, recordedAt: now });
+                transaction.set(churchAdminRef, {
+                    adminUid: cred.user.uid,
+                    adminEmail: email,
+                    updatedAt: now,
+                });
+                transaction.set(directoryRef, {
+                    churches: firebase.firestore.FieldValue.arrayUnion({
+                        id: churchRef.id,
+                        name: churchName,
+                        codeHash: churchCodeHash,
+                    }),
+                    updatedAt: now,
+                }, { merge: true });
             });
+            invalidateChurchDirectoryCache();
+            setChurchCommunities(departments || []);
             // 신규 교회 + 관리자 → 통계 증가
             db.collection('settings').doc('platformStats').set({
                 total_churches: firebase.firestore.FieldValue.increment(1),

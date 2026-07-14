@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { selectDailyVideoCandidate } from '../src/utils/dailyVideoPolicy.js';
 import {
     getDefaultQuizLevel,
     getQuizLevel,
@@ -190,6 +191,31 @@ assert.match(app, /sessionStorage\.removeItem\(ADMIN_ENTRY_SESSION_KEY\)/);
 assert.match(app, /\['dashboard', 'church_admin'\]\.includes\(savedAdminEntry\)/);
 assert.match(dailyVideo, /refreshDescriptionChapters\(storedVideo\)/);
 assert.match(dailyVideo, /fetchVideoDescriptionChapters\(entry\.url, apiKey\)/);
+const dailyVideoCandidates = [
+    { snippet: { title: '7월 14일 매일성경' }, contentDetails: { videoPublishedAt: '2026-07-14T03:00:00Z', videoId: 'todayVideo1' } },
+    { snippet: { title: '7월 13일 매일성경' }, contentDetails: { videoPublishedAt: '2026-07-13T03:00:00Z', videoId: 'pastVideo01' } },
+];
+const matchesDate = (title, dateKey) => title.includes(dateKey === '2026-07-14' ? '7월 14일' : '7월 15일');
+const matchedDailyVideo = selectDailyVideoCandidate(dailyVideoCandidates, {
+    targetDateKey: '2026-07-14',
+    now: new Date('2026-07-15T00:00:00Z').getTime(),
+    matchesDate,
+});
+assert.equal(matchedDailyVideo.candidate?.it?.contentDetails?.videoId, 'todayVideo1');
+assert.equal(matchedDailyVideo.matchedDate, true);
+assert.equal(matchedDailyVideo.pending, false);
+const pendingDailyVideo = selectDailyVideoCandidate(dailyVideoCandidates, {
+    targetDateKey: '2026-07-15',
+    now: new Date('2026-07-15T00:00:00Z').getTime(),
+    matchesDate,
+});
+assert.equal(pendingDailyVideo.candidate, null);
+assert.equal(pendingDailyVideo.pending, true);
+assert.equal(pendingDailyVideo.stale, true);
+assert.match(dailyVideo, /selectDailyVideoCandidate\(items/);
+assert.match(dailyVideo, /pendingError\.code = 'VIDEO_DATE_PENDING'/);
+assert.match(dailyVideo, /storedVideo\?\.autoFilled === true[\s\S]*matchedDate !== true/);
+assert.match(dailyVideo, /tryAutoFill\(\{ persist: false \}\)/);
 assert.match(dailyVideo, /newMode === 'kids'[\s\S]*startsWith\('nt_'\)/);
 assert.match(dailyVideo, /saveGuestState\(\{ videoType: newMode,[\s\S]*quizLevel: 'easy'/);
 assert.match(dailyVideo, /videoMode: newMode,[\s\S]*quizLevel: 'easy'/);

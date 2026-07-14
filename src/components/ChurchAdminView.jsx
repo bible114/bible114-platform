@@ -29,6 +29,7 @@ import DashboardTab from './churchAdmin/DashboardTab';
 import MembersTab from './churchAdmin/MembersTab';
 import TalentShopTab from './churchAdmin/TalentShopTab';
 import { TALENT_PROGRAM_SCHEMA_VERSION } from '../utils/talentProgram';
+import { mergeAdminTalentPurchases, resolvePurchaseRefundWalletKind } from '../utils/talentPurchases';
 
 const SHARED_TALENT_MARKET_ID = 'shared';
 const departmentTalentMarketId = departmentId => `department_${departmentId}`;
@@ -217,16 +218,20 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 setTalentMarketId(SHARED_TALENT_MARKET_ID);
             }
             try {
-                const memberIds = new Set(activeMembers.map(m => m.uid));
                 const externalMemberIds = new Set(activeMembers.filter(m => m.isExternalOrgMember).map(m => m.uid));
-                const purchaseSnap = await db.collection('churches').doc(currentUser.churchId)
-                    .collection('talentPurchases')
-                    .orderBy('createdAt', 'desc')
-                    .limit(200)
-                    .get();
-                setTalentPurchases(purchaseSnap.docs
-                    .map(d => ({ id: d.id, ...d.data(), isExternalBuyer: externalMemberIds.has(d.data()?.uid) }))
-                    .filter(p => memberIds.has(p.uid)));
+                const purchasesRef = db.collection('churches').doc(currentUser.churchId)
+                    .collection('talentPurchases');
+                // 미처리 건은 구매자가 탈퇴했거나 오래된 기록이어도 반드시 관리할 수 있어야 한다.
+                // 완료/취소 이력만 최근 200건으로 제한하고 문서 id로 합친다.
+                const [pendingSnap, recentSnap] = await Promise.all([
+                    purchasesRef.where('status', '==', 'pending').get(),
+                    purchasesRef.orderBy('createdAt', 'desc').limit(200).get(),
+                ]);
+                setTalentPurchases(mergeAdminTalentPurchases({
+                    pendingDocs: pendingSnap.docs,
+                    recentDocs: recentSnap.docs,
+                    externalMemberIds,
+                }));
             } catch (purchaseError) {
                 console.error('달란트 구매 내역 로드 실패:', purchaseError);
                 setTalentPurchases([]);
@@ -723,6 +728,9 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             if (action.type === 'deleteShopItem') await executeDeleteShopItem(action.item);
             if (action.type === 'deliverPurchase') await updatePurchaseStatus(action.purchase, 'delivered');
             if (action.type === 'refundPurchase') await updatePurchaseStatus(action.purchase, 'cancelled');
+            if (action.type === 'refundLegacyPurchase') {
+                await updatePurchaseStatus(action.purchase, 'cancelled', action.legacyWalletKind);
+            }
             if (action.type === 'manualDeduct') await executeManualDeduct(action.form);
             // 주 소속 일괄 변경이 일부라도 실패하면 선택을 유지해 바로 재시도할 수 있게 한다.
             if (shouldRunAfter !== false) action.after?.();
@@ -1229,17 +1237,28 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         openPrintWindow(html);
     };
 
-    const updatePurchaseStatus = async (purchase, mode) => {
+    const requestPurchaseRefund = (purchase) => {
+        const hasWalletSnapshot = Boolean(resolvePurchaseRefundWalletKind(purchase));
+        if (purchase?.schemaVersion === 2 && !hasWalletSnapshot) {
+            toast.error('구매 당시 지갑 기록이 손상되어 자동 환불할 수 없습니다. 플랫폼 관리자에게 문의해주세요.');
+            return;
+        }
+        setConfirmAction({
+            type: hasWalletSnapshot ? 'refundPurchase' : 'refundLegacyPurchase',
+            purchase,
+            legacyWalletKind: '',
+            title: `${purchase.itemName} 구매를 취소·환불할까요?`,
+            message: hasWalletSnapshot
+                ? `대기 건을 취소하고 ${purchase.price || 0}달란트를 교인 잔액에 돌려줍니다.`
+                : `이전 버전 구매라 구매 당시 지갑 기록이 없습니다. 잘못된 지갑에 환불하지 않도록 관리자가 환불할 지갑을 직접 선택해야 합니다.`,
+            danger: true,
+            confirmLabel: '취소·환불',
+        });
+    };
+
+    const updatePurchaseStatus = async (purchase, mode, legacyWalletKind = null) => {
         const purchaseRef = db.collection('churches').doc(currentUser.churchId)
             .collection('talentPurchases').doc(purchase.id);
-        const buyer = members.find(member => member.uid === purchase.uid);
-        const useRosterWallet = purchase.walletKind
-            ? purchase.walletKind === 'roster'
-            : (purchase.isExternalBuyer || buyer?.isExternalOrgMember);
-        const walletOrgId = purchase.walletOrgId || currentUser.churchId;
-        const walletRef = useRosterWallet
-            ? db.collection('churches').doc(walletOrgId).collection('roster').doc(purchase.uid)
-            : db.collection('users').doc(purchase.uid);
 
         try {
             await db.runTransaction(async transaction => {
@@ -1252,7 +1271,16 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
                 let refundAmount = 0;
                 let nextWalletTalent = null;
+                let refundWalletKind = null;
                 if (mode === 'cancelled') {
+                    refundWalletKind = resolvePurchaseRefundWalletKind(latestPurchase, legacyWalletKind);
+                    if (!refundWalletKind) {
+                        throw new Error('PURCHASE_WALLET_UNRESOLVED');
+                    }
+                    const walletOrgId = latestPurchase.walletOrgId || currentUser.churchId;
+                    const walletRef = refundWalletKind === 'roster'
+                        ? db.collection('churches').doc(walletOrgId).collection('roster').doc(latestPurchase.uid)
+                        : db.collection('users').doc(latestPurchase.uid);
                     const walletSnap = await transaction.get(walletRef);
                     if (!walletSnap.exists) throw new Error('BUYER_WALLET_NOT_FOUND');
                     refundAmount = Number(latestPurchase.price);
@@ -1267,9 +1295,13 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 });
 
                 if (mode === 'cancelled') {
+                    const walletOrgId = latestPurchase.walletOrgId || currentUser.churchId;
+                    const walletRef = refundWalletKind === 'roster'
+                        ? db.collection('churches').doc(walletOrgId).collection('roster').doc(latestPurchase.uid)
+                        : db.collection('users').doc(latestPurchase.uid);
                     transaction.update(walletRef, {
                         talent: nextWalletTalent,
-                        ...(useRosterWallet ? { updatedAt: firebase.firestore.FieldValue.serverTimestamp() } : {}),
+                        ...(refundWalletKind === 'roster' ? { updatedAt: firebase.firestore.FieldValue.serverTimestamp() } : {}),
                     });
                 }
             });
@@ -1281,6 +1313,14 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             }
             if (error?.code === 'permission-denied' || error?.code === 'firestore/permission-denied') {
                 toast.error(mode === 'cancelled' ? '이 공동체 지갑을 환불할 권한이 없습니다.' : '수령 처리 권한이 없습니다.');
+                return;
+            }
+            if (error?.message === 'PURCHASE_WALLET_UNRESOLVED') {
+                toast.error('환불할 지갑을 확인할 수 없습니다. 이전 구매는 지갑을 선택해주세요.');
+                return;
+            }
+            if (error?.message === 'BUYER_WALLET_NOT_FOUND') {
+                toast.error('환불할 지갑이 이미 삭제되어 자동 환불할 수 없습니다. 플랫폼 관리자에게 문의해주세요.');
                 return;
             }
             throw error;
@@ -1475,7 +1515,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const pendingPurchaseCount = talentPurchases.filter(p => p.status === 'pending').length;
     const filteredPurchases = talentPurchases.filter(purchase => (
         (purchaseFilter === 'all' || purchase.status === purchaseFilter)
-        && (!talentMarketId || !purchase.marketId || purchase.marketId === talentMarketId)
+        // 미처리 건은 시장이 삭제·변경됐어도 어느 시장 화면에서든 처리할 수 있게 한다.
+        && (purchase.status === 'pending' || !talentMarketId || !purchase.marketId || purchase.marketId === talentMarketId)
     ));
     const shopPreviewTalent = activeShopItems.reduce(
         (max, item) => Math.max(max, Number(item?.price) || 0),
@@ -1598,7 +1639,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                 submitShopItem, resetShopItemDraft, editShopItem, deleteShopItem, printShopItems,
                                 deductForm, setDeductForm, members: talentMarketMembers, requestManualDeduct, deducting,
                                 purchaseFilter, setPurchaseFilter, filteredPurchases, memberById,
-                                formatAnyDate, setConfirmAction, deliverPurchase, refundPurchase,
+                                formatAnyDate, setConfirmAction, requestPurchaseRefund, deliverPurchase, refundPurchase,
                             }} />
                         )}
 
@@ -1935,9 +1976,28 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 message={confirmAction?.message}
                 danger={confirmAction?.danger}
                 confirmLabel={confirmAction?.confirmLabel || '확인'}
+                confirmDisabled={confirmAction?.type === 'refundLegacyPurchase' && !confirmAction?.legacyWalletKind}
                 onConfirm={handleConfirmAction}
                 onCancel={() => setConfirmAction(null)}
-            />
+            >
+                {confirmAction?.type === 'refundLegacyPurchase' && (
+                    <label className="block text-sm font-bold text-slate-700">
+                        환불할 지갑
+                        <select
+                            value={confirmAction.legacyWalletKind || ''}
+                            onChange={event => setConfirmAction(current => current ? {
+                                ...current,
+                                legacyWalletKind: event.target.value,
+                            } : current)}
+                            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700"
+                        >
+                            <option value="">지갑을 선택해주세요</option>
+                            <option value="user">기존 교인 계정 지갑</option>
+                            <option value="roster">이 공동체 명부 지갑</option>
+                        </select>
+                    </label>
+                )}
+            </ConfirmDialog>
             <ToastContainer toasts={toast.toasts} onClose={toast.removeToast} />
 
             {showTutorial && (

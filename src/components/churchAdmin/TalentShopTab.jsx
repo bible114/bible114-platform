@@ -18,7 +18,7 @@ const TalentShopTab = ({ ctx }) => {
         submitShopItem, resetShopItemDraft, editShopItem, deleteShopItem, printShopItems,
         deductForm, setDeductForm, members, requestManualDeduct, deducting,
         purchaseFilter, setPurchaseFilter, filteredPurchases, memberById,
-        formatAnyDate, setConfirmAction, deliverPurchase, refundPurchase,
+        formatAnyDate, setConfirmAction, requestPurchaseRefund, deliverPurchase, refundPurchase,
     } = ctx;
 
     return (
@@ -319,7 +319,7 @@ const TalentShopTab = ({ ctx }) => {
                                     <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div>
                                             <h3 className="text-sm font-black text-slate-800">구매 내역</h3>
-                                            <p className="mt-1 text-xs font-bold text-slate-400">최근 200건을 불러온 뒤 현재 교회 교인만 표시합니다.</p>
+                                            <p className="mt-1 text-xs font-bold text-slate-400">미처리 구매는 전체, 수령·취소 이력은 최근 200건을 표시합니다.</p>
                                         </div>
                                         <select
                                             value={purchaseFilter}
@@ -382,14 +382,7 @@ const TalentShopTab = ({ ctx }) => {
                                                                             </button>
                                                                             <button
                                                                                 type="button"
-                                                                                onClick={() => setConfirmAction({
-                                                                                    type: 'refundPurchase',
-                                                                                    purchase,
-                                                                                    title: `${purchase.itemName} 구매를 취소·환불할까요?`,
-                                                                                    message: `대기 건을 취소하고 ${purchase.price || 0}달란트를 교인 잔액에 돌려줍니다.`,
-                                                                                    danger: true,
-                                                                                    confirmLabel: '취소·환불',
-                                                                                })}
+                                                                                onClick={() => requestPurchaseRefund(purchase)}
                                                                                 className="rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-500"
                                                                             >
                                                                                 취소·환불

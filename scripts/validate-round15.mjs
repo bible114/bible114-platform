@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { ACHIEVEMENTS, getNewAchievementIds, mergeAchievementIds } from '../src/data/achievements.js';
 import { DAILY_READ_ADVANCE_LIMIT, getDailyAdvanceState } from '../src/utils/readPolicy.js';
-import { getTTSUnavailableApp } from '../src/utils/ttsAvailability.js';
+import { getTTSLegacyBlockedApp, getTTSUnavailableApp } from '../src/utils/ttsAvailability.js';
 
 const read = path => fs.readFileSync(path, 'utf8');
 
@@ -57,10 +57,15 @@ assert.equal(getTTSUnavailableApp('Mozilla/5.0 Chrome/140.0.0.0 Safari/537.36'),
 assert.equal(getTTSUnavailableApp('Mozilla/5.0 Version/18.0 Mobile Safari/604.1'), null);
 assert.equal(getTTSUnavailableApp('KAKAOTALK 25.0'), null);
 assert.equal(getTTSUnavailableApp('Googlebot/2.1'), null);
+assert.equal(getTTSLegacyBlockedApp('KAKAOTALK 25.0'), 'kakao');
+assert.equal(getTTSLegacyBlockedApp('NAVER(inapp; search; 2000; 12.0.0)'), null);
+assert.equal(getTTSLegacyBlockedApp('Mozilla/5.0 GSA/380.0.800000000 Mobile'), null);
+assert.equal(getTTSLegacyBlockedApp('Mozilla/5.0 Chrome/140.0.0.0 Safari/537.36'), null);
 assert(reader.includes('네이버, 구글앱은 TTS를 지원하지 않습니다. 영상을 활용해 주세요.'));
 assert(reader.includes('onSegmentClick={ttsUnavailableApp ? null : jumpToChunk}'));
-assert(tts.includes("ua.indexOf('KAKAOTALK') > -1"));
-assert(tts.includes('네이버/카카오 앱에서는 읽기 기능이 지원되지 않습니다.'));
+assert(tts.includes("ttsLegacyBlockedApp === 'kakao'"));
+assert(tts.includes('카카오톡 앱에서는 읽기 기능이 지원되지 않습니다.'));
+assert(!tts.includes('네이버/카카오 앱에서는'));
 
 const guestReader = read('src/components/GuestReaderView.jsx');
 assert(guestReader.includes('ttsUnavailableApp={ttsUnavailableApp}'));

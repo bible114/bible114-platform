@@ -10,6 +10,10 @@ import {
     normalizeTalentProgram,
     resolveTalentProgram,
 } from '../src/utils/talentProgram.js';
+import {
+    mergeAdminTalentPurchases,
+    resolvePurchaseRefundWalletKind,
+} from '../src/utils/talentPurchases.js';
 
 const user = {
     departmentId: 'senior',
@@ -140,6 +144,25 @@ const missingMarket = {
 };
 assert.equal(resolveTalentProgram({ user: { departmentId: 'elementary' }, talentShop: missingMarket }).canEarnTalent, false);
 
+const purchaseDoc = (id, data) => ({ id, data: () => data });
+const mergedPurchases = mergeAdminTalentPurchases({
+    pendingDocs: [purchaseDoc('old-pending', { uid: 'departed', status: 'pending', createdAt: 1 })],
+    recentDocs: [
+        purchaseDoc('recent-delivered', { uid: 'active', status: 'delivered', createdAt: 3 }),
+        purchaseDoc('old-pending', { uid: 'departed', status: 'pending', createdAt: 1 }),
+    ],
+    externalMemberIds: new Set(['active']),
+});
+assert.deepEqual(mergedPurchases.map(purchase => purchase.id), ['recent-delivered', 'old-pending']);
+assert.equal(mergedPurchases.find(purchase => purchase.id === 'old-pending').uid, 'departed',
+    '현재 명부에 없는 구매자의 pending도 유지해야 한다.');
+assert.equal(resolvePurchaseRefundWalletKind({ schemaVersion: 2, walletKind: 'roster' }, 'user'), 'roster');
+assert.equal(resolvePurchaseRefundWalletKind({ schemaVersion: 2 }, 'user'), null,
+    '손상된 v2 기록은 명시 선택으로도 추론하지 않는다.');
+assert.equal(resolvePurchaseRefundWalletKind({}, null), null);
+assert.equal(resolvePurchaseRefundWalletKind({}, 'user'), 'user');
+assert.equal(resolvePurchaseRefundWalletKind({}, 'roster'), 'roster');
+
 const normalized = normalizeTalentProgram(v2);
 normalized.markets.children.items[0].name = 'changed';
 assert.equal(v2.markets.children.items[0].name, '간식', 'normalization must not mutate source fixtures');
@@ -160,6 +183,14 @@ assert.match(quizCard, /resolveTalentProgram[\s\S]*rewardedRosterWallets/);
 assert.match(memberShop, /schemaVersion: 2[\s\S]*departmentId:[\s\S]*marketId:[\s\S]*walletKind/);
 assert.match(adminView, /setDepartmentTalentEnabled/);
 assert.match(adminView, /setDepartmentTalentMarketMode/);
+assert.match(adminView, /where\('status', '==', 'pending'\)[\s\S]*orderBy\('createdAt', 'desc'\)\.limit\(200\)/,
+    '미처리 구매는 전체를 불러오고 완료 이력만 최근 범위로 제한해야 한다.');
+assert.doesNotMatch(adminView, /\.filter\(p => memberIds\.has\(p\.uid\)\)/,
+    '탈퇴·제명 회원의 미처리 구매를 관리자 목록에서 숨기면 안 된다.');
+assert.match(adminView, /purchase\.status === 'pending' \|\| !talentMarketId/,
+    '미처리 구매는 삭제·변경된 시장 기록이어도 관리자가 볼 수 있어야 한다.');
+assert.match(adminView, /refundLegacyPurchase[\s\S]*legacyWalletKind[\s\S]*PURCHASE_WALLET_UNRESOLVED/,
+    '레거시 구매는 현재 소속으로 지갑을 추론하지 말고 명시 선택을 강제해야 한다.');
 assert.match(rules, /request\.resource\.data\.schemaVersion == 2/);
 assert.match(rules, /request\.resource\.data\.walletKind in \['user', 'roster'\]/);
 
