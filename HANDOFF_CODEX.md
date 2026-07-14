@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: 라운드 24 T123b shadow 비교 연결** (서버 권위 이관). T123a 읽기 완료 서버 계산 미리보기는 구현·검증·Edge 배포했고 Firestore 쓰기는 없다. 기존 계산과 로그인 사용자 결과를 비교한 뒤에만 실제 쓰기로 전환한다.
+> **현재 활성 작업: 라운드 24 T123d2 퀴즈 shadow API** (서버 권위 이관). T123b는 비교 장치 완료 후 실로그인 일치 1건을 기다리며, 독립 작업인 퀴즈 정답 인덱스·순수 계산 기반(T123d1)은 완료했다. 아직 퀴즈 Firestore 쓰기는 없다.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-14 | T123d1 퀴즈 서버 정답 인덱스·순수 계산 기반 | `src/utils/{quizShuffle,quizEngine}.js`, `scripts/generate-quiz-answer-index.mjs`, `supabase/functions/platform-api/{quiz-answer-index.json,quizCore.ts,quizCore_test.ts}`, `scripts/validate-round24.mjs`, `package.json`, `HANDOFF_CODEX.md` | 앱과 생성기가 동일한 결정적 선택지 섞기를 사용. 표시 정답 위치와 허용 Day 인덱스 6,657개(표준 4,719·쉬움 1,825·레거시 113)를 생성하고 byte-for-byte 최신성 검사를 전체 validate에 포함. 서버 순수 함수가 현재/방금 완료 위치, 계획·Day, 저장 문항 고정, 2회 시도, 당일 1회 보상을 검증. 통합 리뷰에서 1차 오답 후 같은 Day 다른 문항으로 교체 가능한 틈을 찾아 차단. Deno 전체 38 tests/check/fmt, 전체 validate, quiz/nt-easy, build, diff 통과. 쓰기/API 연결 없음. 인덱스 생성 중 일년일독 일정의 예레미야 30~32장 누락 발견(별도 판단 필요). |
 | 2026-07-14 | T123b 로그인 사용자 shadow 비교 장치 | `src/hooks/useUserBibleActions.js`, `src/utils/readCompletionShadow.js`, `scripts/validate-round24.mjs`, `HANDOFF_CODEX.md` | 개발 환경에서만 기존 transaction 전에 읽기 서버 미리보기를 최대 4초 기다리고, 성공했을 때만 기존 결과와 비교. 로그는 일치 여부·상태·불일치 필드명·회독/Day만 남기며 실제 점수·달란트·사용자 상태는 제외. 미리보기/비교 실패는 기존 읽기를 막지 않고 운영 빌드에서는 호출·로그 없음. 전체 validate/build/diff 통과. 앱 안 브라우저는 게스트, Chrome 기존 로컬 탭 2개는 로그아웃 상태라 기록을 변경하는 완료 클릭 없이 종료했으며 실제 로그인 200·일치 로그 확인은 남음. |
 | 2026-07-14 | T123a 읽기 완료 서버 계산 shadow | `supabase/functions/_shared/{time,firestore}*`, `supabase/functions/platform-api/{readCore,core,index}*`, `src/utils/platformApi.js`, `scripts/validate-round24.mjs`, `HANDOFF_CODEX.md` | 읽기 보상·진행·연속일·개인 지갑을 순수 함수로 계산하고 `previewReadCompletion`으로 읽기 전용 제공. 읽기 날짜는 영상의 오전 3시 기준과 분리해 KST 자정 기준 유지. collectionGroup roster 조회도 읽기만 수행하며 응답에서 조직 ID·잔액·문서 경로를 제외. Deno 28 tests/type/fmt, 전체 validate/build/diff 통과. Edge 재배포 후 OPTIONS 204·미인증 401·입력 오류 400·잘못된 origin 403·잘못된 token 401 확인. 실제 로그인 200 및 기존 계산 비교는 T123b에서 수행. |
 | 2026-07-14 | T122 공통 서버 기반 + shadow API | `supabase/functions/_shared/*`, `supabase/functions/platform-api/*`, `src/utils/platformApi.js`, `src/data/constants.js`, `.env.example`, `scripts/validate-round24.mjs`, `package.json`, `HANDOFF_CODEX.md` | 하위 모델 3개가 서버 공통 모듈, preflight 전용 API, 클라이언트 브리지를 분리 구현하고 Codex가 통합 보안 리뷰. UUID 폴백·오류 내부정보 차단·역할 정규화 보강. Deno 15 tests, type/fmt, 전체 validate, 기존/쉬운 퀴즈, build, diff 검사 통과. `platform-api --no-verify-jwt` Edge 배포 후 OPTIONS 204·미인증/잘못된 토큰 401·잘못된 origin 403 확인. Firestore write 없음. |
@@ -334,6 +335,13 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-14 라운드 24 T123d1 퀴즈 서버 기반 완료:
+- 하위 모델 3개가 결정적 선택지 셔플 공용화, 정답/허용 Day 인덱스 생성, 퀴즈 제출 순수 계산을 분리 구현했다. 생성 인덱스는 표준 4,719 + 신약 쉬움 1,825 + 레거시 bank 113 = 6,657문항이며 재생성 결과를 byte-for-byte 검사한다.
+- 서버 계산은 현재 또는 오늘 방금 완료한 위치, user plan/dayOffset의 실제 Day, 정답 위치, 최대 2회, 하루 1회 보상을 검증한다. 레거시 bank는 해당 progress에 이미 저장된 같은 key만 허용한다.
+- Codex 통합 리뷰에서 1차 오답 뒤 같은 Day의 다른 허용 문항으로 quizKey를 바꿀 수 있는 틈을 찾아, 저장 quizKey가 있으면 모든 후속 제출이 반드시 같도록 보강했다.
+- Deno 전체 38 tests/check/fmt, `npm run validate`(인덱스 최신성 포함), `validate:quiz`, `validate:nt-easy`, build, diff 검사 통과. 아직 API router와 Firestore 쓰기에는 연결하지 않았다.
+- 인덱스 생성으로 기존 `whole_bible` 일정이 Day 337 `렘 29:24-32` 뒤 Day 338 `렘 33-36장`으로 넘어가 예레미야 30~32장을 읽기 범위에서 누락한다는 사실이 드러났다. 관련 표준 문제 9개가 어느 계획 Day에도 연결되지 않는다. 서버 이관 판단 밖의 일정 변경이라 수정하지 않았으며 일정 원본 의도 확인 후 별도 작업 필요.
 
 2026-07-14 라운드 24 T123b 비교 장치 구현, 실로그인 확인 대기:
 - 하위 모델 3개가 비교 순수 함수, 기존 읽기 훅 연결, 정적·동적 회귀 검사를 분리 구현했다. Codex 통합 리뷰에서 preview 실패 시 허위 mismatch 로그가 생기는 문제와 API 장애 시 12초 지연 가능성을 찾아 성공 응답일 때만 비교하고 timeout을 4초로 낮췄다.
@@ -1915,6 +1923,9 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 - [ ] **T123b. 로그인 사용자 shadow 비교** — 비교 장치·자동 검사는 완료. 기존 읽기 완료 직전에 개발 환경에서만 서버 미리보기를 최대 4초 호출하고 성공 응답만 기존 계산과 비교한다. 로그에는 실제 값 없이 불일치 필드명만 남긴다. **남은 완료 조건: 로그인 계정으로 `[read-shadow] match:true` 1건 확인.**
 - [ ] **T123c. 읽기 완료 실제 쓰기 전환** — T123b 일치 확인 후 멱등 ledger와 원자 commit을 구현하고 React의 직접 보상 쓰기를 제거한다. 서버 실패 시 직접 쓰기 폴백을 두지 않는다.
 - [ ] **T123d. 퀴즈 보상 서버 이관** — 서버 정답 인덱스·출제 범위 검증·시도/보상 ledger를 구현하고 클라이언트 직접 쓰기를 제거한다.
+  - [x] **T123d1. 정답 인덱스·순수 계산 기반** — 앱과 동일한 선택지 셔플로 6,657문항의 표시 정답 위치와 계획별 허용 Day를 생성한다. 현재/방금 완료 위치, 저장 문항 고정, 2회 시도, 하루 1회 보상을 무쓰기 순수 함수로 검증한다.
+  - [ ] **T123d2. 퀴즈 shadow API·클라이언트 비교** — 서버가 users와 정답 인덱스를 읽어 `previewQuizSubmission`을 무쓰기 제공한다. 개발 환경에서만 기존 transaction 전에 결과를 비교하며 실패는 기존 흐름을 막지 않는다.
+  - [ ] **T123d3. 퀴즈 실제 쓰기 전환** — shadow 일치 확인 뒤 멱등 ledger·users/roster 원자 commit을 구현하고 클라이언트 직접 쓰기를 제거한다.
 
 - `completeRead({cycle, day, requestId})`: 현재 사용자 진행 위치·하루 추가 읽기 상한·서버 KST 날짜를 검증하고 users 진행/score, 최대 3개 실제 roster 지갑, history, 통계 ledger를 한 transaction으로 반영한다. 클라이언트의 `talentEarned`, `score`, roster 목록은 받지 않는다.
 - `submitQuiz({progressKey, quizKey, selectedIndex, requestId})`: 서버가 문제 정답과 해당 Day 출제 가능 범위를 검증하고 시도 횟수·하루 1회 보상·users/roster 지갑을 한 transaction으로 반영한다.

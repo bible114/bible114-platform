@@ -183,6 +183,98 @@ assert.deepEqual(
     'comparator는 실제 값을 반환하지 않고 상태와 mismatchKeys만 반환해야 한다.',
 );
 
+// 퀴즈 정답 서버 권위 기반: 클라이언트와 생성기가 같은 결정적 섞기 함수를
+// 공유하고, 서버에 배치되는 인덱스가 전체 원본과 정확히 대응해야 한다.
+const quizShufflePath = 'src/utils/quizShuffle.js';
+const quizEnginePath = 'src/utils/quizEngine.js';
+const quizAnswerGeneratorPath = 'scripts/generate-quiz-answer-index.mjs';
+const quizAnswerIndexPath = 'supabase/functions/platform-api/quiz-answer-index.json';
+const quizCorePath = 'supabase/functions/platform-api/quizCore.ts';
+const quizCoreTestPath = 'supabase/functions/platform-api/quizCore_test.ts';
+for (const path of [
+    quizShufflePath,
+    quizEnginePath,
+    quizAnswerGeneratorPath,
+    quizAnswerIndexPath,
+    quizCorePath,
+    quizCoreTestPath,
+]) assert.equal(exists(path), true, `${path}가 필요하다.`);
+
+const quizShuffle = read(quizShufflePath);
+const quizEngine = read(quizEnginePath);
+for (const exportName of ['hashStringToSeed', 'createSeededRandom', 'shuffleQuizChoices']) {
+    assert.match(quizShuffle, new RegExp(`export const ${exportName}\\s*=`));
+}
+assert.match(
+    quizEngine,
+    /import\s*\{[^}]*createSeededRandom[^}]*shuffleQuizChoices[^}]*\}\s*from\s*['"]\.\/quizShuffle['"]/,
+    'quizEngine은 공용 quizShuffle 구현을 import해야 한다.',
+);
+assert.match(quizEngine, /export\s*\{\s*shuffleQuizChoices\s*\}/, '기존 호출부를 위해 shuffleQuizChoices를 re-export해야 한다.');
+assert.doesNotMatch(
+    quizEngine,
+    /(?:const|let|var|function)\s+(?:hashStringToSeed|createSeededRandom)\b/,
+    'quizEngine에 hash/seeded random 중복 구현을 두면 안 된다.',
+);
+
+assert.equal(packageJson.scripts['generate:quiz-answer-index'], 'node scripts/generate-quiz-answer-index.mjs');
+assert.equal(packageJson.scripts['validate:quiz-answer-index'], 'node scripts/generate-quiz-answer-index.mjs --check');
+const validateScript = packageJson.scripts.validate;
+const answerIndexValidation = 'npm run validate:quiz-answer-index';
+const round24Validation = 'npm run validate:round24';
+assert.ok(validateScript.includes(answerIndexValidation), '최상위 validate에 정답 인덱스 검사가 필요하다.');
+assert.ok(
+    validateScript.indexOf(answerIndexValidation) < validateScript.indexOf(round24Validation),
+    '정답 인덱스 검사는 Round 24 계약 검사보다 먼저 실행해야 한다.',
+);
+
+const quizAnswerIndex = JSON.parse(read(quizAnswerIndexPath));
+assert.equal(quizAnswerIndex.schemaVersion, 1, '퀴즈 정답 인덱스 schemaVersion은 1이어야 한다.');
+assert.equal(
+    quizAnswerIndex.questions && typeof quizAnswerIndex.questions === 'object' && !Array.isArray(quizAnswerIndex.questions),
+    true,
+    '퀴즈 정답 인덱스 questions는 객체여야 한다.',
+);
+const indexedQuestions = Object.entries(quizAnswerIndex.questions);
+assert.equal(indexedQuestions.length, 6657, '퀴즈 정답 인덱스는 정확히 6,657문항이어야 한다.');
+const quizKindCounts = { standard: 0, ntEasy: 0, bank: 0 };
+for (const [key, record] of indexedQuestions) {
+    let kind;
+    if (/^ntEasy-(?:[1-9]\d{0,2})-(?:[1-9]\d*)$/.test(key)) kind = 'ntEasy';
+    else if (/^bank-(?:0|[1-9]\d*)$/.test(key)) kind = 'bank';
+    else if (/^[a-z0-9]+-(?:[1-9]\d*)-(?:[1-9]\d*)$/.test(key)) kind = 'standard';
+    else assert.fail(`허용되지 않은 퀴즈 key 형식: ${key}`);
+    quizKindCounts[kind] += 1;
+
+    assert.ok(Number.isInteger(record?.answerIndex) && record.answerIndex >= 0 && record.answerIndex <= 3, `${key}: answerIndex는 0~3 정수여야 한다.`);
+    assert.equal(record?.allowed && typeof record.allowed === 'object', true, `${key}: allowed가 필요하다.`);
+    for (const plan of ['whole', 'nt']) {
+        const days = record.allowed?.[plan];
+        assert.ok(Array.isArray(days), `${key}: allowed.${plan}은 배열이어야 한다.`);
+        assert.ok(days.every(day => Number.isInteger(day) && day >= 1 && day <= 365), `${key}: allowed.${plan}은 Day 1~365만 포함해야 한다.`);
+        assert.equal(new Set(days).size, days.length, `${key}: allowed.${plan}에 중복 Day가 있다.`);
+    }
+    if (kind === 'bank') {
+        assert.equal(record.legacyBank, true, `${key}: 레거시 은행 문항 표시가 필요하다.`);
+        assert.deepEqual(record.allowed, { whole: [], nt: [] }, `${key}: 은행 문항은 새 위치에 허용하면 안 된다.`);
+    } else {
+        assert.notEqual(record.legacyBank, true, `${key}: 일반 문항을 legacyBank로 표시하면 안 된다.`);
+    }
+}
+assert.deepEqual(
+    quizKindCounts,
+    { standard: 4719, ntEasy: 1825, bank: 113 },
+    '퀴즈 종류별 인덱스 문항 수가 원본과 달라졌다.',
+);
+
+const quizCore = read(quizCorePath);
+assert.match(quizCore, /export const validateQuizSubmission\s*=/);
+assert.match(
+    quizCore,
+    /validQuizKey\(stored\.quizKey\)\s*&&\s*stored\.quizKey\s*!==\s*input\.quizKey[\s\S]{0,160}return\s*\{\s*status:\s*['"]invalidQuiz['"]\s*\}/,
+    '저장된 quizKey와 제출 quizKey가 다르면 invalidQuiz로 거부해야 한다.',
+);
+
 const sharedContracts = {
     'supabase/functions/_shared/cors.ts': ['ALLOWED_ORIGINS', 'isAllowedOrigin', 'handleCors', 'jsonResponse'],
     'supabase/functions/_shared/errors.ts': ['PlatformError', 'ERROR_DEFINITIONS', 'errorPayload'],
