@@ -161,7 +161,7 @@ assert.match(socialOnboarding, /getVisibleBibleVersions\(planType, \{ \.\.\.temp
 assert.doesNotMatch(socialOnboarding, /\(BIBLE_VERSIONS\[planType\] \|\| \[\]\)\.map/);
 assert.match(authFlow, /isPlanIdAllowedForUser\(guest\.planId, null\)/);
 assert.match(authFlow, /isPlanIdAllowedForUser\(planId, newUser\)/);
-assert.match(rules, /hasAny\(\['role', 'churchId', 'accountType', 'isDeleted'\]\)/);
+assert.match(rules, /hasAny\(\['role', 'churchId', 'accountType', 'isDeleted', 'extraMemberships'\]\)/);
 assert.match(rules, /existsAfter\([\s\S]*primaryOrgId[\s\S]*roster/);
 assert.match(rules, /get\('talent', 0\) <= resource\.data\.get\('talent', 0\) \+ 17/);
 assert.match(rules, /get\('score', 0\) <= resource\.data\.get\('score', 0\) \+ 15/);

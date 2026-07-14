@@ -1,10 +1,12 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { TOTAL_DAYS, UNAFFILIATED_CHURCH_ID } from '../data/constants';
 import { BIBLE_VERSIONS, PLAN_TYPES } from '../data/bible_options';
 import { getLevelInfo } from '../data/levels';
 import { DEFAULT_DEPARTMENTS } from '../data/departments';
 import { belongsToDepartment, getMembershipList } from '../utils/memberships';
 import { getDaysRead } from '../utils/helpers';
+import { db } from '../utils/firebase';
+import { resolveTalentProgram } from '../utils/talentProgram';
 
 // Modals
 import {
@@ -140,7 +142,35 @@ const DashboardView = ({
         gateOpen: false,
     });
     const [highlightQuiz, setHighlightQuiz] = useState(false);
+    const [talentProgramEnabled, setTalentProgramEnabled] = useState(true);
     const quizSectionRef = useRef(null);
+
+    useEffect(() => {
+        if (!currentUser?.churchId || currentUser.role === 'guest') {
+            setTalentProgramEnabled(false);
+            return undefined;
+        }
+        let alive = true;
+        db.collection('churches').doc(currentUser.churchId).collection('settings').doc('talentShop').get()
+            .then(doc => {
+                if (!alive) return;
+                setTalentProgramEnabled(resolveTalentProgram({
+                    user: currentUser,
+                    talentShop: doc.exists ? doc.data() : null,
+                }).canEarnTalent);
+            })
+            .catch(error => {
+                console.error('달란트 부서 설정 로드 실패:', error);
+                if (alive) setTalentProgramEnabled(true);
+            });
+        return () => { alive = false; };
+    }, [
+        currentUser?.uid,
+        currentUser?.churchId,
+        currentUser?.departmentId,
+        currentUser?.subgroupId,
+        JSON.stringify(currentUser?.extraMemberships || []),
+    ]);
 
     const closeRankingModal = () => {
         setShowFullRanking(false);
@@ -395,7 +425,7 @@ const DashboardView = ({
             <DashboardHeader
                 handleLogout={handleLogout}
                 streak={streak}
-                talent={talent}
+                talent={talentProgramEnabled ? talent : undefined}
                 setShowAchievements={setShowAchievements}
                 setShowDateSettings={setShowDateSettings}
                 setShowCalendar={setShowCalendar}
@@ -477,6 +507,7 @@ const DashboardView = ({
                                 onGateStateChange={setQuizGate}
                                 sectionRef={quizSectionRef}
                                 highlight={highlightQuiz}
+                                talentProgramEnabled={talentProgramEnabled}
                             />
                         )}
                     />

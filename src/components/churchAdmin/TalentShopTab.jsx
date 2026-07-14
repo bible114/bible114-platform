@@ -11,6 +11,8 @@ const SHOP_EMOJI_GROUPS = [
 const TalentShopTab = ({ ctx }) => {
     const {
         talentShop, toggleTalentShopEnabled, savingTalentShop,
+        orgComms, talentMarketId, setTalentMarketId, activeTalentMarket, activeShopItems,
+        setDepartmentTalentEnabled, setDepartmentTalentMarketMode,
         setShowShopPreview, showShopPreview, currentUser, setCurrentUser, shopPreviewTalent,
         shopItemDraft, setShopItemDraft, editingShopItemId, emojiGroupIdx, setEmojiGroupIdx,
         submitShopItem, resetShopItemDraft, editShopItem, deleteShopItem, printShopItems,
@@ -58,6 +60,60 @@ const TalentShopTab = ({ ctx }) => {
                                     </div>
                                 </div>
 
+                                <div className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm">
+                                    <div>
+                                        <h3 className="text-sm font-black text-slate-800">부서별 달란트 운영</h3>
+                                        <p className="mt-1 text-xs font-bold leading-relaxed text-slate-400">
+                                            달란트를 쓰는 부서만 켜세요. 같은 시장을 선택하면 상품을 통합 관리하고, 부서 전용 시장을 선택하면 상품을 따로 관리합니다. 달란트 잔액은 공동체 안에서 하나로 유지됩니다.
+                                        </p>
+                                    </div>
+                                    <div className="mt-4 space-y-2">
+                                        {orgComms.map(department => {
+                                            const setting = talentShop.departmentSettings?.[department.id] || { enabled: false, marketId: 'shared' };
+                                            const separate = setting.marketId === `department_${department.id}`;
+                                            return (
+                                                <div key={department.id} className="grid gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 sm:grid-cols-[1fr_auto_11rem] sm:items-center">
+                                                    <div>
+                                                        <p className="text-sm font-black text-slate-700">{department.name}</p>
+                                                        <p className="text-[11px] font-bold text-slate-400">{setting.enabled ? '읽기·퀴즈 달란트 적립' : '달란트 미사용'}</p>
+                                                    </div>
+                                                    <label className="inline-flex items-center gap-2 text-xs font-black text-slate-600">
+                                                        <input type="checkbox" checked={setting.enabled === true} disabled={savingTalentShop} onChange={event => setDepartmentTalentEnabled(department.id, event.target.checked)} />
+                                                        {setting.enabled ? '사용' : '미사용'}
+                                                    </label>
+                                                    <select
+                                                        value={separate ? 'department' : 'shared'}
+                                                        disabled={!setting.enabled || savingTalentShop}
+                                                        onChange={event => setDepartmentTalentMarketMode(department.id, event.target.value)}
+                                                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 disabled:opacity-40"
+                                                    >
+                                                        <option value="shared">공동체 통합 시장</option>
+                                                        <option value="department">이 부서 전용 시장</option>
+                                                    </select>
+                                                </div>
+                                            );
+                                        })}
+                                        {orgComms.length === 0 && <p className="rounded-xl bg-slate-50 px-4 py-4 text-xs font-bold text-slate-400">조직 탭에서 부서를 먼저 만들어주세요.</p>}
+                                    </div>
+                                </div>
+
+                                <div className="rounded-2xl border border-violet-100 bg-white p-4 shadow-sm">
+                                    <p className="text-xs font-black text-slate-500">관리할 시장 선택</p>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {Object.values(talentShop.markets || {}).map(market => (
+                                            <button
+                                                key={market.id}
+                                                type="button"
+                                                onClick={() => setTalentMarketId(market.id)}
+                                                className={`rounded-full px-4 py-2 text-xs font-black ${talentMarketId === market.id ? 'bg-violet-700 text-white' : 'bg-violet-50 text-violet-700'}`}
+                                            >
+                                                {market.name || market.id} · 상품 {(market.items || []).length}개
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <p className="mt-2 text-[11px] font-bold text-slate-400">현재 편집: {activeTalentMarket?.name || '시장을 선택해주세요'}</p>
+                                </div>
+
                                 {showShopPreview && (
                                     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60"
                                         onClick={e => { if (e.target === e.currentTarget) setShowShopPreview(false); }}>
@@ -78,6 +134,7 @@ const TalentShopTab = ({ ctx }) => {
                                                         uid: null,
                                                         name: '미리보기 성도',
                                                         talent: shopPreviewTalent,
+                                                        departmentId: Object.entries(talentShop.departmentSettings || {}).find(([, setting]) => setting?.enabled && setting.marketId === talentMarketId)?.[0] || null,
                                                     }}
                                                     setCurrentUser={() => {}}
                                                     showUnlockModal={false}
@@ -126,11 +183,11 @@ const TalentShopTab = ({ ctx }) => {
                                             {deducting ? '처리 중...' : '차감하기'}
                                         </button>
                                     </div>
-                                    {(talentShop.items || []).filter(i => i && i.active !== false).length > 0 && (
+                                    {activeShopItems.filter(i => i && i.active !== false).length > 0 && (
                                         <div className="mt-3">
                                             <p className="mb-1.5 text-[11px] font-bold text-amber-700/70">상품 빠른 선택 (물품·가격 자동 입력)</p>
                                             <div className="flex flex-wrap gap-2">
-                                                {(talentShop.items || []).filter(i => i && i.active !== false).map(item => (
+                                                {activeShopItems.filter(i => i && i.active !== false).map(item => (
                                                     <button
                                                         key={item.id}
                                                         type="button"
@@ -232,13 +289,13 @@ const TalentShopTab = ({ ctx }) => {
                                     <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
                                         <div className="mb-4 flex items-center justify-between">
                                             <h3 className="text-sm font-black text-slate-800">상품 목록</h3>
-                                            <span className="text-xs font-bold text-slate-400">{(talentShop.items || []).length}개</span>
+                                            <span className="text-xs font-bold text-slate-400">{activeShopItems.length}개</span>
                                         </div>
-                                        {(talentShop.items || []).length === 0 ? (
+                                        {activeShopItems.length === 0 ? (
                                             <p className="py-10 text-center text-xs font-bold text-slate-300">아직 상품이 없습니다.</p>
                                         ) : (
                                             <div className="space-y-2">
-                                                {(talentShop.items || []).map(item => (
+                                                {activeShopItems.map(item => (
                                                     <div key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 p-3">
                                                         <div className="flex min-w-0 items-center gap-3">
                                                             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-2xl">{item.emoji || '🎁'}</span>
@@ -283,7 +340,7 @@ const TalentShopTab = ({ ctx }) => {
                                                 <thead className="bg-slate-50">
                                                     <tr>
                                                         <th className="px-4 py-3 text-left text-xs font-black text-slate-400">교인</th>
-                                                        <th className="px-4 py-3 text-left text-xs font-black text-slate-400">상품</th>
+                                                        <th className="px-4 py-3 text-left text-xs font-black text-slate-400">시장·상품</th>
                                                         <th className="px-4 py-3 text-left text-xs font-black text-slate-400">가격</th>
                                                         <th className="px-4 py-3 text-left text-xs font-black text-slate-400">구매일</th>
                                                         <th className="px-4 py-3 text-left text-xs font-black text-slate-400">잔여</th>
@@ -296,7 +353,14 @@ const TalentShopTab = ({ ctx }) => {
                                                         return (
                                                             <tr key={purchase.id}>
                                                                 <td className="px-4 py-3 text-sm font-bold text-slate-700">{purchase.memberName || buyer?.name || '-'}</td>
-                                                                <td className="px-4 py-3 text-sm text-slate-600">{purchase.itemName}</td>
+                                                                <td className="px-4 py-3 text-sm text-slate-600">
+                                                                    <p>{purchase.itemName}</p>
+                                                                    {(purchase.departmentName || purchase.departmentId || purchase.marketId) && (
+                                                                        <p className="mt-0.5 text-[10px] font-bold text-violet-500">
+                                                                            {purchase.departmentName || purchase.departmentId || '통합'} · {purchase.marketId || '이전 시장'}
+                                                                        </p>
+                                                                    )}
+                                                                </td>
                                                                 <td className="px-4 py-3 text-sm font-black text-amber-600">⭐ {purchase.price || 0}</td>
                                                                 <td className="px-4 py-3 text-xs font-bold text-slate-400">{formatAnyDate(purchase.createdAt)}</td>
                                                                 <td className="px-4 py-3 text-sm font-black text-slate-600">{buyer ? `⭐ ${buyer.talent || 0}` : '-'}</td>

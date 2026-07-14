@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { db, firebase } from '../../utils/firebase';
+import { getMembershipList } from '../../utils/memberships';
+import { normalizeTalentProgram, resolveTalentProgram } from '../../utils/talentProgram';
 import { updateRosterTalents, usesRosterTalentWallet } from '../../utils/talentWallet';
 
 const statusLabel = {
@@ -42,6 +44,7 @@ const TalentShop = ({
     const [purchases, setPurchases] = useState([]);
     const [message, setMessage] = useState(null);
     const [buyingId, setBuyingId] = useState(null);
+    const [selectedDepartmentId, setSelectedDepartmentId] = useState(null);
 
     useEffect(() => {
         if (!db || !currentUser?.churchId || currentUser.role === 'guest') {
@@ -88,10 +91,63 @@ const TalentShop = ({
         return () => { alive = false; };
     }, [open, currentUser?.churchId, currentUser?.uid]);
 
-    const enabled = shop?.enabled === true;
-    const activeItems = useMemo(() => {
-        return (Array.isArray(shop?.items) ? shop.items : []).filter(item => item && item.active !== false);
-    }, [shop?.items]);
+    const program = useMemo(() => normalizeTalentProgram(shop), [shop]);
+    const membershipByDepartment = useMemo(() => {
+        const entries = getMembershipList(currentUser).map(membership => [
+            membership.departmentId,
+            membership.departmentName || membership.departmentId,
+        ]);
+        return new Map(entries);
+    }, [currentUser]);
+    const baseResolution = useMemo(() => resolveTalentProgram({
+        user: currentUser,
+        talentShop: shop,
+    }), [currentUser, shop]);
+    const marketContexts = useMemo(() => {
+        if (baseResolution.legacy) return [];
+        const seenMarkets = new Set();
+        return baseResolution.activeDepartments.flatMap(department => {
+            if (!department.marketEnabled || seenMarkets.has(department.marketId)) return [];
+            const resolved = resolveTalentProgram({
+                user: currentUser,
+                talentShop: shop,
+                departmentId: department.departmentId,
+            });
+            if (!resolved.canUseMarket || !resolved.selectedMarket) return [];
+            seenMarkets.add(department.marketId);
+            return [{
+                departmentId: department.departmentId,
+                departmentName: membershipByDepartment.get(department.departmentId) || department.departmentId,
+                marketId: resolved.selectedMarketId,
+                marketName: resolved.selectedMarket.name || resolved.selectedMarketId,
+            }];
+        });
+    }, [baseResolution, currentUser, membershipByDepartment, shop]);
+    const effectiveDepartmentId = marketContexts.some(context => context.departmentId === selectedDepartmentId)
+        ? selectedDepartmentId
+        : marketContexts[0]?.departmentId || null;
+    const selectedResolution = useMemo(() => resolveTalentProgram({
+        user: currentUser,
+        talentShop: shop,
+        departmentId: effectiveDepartmentId,
+    }), [currentUser, effectiveDepartmentId, shop]);
+    const selectedMarketContext = marketContexts.find(context => context.departmentId === effectiveDepartmentId) || null;
+    const enabled = baseResolution.legacy ? baseResolution.canUseMarket : marketContexts.length > 0;
+    const activeItems = baseResolution.legacy
+        ? baseResolution.items
+        : selectedResolution.items;
+
+    useEffect(() => {
+        setSelectedDepartmentId(null);
+        setMessage(null);
+    }, [currentUser?.churchId]);
+
+    useEffect(() => {
+        if (baseResolution.legacy) return;
+        if (effectiveDepartmentId !== selectedDepartmentId) {
+            setSelectedDepartmentId(effectiveDepartmentId);
+        }
+    }, [baseResolution.legacy, effectiveDepartmentId, selectedDepartmentId]);
 
     if (loading || !enabled) return null;
 
@@ -110,9 +166,14 @@ const TalentShop = ({
             setMessage({ type: 'error', text: '달란트가 부족합니다.' });
             return;
         }
+        if (!baseResolution.legacy && (!selectedResolution.canUseMarket || !selectedMarketContext)) {
+            setMessage({ type: 'error', text: '이 부서의 달란트 시장을 이용할 수 없습니다.' });
+            return;
+        }
         if (!window.confirm(`${item.name}을(를) ${item.price}달란트로 구매할까요?\n\n구매한 상품은 교회에서 직접 받아요.`)) return;
 
-        setBuyingId(item.id);
+        const buyingKey = baseResolution.legacy ? item.id : `${selectedResolution.selectedMarketId}:${item.id}`;
+        setBuyingId(buyingKey);
         setMessage(null);
         try {
             const purchaseRef = db.collection('churches').doc(currentUser.churchId)
@@ -128,6 +189,15 @@ const TalentShop = ({
                 const balance = walletSnap.data().talent || 0;
                 if (balance < item.price) throw new Error('INSUFFICIENT_TALENT');
                 const nextTalent = balance - item.price;
+                const walletKind = rosterWallet ? 'roster' : 'user';
+                const v2PurchaseContext = baseResolution.legacy ? {} : {
+                    schemaVersion: 2,
+                    departmentId: selectedMarketContext.departmentId,
+                    departmentName: selectedMarketContext.departmentName,
+                    marketId: selectedMarketContext.marketId,
+                    walletKind,
+                    walletOrgId: currentUser.churchId,
+                };
 
                 transaction.update(walletRef, {
                     talent: nextTalent,
@@ -141,8 +211,9 @@ const TalentShop = ({
                     price: item.price,
                     status: 'pending',
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    ...v2PurchaseContext,
                 });
-                return { nextTalent, rosterWallet };
+                return { nextTalent, rosterWallet, v2PurchaseContext };
             });
 
             if (typeof setCurrentUser === 'function') {
@@ -164,6 +235,7 @@ const TalentShop = ({
                 price: item.price,
                 status: 'pending',
                 createdAt: new Date(),
+                ...result.v2PurchaseContext,
             }, ...prev]);
         } catch (e) {
             console.error('달란트 상품 구매 실패:', e);
@@ -221,6 +293,11 @@ const TalentShop = ({
                                     <p className="text-xs font-black text-amber-300">비밀 달란트 상점</p>
                                     <h2 className="mt-1 text-2xl font-black">교회에서 직접 받는 선물</h2>
                                     <p className="mt-2 text-sm font-semibold text-violet-100">구매한 상품은 교회에서 직접 받아요.</p>
+                                    {!baseResolution.legacy && selectedMarketContext && (
+                                        <p className="mt-2 text-xs font-black text-amber-200">
+                                            {selectedMarketContext.marketName} · {selectedMarketContext.departmentName}
+                                        </p>
+                                    )}
                                 </div>
                                 <button
                                     type="button"
@@ -260,6 +337,32 @@ const TalentShop = ({
                                     </div>
                                 </section>
                             )}
+                            {!baseResolution.legacy && marketContexts.length > 1 && (
+                                <section className="rounded-3xl border border-violet-100 bg-white p-4 shadow-sm">
+                                    <h3 className="text-sm font-black text-slate-800">이용할 달란트 시장</h3>
+                                    <p className="mt-1 text-xs font-bold text-slate-400">소속 부서가 연결된 시장만 이용할 수 있어요.</p>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {marketContexts.map(context => {
+                                            const active = context.departmentId === effectiveDepartmentId;
+                                            return (
+                                                <button
+                                                    key={context.marketId}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSelectedDepartmentId(context.departmentId);
+                                                        setMessage(null);
+                                                    }}
+                                                    className={`rounded-full px-4 py-2 text-xs font-black ${active
+                                                        ? 'bg-violet-700 text-white shadow-sm'
+                                                        : 'bg-violet-50 text-violet-700 hover:bg-violet-100'}`}
+                                                >
+                                                    {context.marketName}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </section>
+                            )}
                             {message && (
                                 <div className={`rounded-2xl px-4 py-3 text-sm font-bold ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
                                     {message.text}
@@ -272,8 +375,11 @@ const TalentShop = ({
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     {activeItems.map(item => {
                                         const enough = (currentUser.talent || 0) >= item.price;
+                                        const itemBuyingKey = baseResolution.legacy
+                                            ? item.id
+                                            : `${selectedResolution.selectedMarketId}:${item.id}`;
                                         return (
-                                            <div key={item.id} className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100">
+                                            <div key={itemBuyingKey} className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100">
                                                 <div className="flex items-start gap-3">
                                                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-2xl">{item.emoji || '🎁'}</div>
                                                     <div className="min-w-0 flex-1">
@@ -285,11 +391,11 @@ const TalentShop = ({
                                                     <span className="text-sm font-black text-amber-600">⭐ {item.price}</span>
                                                     <button
                                                         type="button"
-                                                        disabled={!enough || buyingId === item.id}
+                                                        disabled={!enough || buyingId === itemBuyingKey}
                                                         onClick={() => buyItem(item)}
                                                         className="rounded-xl bg-violet-700 px-4 py-2 text-xs font-black text-white disabled:bg-slate-200 disabled:text-slate-400"
                                                     >
-                                                        {enough ? (buyingId === item.id ? '처리 중...' : '구매') : '달란트 부족'}
+                                                        {enough ? (buyingId === itemBuyingKey ? '처리 중...' : '구매') : '달란트 부족'}
                                                     </button>
                                                 </div>
                                             </div>
@@ -307,17 +413,27 @@ const TalentShop = ({
                                     <p className="py-8 text-center text-xs font-bold text-slate-300">아직 구매 내역이 없습니다.</p>
                                 ) : (
                                     <div className="divide-y divide-slate-100">
-                                        {purchases.map(purchase => (
-                                            <div key={purchase.id} className="flex items-center justify-between gap-3 py-3">
-                                                <div className="min-w-0">
-                                                    <p className="truncate text-sm font-black text-slate-700">{purchase.itemName}</p>
-                                                    <p className="text-xs font-bold text-slate-400">⭐ {purchase.price} · {formatDate(purchase.createdAt)}</p>
+                                        {purchases.map(purchase => {
+                                            const purchaseMarketName = program.markets?.[purchase.marketId]?.name || purchase.marketId;
+                                            const purchaseContext = [purchaseMarketName, purchase.departmentName]
+                                                .filter(Boolean)
+                                                .filter((value, index, values) => values.indexOf(value) === index)
+                                                .join(' · ');
+                                            return (
+                                                <div key={purchase.id} className="flex items-center justify-between gap-3 py-3">
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-sm font-black text-slate-700">{purchase.itemName}</p>
+                                                        <p className="text-xs font-bold text-slate-400">⭐ {purchase.price} · {formatDate(purchase.createdAt)}</p>
+                                                        {purchase.schemaVersion === 2 && purchaseContext && (
+                                                            <p className="mt-1 truncate text-[11px] font-bold text-violet-500">{purchaseContext}</p>
+                                                        )}
+                                                    </div>
+                                                    <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${statusClass[purchase.status] || statusClass.pending}`}>
+                                                        {statusLabel[purchase.status] || purchase.status}
+                                                    </span>
                                                 </div>
-                                                <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${statusClass[purchase.status] || statusClass.pending}`}>
-                                                    {statusLabel[purchase.status] || purchase.status}
-                                                </span>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </section>

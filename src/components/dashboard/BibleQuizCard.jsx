@@ -7,6 +7,8 @@ import { loadUserExtraOrgsStrict } from '../../utils/roster';
 import { getRosterOrgIds, updateRosterTalents } from '../../utils/talentWallet';
 import { previewQuizSubmission } from '../../utils/platformApi';
 import { compareQuizSubmissionShadow } from '../../utils/quizSubmissionShadow';
+import { isTalentProgramV2, resolveTalentProgram } from '../../utils/talentProgram';
+import { loadTalentProgramsStrict } from '../../utils/talentProgramStore';
 import {
     getReadingRangeForDay,
     loadNtEasyPoolForDay,
@@ -150,7 +152,7 @@ const buildDayQuiz = async (currentUser, viewingDay) => {
     return null;
 };
 
-const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateChange, sectionRef, highlight = false }) => {
+const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateChange, sectionRef, highlight = false, talentProgramEnabled = true }) => {
     const todayKey = getKstDateString();
     const hasReadToday = currentUser?.lastReadDate === new Date().toDateString();
     const progressDay = Number(viewingDay || currentUser?.currentDay || 1);
@@ -306,8 +308,20 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
         if (!quiz || !quizKey || selectedIndex === null || submitting || finished || skipped) return;
         setSubmitting(true);
         try {
+            const isCorrectSelection = selectedIndex === quiz.answerIndex;
+            const rewardRosterOrgs = isCorrectSelection
+                ? (await loadUserExtraOrgsStrict(currentUser.uid)).slice(0, 3)
+                : null;
+            const baseChurchId = currentUser.baseChurchId
+                || (currentUser.accountType === 'personal' ? null : currentUser.churchId);
+            const talentPrograms = isCorrectSelection
+                ? await loadTalentProgramsStrict([
+                    baseChurchId,
+                    ...(rewardRosterOrgs || []).map(org => org.orgId),
+                ])
+                : {};
             let quizShadowPreview = null;
-            if (import.meta.env.DEV) {
+            if (import.meta.env.DEV && !Object.values(talentPrograms).some(isTalentProgramV2)) {
                 try {
                     quizShadowPreview = await previewQuizSubmission(progressKey, quizKey, selectedIndex, { timeoutMs: 4000 });
                 } catch {
@@ -318,9 +332,6 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
             // 정답일 때만 보상 지갑이 필요하다. 로그인 시 명부 조회 실패로 캐시가
             // 비어 있을 수 있으므로 보상 날짜를 기록하기 전에 실제 명부를 확인한다.
             // 조회가 실패하면 transaction 자체를 시작하지 않아 당일 보상이 소진되지 않는다.
-            const rewardRosterOrgs = selectedIndex === quiz.answerIndex
-                ? (await loadUserExtraOrgsStrict(currentUser.uid)).slice(0, 3)
-                : null;
             const result = await db.runTransaction(async (transaction) => {
                 const userRef = db.collection('users').doc(currentUser.uid);
                 const snap = await transaction.get(userRef);
@@ -352,7 +363,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                 const nextAttempts = freshAttempts + 1;
                 const isCorrect = selectedIndex === quiz.answerIndex;
                 const rewardAlready = data.quizRewardDate === todayKey || (data.quizDate === todayKey && data.quizSolved === true);
-                const reward = getQuizRewardForAnswer({
+                const baseReward = getQuizRewardForAnswer({
                     attempts: nextAttempts,
                     isCorrect,
                     rewardDate: data.quizRewardDate,
@@ -360,9 +371,8 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                     legacyRewardedToday: data.quizDate === todayKey && data.quizSolved === true,
                 });
                 const rewardsUserWallet = data.accountType !== 'personal';
-                const nextTalent = (data.talent || 0) + (rewardsUserWallet ? reward : 0);
                 const rosterWallets = [];
-                if (reward > 0) {
+                if (baseReward > 0) {
                     const refs = getRosterOrgIds({
                         ...currentUser,
                         extraOrgs: rewardRosterOrgs || [],
@@ -375,6 +385,16 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                         if (snaps[index].exists) rosterWallets.push({ ...item, data: snaps[index].data() });
                     });
                 }
+                const rewardsDirectProgram = rewardsUserWallet && resolveTalentProgram({
+                    user: data,
+                    talentShop: talentPrograms[baseChurchId] || null,
+                }).canEarnTalent;
+                const rewardedRosterWallets = rosterWallets.filter(wallet => resolveTalentProgram({
+                    user: wallet.data,
+                    talentShop: talentPrograms[wallet.orgId] || null,
+                }).canEarnTalent);
+                const reward = (rewardsDirectProgram || rewardedRosterWallets.length > 0) ? baseReward : 0;
+                const nextTalent = (data.talent || 0) + (rewardsDirectProgram ? reward : 0);
                 const persistedQuizKey = quizState.replaceStoredQuizKey ? quizKey : (storedQuizKey || quizKey);
                 const entry = {
                     attempts: nextAttempts,
@@ -389,14 +409,14 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 };
                 if (reward > 0) {
-                    if (rewardsUserWallet) updateData.talent = nextTalent;
+                    if (rewardsDirectProgram) updateData.talent = nextTalent;
                     updateData.quizRewardDate = todayKey;
                     updateData.quizRewardAmount = reward;
                 }
 
                 transaction.update(userRef, updateData);
                 const rosterTalentByOrgId = {};
-                rosterWallets.forEach(wallet => {
+                rewardedRosterWallets.forEach(wallet => {
                     const nextRosterTalent = (Number(wallet.data?.talent) || 0) + reward;
                     rosterTalentByOrgId[wallet.orgId] = nextRosterTalent;
                     transaction.update(wallet.ref, {
@@ -410,7 +430,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                     solved: isCorrect,
                     skipped: false,
                     reward,
-                    userTalent: rewardsUserWallet ? nextTalent : null,
+                    userTalent: rewardsDirectProgram ? nextTalent : null,
                     rosterTalentByOrgId,
                     quizKey: entry.quizKey,
                     entry,
@@ -519,10 +539,10 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                         {quizState.loading ? '문제를 준비하고 있어요...' : quiz?.q}
                     </h2>
                 </div>
-                <div className="shrink-0 rounded-2xl bg-amber-50 px-3 py-2 text-right">
+                {talentProgramEnabled && <div className="shrink-0 rounded-2xl bg-amber-50 px-3 py-2 text-right">
                     <p className="text-[11px] font-black text-amber-600">{dailyRewardAlready ? '오늘 적립 완료' : '보상'}</p>
                     <p className="text-sm font-black text-amber-700">{dailyRewardAlready ? '⭐ +0' : '⭐ 10 / 5'}</p>
-                </div>
+                </div>}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -563,7 +583,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                             {feedback.message}
                         </span>
                     ) : (
-                        <span className="text-slate-400">이 DAY는 최대 2번 도전할 수 있어요. 퀴즈 달란트는 하루 첫 정답에만 적립됩니다.</span>
+                        <span className="text-slate-400">이 DAY는 최대 2번 도전할 수 있어요.{talentProgramEnabled ? ' 퀴즈 달란트는 하루 첫 정답에만 적립됩니다.' : ''}</span>
                     )}
                 </div>
                 <div className="flex shrink-0 flex-col items-center gap-2">

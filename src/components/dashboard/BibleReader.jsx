@@ -220,8 +220,10 @@ const BibleReader = ({
                 {!verseData.loading && !hasContentError && completionSummary ? (
                     <div id="tut-read-btn" className="mt-8 rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-center">
                         <p className="text-xl font-black text-emerald-900">{completionSummary.isFirstReadToday ? '오늘 읽기 완료! 🎉' : '추가 읽기 완료! 🎉'}</p>
-                        <p className="mt-2 text-lg font-bold text-emerald-700">+{completionSummary.scoreEarned}점 · 달란트 +{completionSummary.talentEarned}</p>
-                        {!completionSummary.isFirstReadToday && <p className="mt-1 text-sm font-bold text-emerald-700">퀴즈 달란트는 하루 1번만 적립돼요.</p>}
+                        <p className="mt-2 text-lg font-bold text-emerald-700">
+                            +{completionSummary.scoreEarned}점{completionSummary.talentProgramEnabled ? ` · 달란트 +${completionSummary.talentEarned}` : ''}
+                        </p>
+                        {completionSummary.talentProgramEnabled && !completionSummary.isFirstReadToday && <p className="mt-1 text-sm font-bold text-emerald-700">퀴즈 달란트는 하루 1번만 적립돼요.</p>}
                         <button type="button" onClick={isQuizGateLocked ? onQuizGateLocked : handleRead} disabled={readSubmitting} className="mt-4 rounded-full border border-emerald-300 bg-white px-5 py-2.5 text-sm font-bold text-emerald-800 disabled:opacity-50">
                             {readSubmitting ? '기록 중...' : (isQuizGateLocked ? '☝️ 먼저 이 본문 퀴즈 풀기' : '한 장 더 읽기')}
                         </button>

@@ -9,6 +9,8 @@ import { DAILY_READ_ADVANCE_LIMIT, getDailyAdvanceState } from '../utils/readPol
 import { updateRosterTalents } from '../utils/talentWallet';
 import { previewReadCompletion } from '../utils/platformApi';
 import { compareReadCompletionShadow } from '../utils/readCompletionShadow';
+import { isTalentProgramV2, resolveTalentProgram } from '../utils/talentProgram';
+import { loadTalentProgramsStrict } from '../utils/talentProgramStore';
 
 export const useUserBibleActions = (
     currentUser,
@@ -82,8 +84,15 @@ export const useUserBibleActions = (
             // 그 캐시로 개인 계정 보상을 처리하면 users 지갑에도 roster 지갑에도
             // 달란트가 남지 않으므로, 읽기 진행을 기록하기 전에 실제 명부를 확인한다.
             let refreshedExtraOrgs = (await loadUserExtraOrgsStrict(uid)).slice(0, 3);
+            const baseChurchId = currentUser.baseChurchId
+                || (currentUser.accountType === 'personal' ? null : currentUser.churchId);
+            let talentPrograms = await loadTalentProgramsStrict([
+                baseChurchId,
+                ...refreshedExtraOrgs.map(org => org.orgId),
+            ]);
+            const hasDepartmentTalentProgram = Object.values(talentPrograms).some(isTalentProgramV2);
             let readShadowPreview = null;
-            if (import.meta.env.DEV) {
+            if (import.meta.env.DEV && !hasDepartmentTalentProgram) {
                 try {
                     readShadowPreview = await previewReadCompletion(submittedReadCount, vDay, { timeoutMs: 4000 });
                 } catch {
@@ -152,7 +161,19 @@ export const useUserBibleActions = (
                 }
                 const talentEarned = isFirstReadToday ? 10 + Math.min(newStreak, 7) : 0;
                 const rewardsUserWallet = data.accountType !== 'personal';
-                const newTalent = (data.talent || 0) + (rewardsUserWallet ? talentEarned : 0);
+                const rewardsDirectProgram = rewardsUserWallet && resolveTalentProgram({
+                    user: data,
+                    talentShop: talentPrograms[baseChurchId] || null,
+                }).canEarnTalent;
+                const userTalentEarned = rewardsDirectProgram ? talentEarned : 0;
+                const newTalent = (data.talent || 0) + userTalentEarned;
+                const rewardedRosterWallets = rosterWallets.filter(wallet => resolveTalentProgram({
+                    user: wallet.data,
+                    talentShop: talentPrograms[wallet.orgId] || null,
+                }).canEarnTalent);
+                const effectiveTalentEarned = (userTalentEarned > 0 || rewardedRosterWallets.length > 0)
+                    ? talentEarned
+                    : 0;
                 const maxStreak = Math.max(data.maxStreak || data.streak || 0, newStreak);
                 const quizTalentEarned = data.quizRewardDate === quizTodayKey
                     ? (data.quizRewardAmount || 0)
@@ -183,7 +204,7 @@ export const useUserBibleActions = (
                     date: todayStr,
                     day: vDay,
                     score: addedScore,
-                    talent: talentEarned,
+                    talent: effectiveTalentEarned,
                     ts: firebase.firestore.FieldValue.serverTimestamp()
                 };
                 const updateData = {
@@ -198,7 +219,7 @@ export const useUserBibleActions = (
                     recentReadDates,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
-                if (rewardsUserWallet) updateData.talent = newTalent;
+                if (rewardsUserWallet && rewardsDirectProgram) updateData.talent = newTalent;
                 if (secretShopJustUnlocked) {
                     updateData.secretShopUnlocked = true;
                 }
@@ -214,7 +235,12 @@ export const useUserBibleActions = (
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 };
                 const rosterTalentByOrgId = {};
+                const rewardedRosterOrgIds = new Set(rewardedRosterWallets.map(wallet => wallet.orgId));
                 rosterWallets.forEach(wallet => {
+                    if (!rewardedRosterOrgIds.has(wallet.orgId)) {
+                        transaction.update(wallet.ref, rosterProgress);
+                        return;
+                    }
                     const nextRosterTalent = (Number(wallet.data?.talent) || 0) + talentEarned;
                     rosterTalentByOrgId[wallet.orgId] = nextRosterTalent;
                     transaction.update(wallet.ref, { ...rosterProgress, talent: nextRosterTalent });
@@ -234,13 +260,15 @@ export const useUserBibleActions = (
                     nextViewingDay,
                     historyItem,
                     newProgressDay,
-                    talentEarned,
+                    talentEarned: effectiveTalentEarned,
+                    isFirstReadToday,
                     scoreEarned: addedScore,
                     quizTalentEarned,
                     totalTalent: rewardsUserWallet
                         ? newTalent
                         : (rosterTalentByOrgId[currentUser.churchId] || 0),
                     rosterTalentByOrgId,
+                    talentProgramEnabled: rewardsDirectProgram || rewardedRosterWallets.length > 0,
                     secretShopJustUnlocked,
                     completedRound
                 };
@@ -254,6 +282,10 @@ export const useUserBibleActions = (
                 // 명부 행이 첫 transaction 사이에 바뀐 경우 최신 목록으로 한 번만 재시도한다.
                 // 재조회 실패를 빈 목록으로 바꾸지 않는다. 그래야 보상 없는 완료가 커밋되지 않는다.
                 refreshedExtraOrgs = (await loadUserExtraOrgsStrict(uid)).slice(0, 3);
+                talentPrograms = await loadTalentProgramsStrict([
+                    baseChurchId,
+                    ...refreshedExtraOrgs.map(org => org.orgId),
+                ]);
                 resultData = await commitRead(refreshedExtraOrgs);
             }
 
@@ -298,7 +330,7 @@ export const useUserBibleActions = (
             } = resultData;
 
             // 플랫폼 통계 업데이트 (fire & forget) — 날짜가 바뀌면 readers_today 리셋
-            if (talentEarned > 0) db.collection('settings').doc('platformStats').get().then(snap => {
+            if (resultData.isFirstReadToday) db.collection('settings').doc('platformStats').get().then(snap => {
                 const prev = snap.exists ? snap.data() : {};
                 const statsUpdate = {
                     readers_today: prev.today_date === todayStr
@@ -331,8 +363,9 @@ export const useUserBibleActions = (
             setCompletionSummary({
                 scoreEarned: resultData.scoreEarned,
                 talentEarned: talentEarned > 0 ? talentEarned + quizTalentEarned : 0,
-                isFirstReadToday: talentEarned > 0,
+                isFirstReadToday: resultData.isFirstReadToday,
                 quizRewardLimited: talentEarned === 0 && quizTalentEarned > 0,
+                talentProgramEnabled: resultData.talentProgramEnabled,
             });
 
             const allMembers = await loadAllMembers();

@@ -88,6 +88,9 @@ const App = () => {
             departmentName: activeRosterOrg.departmentName || null,
             subgroupId: activeRosterOrg.subgroupId || null,
             subgroupName: activeRosterOrg.subgroupName || null,
+            extraMemberships: Array.isArray(activeRosterOrg.extraMemberships)
+                ? activeRosterOrg.extraMemberships
+                : [],
         };
     }, [currentUser, activeRosterOrg, personalOrgNames]);
 

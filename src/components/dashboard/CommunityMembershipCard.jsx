@@ -172,6 +172,7 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
                 streak: currentUser.streak || 0,
                 readCount: currentUser.readCount || 1,
                 lastReadDate: currentUser.lastReadDate || null,
+                extraMemberships: [],
                 ...selection,
                 joinedAt: now,
                 updatedAt: now,
@@ -193,6 +194,7 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
                 : null;
             const runtimeOrg = {
                 uid: currentUser.uid, orgId, rosterPath: rosterRef.path, ...selection,
+                extraMemberships: [],
                 talent: walletMigration?.talent || 0,
                 joinedAt: null, updatedAt: null,
             };
@@ -272,16 +274,16 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
             const rosterRef = db.collection('churches').doc(UNAFFILIATED_CHURCH_ID).collection('roster').doc(currentUser.uid);
             const now = firebase.firestore.FieldValue.serverTimestamp();
             let walletMigration = null;
-            const runtimeOrg = { uid: currentUser.uid, orgId: UNAFFILIATED_CHURCH_ID, rosterPath: rosterRef.path, talent: 0, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null };
+            const runtimeOrg = { uid: currentUser.uid, orgId: UNAFFILIATED_CHURCH_ID, rosterPath: rosterRef.path, talent: 0, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null, extraMemberships: [] };
             if (!currentUser.primaryOrgId) {
                 await db.runTransaction(async transaction => {
-                    transaction.set(rosterRef, { uid: currentUser.uid, name: currentUser.name || '', score: currentUser.score || 0, talent: 0, currentDay: currentUser.currentDay || 1, streak: currentUser.streak || 0, readCount: currentUser.readCount || 1, lastReadDate: currentUser.lastReadDate || null, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null, joinedAt: now, updatedAt: now });
+                    transaction.set(rosterRef, { uid: currentUser.uid, name: currentUser.name || '', score: currentUser.score || 0, talent: 0, currentDay: currentUser.currentDay || 1, streak: currentUser.streak || 0, readCount: currentUser.readCount || 1, lastReadDate: currentUser.lastReadDate || null, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null, extraMemberships: [], joinedAt: now, updatedAt: now });
                     transaction.update(db.collection('users').doc(currentUser.uid), { primaryOrgId: UNAFFILIATED_CHURCH_ID, updatedAt: now });
                 });
                 walletMigration = await migratePersonalTalentWalletIfNeeded(currentUser.uid, UNAFFILIATED_CHURCH_ID);
                 runtimeOrg.talent = walletMigration?.talent || 0;
             } else {
-                await rosterRef.set({ uid: currentUser.uid, name: currentUser.name || '', score: currentUser.score || 0, talent: 0, currentDay: currentUser.currentDay || 1, streak: currentUser.streak || 0, readCount: currentUser.readCount || 1, lastReadDate: currentUser.lastReadDate || null, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null, joinedAt: now, updatedAt: now });
+                await rosterRef.set({ uid: currentUser.uid, name: currentUser.name || '', score: currentUser.score || 0, talent: 0, currentDay: currentUser.currentDay || 1, streak: currentUser.streak || 0, readCount: currentUser.readCount || 1, lastReadDate: currentUser.lastReadDate || null, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null, extraMemberships: [], joinedAt: now, updatedAt: now });
             }
             setCurrentUser(user => user?.uid === currentUser.uid ? { ...user, ...(walletMigration ? { talent: 0, talentWalletMigrated: true } : {}), primaryOrgId: user.primaryOrgId || UNAFFILIATED_CHURCH_ID, extraOrgs: [...latest, runtimeOrg].sort((a, b) => a.orgId.localeCompare(b.orgId)) } : user);
         } catch (error) {

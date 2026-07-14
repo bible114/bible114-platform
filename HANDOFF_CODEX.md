@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-14 | 공동체 다중 소그룹·부서별 달란트 운영 | `src/{App.jsx,components/ChurchAdminView.jsx,components/DashboardView.jsx,components/churchAdmin/TalentShopTab.jsx,components/dashboard/{BibleQuizCard,BibleReader,CommunityMembershipCard,TalentShop}.jsx,hooks/useUserBibleActions.js,utils/{memberships,rosterMembers,rosterSnapshot,talentProgram,talentProgramStore}.js}`, `firestore.rules`, `scripts/validate-{roster-multimembership,department-talent}.mjs`, `scripts/validate-round{18,24}.mjs`, `package.json`, `HANDOFF_CODEX.md` | 직접 회원과 외부 roster 회원 모두 주 소속+추가 3개까지 배정. 부서별 달란트 사용 여부와 통합/전용 시장을 설정하고 공동체 지갑 하나는 유지. 달란트 미사용 부서도 읽기 진도·점수는 정상 반영하되 읽기·퀴즈 달란트와 상점만 제외. 구매에 부서·시장·지갑 snapshot을 기록해 이후 소속 변경 뒤 환불도 원래 지갑으로 복원. 전체 validate/build/diff와 로컬 게스트 렌더·브라우저 오류 0 통과. 인증 관리자 저장·실회원 보상/구매는 운영 데이터 변경 없이 미검증. rules 배포 전에는 roster 추가 소속 권한 강화가 운영에 반영되지 않음. |
 | 2026-07-14 | 회원가입 필수 동의·어린이 보호자 절차 | `src/{components/LoginView.jsx,components/SocialOnboardingView.jsx,components/policies/*,data/servicePolicies.js,hooks/useAuth.js,utils/signupConsent*.js}`, `scripts/validate-{service-policies,signup-consent}.mjs`, `scripts/validate-round11.mjs`, `package.json`, `HANDOFF_CODEX.md` | 회원·개인·소셜·공동체 관리자 신규 가입에 약관·개인정보·민감정보·공동체 운영정책 동의를 필수화하고 버전·시각을 private consent 문서에 기록. 만 14세 미만은 보호자 성명·관계·직접 동의가 없으면 진행 불가, 성인은 보호자 입력 미노출. 공동체 등록에는 복음주의 기준과 주요 교단 공식 결의의 이단·사이비 제한을 명시하고 통지·소명 기준을 정책 전문에 포함. 전체 validate/build/diff 및 로컬 브라우저 성인·아동·관리자 화면·정책 전문·오류 로그 검수 통과. 실제 계정 생성은 하지 않음. |
 | 2026-07-14 | 활동 공동체 전체 화면 전환 | `src/{App.jsx,hooks/useBibleLogic.js,hooks/useDepartment.js,components/DashboardView.jsx,components/dashboard/CommunityMembershipCard.jsx,components/modals/RankingModal.jsx}`, `scripts/validate-round{11,18}.mjs`, `HANDOFF_CODEX.md` | 공동체별 별도 순위 미리보기를 제거하고 카드 전체 클릭을 세션 활동 공간 전환에 연결. 기본 공동체는 로그인 기본값·탈퇴 보호로만 유지. 선택 공동체 기준으로 이름·구성원·조직·공지·카카오·지도·랭킹·달란트·상점을 다시 로드하고 본문·진도·퀴즈·묵상은 공통 유지. 빠른 전환 stale 응답과 이전 카카오 링크 잔존 방어. 전체 validate/build/diff 통과. 로컬 브라우저는 게스트·로그아웃 세션뿐이라 실제 다중 공동체 계정 클릭은 배포 전 사용자 확인 필요. |
 | 2026-07-14 | 네이버·Google 앱 TTS 안내 | `src/utils/ttsAvailability.js`, `src/hooks/useTTS.js`, `src/{App.jsx,components/DashboardView.jsx,components/GuestReaderView.jsx,components/dashboard/BibleReader.jsx}`, `scripts/validate-round15.mjs`, `HANDOFF_CODEX.md` | NAVER·Google 앱(GSA)에서는 TTS 컨트롤 대신 작은 안내문을 표시하고 본문 탭 낭독도 비활성화. 일반 Chrome·Safari TTS와 카카오 기존 안내는 유지. 안내 대상 WebView의 불완전한 음성 API 접근을 생략. Naver/GSA/Chrome/Safari/Kakao/Googlebot UA 계약, 회원·게스트 연결, 빌드·diff 검사 통과. 실기기 앱 화면은 배포 후 확인 필요. |
@@ -339,6 +340,14 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-14 공동체 다중 소그룹·부서별 달란트 운영:
+- 회원 한 명의 공동체 내 소속은 기존 한도를 유지해 주 소속 1개+추가 소속 3개로 통일했다. 직접 users 회원뿐 아니라 개인/타 교회 계정으로 들어온 roster 회원도 같은 관리자 화면에서 추가 배정할 수 있고, 외부 회원의 값은 해당 공동체 roster 원장에 저장한다. 본인은 추가 소속을 직접 바꿀 수 없도록 rules를 강화했다.
+- 달란트 설정 v2는 `departmentSettings[departmentId] = { enabled, marketId }`, `markets[marketId] = { name, enabled, items }` 구조다. 여러 부서가 `shared`를 고르면 통합 시장, `department_{id}`를 고르면 전용 시장이다. 잔액은 기존 호환과 부서 이동 안전성을 위해 공동체별 지갑 하나를 유지한다.
+- 부서 달란트 OFF는 읽기/퀴즈 달란트와 상점만 끄며 진도·점수·랭킹 동기화는 계속한다. 검수 중 OFF roster에서 진도까지 빠지는 결함을 발견해 모든 roster에는 진도를 쓰고 활성 지갑에만 talent를 쓰도록 분리했다. 첫 읽기 여부도 보상 여부와 분리했다.
+- v2 구매 문서는 departmentId/departmentName/marketId/walletKind/walletOrgId를 snapshot으로 남기며 관리자는 선택 시장 소속 회원만 창구 차감할 수 있다. 환불은 현재 소속이 아니라 구매 당시 지갑 snapshot을 우선한다. 구버전 구매/상점은 기존 필드와 동작을 유지한다.
+- 현재 서버 shadow 계산은 v2 부서 설정을 모르므로 v2 공동체가 하나라도 있으면 개발용 읽기/퀴즈 shadow 비교를 건너뛴다. T123 실제 쓰기와 T124 구매 서버 이관 때 같은 `talentProgram` 해석을 서버에 반영해야 한다.
+- `npm run validate`, `npm run build`, `git diff --check` 통과. 로컬 게스트 대시보드 실제 렌더와 브라우저 오류 0을 확인했다. 로그인 관리자/실회원 Firestore 저장·보상·구매는 테스트 자격증명이 없어 미실행이며, `firestore.rules` 변경은 사용자 배포 뒤에만 운영 적용된다.
 
 2026-07-14 회원가입 동의·아동 가입 보호:
 - 모든 신규 가입 경로에 이용약관, 개인정보처리, 종교·공동체 소속 민감정보, 공동체 공개·운영정책을 분리 동의로 적용했다. 사용자가 본 버전·동의 시각·대상·만 14세 미만 여부는 `users/{uid}/private/consent`에 저장하고, 같은 공동체에 공개될 수 있는 users 본문에는 보호자 이름 없는 요약만 둔다. 기존 회원의 일반 Google·Kakao 로그인은 새 가입 동의로 막지 않는다.

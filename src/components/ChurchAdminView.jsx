@@ -28,6 +28,49 @@ import SettingsTab from './churchAdmin/SettingsTab';
 import DashboardTab from './churchAdmin/DashboardTab';
 import MembersTab from './churchAdmin/MembersTab';
 import TalentShopTab from './churchAdmin/TalentShopTab';
+import { TALENT_PROGRAM_SCHEMA_VERSION } from '../utils/talentProgram';
+
+const SHARED_TALENT_MARKET_ID = 'shared';
+const departmentTalentMarketId = departmentId => `department_${departmentId}`;
+
+const promoteTalentShopConfig = (rawShop, departments = []) => {
+    const raw = rawShop && typeof rawShop === 'object' ? rawShop : {};
+    if (raw.schemaVersion === TALENT_PROGRAM_SCHEMA_VERSION && raw.departmentSettings && raw.markets) {
+        return {
+            ...raw,
+            enabled: raw.enabled === true,
+            items: Array.isArray(raw.items) ? raw.items.filter(Boolean) : [],
+            departmentSettings: { ...raw.departmentSettings },
+            markets: Object.fromEntries(Object.entries(raw.markets).map(([id, market]) => [id, {
+                ...(market || {}),
+                id,
+                name: market?.name || id,
+                enabled: market?.enabled !== false,
+                items: Array.isArray(market?.items) ? market.items.filter(Boolean) : [],
+            }])),
+        };
+    }
+
+    const legacyItems = Array.isArray(raw.items) ? raw.items.filter(Boolean) : [];
+    return {
+        schemaVersion: TALENT_PROGRAM_SCHEMA_VERSION,
+        enabled: raw.enabled === true,
+        items: legacyItems,
+        legacy: { enabled: raw.enabled === true, items: legacyItems },
+        departmentSettings: Object.fromEntries((departments || []).filter(dept => dept?.id).map(dept => [dept.id, {
+            enabled: true,
+            marketId: SHARED_TALENT_MARKET_ID,
+        }])),
+        markets: {
+            [SHARED_TALENT_MARKET_ID]: {
+                id: SHARED_TALENT_MARKET_ID,
+                name: '공동체 통합 시장',
+                enabled: true,
+                items: legacyItems,
+            },
+        },
+    };
+};
 
 const formatReadDate = (dateStr) => {
     if (!dateStr) return '-';
@@ -100,6 +143,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
     // 달란트 상점
     const [talentShop, setTalentShop] = useState({ enabled: false, items: [] });
+    const [talentMarketId, setTalentMarketId] = useState(SHARED_TALENT_MARKET_ID);
     const [shopItemDraft, setShopItemDraft] = useState(emptyShopItem);
     const [editingShopItemId, setEditingShopItemId] = useState(null);
     const [savingTalentShop, setSavingTalentShop] = useState(false);
@@ -158,13 +202,19 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             if (platformDoc.exists) setPlatformKakaoUrl(platformDoc.data().kakaoUrl || '');
             if (talentShopDoc.exists) {
                 const data = talentShopDoc.data() || {};
-                setTalentShop({
-                    ...data,
-                    enabled: data.enabled === true,
-                    items: Array.isArray(data.items) ? data.items.filter(Boolean) : [],
-                });
+                const departments = churchDoc.exists
+                    ? (churchDoc.data()?.departments || churchDoc.data()?.communities || [])
+                    : [];
+                const promoted = promoteTalentShopConfig(data, departments);
+                setTalentShop(promoted);
+                setTalentMarketId(Object.keys(promoted.markets || {})[0] || SHARED_TALENT_MARKET_ID);
             } else {
-                setTalentShop({ enabled: false, items: [] });
+                const departments = churchDoc.exists
+                    ? (churchDoc.data()?.departments || churchDoc.data()?.communities || [])
+                    : [];
+                const promoted = promoteTalentShopConfig({}, departments);
+                setTalentShop(promoted);
+                setTalentMarketId(SHARED_TALENT_MARKET_ID);
             }
             try {
                 const memberIds = new Set(activeMembers.map(m => m.uid));
@@ -373,13 +423,15 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         const targetChurchId = currentUser?.churchId;
 
         try {
-            const userRef = db.collection('users').doc(targetUid);
+            const membershipRef = member.isExternalOrgMember
+                ? db.collection('churches').doc(targetChurchId).collection('roster').doc(targetUid)
+                : db.collection('users').doc(targetUid);
             const result = await db.runTransaction(async transaction => {
-                const userDoc = await transaction.get(userRef);
-                if (!userDoc.exists) return { status: 'not-found' };
+                const membershipDoc = await transaction.get(membershipRef);
+                if (!membershipDoc.exists) return { status: 'not-found' };
 
-                const latestUser = { uid: targetUid, ...userDoc.data() };
-                if (!targetChurchId || latestUser.churchId !== targetChurchId || latestUser.isDeleted) {
+                const latestUser = { uid: targetUid, ...membershipDoc.data() };
+                if (!targetChurchId || (!member.isExternalOrgMember && (latestUser.churchId !== targetChurchId || latestUser.isDeleted))) {
                     return { status: 'forbidden' };
                 }
 
@@ -392,7 +444,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                         return { status: 'max', extraMemberships: currentExtras };
                     }
                     const extraMemberships = [...currentExtras, membership].slice(0, 3);
-                    transaction.update(userRef, {
+                    transaction.update(membershipRef, {
                         extraMemberships,
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                     });
@@ -403,7 +455,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 if (extraMemberships.length === currentExtras.length) {
                     return { status: 'missing', extraMemberships: currentExtras };
                 }
-                transaction.update(userRef, {
+                transaction.update(membershipRef, {
                     extraMemberships,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 });
@@ -501,13 +553,26 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             const settled = await Promise.allSettled(uniqueTargets.map(member => {
                 if (member.isExternalOrgMember) {
                     if (!targetChurchId) return Promise.reject(new Error('ROSTER_ORG_MISSING'));
-                    return db.collection('churches').doc(targetChurchId).collection('roster').doc(member.uid).update({
-                        departmentId: comm.id,
-                        departmentName: comm.name,
-                        subgroupId: subId,
-                        subgroupName,
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    }).then(() => ({ uid: member.uid, extraMemberships: [], isExternalOrgMember: true }));
+                    const rosterRef = db.collection('churches').doc(targetChurchId).collection('roster').doc(member.uid);
+                    return db.runTransaction(async transaction => {
+                        const rosterDoc = await transaction.get(rosterRef);
+                        if (!rosterDoc.exists) throw new Error('ROSTER_MEMBER_NOT_FOUND');
+                        const latestRoster = { uid: member.uid, ...rosterDoc.data() };
+                        const nextPrimaryMembership = {
+                            departmentId: comm.id,
+                            departmentName: comm.name,
+                            subgroupId: subId,
+                            subgroupName,
+                        };
+                        const extraMemberships = getExtraMemberships(latestRoster)
+                            .filter(item => !sameMembership(item, nextPrimaryMembership));
+                        transaction.update(rosterRef, {
+                            ...nextPrimaryMembership,
+                            extraMemberships,
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        });
+                        return { uid: member.uid, extraMemberships, isExternalOrgMember: true };
+                    });
                 }
                 const userRef = db.collection('users').doc(member.uid);
                 return db.runTransaction(async transaction => {
@@ -748,12 +813,18 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const saveTalentShop = async (nextShop = talentShop) => {
         setSavingTalentShop(true);
         try {
-            await db.collection('churches').doc(currentUser.churchId).collection('settings').doc('talentShop').set({
-                enabled: nextShop.enabled === true,
-                items: nextShop.items || [],
+            const promoted = promoteTalentShopConfig(nextShop, orgComms);
+            const sharedItems = promoted.markets?.[SHARED_TALENT_MARKET_ID]?.items || promoted.items || [];
+            const payload = {
+                ...promoted,
+                // 구버전 앱도 통합 시장을 계속 읽을 수 있도록 루트 items를 함께 유지한다.
+                items: sharedItems,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            };
+            await db.collection('churches').doc(currentUser.churchId).collection('settings').doc('talentShop').set({
+                ...payload,
             }, { merge: true });
-            setTalentShop({ enabled: nextShop.enabled === true, items: nextShop.items || [] });
+            setTalentShop(promoted);
             toast.success('달란트 상점 설정을 저장했습니다.');
         } catch (e) {
             console.error(e);
@@ -765,6 +836,49 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
     const toggleTalentShopEnabled = async (enabled) => {
         await saveTalentShop({ ...talentShop, enabled });
+    };
+
+    const setDepartmentTalentEnabled = async (departmentId, enabled) => {
+        const current = promoteTalentShopConfig(talentShop, orgComms);
+        const existing = current.departmentSettings?.[departmentId] || {};
+        const marketId = existing.marketId || SHARED_TALENT_MARKET_ID;
+        await saveTalentShop({
+            ...current,
+            departmentSettings: {
+                ...current.departmentSettings,
+                [departmentId]: { enabled, marketId },
+            },
+        });
+    };
+
+    const setDepartmentTalentMarketMode = async (departmentId, mode) => {
+        const current = promoteTalentShopConfig(talentShop, orgComms);
+        const marketId = mode === 'department'
+            ? departmentTalentMarketId(departmentId)
+            : SHARED_TALENT_MARKET_ID;
+        const department = orgComms.find(dept => dept.id === departmentId);
+        const markets = { ...current.markets };
+        if (!markets[marketId]) {
+            markets[marketId] = {
+                id: marketId,
+                name: mode === 'department' ? `${department?.name || '부서'} 시장` : '공동체 통합 시장',
+                enabled: true,
+                items: [],
+            };
+        }
+        await saveTalentShop({
+            ...current,
+            markets,
+            departmentSettings: {
+                ...current.departmentSettings,
+                [departmentId]: {
+                    enabled: current.departmentSettings?.[departmentId]?.enabled === true,
+                    marketId,
+                },
+            },
+        });
+        setTalentMarketId(marketId);
+        resetShopItemDraft();
     };
 
     const resetShopItemDraft = () => {
@@ -785,10 +899,16 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             description: shopItemDraft.description.trim(),
             active: shopItemDraft.active !== false,
         };
+        const current = promoteTalentShopConfig(talentShop, orgComms);
+        const market = current.markets?.[talentMarketId] || current.markets?.[SHARED_TALENT_MARKET_ID];
+        if (!market) { toast.error('상품을 저장할 시장을 선택해주세요.'); return; }
         const nextItems = editingShopItemId
-            ? (talentShop.items || []).map(existing => existing.id === editingShopItemId ? item : existing)
-            : [...(talentShop.items || []), item];
-        await saveTalentShop({ ...talentShop, items: nextItems });
+            ? (market.items || []).map(existing => existing.id === editingShopItemId ? item : existing)
+            : [...(market.items || []), item];
+        await saveTalentShop({
+            ...current,
+            markets: { ...current.markets, [market.id]: { ...market, items: nextItems } },
+        });
         resetShopItemDraft();
     };
 
@@ -815,9 +935,22 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     };
 
     const executeDeleteShopItem = async (item) => {
-        const nextItems = (talentShop.items || []).filter(existing => existing.id !== item.id);
-        await saveTalentShop({ ...talentShop, items: nextItems });
+        const current = promoteTalentShopConfig(talentShop, orgComms);
+        const market = current.markets?.[talentMarketId] || current.markets?.[SHARED_TALENT_MARKET_ID];
+        const nextItems = (market?.items || []).filter(existing => existing.id !== item.id);
+        await saveTalentShop({
+            ...current,
+            markets: { ...current.markets, [market.id]: { ...market, items: nextItems } },
+        });
         if (editingShopItemId === item.id) resetShopItemDraft();
+    };
+
+    const getMemberTalentDepartment = (member, marketId = talentMarketId) => {
+        const config = promoteTalentShopConfig(talentShop, orgComms);
+        return getMembershipList(member).find(membership => {
+            const setting = config.departmentSettings?.[membership.departmentId];
+            return setting?.enabled === true && setting.marketId === marketId;
+        }) || null;
     };
 
     // ── 창구 판매: 관리자가 교인 대신 달란트를 차감하고 구입 물품을 기록 (어르신 지원) ──
@@ -826,6 +959,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         const price = parseInt(deductForm.price, 10);
         const itemName = deductForm.itemName.trim();
         if (!member) { toast.error('교인을 선택해주세요.'); return; }
+        const membership = getMemberTalentDepartment(member);
+        if (!membership) { toast.error('선택한 시장을 이용하는 부서 소속 교인만 차감할 수 있습니다.'); return; }
         if (!itemName) { toast.error('구입 물품을 반드시 기록해주세요.'); return; }
         if (!price || price <= 0) { toast.error('차감할 달란트를 입력해주세요.'); return; }
         if ((member.talent || 0) < price) {
@@ -834,14 +969,14 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         }
         setConfirmAction({
             type: 'manualDeduct',
-            form: { member, itemName, price },
+            form: { member, itemName, price, membership, marketId: talentMarketId },
             title: `${member.name}님 달란트를 차감할까요?`,
             message: `${itemName} · ⭐${price} 차감 (잔액 ⭐${member.talent || 0} → ⭐${(member.talent || 0) - price})`,
             confirmLabel: '차감하기',
         });
     };
 
-    const executeManualDeduct = async ({ member, itemName, price }) => {
+    const executeManualDeduct = async ({ member, itemName, price, membership, marketId }) => {
         setDeducting(true);
         try {
             const purchaseRef = db.collection('churches').doc(currentUser.churchId)
@@ -859,8 +994,14 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     ...(member.isExternalOrgMember ? { updatedAt: firebase.firestore.FieldValue.serverTimestamp() } : {}),
                 });
                 transaction.set(purchaseRef, {
+                    schemaVersion: 2,
                     uid: member.uid,
                     memberName: member.name,
+                    departmentId: membership.departmentId,
+                    departmentName: membership.departmentName || null,
+                    marketId,
+                    walletKind: member.isExternalOrgMember ? 'roster' : 'user',
+                    walletOrgId: currentUser.churchId,
                     itemId: 'manual',
                     itemName,
                     price,
@@ -876,7 +1017,9 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     : m
             )));
             setTalentPurchases(prev => [{
-                id: purchaseRef.id, uid: member.uid, memberName: member.name,
+                id: purchaseRef.id, schemaVersion: 2, uid: member.uid, memberName: member.name,
+                departmentId: membership.departmentId, departmentName: membership.departmentName || null,
+                marketId, walletKind: member.isExternalOrgMember ? 'roster' : 'user', walletOrgId: currentUser.churchId,
                 itemId: 'manual', itemName, price, status: 'delivered',
                 createdAt: new Date(), deliveredAt: new Date(), deliveredBy: currentUser.uid || 'platformAdmin',
             }, ...prev]);
@@ -1046,7 +1189,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
     // ── 상품 목록 A4 인쇄 — 상품 수에 따라 글씨·그림 크기 자동 조절 ──
     const printShopItems = () => {
-        const items = (talentShop.items || []).filter(i => i && i.active !== false);
+        const items = activeShopItems.filter(i => i && i.active !== false);
         if (items.length === 0) { toast.error('인쇄할 판매중 상품이 없습니다.'); return; }
         const n = items.length;
         const size = n <= 4 ? { cols: 2, emoji: 88, name: 30, price: 24, desc: 15 }
@@ -1090,9 +1233,12 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         const purchaseRef = db.collection('churches').doc(currentUser.churchId)
             .collection('talentPurchases').doc(purchase.id);
         const buyer = members.find(member => member.uid === purchase.uid);
-        const useRosterWallet = purchase.isExternalBuyer || buyer?.isExternalOrgMember;
+        const useRosterWallet = purchase.walletKind
+            ? purchase.walletKind === 'roster'
+            : (purchase.isExternalBuyer || buyer?.isExternalOrgMember);
+        const walletOrgId = purchase.walletOrgId || currentUser.churchId;
         const walletRef = useRosterWallet
-            ? db.collection('churches').doc(currentUser.churchId).collection('roster').doc(purchase.uid)
+            ? db.collection('churches').doc(walletOrgId).collection('roster').doc(purchase.uid)
             : db.collection('users').doc(purchase.uid);
 
         try {
@@ -1314,11 +1460,24 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         acc[member.uid] = member;
         return acc;
     }, {});
+    const normalizedTalentShop = promoteTalentShopConfig(talentShop, orgComms);
+    const activeTalentMarket = normalizedTalentShop.markets?.[talentMarketId]
+        || normalizedTalentShop.markets?.[SHARED_TALENT_MARKET_ID]
+        || Object.values(normalizedTalentShop.markets || {})[0]
+        || null;
+    const activeShopItems = Array.isArray(activeTalentMarket?.items) ? activeTalentMarket.items : [];
+    const talentMarketDepartmentIds = Object.entries(normalizedTalentShop.departmentSettings || {})
+        .filter(([, setting]) => setting?.enabled === true && setting.marketId === activeTalentMarket?.id)
+        .map(([departmentId]) => departmentId);
+    const talentMarketMembers = members.filter(member => (
+        talentMarketDepartmentIds.some(departmentId => belongsToDepartment(member, departmentId))
+    ));
     const pendingPurchaseCount = talentPurchases.filter(p => p.status === 'pending').length;
     const filteredPurchases = talentPurchases.filter(purchase => (
-        purchaseFilter === 'all' || purchase.status === purchaseFilter
+        (purchaseFilter === 'all' || purchase.status === purchaseFilter)
+        && (!talentMarketId || !purchase.marketId || purchase.marketId === talentMarketId)
     ));
-    const shopPreviewTalent = (talentShop.items || []).reduce(
+    const shopPreviewTalent = activeShopItems.reduce(
         (max, item) => Math.max(max, Number(item?.price) || 0),
         0
     );
@@ -1432,10 +1591,12 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                         {tab === 'talentShop' && (
                             <TalentShopTab ctx={{
                                 talentShop, toggleTalentShopEnabled, savingTalentShop,
+                                orgComms, talentMarketId, setTalentMarketId, activeTalentMarket, activeShopItems,
+                                setDepartmentTalentEnabled, setDepartmentTalentMarketMode,
                                 setShowShopPreview, showShopPreview, currentUser, setCurrentUser, shopPreviewTalent,
                                 shopItemDraft, setShopItemDraft, editingShopItemId, emojiGroupIdx, setEmojiGroupIdx,
                                 submitShopItem, resetShopItemDraft, editShopItem, deleteShopItem, printShopItems,
-                                deductForm, setDeductForm, members, requestManualDeduct, deducting,
+                                deductForm, setDeductForm, members: talentMarketMembers, requestManualDeduct, deducting,
                                 purchaseFilter, setPurchaseFilter, filteredPurchases, memberById,
                                 formatAnyDate, setConfirmAction, deliverPurchase, refundPurchase,
                             }} />
@@ -1511,7 +1672,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     <div className="space-y-5">
                         {selectedMember.isExternalOrgMember && (
                             <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-sm font-bold text-violet-800">
-                                외부 공동체 멤버 · 소그룹 배정과 제명만 가능합니다. 개인 계정의 기준 공동체라면 비밀번호 지원도 가능합니다.
+                                외부 공동체 멤버 · 이 공동체 안에서 주 소속과 추가 소그룹을 배정하거나 제명할 수 있습니다. 개인 계정의 기준 공동체라면 비밀번호 지원도 가능합니다.
                             </div>
                         )}
                         <div className="grid grid-cols-2 gap-3">
@@ -1570,7 +1731,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                         <div className="rounded-2xl border border-slate-100 p-4">
                             <div className="mb-3 flex items-center justify-between gap-3">
                                 <p className="text-sm font-black text-slate-800">소속</p>
-                                {!selectedMember.isExternalOrgMember && <span className="text-xs font-bold text-slate-400">추가 {selectedExtraMemberships.length}/3</span>}
+                                <span className="text-xs font-bold text-slate-400">추가 {selectedExtraMemberships.length}/3</span>
                             </div>
 
                             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
@@ -1622,7 +1783,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                 </div>
                             )}
 
-                            {!selectedMember.isExternalOrgMember && <div className="mt-4 border-t border-slate-100 pt-4">
+                            <div className="mt-4 border-t border-slate-100 pt-4">
                                 <p className="mb-2 text-xs font-black text-slate-500">추가 소속</p>
                                 {selectedExtraMemberships.length === 0 ? (
                                     <p className="rounded-xl bg-slate-50 px-3 py-3 text-xs font-bold text-slate-400">추가 소속이 없습니다.</p>
@@ -1696,7 +1857,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                         </button>
                                     </div>
                                 )}
-                            </div>}
+                            </div>
                         </div>
 
                         {!selectedMember.isExternalOrgMember ? <div className="rounded-2xl border border-slate-100 p-4">

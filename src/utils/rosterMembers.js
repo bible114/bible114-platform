@@ -1,3 +1,5 @@
+import { normalizeExtraMemberships } from './memberships.js';
+
 export const rosterSnapshotToMembers = (snapshot) => {
     if (!Array.isArray(snapshot?.docs)) return [];
     return snapshot.docs.flatMap(doc => {
@@ -22,7 +24,7 @@ export const rosterSnapshotToMembers = (snapshot) => {
             departmentName: data.departmentName || null,
             subgroupId: data.subgroupId || null,
             subgroupName: data.subgroupName || null,
-            extraMemberships: [],
+            extraMemberships: normalizeExtraMemberships(data.extraMemberships),
             isExternalOrgMember: true,
             rosterOrgId: orgId,
         }];

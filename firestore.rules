@@ -72,7 +72,7 @@ service cloud.firestore {
       // 포함해 문서 전체를 다시 쓰는 정상 흐름(App.jsx의 setCurrentUser 반영 저장 등)은 영향 없다.
       allow update: if (request.auth.uid == uid &&
           !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(['role', 'churchId', 'accountType', 'isDeleted']) &&
+            .hasAny(['role', 'churchId', 'accountType', 'isDeleted', 'extraMemberships']) &&
           // 기준 공동체는 실제 내 roster가 있는 조직 또는 null로만 바꿀 수 있다.
           (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['primaryOrgId']) ||
             request.resource.data.get('primaryOrgId', null) == null ||
@@ -172,7 +172,13 @@ service cloud.firestore {
           request.resource.data.uid == memberUid &&
           request.resource.data.keys().hasOnly(
             ['uid', 'name', 'score', 'currentDay', 'streak', 'readCount', 'lastReadDate', 'talent',
-             'departmentId', 'departmentName', 'subgroupId', 'subgroupName', 'joinedAt', 'updatedAt']);
+             'departmentId', 'departmentName', 'subgroupId', 'subgroupName', 'extraMemberships',
+             'joinedAt', 'updatedAt']) &&
+          // 가입자가 직접 만드는 명부 행은 주 소속 1개로만 시작한다.
+          // 추가 소속은 이후 해당 공동체 관리자만 배정할 수 있다.
+          (!('extraMemberships' in request.resource.data) ||
+            (request.resource.data.extraMemberships is list &&
+              request.resource.data.extraMemberships.size() == 0));
         // 본인 update: create와 같은 필드 화이트리스트 + joinedAt 불변.
         // (T46 경합 방어 — 기존 행 위에 set()이 오면 joinedAt(serverTimestamp)이 기존 값과
         //  달라져 거부된다 → 관리자 배정·가입 시각의 조용한 덮어쓰기가 안전한 실패로 바뀐다.)
@@ -180,8 +186,13 @@ service cloud.firestore {
             request.resource.data.uid == memberUid &&
             request.resource.data.keys().hasOnly(
               ['uid', 'name', 'score', 'currentDay', 'streak', 'readCount', 'lastReadDate', 'talent',
-               'departmentId', 'departmentName', 'subgroupId', 'subgroupName', 'joinedAt', 'updatedAt']) &&
+               'departmentId', 'departmentName', 'subgroupId', 'subgroupName', 'extraMemberships',
+               'joinedAt', 'updatedAt']) &&
             request.resource.data.joinedAt == resource.data.joinedAt &&
+            // 회원의 읽기·퀴즈 동기화는 추가 소속을 그대로 보존해야 한다.
+            // 필드가 없는 레거시 행은 빈 배열과 동일하게 취급한다.
+            request.resource.data.get('extraMemberships', []) ==
+              resource.data.get('extraMemberships', []) &&
             request.resource.data.get('score', 0) >= 0 &&
             // roster.score는 users.score의 미러다. 증분 상한(+15) 또는 users 문서와의
             // 절대값 동기화까지 허용한다 — 과거 명부 미로드로 며칠 밀린 행을 다음 읽기가
@@ -196,6 +207,9 @@ service cloud.firestore {
                 getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data
                   .get('talentWalletMigrated', false) == true))) ||
           ((isChurchAdmin(churchId) || isPlatformAdmin()) &&
+            (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['extraMemberships']) ||
+              (request.resource.data.extraMemberships is list &&
+                request.resource.data.extraMemberships.size() <= 3)) &&
             // [라운드 18] 조직 지갑(talent)을 관리자가 갱신할 때 음수 금지 (창구 판매·환불)
             (!('talent' in request.resource.data) ||
               (request.resource.data.talent is number && request.resource.data.talent >= 0)));
@@ -216,14 +230,28 @@ service cloud.firestore {
           request.resource.data.uid == request.auth.uid &&
           request.resource.data.status == 'pending' &&
           request.resource.data.keys().hasOnly(
-            ['uid', 'memberName', 'itemId', 'itemName', 'price', 'status', 'createdAt']);
+            ['uid', 'memberName', 'itemId', 'itemName', 'price', 'status', 'createdAt',
+             'schemaVersion', 'departmentId', 'departmentName', 'marketId', 'walletKind', 'walletOrgId']) &&
+          (!('schemaVersion' in request.resource.data) ||
+            (request.resource.data.schemaVersion == 2 &&
+              request.resource.data.departmentId is string &&
+              request.resource.data.marketId is string &&
+              request.resource.data.walletKind in ['user', 'roster'] &&
+              request.resource.data.walletOrgId == churchId));
         // 창구 판매(관리자 대리 차감): 앱 사용이 어려운 어르신 교인을 대신해 관리자가
         // 달란트를 차감하며 구입 물품을 기록한다. 즉시 수령이므로 delivered로 생성.
         allow create: if (isChurchAdmin(churchId) || isPlatformAdmin()) &&
           request.resource.data.status == 'delivered' &&
           request.resource.data.keys().hasOnly(
             ['uid', 'memberName', 'itemId', 'itemName', 'price', 'status',
-             'createdAt', 'deliveredAt', 'deliveredBy']);
+             'createdAt', 'deliveredAt', 'deliveredBy', 'schemaVersion', 'departmentId',
+             'departmentName', 'marketId', 'walletKind', 'walletOrgId']) &&
+          (!('schemaVersion' in request.resource.data) ||
+            (request.resource.data.schemaVersion == 2 &&
+              request.resource.data.departmentId is string &&
+              request.resource.data.marketId is string &&
+              request.resource.data.walletKind in ['user', 'roster'] &&
+              request.resource.data.walletOrgId == churchId));
         allow update: if (isChurchAdmin(churchId) || isPlatformAdmin()) &&
           resource.data.status == 'pending' &&
           request.resource.data.status in ['delivered', 'cancelled'] &&

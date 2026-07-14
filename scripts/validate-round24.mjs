@@ -83,12 +83,17 @@ assert.match(readShadowSource, /export const compareReadCompletionShadow\s*=/);
 assert.match(userBibleActions, /import\s*\{\s*previewReadCompletion\s*\}\s*from\s*['"]\.\.\/utils\/platformApi['"]/);
 assert.match(userBibleActions, /import\s*\{\s*compareReadCompletionShadow\s*\}\s*from\s*['"]\.\.\/utils\/readCompletionShadow['"]/);
 
-const devGuardIndex = userBibleActions.indexOf('if (import.meta.env.DEV)');
+const devGuardIndex = userBibleActions.indexOf('if (import.meta.env.DEV');
 const previewAwaitIndex = userBibleActions.indexOf('await previewReadCompletion(');
 const transactionAwaitIndex = userBibleActions.indexOf('await commitRead(');
 assert.ok(devGuardIndex >= 0, '읽기 shadow preview는 import.meta.env.DEV 가드 안에서만 실행해야 한다.');
 assert.ok(previewAwaitIndex > devGuardIndex, 'DEV 가드 안에서 previewReadCompletion을 await해야 한다.');
 assert.ok(transactionAwaitIndex > previewAwaitIndex, '서버 preview를 기다린 뒤 기존 transaction을 실행해야 한다.');
+assert.match(
+    userBibleActions.slice(devGuardIndex, previewAwaitIndex),
+    /!hasDepartmentTalentProgram/,
+    '구형 서버 shadow가 부서별 달란트 보상 결과를 잘못 비교하지 않도록 v2 설정에서는 건너뛰어야 한다.',
+);
 assert.match(
     userBibleActions.slice(previewAwaitIndex, transactionAwaitIndex),
     /previewReadCompletion\([^)]*\{\s*timeoutMs:\s*4000\s*\}\)/,
@@ -361,11 +366,16 @@ for (const args of [
 
 assert.match(quizCard, /import\s*\{[^}]*previewQuizSubmission[^}]*\}\s*from\s*['"]\.\.\/\.\.\/utils\/platformApi['"]/);
 assert.match(quizCard, /import\s*\{[^}]*compareQuizSubmissionShadow[^}]*\}\s*from\s*['"]\.\.\/\.\.\/utils\/quizSubmissionShadow['"]/);
-const quizDevGuardIndex = quizCard.indexOf('if (import.meta.env.DEV)');
+const quizDevGuardIndex = quizCard.indexOf('if (import.meta.env.DEV');
 const quizPreviewIndex = quizCard.indexOf('await previewQuizSubmission(');
 const quizTransactionIndex = quizCard.indexOf('await db.runTransaction(', quizPreviewIndex);
 assert.ok(quizDevGuardIndex >= 0, '퀴즈 shadow preview는 import.meta.env.DEV 가드 안에서만 실행해야 한다.');
 assert.ok(quizPreviewIndex > quizDevGuardIndex, 'DEV 가드 안에서 previewQuizSubmission을 await해야 한다.');
+assert.match(
+    quizCard.slice(quizDevGuardIndex, quizPreviewIndex),
+    /!Object\.values\(talentPrograms\)\.some\(isTalentProgramV2\)/,
+    '구형 서버 shadow가 부서별 달란트 퀴즈 보상을 잘못 비교하지 않도록 v2 설정에서는 건너뛰어야 한다.',
+);
 assert.ok(quizTransactionIndex > quizPreviewIndex, '서버 퀴즈 preview를 기다린 뒤 기존 transaction을 실행해야 한다.');
 assert.match(
     quizCard.slice(quizPreviewIndex, quizTransactionIndex),

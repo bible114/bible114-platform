@@ -1,6 +1,9 @@
+import { normalizeExtraMemberships } from './memberships.js';
+
 const ROSTER_FIELDS = [
     'talent',
     'departmentId', 'departmentName', 'subgroupId', 'subgroupName',
+    'extraMemberships',
     'joinedAt', 'updatedAt',
 ];
 
@@ -32,6 +35,7 @@ export const rosterSnapshotToExtraOrgs = (snapshot, uid, maxOrgs = 3) => {
             departmentName: null,
             subgroupId: null,
             subgroupName: null,
+            extraMemberships: [],
             joinedAt: null,
             updatedAt: null,
             talent: 0,
@@ -39,6 +43,7 @@ export const rosterSnapshotToExtraOrgs = (snapshot, uid, maxOrgs = 3) => {
         ROSTER_FIELDS.forEach(field => {
             if (data[field] !== undefined) row[field] = data[field];
         });
+        row.extraMemberships = normalizeExtraMemberships(row.extraMemberships);
         return [row];
     }).sort((left, right) => left.orgId.localeCompare(right.orgId)).slice(0, maxOrgs);
 };
