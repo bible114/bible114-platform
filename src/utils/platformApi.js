@@ -154,3 +154,12 @@ export const callPlatformApi = async (action, payload = {}, options = {}) => {
 };
 
 export const preflightPlatformApi = (options = {}) => callPlatformApi('preflight', {}, options);
+
+export const previewReadCompletion = (cycle, day, options = {}) => {
+    if (!Number.isInteger(cycle) || cycle < 1 || !Number.isInteger(day) || day < 1 || day > 365) {
+        throw new PlatformApiError('읽기 완료 확인 범위가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('previewReadCompletion', { cycle, day }, options);
+};

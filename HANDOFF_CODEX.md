@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: 라운드 24 T123 착수 가능** (서버 권위 이관). T122 공통 서버 기반·shadow API는 구현/검증 후 Supabase Edge에 배포했다. 기존 UI와 Firestore 쓰기에는 아직 연결하지 않았다.
+> **현재 활성 작업: 라운드 24 T123b shadow 비교 연결** (서버 권위 이관). T123a 읽기 완료 서버 계산 미리보기는 구현·검증·Edge 배포했고 Firestore 쓰기는 없다. 기존 계산과 로그인 사용자 결과를 비교한 뒤에만 실제 쓰기로 전환한다.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-14 | T123a 읽기 완료 서버 계산 shadow | `supabase/functions/_shared/{time,firestore}*`, `supabase/functions/platform-api/{readCore,core,index}*`, `src/utils/platformApi.js`, `scripts/validate-round24.mjs`, `HANDOFF_CODEX.md` | 읽기 보상·진행·연속일·개인 지갑을 순수 함수로 계산하고 `previewReadCompletion`으로 읽기 전용 제공. 읽기 날짜는 영상의 오전 3시 기준과 분리해 KST 자정 기준 유지. collectionGroup roster 조회도 읽기만 수행하며 응답에서 조직 ID·잔액·문서 경로를 제외. Deno 28 tests/type/fmt, 전체 validate/build/diff 통과. Edge 재배포 후 OPTIONS 204·미인증 401·입력 오류 400·잘못된 origin 403·잘못된 token 401 확인. 실제 로그인 200 및 기존 계산 비교는 T123b에서 수행. |
 | 2026-07-14 | T122 공통 서버 기반 + shadow API | `supabase/functions/_shared/*`, `supabase/functions/platform-api/*`, `src/utils/platformApi.js`, `src/data/constants.js`, `.env.example`, `scripts/validate-round24.mjs`, `package.json`, `HANDOFF_CODEX.md` | 하위 모델 3개가 서버 공통 모듈, preflight 전용 API, 클라이언트 브리지를 분리 구현하고 Codex가 통합 보안 리뷰. UUID 폴백·오류 내부정보 차단·역할 정규화 보강. Deno 15 tests, type/fmt, 전체 validate, 기존/쉬운 퀴즈, build, diff 검사 통과. `platform-api --no-verify-jwt` Edge 배포 후 OPTIONS 204·미인증/잘못된 토큰 401·잘못된 origin 403 확인. Firestore write 없음. |
 | 2026-07-14 | 라운드 23·긴급 수정 운영 배포 | `HANDOFF_CODEX.md` | 사용자 지시로 기존 금지 게이트 해제. `24a311e` main push, Firestore rules 컴파일·배포, `npm run deploy` Published 완료. 공개 주소 HTTP 200, 캐시 우회 HTML과 새 JS `index-C3RZWRw9.js` HTTP 200 확인. T122 착수 게이트 해제. |
 | 2026-07-14 | 라운드 24 설계 + 중복 환불 긴급 차단 | `HANDOFF_CODEX.md`, `src/components/ChurchAdminView.jsx`, `firestore.rules`, `scripts/validate-round18.mjs` | 하위 모델 3개가 보상/상점, 가입/디렉토리/통계, 매일 영상을 독립 감사하고 Codex가 교차 설계. 기존 Supabase Edge 기반의 T122~T127 무중단 서버 권위 이관안을 확정. 감사 중 발견한 pending 구매의 중복 취소·환불과 잘못된 상태 역전은 즉시 transaction 최신 상태 검사 + rules `pending → delivered/cancelled` 전이 제한으로 차단. 계약 검사·빌드·diff 검사 통과. |
@@ -332,6 +333,12 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-14 라운드 24 T123a 완료:
+- 읽기 완료의 서버 계산을 실제 저장과 분리한 `previewReadCompletion`으로 먼저 배포했다. 영상 기준일은 오전 3시지만 읽기 보상은 기존과 동일한 KST 자정 기준이므로 날짜 함수를 분리했다.
+- 서버는 users와 collectionGroup roster를 읽어 계산하지만 어떤 문서도 쓰지 않는다. 응답은 역할·날짜·roster 수·계산 결과만 반환하고 조직 ID, 잔액, 문서 경로는 반환하지 않는다.
+- Deno 28 tests/check/fmt, 전체 validate, build, diff 검사가 통과했다. 운영 Edge에서 OPTIONS 204, 미인증 401, 잘못된 입력 400, 잘못된 origin 403, 잘못된 token 401을 확인했다.
+- 실제 로그인 token의 200 결과와 기존 클라이언트 계산 비교는 자격증명을 새로 만들거나 데이터를 변경하지 않고 T123b 비교 장치를 통해 확인한다. 일치 증거 전에는 실제 서버 쓰기로 전환하지 않는다.
 
 2026-07-14 라운드 24 T122 완료:
 - 사용자 지시에 따라 Codex가 계약을 설계하고 하위 모델 3개가 충돌 없는 소유 영역으로 `_shared`, `platform-api`, 클라이언트 bridge/검증기를 구현했다. Codex 통합 리뷰에서 UUID 비표준 폴백, 5xx 내부 details 노출, raw role 반환, Deno 포맷 불일치를 발견해 담당 모델에 재수정시켰다.
@@ -1896,6 +1903,11 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 - 순수 함수 단위 테스트: token/role 가드, KST 오전 3시 경계, 숫자/문자열 Firestore 변환, 멱등키, 허용 origin, 재시도 가능한 오류 분류. `npm run validate:round24`로 묶는다.
 
 ### [ ] T123. 읽기 완료·퀴즈 보상 서버 이관
+
+- [x] **T123a. 읽기 완료 서버 계산 shadow** — KST 자정 기준 날짜, 진행 위치·하루 추가 읽기 상한·보상·연속일·개인 지갑을 서버 순수 함수로 계산하고 무쓰기 `previewReadCompletion`으로 배포한다.
+- [ ] **T123b. 로그인 사용자 shadow 비교** — 기존 읽기 완료 직전에 서버 미리보기를 호출하되 기존 동작을 막지 않는다. 개발 환경에서만 기존 계산과 서버 계산의 핵심 필드를 비교해 불일치를 기록하고, 운영에서는 민감값·내부 경로를 출력하지 않는다.
+- [ ] **T123c. 읽기 완료 실제 쓰기 전환** — T123b 일치 확인 후 멱등 ledger와 원자 commit을 구현하고 React의 직접 보상 쓰기를 제거한다. 서버 실패 시 직접 쓰기 폴백을 두지 않는다.
+- [ ] **T123d. 퀴즈 보상 서버 이관** — 서버 정답 인덱스·출제 범위 검증·시도/보상 ledger를 구현하고 클라이언트 직접 쓰기를 제거한다.
 
 - `completeRead({cycle, day, requestId})`: 현재 사용자 진행 위치·하루 추가 읽기 상한·서버 KST 날짜를 검증하고 users 진행/score, 최대 3개 실제 roster 지갑, history, 통계 ledger를 한 transaction으로 반영한다. 클라이언트의 `talentEarned`, `score`, roster 목록은 받지 않는다.
 - `submitQuiz({progressKey, quizKey, selectedIndex, requestId})`: 서버가 문제 정답과 해당 Day 출제 가능 범위를 검증하고 시도 횟수·하루 1회 보상·users/roster 지갑을 한 transaction으로 반영한다.

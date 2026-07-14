@@ -10,12 +10,16 @@ import {
   getServiceAccessToken,
   verifyFirebaseIdToken,
 } from "../_shared/firebase.ts";
-import { getDocument } from "../_shared/firestore.ts";
-import { getServiceDateKst } from "../_shared/time.ts";
+import { getDocument, runCollectionGroupQuery } from "../_shared/firestore.ts";
+import {
+  getLegacyCalendarDateStringKst,
+  getServiceDateKst,
+} from "../_shared/time.ts";
 import { parsePlatformApiRequest, PlatformApiRequestError } from "./core.ts";
+import { calculateReadCompletion, type StoredReadUser } from "./readCore.ts";
 
-// T122 shadow 단계: 인증·사용자 상태 확인만 수행하며 Firestore 쓰기는 금지한다.
-type UserDocument = {
+// T122-T123 shadow 단계: 인증·읽기 완료 계산만 수행하며 Firestore 쓰기는 금지한다.
+type UserDocument = StoredReadUser & {
   role?: unknown;
   isDeleted?: unknown;
 };
@@ -67,6 +71,38 @@ Deno.serve(async (request) => {
     }
 
     const role = normalizeRole(userDocument.data.role);
+
+    if (parsed.action === "previewReadCompletion") {
+      const todayLegacy = getLegacyCalendarDateStringKst();
+      const rosterDocuments = await runCollectionGroupQuery(
+        service.token,
+        service.projectId,
+        "roster",
+        "uid",
+        uid,
+        { limit: 4 },
+      );
+      if (rosterDocuments.length >= 4) {
+        throw new PlatformError("CONFLICT", {
+          message: "가입 공동체 수를 확인해 주세요.",
+        });
+      }
+      const result = calculateReadCompletion(
+        userDocument.data,
+        { cycle: parsed.cycle, day: parsed.day },
+        todayLegacy,
+      );
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        uid,
+        role,
+        calendarDate: todayLegacy,
+        rosterCount: rosterDocuments.length,
+        result,
+      });
+    }
 
     return jsonResponse(origin, 200, {
       ok: true,

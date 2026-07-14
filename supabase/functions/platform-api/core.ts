@@ -1,14 +1,23 @@
 export const PREFLIGHT_ACTION = "preflight" as const;
+export const PREVIEW_READ_COMPLETION_ACTION = "previewReadCompletion" as const;
 
-export type PlatformApiRequest = {
-  action: typeof PREFLIGHT_ACTION;
-  requestId: string;
-};
+export type PlatformApiRequest =
+  | {
+    action: typeof PREFLIGHT_ACTION;
+    requestId: string;
+  }
+  | {
+    action: typeof PREVIEW_READ_COMPLETION_ACTION;
+    requestId: string;
+    cycle: number;
+    day: number;
+  };
 
 export type PlatformApiRequestErrorCode =
   | "INVALID_BODY"
   | "INVALID_ACTION"
-  | "INVALID_REQUEST_ID";
+  | "INVALID_REQUEST_ID"
+  | "INVALID_PAYLOAD";
 
 export class PlatformApiRequestError extends Error {
   readonly code: PlatformApiRequestErrorCode;
@@ -33,13 +42,20 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     throw new PlatformApiRequestError("INVALID_BODY");
   }
 
-  const { action, requestId } = body as Record<string, unknown>;
-  if (action !== PREFLIGHT_ACTION) {
-    throw new PlatformApiRequestError("INVALID_ACTION");
-  }
+  const { action, requestId, cycle, day } = body as Record<string, unknown>;
   if (!isRequestId(requestId)) {
     throw new PlatformApiRequestError("INVALID_REQUEST_ID");
   }
 
-  return { action, requestId };
+  if (action === PREFLIGHT_ACTION) return { action, requestId };
+  if (action === PREVIEW_READ_COMPLETION_ACTION) {
+    if (
+      !Number.isInteger(cycle) || Number(cycle) < 1 ||
+      !Number.isInteger(day) || Number(day) < 1 || Number(day) > 365
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return { action, requestId, cycle: Number(cycle), day: Number(day) };
+  }
+  throw new PlatformApiRequestError("INVALID_ACTION");
 };

@@ -5,8 +5,10 @@ import {
   encodeDocumentPath,
   encodeFirestoreFields,
   encodeFirestoreValue,
+  runCollectionGroupQuery,
   updateWrite,
 } from "./firestore.ts";
+import { PlatformError } from "./errors.ts";
 
 const assertEquals = (actual: unknown, expected: unknown) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -52,4 +54,80 @@ Deno.test("document paths are encoded by segment and writes use full resource na
       currentDocument: { exists: true },
     },
   );
+});
+
+Deno.test("collection group query sends an equality filter and decodes only documents", async () => {
+  let requestUrl = "";
+  let requestBody: Record<string, unknown> | null = null;
+  const fixtureFetch =
+    (async (input: string | URL | Request, init?: RequestInit) => {
+      requestUrl = String(input);
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return Response.json([
+        {
+          document: {
+            name:
+              "projects/fixture/databases/(default)/documents/churches/a/members/u1",
+            fields: {
+              uid: { stringValue: "user-1" },
+              talent: { integerValue: "7" },
+            },
+          },
+        },
+        { readTime: "2026-07-14T00:00:00Z" },
+      ]);
+    }) as typeof fetch;
+
+  const documents = await runCollectionGroupQuery<
+    { uid: string; talent: number }
+  >(
+    "fixture-token",
+    "fixture",
+    "members",
+    "uid",
+    "user-1",
+    { limit: 3, transaction: "fixture-transaction", fetcher: fixtureFetch },
+  );
+  assertEquals(
+    requestUrl,
+    "https://firestore.googleapis.com/v1/projects/fixture/databases/(default)/documents:runQuery",
+  );
+  assertEquals(requestBody, {
+    structuredQuery: {
+      from: [{ collectionId: "members", allDescendants: true }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "uid" },
+          op: "EQUAL",
+          value: { stringValue: "user-1" },
+        },
+      },
+      limit: 3,
+    },
+    transaction: "fixture-transaction",
+  });
+  assertEquals(documents.length, 1);
+  assertEquals(documents[0].data, { uid: "user-1", talent: 7 });
+});
+
+Deno.test("collection group query rejects empty identifiers and non-positive limits", async () => {
+  for (
+    const invoke of [
+      () => runCollectionGroupQuery("token", "project", "", "uid", "u1"),
+      () => runCollectionGroupQuery("token", "project", "members", "", "u1"),
+      () =>
+        runCollectionGroupQuery("token", "project", "members", "uid", "u1", {
+          limit: 0,
+        }),
+    ]
+  ) {
+    try {
+      await invoke();
+      throw new Error("expected rejection");
+    } catch (error) {
+      if (!(error instanceof PlatformError) || error.code !== "BAD_REQUEST") {
+        throw error;
+      }
+    }
+  }
 });

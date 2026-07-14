@@ -1,0 +1,253 @@
+export const DAILY_READ_ADVANCE_LIMIT = 3;
+const DAYS_PER_CYCLE = 365;
+const DAY_MS = 86_400_000;
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+export type StoredReadUser = {
+  currentDay?: unknown;
+  readCount?: unknown;
+  dailyAdvanceDate?: unknown;
+  dailyAdvanceCount?: unknown;
+  lastReadDate?: unknown;
+  score?: unknown;
+  streak?: unknown;
+  maxStreak?: unknown;
+  talent?: unknown;
+  accountType?: unknown;
+  secretShopUnlocked?: unknown;
+  recentReadDates?: unknown;
+};
+
+// 클라이언트 요청에는 위치만 둔다. 점수·달란트·roster 값은 서버가 읽은 StoredReadUser에서만 취한다.
+export type ReadCompletionRequest = { cycle: number; day: number };
+
+export type ReadCompletionUpdate = {
+  currentDay: number;
+  readCount: number;
+  score: number;
+  streak: number;
+  maxStreak: number;
+  lastReadDate: string;
+  dailyAdvanceDate: string;
+  dailyAdvanceCount: number;
+  recentReadDates: string[];
+  talent?: number;
+  secretShopUnlocked?: true;
+};
+
+export type ReadCompletionResult =
+  | {
+    status: "positionMismatch";
+    expected: ReadCompletionRequest;
+    received: ReadCompletionRequest;
+  }
+  | {
+    status: "dailyLimit";
+    limit: number;
+    count: number;
+  }
+  | {
+    status: "ready";
+    updateData: ReadCompletionUpdate;
+    summary: {
+      oldLevel: number;
+      newLevel: number;
+      scoreEarned: number;
+      streakBonus: number;
+      talentEarned: number;
+      newStreak: number;
+      newReadCount: number;
+      newProgressDay: number;
+      nextViewingDay: number;
+      completedRound: boolean;
+      secretShopJustUnlocked: boolean;
+      rewardsUserWallet: boolean;
+    };
+  };
+
+const finiteNumber = (value: unknown, fallback = 0): number => {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : fallback;
+};
+
+const nonNegativeInteger = (value: unknown, fallback = 0): number =>
+  Math.max(0, Math.floor(finiteNumber(value, fallback)));
+
+export const normalizeProgressDay = (value: unknown): number => {
+  const day = Math.floor(finiteNumber(value, 1));
+  if (day < 1) return 1;
+  return ((day - 1) % DAYS_PER_CYCLE) + 1;
+};
+
+export const normalizeReadCount = (value: unknown): number =>
+  Math.max(1, Math.floor(finiteNumber(value, 1)));
+
+const parseLegacyDay = (value: unknown): number | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  const legacy = trimmed.match(
+    /^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) ([A-Z][a-z]{2}) (\d{1,2}) (\d{4})$/,
+  );
+  if (legacy) {
+    const month = MONTHS.indexOf(legacy[1] as typeof MONTHS[number]);
+    if (month < 0) return null;
+    const timestamp = Date.UTC(Number(legacy[3]), month, Number(legacy[2]));
+    const date = new Date(timestamp);
+    return date.getUTCFullYear() === Number(legacy[3]) &&
+        date.getUTCMonth() === month && date.getUTCDate() === Number(legacy[2])
+      ? timestamp
+      : null;
+  }
+  const isoDay = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/);
+  if (!isoDay) return null;
+  const timestamp = Date.UTC(
+    Number(isoDay[1]),
+    Number(isoDay[2]) - 1,
+    Number(isoDay[3]),
+  );
+  const date = new Date(timestamp);
+  return date.getUTCFullYear() === Number(isoDay[1]) &&
+      date.getUTCMonth() === Number(isoDay[2]) - 1 &&
+      date.getUTCDate() === Number(isoDay[3])
+    ? timestamp
+    : null;
+};
+
+const toLegacyDay = (timestamp: number): string => {
+  const date = new Date(timestamp);
+  return `${WEEKDAYS[date.getUTCDay()]} ${MONTHS[date.getUTCMonth()]} ${
+    String(date.getUTCDate()).padStart(2, "0")
+  } ${date.getUTCFullYear()}`;
+};
+
+const normalizeRecentReadDates = (
+  values: unknown,
+  todayTimestamp: number,
+): string[] => {
+  const cutoff = todayTimestamp - 13 * DAY_MS;
+  const timestamps = Array.isArray(values)
+    ? values.flatMap((value) => {
+      const timestamp = parseLegacyDay(value);
+      return timestamp !== null && timestamp >= cutoff &&
+          timestamp <= todayTimestamp
+        ? [timestamp]
+        : [];
+    })
+    : [];
+  return Array.from(new Set([...timestamps, todayTimestamp]))
+    .sort((a, b) => a - b)
+    .slice(-14)
+    .map(toLegacyDay);
+};
+
+export const calculateReadCompletion = (
+  user: StoredReadUser,
+  request: ReadCompletionRequest,
+  todayLegacy: string,
+): ReadCompletionResult => {
+  const currentDay = normalizeProgressDay(user.currentDay);
+  const readCount = normalizeReadCount(user.readCount);
+  const expected = { cycle: readCount, day: currentDay };
+  if (
+    !Number.isInteger(request.cycle) || !Number.isInteger(request.day) ||
+    request.cycle !== expected.cycle || request.day !== expected.day
+  ) {
+    return { status: "positionMismatch", expected, received: request };
+  }
+
+  const todayTimestamp = parseLegacyDay(todayLegacy);
+  if (todayTimestamp === null) throw new TypeError("INVALID_TODAY_LEGACY");
+  const normalizedToday = toLegacyDay(todayTimestamp);
+  const dailyAdvanceDateMatches = user.dailyAdvanceDate === normalizedToday;
+  const lastReadDateMatches = user.lastReadDate === normalizedToday;
+  const dailyAdvanceCount = dailyAdvanceDateMatches
+    ? nonNegativeInteger(user.dailyAdvanceCount)
+    : (lastReadDateMatches ? 1 : 0);
+  if (dailyAdvanceCount >= DAILY_READ_ADVANCE_LIMIT) {
+    return {
+      status: "dailyLimit",
+      limit: DAILY_READ_ADVANCE_LIMIT,
+      count: dailyAdvanceCount,
+    };
+  }
+
+  const isFirstReadToday = !dailyAdvanceDateMatches && !lastReadDateMatches;
+  const oldScore = finiteNumber(user.score);
+  const oldStreak = nonNegativeInteger(user.streak);
+  const streakBonus = isFirstReadToday ? Math.min(5, oldStreak) : 0;
+  const scoreEarned = isFirstReadToday ? 10 + streakBonus : 0;
+  const newScore = oldScore + scoreEarned;
+
+  let newStreak = 1;
+  const lastReadTimestamp = parseLegacyDay(user.lastReadDate);
+  if (lastReadTimestamp !== null) {
+    const diffDays = Math.floor((todayTimestamp - lastReadTimestamp) / DAY_MS);
+    if (diffDays === 1) newStreak = oldStreak + 1;
+    else if (diffDays === 0) newStreak = oldStreak;
+  }
+
+  const completedRound = currentDay === DAYS_PER_CYCLE;
+  const newProgressDay = completedRound ? 1 : currentDay + 1;
+  const newReadCount = completedRound ? readCount + 1 : readCount;
+  const talentEarned = isFirstReadToday ? 10 + Math.min(newStreak, 7) : 0;
+  const rewardsUserWallet = user.accountType !== "personal";
+  const maxStreak = Math.max(
+    nonNegativeInteger(user.maxStreak, oldStreak),
+    oldStreak,
+    newStreak,
+  );
+  const secretShopJustUnlocked = user.secretShopUnlocked !== true &&
+    newStreak >= 7;
+
+  const updateData: ReadCompletionUpdate = {
+    currentDay: newProgressDay,
+    readCount: newReadCount,
+    score: newScore,
+    streak: newStreak,
+    maxStreak,
+    lastReadDate: normalizedToday,
+    dailyAdvanceDate: normalizedToday,
+    dailyAdvanceCount: dailyAdvanceCount + 1,
+    recentReadDates: normalizeRecentReadDates(
+      user.recentReadDates,
+      todayTimestamp,
+    ),
+  };
+  if (rewardsUserWallet) {
+    updateData.talent = finiteNumber(user.talent) + talentEarned;
+  }
+  if (secretShopJustUnlocked) updateData.secretShopUnlocked = true;
+
+  return {
+    status: "ready",
+    updateData,
+    summary: {
+      oldLevel: Math.floor(oldScore / 100),
+      newLevel: Math.floor(newScore / 100),
+      scoreEarned,
+      streakBonus,
+      talentEarned,
+      newStreak,
+      newReadCount,
+      newProgressDay,
+      nextViewingDay: request.day >= DAYS_PER_CYCLE ? 1 : request.day + 1,
+      completedRound,
+      secretShopJustUnlocked,
+      rewardsUserWallet,
+    },
+  };
+};

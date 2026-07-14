@@ -60,6 +60,31 @@ Deno.test("preflight 요청을 정규화한다", () => {
   assert(!("ignored" in parsed), "unknown field leaked into parsed request");
 });
 
+Deno.test("읽기 완료 미리보기 요청의 회차와 날짜를 검증한다", () => {
+  const parsed = parsePlatformApiRequest({
+    action: "previewReadCompletion",
+    requestId: "123e4567-e89b-12d3-a456-426614174000",
+    cycle: 2,
+    day: 365,
+  });
+  assert(parsed.action === "previewReadCompletion", "action mismatch");
+  if (parsed.action !== "previewReadCompletion") return;
+  assert(parsed.cycle === 2 && parsed.day === 365, "read position mismatch");
+
+  for (const [cycle, day] of [[0, 1], [1.5, 1], [1, 0], [1, 366], [1, 2.5]]) {
+    assertRequestError(
+      () =>
+        parsePlatformApiRequest({
+          action: "previewReadCompletion",
+          requestId: "123e4567-e89b-12d3-a456-426614174000",
+          cycle,
+          day,
+        }),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
 Deno.test("알 수 없는 action은 거부한다", () => {
   assertRequestError(
     () =>
