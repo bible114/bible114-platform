@@ -9,7 +9,7 @@ import { migratePersonalTalentWalletIfNeeded } from '../../utils/helpers';
 
 const emptySelection = { departmentId: '', departmentName: '', subgroupId: '', subgroupName: '' };
 
-const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = false, onJoinComplete, onSkip, selectionOnly = false, skipLabel = '나중에 할게요', onPrimaryOrgChange, onViewOrgRanking }) => {
+const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = false, onJoinComplete, onSkip, selectionOnly = false, skipLabel = '나중에 할게요', activeOrgId, onSelectOrg, onPrimaryOrgChange }) => {
     const [directory, setDirectory] = useState([]);
     const [showJoin, setShowJoin] = useState(false);
     const [orgId, setOrgId] = useState('');
@@ -28,6 +28,9 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
         () => (Array.isArray(currentUser?.extraOrgs) ? currentUser.extraOrgs : []),
         [currentUser?.extraOrgs]
     );
+    const selectedOrgId = activeOrgId || currentUser?.churchId || null;
+    const baseChurchId = currentUser?.baseChurchId || currentUser?.churchId || null;
+    const baseChurchName = currentUser?.baseChurchName || currentUser?.churchName || '주 소속 공동체';
 
     useEffect(() => {
         let alive = true;
@@ -80,7 +83,7 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
     const verifyChurch = async () => {
         setNotice(null);
         if (!orgId) return setNotice({ type: 'error', text: '공동체를 선택해주세요.' });
-        if (orgId === currentUser.churchId || orgId === UNAFFILIATED_CHURCH_ID) {
+        if (orgId === baseChurchId || orgId === UNAFFILIATED_CHURCH_ID) {
             return setNotice({ type: 'error', text: '현재 주 소속은 추가할 수 없습니다.' });
         }
         if (extraOrgs.some(org => org.orgId === orgId)) {
@@ -130,7 +133,7 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
 
     const joinCommunity = async () => {
         if (busy || !orgId || !selection.departmentId) return;
-        if (!currentUser.uid || orgId === currentUser.churchId || orgId === UNAFFILIATED_CHURCH_ID) {
+        if (!currentUser.uid || orgId === baseChurchId || orgId === UNAFFILIATED_CHURCH_ID) {
             setNotice({ type: 'error', text: '이 공동체는 추가할 수 없습니다.' });
             return;
         }
@@ -222,7 +225,7 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
 
     const leaveCommunity = async (org) => {
         if (currentUser.accountType === 'personal' && currentUser.primaryOrgId === org.orgId) {
-            setNotice({ type: 'error', text: '기준 공동체는 바로 탈퇴할 수 없어요. 다른 공동체를 먼저 기준으로 선택해주세요.' });
+            setNotice({ type: 'error', text: '기본 공동체는 바로 탈퇴할 수 없어요. 다른 공동체를 먼저 기본으로 설정해주세요.' });
             return;
         }
         if (busy || !window.confirm(`${orgName(org.orgId)}에서 탈퇴하시겠습니까?`)) return;
@@ -312,8 +315,16 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
                 <button ref={joinTriggerRef} type="button" disabled={extraOrgs.length >= 3 || busy} onClick={() => { setNotice(null); setShowJoin(true); }} className="shrink-0 rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:bg-slate-300">공동체 추가</button>
             </div>
             <div className="space-y-2">
-                {currentUser.accountType !== 'personal' && <div className="rounded-xl bg-slate-50 px-3 py-3 text-sm"><span className="font-bold text-slate-700">{currentUser.churchName || '주 소속 공동체'}</span><span className="ml-2 text-[11px] text-blue-600">주 소속</span></div>}
-                {extraOrgs.map(org => { const isPrimary = currentUser.accountType === 'personal' && currentUser.primaryOrgId === org.orgId; return <div key={org.orgId} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-slate-100 px-3 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-700">{orgName(org.orgId)}{isPrimary && <span className="ml-2 text-[11px] text-blue-600">★ 기준</span>}</p><p className="truncate text-xs text-slate-400">{[org.departmentName, org.subgroupName].filter(Boolean).join(' · ') || '소속 미배정'}</p>{isPrimary && <p className="mt-1 text-[10px] text-slate-400">다른 공동체를 기준으로 선택한 뒤 탈퇴할 수 있어요.</p>}</div>{onViewOrgRanking && <button type="button" disabled={busy} onClick={() => onViewOrgRanking({ orgId: org.orgId, name: orgName(org.orgId), departmentId: org.departmentId, subgroupId: org.subgroupId, subgroupName: org.subgroupName })} className="shrink-0 text-xs font-bold text-slate-700">🏆 순위</button>}{currentUser.accountType === 'personal' && !isPrimary && <button type="button" disabled={busy} onClick={() => onPrimaryOrgChange?.(org.orgId)} className="shrink-0 text-xs font-bold text-blue-600">기준으로 보기</button>}<button type="button" disabled={busy || isPrimary} onClick={() => leaveCommunity(org)} className="shrink-0 text-xs font-bold text-red-500 disabled:text-slate-300 disabled:opacity-100">탈퇴</button></div>; })}
+                {currentUser.accountType !== 'personal' && (() => {
+                    const isActive = selectedOrgId === baseChurchId;
+                    return <div className={`rounded-xl border ${isActive ? 'border-blue-300 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-100 bg-slate-50'}`}><button type="button" disabled={busy || !baseChurchId} aria-current={isActive ? 'page' : undefined} aria-pressed={isActive} onClick={() => onSelectOrg?.(baseChurchId)} className="w-full rounded-xl px-3 py-3 text-left"><span className="flex items-center justify-between gap-3"><span className="min-w-0 truncate text-sm font-bold text-slate-700">{baseChurchName}<span className="ml-2 text-[11px] text-blue-600">주 소속</span></span>{isActive && <span className="shrink-0 text-[10px] font-bold text-blue-600">현재 보고 있음</span>}</span></button></div>;
+                })()}
+                {extraOrgs.map(org => {
+                    const isPrimary = currentUser.accountType === 'personal' && currentUser.primaryOrgId === org.orgId;
+                    const isActive = selectedOrgId === org.orgId;
+                    const name = orgName(org.orgId);
+                    return <div key={org.orgId} className={`flex flex-wrap items-center gap-x-2 gap-y-2 rounded-xl border p-1.5 ${isActive ? 'border-blue-300 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-100 bg-white'}`}><button type="button" disabled={busy} aria-current={isActive ? 'page' : undefined} aria-pressed={isActive} aria-label={`${name} 공동체로 이동${isActive ? ', 현재 보고 있음' : ''}`} onClick={() => onSelectOrg?.(org.orgId)} className="min-w-[190px] flex-1 rounded-lg px-2 py-2 text-left"><span className="flex items-center justify-between gap-3"><span className="min-w-0"><span className="block truncate text-sm font-bold text-slate-700">{name}{isPrimary && <span className="ml-2 text-[11px] text-blue-600">★ 기본</span>}</span><span className="block truncate text-xs text-slate-400">{[org.departmentName, org.subgroupName].filter(Boolean).join(' · ') || '소속 미배정'}</span>{isPrimary && <span className="mt-1 block text-[10px] text-slate-400">다른 공동체를 기본으로 설정한 뒤 탈퇴할 수 있어요.</span>}</span>{isActive && <span className="shrink-0 text-[10px] font-bold text-blue-600">현재 보고 있음</span>}</span></button><div className="ml-auto flex shrink-0 items-center gap-2 px-1">{currentUser.accountType === 'personal' && !isPrimary && <button type="button" disabled={busy} onClick={() => onPrimaryOrgChange?.(org.orgId)} className="text-xs font-bold text-blue-600">기본으로 설정</button>}<button type="button" disabled={busy || isPrimary} onClick={() => leaveCommunity(org)} className="text-xs font-bold text-red-500 disabled:text-slate-300 disabled:opacity-100">탈퇴</button></div></div>;
+                })}
                 {extraOrgs.length === 0 && <p className="py-2 text-center text-xs text-slate-400">참여 중인 공동체가 없습니다. 혼자 읽는 기록은 계속 안전하게 저장됩니다.</p>}
                 {currentUser.accountType === 'personal' && !extraOrgs.some(org => org.orgId === UNAFFILIATED_CHURCH_ID) && <button type="button" disabled={busy || extraOrgs.length >= 3} onClick={joinSoloCommunity} className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs font-bold text-emerald-700 disabled:opacity-40">혼자 읽기 모임으로 돌아가기</button>}
             </div>

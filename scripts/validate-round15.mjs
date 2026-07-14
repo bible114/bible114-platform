@@ -68,7 +68,7 @@ assert(dashboard.includes('ttsUnavailableApp={ttsUnavailableApp}'));
 
 const memberships = read('src/components/dashboard/CommunityMembershipCard.jsx');
 assert(memberships.includes('busy || isPrimary'));
-assert(memberships.includes('기준 공동체는 바로 탈퇴할 수 없어요'));
+assert(memberships.includes('기본 공동체는 바로 탈퇴할 수 없어요'));
 
 const auth = read('src/hooks/useAuth.js');
 assert(auth.includes('setCurrentUser(runtimeUser)'));

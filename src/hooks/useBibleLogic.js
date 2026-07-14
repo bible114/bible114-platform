@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { auth, db } from '../utils/firebase';
 import { calculateSubgroupStats } from '../utils/statsUtils';
 import { belongsToDepartment } from '../utils/memberships';
@@ -10,6 +10,8 @@ import { useDepartment } from './useDepartment';
 import { useUserBibleActions } from './useUserBibleActions';
 
 export const useBibleLogic = (currentUser, setCurrentUser, view, communities, onReadComplete) => {
+    const communityRequestRef = useRef(0);
+    const userDataRequestRef = useRef(0);
     // 1. Content Hook
     const {
         verseData, setVerseData, viewingDay, setViewingDay, loadContent
@@ -48,23 +50,25 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
         loadContent(viewingDay);
     }, [view, currentUser?.uid, viewingDay, currentUser?.planId, currentUser?.dayOffset, loadContent]);
 
-    // [Effect 2] Initial full load when entering dashboard or user changes
+    // [Effect 2] 활동 공동체 전용 데이터. 공동체를 빠르게 바꿔도 이전
+    // 요청 결과가 새 화면을 덮지 않도록 요청 세대를 확인한다.
     useEffect(() => {
         if (view !== 'dashboard' || !currentUser) return;
 
-        // initial viewingDay setting
         if (viewingDay === null) {
             setViewingDay(currentUser.currentDay || 1);
         }
 
-        const loadDashboardData = async () => {
-            const uid = currentUser.uid;
+        const requestId = ++communityRequestRef.current;
+        const isCurrentRequest = () => requestId === communityRequestRef.current;
+        setAllMembersForRace([]);
+        setDepartmentMembers([]);
+        setSubgroupStats({});
 
-            // 1. Load Community Data
+        const loadCommunityData = async () => {
             const allMembers = await loadAllMembers();
+            if (!isCurrentRequest()) return;
             setAllMembersForRace(allMembers);
-            setDepartmentMembers([]);
-            setSubgroupStats({});
             if (allMembers && allMembers.length > 0) {
                 setSubgroupStats(calculateSubgroupStats(allMembers, communities));
                 if (currentUser.departmentId) {
@@ -72,35 +76,53 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
                     setDepartmentMembers(myCommMembers);
                 } else setDepartmentMembers(allMembers);
             }
+        };
 
-            // 2. Load User Specific Data (Memos & History)
+        void loadCommunityData();
+        void loadAnnouncement();
+        void loadKakaoLink();
+        return () => {
+            if (communityRequestRef.current === requestId) communityRequestRef.current += 1;
+        };
+    }, [
+        view,
+        currentUser?.uid,
+        currentUser?.churchId,
+        currentUser?.departmentId,
+        loadAllMembers, loadAnnouncement, loadKakaoLink,
+        setAllMembersForRace, setSubgroupStats, setDepartmentMembers,
+    ]);
+
+    // [Effect 3] 사용자 공통 데이터. 공동체 전환과 무관하므로 uid가 같으면
+    // 메모와 읽기 기록을 비우거나 다시 불러오지 않는다.
+    useEffect(() => {
+        if (view !== 'dashboard' || !currentUser?.uid) return;
+        const uid = currentUser.uid;
+        const requestId = ++userDataRequestRef.current;
+        const isCurrentRequest = () => requestId === userDataRequestRef.current;
+
+        const loadUserData = async () => {
             try {
                 await loadMemos(uid);
             } catch {
                 // useMemos가 빈 상태로 복구하고 memoLoadError를 노출한다.
-                // 메모 한 항목의 조회 실패가 나머지 대시보드 로딩을 막지 않게 한다.
             }
-
-            // readHistory: 서브컬렉션만 사용 (배열 필드는 문서 크기 무한 증가 문제로 폐기)
-            const historySnap = await db.collection('users').doc(uid).collection('history')
-                .orderBy('date', 'desc').limit(365).get();
-            setReadHistory(historySnap.docs.map(doc => doc.data()));
-
-            // 3. Load Announcements & Links
-            await loadAnnouncement();
-            await loadKakaoLink();
+            try {
+                const historySnap = await db.collection('users').doc(uid).collection('history')
+                    .orderBy('date', 'desc').limit(365).get();
+                if (isCurrentRequest()) setReadHistory(historySnap.docs.map(doc => doc.data()));
+            } catch (error) {
+                if (isCurrentRequest()) console.error('읽기 기록 불러오기 실패:', error);
+            }
         };
 
-        loadDashboardData();
-    }, [
-        view,
-        currentUser?.uid,
-        // We removed viewingDay from here to prevent re-fetching on every day change
-        loadAllMembers, loadMemos, loadAnnouncement, loadKakaoLink,
-        setAllMembersForRace, setSubgroupStats, setDepartmentMembers, setReadHistory
-    ]);
+        void loadUserData();
+        return () => {
+            if (userDataRequestRef.current === requestId) userDataRequestRef.current += 1;
+        };
+    }, [view, currentUser?.uid, loadMemos, setReadHistory]);
 
-    // [Effect 3] Recompute subgroup stats when members OR communities change
+    // [Effect 4] Recompute subgroup stats when members OR communities change
     // communities arrives async after allMembersForRace, so this handles the timing gap
     useEffect(() => {
         if (!allMembersForRace || allMembersForRace.length === 0) return;

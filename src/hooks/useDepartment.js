@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { db, firebase } from '../utils/firebase';
 import { calculateSubgroupStats } from '../utils/statsUtils';
 import { userDocToState } from '../utils/helpers';
@@ -12,6 +12,8 @@ export const useDepartment = (currentUser, setCurrentUser) => {
     const [allMembersForRace, setAllMembersForRace] = useState([]);
     const [announcement, setAnnouncement] = useState(null);
     const [kakaoLink, setKakaoLink] = useState(null);
+    const announcementRequestRef = useRef(0);
+    const kakaoRequestRef = useRef(0);
 
     const loadAllMembers = useCallback(async (orgIdOverride) => {
         const orgId = orgIdOverride || currentUser?.churchId;
@@ -48,27 +50,39 @@ export const useDepartment = (currentUser, setCurrentUser) => {
     }, [currentUser?.churchId, currentUser?.accountType]);
 
     const loadAnnouncement = useCallback(async () => {
-        if (!currentUser?.churchId) { setAnnouncement(null); return; }
+        const requestId = ++announcementRequestRef.current;
+        const orgId = currentUser?.churchId;
+        setAnnouncement(null);
+        if (!orgId) return;
         try {
-            const doc = await db.collection('churches').doc(currentUser.churchId)
+            const doc = await db.collection('churches').doc(orgId)
                 .collection('settings').doc('announcement').get();
+            if (announcementRequestRef.current !== requestId) return;
             if (doc.exists && doc.data().enabled) {
                 setAnnouncement(doc.data());
             } else {
                 setAnnouncement(null);
             }
         } catch (e) {
+            if (announcementRequestRef.current !== requestId) return;
+            setAnnouncement(null);
             console.error("공지 로딩 실패:", e);
         }
     }, [currentUser?.churchId]);
 
     const loadKakaoLink = useCallback(async () => {
-        if (!currentUser?.churchId) { setKakaoLink(null); return; }
+        const requestId = ++kakaoRequestRef.current;
+        const orgId = currentUser?.churchId;
+        setKakaoLink(null);
+        if (!orgId) return;
         try {
-            const doc = await db.collection('churches').doc(currentUser.churchId)
+            const doc = await db.collection('churches').doc(orgId)
                 .collection('settings').doc('kakao').get();
-            if (doc.exists) setKakaoLink(doc.data().url);
+            if (kakaoRequestRef.current !== requestId) return;
+            setKakaoLink(doc.exists ? (doc.data().url || null) : null);
         } catch (e) {
+            if (kakaoRequestRef.current !== requestId) return;
+            setKakaoLink(null);
             console.error("카카오 링크 로딩 실패:", e);
         }
     }, [currentUser?.churchId]);

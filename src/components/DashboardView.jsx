@@ -1,12 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { TOTAL_DAYS, UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
+import React, { useRef, useState } from 'react';
+import { TOTAL_DAYS, UNAFFILIATED_CHURCH_ID } from '../data/constants';
 import { BIBLE_VERSIONS, PLAN_TYPES } from '../data/bible_options';
 import { getLevelInfo } from '../data/levels';
 import { DEFAULT_DEPARTMENTS } from '../data/departments';
 import { belongsToDepartment, getMembershipList } from '../utils/memberships';
 import { getDaysRead } from '../utils/helpers';
-import { calculateSubgroupStats, formatProgressRanking } from '../utils/statsUtils';
-import { getChurchDirectory } from '../utils/churchDirectory';
 
 // Modals
 import {
@@ -126,9 +124,8 @@ const DashboardView = ({
     setCompletionCelebration,
     personalOrganizations = [],
     talentOrganizations = [],
-    loadOrgRankingData,
     onPrimaryOrgChange,
-    onTalentOrgChange,
+    onActiveOrgChange,
     onPersonalAccountMigrate,
     socialLinkNotice,
     onSocialLinkNoticeClear,
@@ -143,82 +140,26 @@ const DashboardView = ({
         gateOpen: false,
     });
     const [highlightQuiz, setHighlightQuiz] = useState(false);
-    const [viewedRankingOrg, setViewedRankingOrg] = useState(null);
-    const [orgRankingData, setOrgRankingData] = useState({ members: [], communities: [], loading: false, error: null });
-    const [rankingOrgDirectory, setRankingOrgDirectory] = useState([]);
     const quizSectionRef = useRef(null);
-    const rankingRequestRef = useRef(0);
-
-    const rankingExtraOrgs = Array.isArray(currentUser?.extraOrgs) ? currentUser.extraOrgs : [];
-    const shouldShowOrgTabs = currentUser?.accountType === 'personal' && rankingExtraOrgs.length >= 2;
-
-    useEffect(() => {
-        if (!showFullRanking || !shouldShowOrgTabs) return undefined;
-        let alive = true;
-        getChurchDirectory()
-            .then(items => { if (alive) setRankingOrgDirectory(Array.isArray(items) ? items : []); })
-            .catch(() => { if (alive) setRankingOrgDirectory([]); });
-        return () => { alive = false; };
-    }, [showFullRanking, shouldShowOrgTabs]);
-
-    useEffect(() => {
-        rankingRequestRef.current += 1;
-        setViewedRankingOrg(null);
-        setOrgRankingData({ members: [], communities: [], loading: false, error: null });
-    }, [currentUser?.uid]);
-
-    const orgTabs = useMemo(() => {
-        if (!shouldShowOrgTabs) return [];
-        return rankingExtraOrgs.map(org => ({
-            ...org,
-            name: org.orgId === UNAFFILIATED_CHURCH_ID
-                ? UNAFFILIATED_CHURCH_NAME
-                : (rankingOrgDirectory.find(item => item.id === org.orgId)?.name || org.name || '공동체'),
-        }));
-    }, [shouldShowOrgTabs, rankingExtraOrgs, rankingOrgDirectory]);
-
-    const orgProgressRanking = useMemo(() => formatProgressRanking(
-        calculateSubgroupStats(orgRankingData.members, orgRankingData.communities)
-    ), [orgRankingData.members, orgRankingData.communities]);
-
-    const openOrgRanking = async (org) => {
-        if (!org?.orgId) return;
-        setRankingCommunityFilter('all');
-        setSelectedSubgroupDetail(null);
-        const requestId = ++rankingRequestRef.current;
-        if (org.orgId === currentUser?.churchId) {
-            setViewedRankingOrg(null);
-            setOrgRankingData({ members: [], communities: [], loading: false, error: null });
-            return;
-        }
-        setViewedRankingOrg(org);
-        setOrgRankingData({ members: [], communities: [], loading: true, error: null });
-        try {
-            const data = await loadOrgRankingData(org.orgId);
-            if (rankingRequestRef.current !== requestId) return;
-            setOrgRankingData({ members: data.members || [], communities: data.communities || [], loading: false, error: null });
-        } catch (error) {
-            if (rankingRequestRef.current !== requestId) return;
-            console.error('공동체 랭킹 로딩 실패:', error);
-            setOrgRankingData({ members: [], communities: [], loading: false, error: '공동체 순위를 불러오지 못했습니다.' });
-        }
-    };
 
     const closeRankingModal = () => {
-        rankingRequestRef.current += 1;
         setShowFullRanking(false);
-        setViewedRankingOrg(null);
-        setOrgRankingData({ members: [], communities: [], loading: false, error: null });
         setRankingCommunityFilter('all');
         setSelectedSubgroupDetail(null);
     };
 
-    const isViewingOtherOrg = Boolean(viewedRankingOrg && viewedRankingOrg.orgId !== currentUser?.churchId);
-    const viewedMembership = isViewingOtherOrg ? {
-        departmentId: viewedRankingOrg.departmentId || null,
-        subgroupId: viewedRankingOrg.subgroupId || null,
-        subgroupName: viewedRankingOrg.subgroupName || null,
-    } : null;
+    const selectActiveOrganization = (orgId) => {
+        if (!orgId) return;
+        handleStop?.();
+        setShowFullRanking(false);
+        setRankingCommunityFilter('all');
+        setSelectedSubgroupDetail(null);
+        setShowMemberships(false);
+        if (orgId !== currentUser?.churchId) {
+            onActiveOrgChange?.(orgId);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    };
 
     if (!currentUser) return null;
     const hasCommunity = Boolean(currentUser.churchId);
@@ -422,8 +363,8 @@ const DashboardView = ({
             <RankingModal
                 show={showFullRanking}
                 onClose={closeRankingModal}
-                progressRanking={isViewingOtherOrg ? orgProgressRanking : progressRanking}
-                allMembersForRace={isViewingOtherOrg ? orgRankingData.members : allMembersForRace}
+                progressRanking={progressRanking}
+                allMembersForRace={allMembersForRace}
                 subgroupId={subgroupId}
                 currentUser={currentUser}
                 selectedSubgroupDetail={selectedSubgroupDetail}
@@ -431,14 +372,7 @@ const DashboardView = ({
                 rankingCommunityFilter={rankingCommunityFilter}
                 setRankingCommunityFilter={setRankingCommunityFilter}
                 churchCommunities={churchCommunities}
-                extraMemberships={isViewingOtherOrg ? [] : additionalMemberships}
-                orgTabs={orgTabs}
-                activeOrgId={isViewingOtherOrg ? viewedRankingOrg.orgId : currentUser.churchId}
-                onSelectOrg={orgId => openOrgRanking(orgTabs.find(org => org.orgId === orgId))}
-                orgLoading={isViewingOtherOrg && orgRankingData.loading}
-                orgError={isViewingOtherOrg ? orgRankingData.error : null}
-                viewedMembership={viewedMembership}
-                viewedOrgName={isViewingOtherOrg ? viewedRankingOrg.name : null}
+                extraMemberships={additionalMemberships}
             />
             <MemoListModal
                 show={showMemoList}
@@ -575,13 +509,18 @@ const DashboardView = ({
                         currentUser={currentUser}
                         setCurrentUser={setCurrentUser}
                         organizations={talentOrganizations}
-                        onOrganizationChange={onTalentOrgChange}
+                        onOrganizationChange={selectActiveOrganization}
                         showUnlockModal={showSecretShopUnlocked}
                         onCloseUnlockModal={() => setShowSecretShopUnlocked(false)}
                     />}
 
                     {currentUser.role === 'member' && currentUser.accountType !== 'personal' && (
-                        <CommunityMembershipCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
+                        <CommunityMembershipCard
+                            currentUser={currentUser}
+                            setCurrentUser={setCurrentUser}
+                            activeOrgId={currentUser.churchId}
+                            onSelectOrg={selectActiveOrganization}
+                        />
                     )}
                     <PersonalAccountMigrationCard currentUser={currentUser} onMigrate={onPersonalAccountMigrate} />
                 </main>
@@ -604,7 +543,7 @@ const DashboardView = ({
             )}
             <KakaoChannelButton kakaoLink={kakaoLink} />
 
-            {showMemberships && currentUser.accountType === 'personal' && <div className="fixed inset-0 z-[125] flex items-end justify-center bg-black/45 sm:items-center sm:p-4" onMouseDown={event => { if (event.target === event.currentTarget) setShowMemberships(false); }}><div role="dialog" aria-modal="true" aria-label="내 단체 관리" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-slate-50 p-5 sm:rounded-3xl"><div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-black text-slate-900">내 단체 관리</h2><button type="button" onClick={() => setShowMemberships(false)} className="p-2 text-slate-400" aria-label="닫기">✕</button></div><CommunityMembershipCard currentUser={currentUser} setCurrentUser={setCurrentUser} onPrimaryOrgChange={onPrimaryOrgChange} onViewOrgRanking={org => { setShowMemberships(false); openOrgRanking(org); setShowFullRanking(true); }} /></div></div>}
+            {showMemberships && currentUser.accountType === 'personal' && <div className="fixed inset-0 z-[125] flex items-end justify-center bg-black/45 sm:items-center sm:p-4" onMouseDown={event => { if (event.target === event.currentTarget) setShowMemberships(false); }}><div role="dialog" aria-modal="true" aria-label="내 단체 관리" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-slate-50 p-5 sm:rounded-3xl"><div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-black text-slate-900">내 단체 관리</h2><button type="button" onClick={() => setShowMemberships(false)} className="p-2 text-slate-400" aria-label="닫기">✕</button></div><CommunityMembershipCard currentUser={currentUser} setCurrentUser={setCurrentUser} activeOrgId={currentUser.churchId} onSelectOrg={selectActiveOrganization} onPrimaryOrgChange={onPrimaryOrgChange} /></div></div>}
 
         </div>
     );

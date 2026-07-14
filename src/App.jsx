@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { db, auth, firebase } from './utils/firebase';
 import { DEFAULT_DEPARTMENTS } from './data/departments';
 import { BIBLE_VERSIONS, isBibleVersionVisibleForUser } from './data/bible_options';
@@ -51,15 +51,17 @@ const App = () => {
     const [presetChurchId] = useState(() => new URLSearchParams(window.location.search).get('church') || null);
     const { currentUser, setCurrentUser, authLoading, authError, retryAuthCheck } = useUserAuth();
     const [personalOrgNames, setPersonalOrgNames] = useState({});
-    const [viewingRosterOrgId, setViewingRosterOrgId] = useState(null);
+    // 활동 공동체는 현재 화면에서만 전환한다. primaryOrgId는 다음 로그인의
+    // 기본 진입 및 탈퇴 보호 기준이므로 이 상태를 Firestore에 저장하지 않는다.
+    const [activeRosterOrgId, setActiveRosterOrgId] = useState(null);
     const personalOrgs = Array.isArray(currentUser?.extraOrgs) ? currentUser.extraOrgs : [];
     const activePersonalOrg = currentUser?.accountType === 'personal'
-        ? personalOrgs.find(org => org.orgId === (viewingRosterOrgId || currentUser.primaryOrgId))
+        ? personalOrgs.find(org => org.orgId === (activeRosterOrgId || currentUser.primaryOrgId))
             || personalOrgs.find(org => org.orgId === currentUser.primaryOrgId)
             || null
         : null;
-    const activeAdditionalOrg = currentUser?.accountType !== 'personal' && viewingRosterOrgId
-        ? personalOrgs.find(org => org.orgId === viewingRosterOrgId) || null
+    const activeAdditionalOrg = currentUser?.accountType !== 'personal' && activeRosterOrgId
+        ? personalOrgs.find(org => org.orgId === activeRosterOrgId) || null
         : null;
     const activeRosterOrg = activePersonalOrg || activeAdditionalOrg;
     const dashboardUser = useMemo(() => {
@@ -67,12 +69,16 @@ const App = () => {
         if (!activeRosterOrg) {
             return {
                 ...currentUser,
+                baseChurchId: currentUser.churchId || null,
+                baseChurchName: currentUser.churchName || null,
                 talentWalletType: 'user',
                 talentWalletOrgId: currentUser.churchId || null,
             };
         }
         return {
             ...currentUser,
+            baseChurchId: currentUser.churchId || null,
+            baseChurchName: currentUser.churchName || null,
             churchId: activeRosterOrg.orgId,
             churchName: personalOrgNames[activeRosterOrg.orgId] || '참여 공동체',
             talent: Number(activeRosterOrg.talent) || 0,
@@ -86,8 +92,15 @@ const App = () => {
     }, [currentUser, activeRosterOrg, personalOrgNames]);
 
     useEffect(() => {
-        setViewingRosterOrgId(null);
+        setActiveRosterOrgId(null);
     }, [currentUser?.uid]);
+
+    useEffect(() => {
+        if (!activeRosterOrgId || !currentUser) return;
+        const canViewActiveOrg = activeRosterOrgId === currentUser.churchId
+            || personalOrgs.some(org => org.orgId === activeRosterOrgId);
+        if (!canViewActiveOrg) setActiveRosterOrgId(null);
+    }, [activeRosterOrgId, currentUser?.churchId, personalOrgs.map(org => org.orgId).join('|')]);
 
     useEffect(() => {
         if (personalOrgs.length === 0) {
@@ -143,6 +156,7 @@ const App = () => {
     }, []);
 
     const [churchCommunities, setChurchCommunities] = useState([]); // 현재 교회 조직 구성
+    const churchCommunitiesRequestRef = useRef(0);
 
     // Bible Logic Hook (Must be called before useTTS)
     const {
@@ -394,31 +408,25 @@ const App = () => {
     */
 
     const loadChurchCommunities = async (churchId) => {
+        const requestId = ++churchCommunitiesRequestRef.current;
+        setChurchCommunities([]);
         if (!churchId) return;
         try {
             const doc = await db.collection('churches').doc(churchId).get();
-            if (doc.exists) setChurchCommunities(doc.data().departments || doc.data().communities || []);
-        } catch (e) { console.error(e); }
-    };
-
-    const loadOrgRankingData = async (orgId) => {
-        if (!orgId) throw new Error('ORG_ID_REQUIRED');
-        const [members, churchDoc] = await Promise.all([
-            loadAllMembers(orgId),
-            db.collection('churches').doc(orgId).get(),
-        ]);
-        if (!churchDoc.exists) throw new Error('ORG_NOT_FOUND');
-        const churchData = churchDoc.data() || {};
-        return {
-            members,
-            communities: churchData.departments || churchData.communities || [],
-        };
+            if (churchCommunitiesRequestRef.current !== requestId) return;
+            const data = doc.exists ? (doc.data() || {}) : {};
+            setChurchCommunities(data.departments || data.communities || []);
+        } catch (e) {
+            if (churchCommunitiesRequestRef.current !== requestId) return;
+            setChurchCommunities([]);
+            console.error(e);
+        }
     };
 
     useEffect(() => {
         if (view !== 'dashboard') return;
         if (dashboardUser?.churchId) loadChurchCommunities(dashboardUser.churchId);
-        else setChurchCommunities([]);
+        else loadChurchCommunities(null);
     }, [view, dashboardUser?.churchId]);
 
     const loadSuperAdminData = async () => {
@@ -543,31 +551,34 @@ const App = () => {
         if (currentUser?.accountType !== 'personal' || auth.currentUser?.uid !== currentUser.uid) return;
         const target = personalOrgs.find(org => org.orgId === orgId);
         if (!target || orgId === currentUser.primaryOrgId) return;
+        const activeOrgBeforeChange = dashboardUser?.churchId || null;
         try {
             await db.collection('users').doc(currentUser.uid).set({
                 primaryOrgId: orgId,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             }, { merge: true });
             setCurrentUser(user => user?.uid === currentUser.uid ? { ...user, primaryOrgId: orgId } : user);
-            setViewingRosterOrgId(null);
+            // 기본 공동체 변경은 현재 활동 공간 이동과 별개다. 보고 있던 공동체가
+            // 새 기본이면 null로 정규화하고, 아니면 명시 선택으로 유지한다.
+            setActiveRosterOrgId(activeOrgBeforeChange === orgId ? null : activeOrgBeforeChange);
         } catch (error) {
             console.error('기준 공동체 변경 실패:', error);
             alert('공동체를 바꾸지 못했습니다. 잠시 후 다시 시도해주세요.');
         }
     };
 
-    const handleTalentOrgChange = async orgId => {
-        if (!currentUser || orgId === dashboardUser?.churchId) return;
+    const handleActiveOrgChange = orgId => {
+        if (!currentUser || !orgId || orgId === dashboardUser?.churchId) return;
         if (currentUser.accountType === 'personal') {
             if (!personalOrgs.some(org => org.orgId === orgId)) return;
-            setViewingRosterOrgId(orgId === currentUser.primaryOrgId ? null : orgId);
+            setActiveRosterOrgId(orgId === currentUser.primaryOrgId ? null : orgId);
             return;
         }
         if (orgId === currentUser.churchId) {
-            setViewingRosterOrgId(null);
+            setActiveRosterOrgId(null);
             return;
         }
-        if (personalOrgs.some(org => org.orgId === orgId)) setViewingRosterOrgId(orgId);
+        if (personalOrgs.some(org => org.orgId === orgId)) setActiveRosterOrgId(orgId);
     };
 
     const handlePersonalAccountMigrate = async (phone4) => {
@@ -854,9 +865,8 @@ const App = () => {
                 onKakaoLink={handleKakaoLinkStart}
                 personalOrganizations={personalOrgs.map(org => ({ ...org, name: personalOrgNames[org.orgId] || org.orgId }))}
                 talentOrganizations={talentOrganizations}
-                loadOrgRankingData={loadOrgRankingData}
                 onPrimaryOrgChange={handlePrimaryOrgChange}
-                onTalentOrgChange={handleTalentOrgChange}
+                onActiveOrgChange={handleActiveOrgChange}
                 onPersonalAccountMigrate={handlePersonalAccountMigrate}
             />
         );
