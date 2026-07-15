@@ -3,7 +3,7 @@ import Icon from './Icon';
 import GoogleLinkCard from './admin/GoogleLinkCard';
 import { firebase } from '../utils/firebase';
 import ChurchAdminView from './ChurchAdminView';
-import { fetchLatestFromPlaylist } from './dashboard/DailyVideoCard';
+import { fetchLatestFromPlaylist } from '../utils/adminDailyVideoPreview';
 import { getDaysRead, getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
 import { migrateChurchAccessSecrets, rebuildChurchDirectory, removeChurchFromDirectory, syncChurchDirectoryEntry } from '../utils/churchDirectory';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';

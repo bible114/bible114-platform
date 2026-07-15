@@ -26,6 +26,8 @@ for (const pattern of [
     /export const callPlatformApiPublic = async \(action, payload = \{\}, options = \{\}\)/,
     /export const preflightPlatformApi =/,
     /export const previewReadCompletion = \(cycle, day, options = \{\}\)/,
+    /export const resolveDailyVideo = \(options = \{\}\)/,
+    /export const validateDailyVideoResolveResponse = \(result, expectedRequestId\)/,
     /export const issueJoinTicket = \(\{ churchId, entryCode, purpose \}, options = \{\}\)/,
     /export const joinCommunity = \(\{ churchId, entryCode = '', joinTicket = '', departmentId, subgroupId = '' \}, options = \{\}\)/,
     /Number\.isInteger\(cycle\)/,
@@ -105,6 +107,130 @@ for (const [cycle, day] of [[0, 1], [1.5, 1], [1, 0], [1, 366], [1, 2.5]]) {
             && error.status === 0
             && error.retryable === false,
         `잘못된 읽기 범위(${cycle}, ${day})는 네트워크 요청 전에 거부해야 한다.`,
+    );
+}
+
+// 매일 영상은 익명 Firebase 게스트도 인증형 API를 사용하고, 브라우저가 2xx 본문을
+// 그대로 신뢰하지 않도록 식별자·날짜·URL·중첩 필드를 모두 fail-closed 검증한다.
+assert.match(
+    client,
+    /const requestId = options\.requestId \|\| createRequestId\(\);[\s\S]*callPlatformApi\('resolveDailyVideo', \{\}, \{ \.\.\.options, requestId, timeoutMs \}\)[\s\S]*validateDailyVideoResolveResponse\(result, requestId\)/,
+);
+assert.match(client, /const DAILY_VIDEO_TIMEOUT_MS = 70_000/);
+assert.doesNotMatch(client, /callPlatformApiPublic\('resolveDailyVideo'/);
+
+const dailyVideoRequestId = '323e4567-e89b-42d3-a456-426614174000';
+const manualDailyVideoPayload = {
+    adult: {
+        url: 'https://youtu.be/M1234567890',
+        chapters: [{ label: '해설', sec: 0 }, { label: '기도', sec: 600 }],
+        title: '관리자 수동 영상',
+    },
+    kids: null,
+    autoFilled: false,
+};
+const validDailyVideoResponse = {
+    ok: true,
+    action: 'resolveDailyVideo',
+    requestId: dailyVideoRequestId,
+    serviceDate: '2026-07-15',
+    video: manualDailyVideoPayload,
+    transient: null,
+    pending: false,
+};
+assert.deepEqual(
+    platformApi.validateDailyVideoResolveResponse(validDailyVideoResponse, dailyVideoRequestId),
+    validDailyVideoResponse,
+);
+
+for (const hostUrl of [
+    'https://youtube.com/watch?v=M1234567890',
+    'https://www.youtube.com/live/M1234567890',
+    'https://youtu.be/M1234567890',
+    'https://www.youtu.be/M1234567890',
+]) {
+    const response = structuredClone(validDailyVideoResponse);
+    response.video.adult.url = hostUrl;
+    assert.equal(
+        platformApi.validateDailyVideoResolveResponse(response, dailyVideoRequestId).video.adult.url,
+        hostUrl,
+    );
+}
+
+const pendingDailyVideoResponse = {
+    ...validDailyVideoResponse,
+    video: {
+        adult: { ...manualDailyVideoPayload.adult, matchedDate: true },
+        kids: null,
+        autoFilled: true,
+    },
+    transient: {
+        adult: { ...manualDailyVideoPayload.adult, matchedDate: true },
+        kids: {
+            url: 'https://youtu.be/K1234567890',
+            chapters: [{ label: '성경읽기', sec: 120 }],
+            matchedDate: true,
+        },
+        autoFilled: true,
+    },
+    pending: true,
+    retryAfterMs: 1_800_000,
+};
+assert.equal(
+    platformApi.validateDailyVideoResolveResponse(pendingDailyVideoResponse, dailyVideoRequestId).retryAfterMs,
+    1_800_000,
+);
+
+const expectInvalidDailyVideoResponse = (mutate, label) => {
+    const response = structuredClone(validDailyVideoResponse);
+    mutate(response);
+    assert.throws(
+        () => platformApi.validateDailyVideoResolveResponse(response, dailyVideoRequestId),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_RESPONSE'
+            && error.status === 200
+            && error.retryable === true,
+        label,
+    );
+};
+
+for (const [label, mutate] of [
+    ['ok', response => { response.ok = false; }],
+    ['action', response => { response.action = 'preflight'; }],
+    ['requestId', response => { response.requestId = 'wrong'; }],
+    ['calendar date', response => { response.serviceDate = '2026-02-31'; }],
+    ['extra top-level', response => { response.apiKey = 'secret'; }],
+    ['pending without retry', response => { response.pending = true; }],
+    ['retry on complete', response => { response.retryAfterMs = 1000; }],
+    ['non-null complete transient', response => { response.transient = manualDailyVideoPayload; }],
+    ['manual video with transient', response => {
+        response.pending = true;
+        response.retryAfterMs = 1000;
+        response.transient = pendingDailyVideoResponse.transient;
+    }],
+    ['empty payload', response => { response.video = { adult: null, kids: null, autoFilled: false }; }],
+    ['auto without matched date', response => { response.video.autoFilled = true; }],
+    ['nested private field', response => { response.video.leaseOwner = 'owner'; }],
+    ['unknown chapter', response => { response.video.adult.chapters[0].label = '광고'; }],
+    ['duplicate chapter', response => { response.video.adult.chapters[1].label = '해설'; }],
+    ['negative chapter', response => { response.video.adult.chapters[0].sec = -1; }],
+    ['fraction chapter', response => { response.video.adult.chapters[0].sec = 1.5; }],
+    ['chapter extra field', response => { response.video.adult.chapters[0].url = 'secret'; }],
+]) expectInvalidDailyVideoResponse(mutate, label);
+
+for (const unsafeUrl of [
+    'http://youtube.com/watch?v=M1234567890',
+    'https://user:pass@youtube.com/watch?v=M1234567890',
+    'https://youtube.com:443/watch?v=M1234567890',
+    'https://youtube.com.evil.example/watch?v=M1234567890',
+    'https://youtu.be.evil.example/M1234567890',
+    'https://m.youtube.com/watch?v=M1234567890',
+    'https://youtube.com./watch?v=M1234567890',
+    ' https://youtu.be/M1234567890',
+]) {
+    expectInvalidDailyVideoResponse(
+        response => { response.video.adult.url = unsafeUrl; },
+        `unsafe daily video URL: ${unsafeUrl}`,
     );
 }
 

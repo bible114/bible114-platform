@@ -1,8 +1,18 @@
 import { PLATFORM_API_URL } from '../data/constants.js';
 
 const DEFAULT_TIMEOUT_MS = 12_000;
+const DAILY_VIDEO_TIMEOUT_MS = 70_000;
 const RESERVED_PAYLOAD_KEYS = new Set(['action', 'requestId']);
+const DAILY_VIDEO_RESPONSE_KEYS = new Set([
+    'ok', 'action', 'requestId', 'serviceDate', 'video', 'transient', 'pending', 'retryAfterMs',
+]);
+const DAILY_VIDEO_PAYLOAD_KEYS = new Set(['adult', 'kids', 'autoFilled']);
+const DAILY_VIDEO_ENTRY_KEYS = new Set(['url', 'chapters', 'title', 'publishedAt', 'matchedDate']);
+const DAILY_VIDEO_CHAPTER_KEYS = new Set(['label', 'sec']);
+const DAILY_VIDEO_CHAPTER_LABELS = new Set(['해설', '성경읽기', '기도']);
+const DAILY_VIDEO_YOUTUBE_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'youtu.be', 'www.youtu.be']);
 const loadAuth = async () => (await import('./firebase.js')).auth;
+const isResponseRecord = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 export class PlatformApiError extends Error {
     constructor(message, { code = 'PLATFORM_API_ERROR', status = 0, retryable = false, cause } = {}) {
@@ -231,6 +241,145 @@ export const previewQuizSubmission = (progressKey, quizKey, selectedIndex, optio
     return callPlatformApi('previewQuizSubmission', { progressKey, quizKey, selectedIndex }, options);
 };
 
+const invalidDailyVideoResponse = () => {
+    throw new PlatformApiError('매일 영상 정보를 안전하게 확인하지 못했습니다.', {
+        code: 'INVALID_RESPONSE', status: 200, retryable: true,
+    });
+};
+
+const normalizeDailyVideoUrl = value => {
+    if (typeof value !== 'string' || !value.trim()) return null;
+    const normalized = value.trim();
+    if (normalized !== value) return null;
+    const authority = /^https:\/\/([^/?#]+)(?:[/?#]|$)/i.exec(normalized)?.[1];
+    if (!authority || !DAILY_VIDEO_YOUTUBE_HOSTS.has(authority.toLowerCase())) return null;
+    try {
+        const parsed = new URL(normalized);
+        if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port
+            || !DAILY_VIDEO_YOUTUBE_HOSTS.has(parsed.hostname)) return null;
+        return parsed.toString() === value ? value : null;
+    } catch {
+        return null;
+    }
+};
+
+const normalizeDailyVideoEntry = value => {
+    if (value === null) return null;
+    if (!isResponseRecord(value)
+        || Object.keys(value).some(key => !DAILY_VIDEO_ENTRY_KEYS.has(key))) {
+        return invalidDailyVideoResponse();
+    }
+    const url = normalizeDailyVideoUrl(value.url);
+    if (!url || !Array.isArray(value.chapters) || value.chapters.length > 3) {
+        return invalidDailyVideoResponse();
+    }
+    const labels = new Set();
+    const chapters = value.chapters.map(chapter => {
+        if (!isResponseRecord(chapter)
+            || Object.keys(chapter).some(key => !DAILY_VIDEO_CHAPTER_KEYS.has(key))
+            || !DAILY_VIDEO_CHAPTER_LABELS.has(chapter.label)
+            || labels.has(chapter.label)
+            || !Number.isSafeInteger(chapter.sec) || chapter.sec < 0) {
+            return invalidDailyVideoResponse();
+        }
+        labels.add(chapter.label);
+        return { label: chapter.label, sec: chapter.sec };
+    });
+    const entry = { url, chapters };
+    if (value.title !== undefined) {
+        if (typeof value.title !== 'string') return invalidDailyVideoResponse();
+        entry.title = value.title;
+    }
+    if (value.publishedAt !== undefined) {
+        if (typeof value.publishedAt !== 'string' || !Number.isFinite(Date.parse(value.publishedAt))) {
+            return invalidDailyVideoResponse();
+        }
+        entry.publishedAt = value.publishedAt;
+    }
+    if (value.matchedDate !== undefined) {
+        if (typeof value.matchedDate !== 'boolean') return invalidDailyVideoResponse();
+        entry.matchedDate = value.matchedDate;
+    }
+    return entry;
+};
+
+const normalizeDailyVideoPayload = value => {
+    if (value === null) return null;
+    if (!isResponseRecord(value)
+        || Object.keys(value).some(key => !DAILY_VIDEO_PAYLOAD_KEYS.has(key))
+        || typeof value.autoFilled !== 'boolean'
+        || !Object.prototype.hasOwnProperty.call(value, 'adult')
+        || !Object.prototype.hasOwnProperty.call(value, 'kids')) {
+        return invalidDailyVideoResponse();
+    }
+    const payload = {
+        adult: normalizeDailyVideoEntry(value.adult),
+        kids: normalizeDailyVideoEntry(value.kids),
+        autoFilled: value.autoFilled,
+    };
+    if (!payload.adult && !payload.kids
+        || (payload.autoFilled && [payload.adult, payload.kids].some(entry => entry && entry.matchedDate !== true))) {
+        return invalidDailyVideoResponse();
+    }
+    return payload;
+};
+
+const isValidServiceDate = value => {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split('-').map(Number);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    return Number.isFinite(parsed.getTime())
+        && parsed.getUTCFullYear() === year
+        && parsed.getUTCMonth() === month - 1
+        && parsed.getUTCDate() === day;
+};
+
+export const validateDailyVideoResolveResponse = (result, expectedRequestId) => {
+    if (!isResponseRecord(result)
+        || Object.keys(result).some(key => !DAILY_VIDEO_RESPONSE_KEYS.has(key))
+        || result.ok !== true || result.action !== 'resolveDailyVideo'
+        || result.requestId !== expectedRequestId
+        || !isValidServiceDate(result.serviceDate)
+        || typeof result.pending !== 'boolean'
+        || !Object.prototype.hasOwnProperty.call(result, 'video')
+        || !Object.prototype.hasOwnProperty.call(result, 'transient')) {
+        return invalidDailyVideoResponse();
+    }
+    const hasRetryAfter = Object.prototype.hasOwnProperty.call(result, 'retryAfterMs');
+    if ((result.pending && (!hasRetryAfter || !Number.isSafeInteger(result.retryAfterMs)
+        || result.retryAfterMs < 1 || result.retryAfterMs > 3_600_000))
+        || (!result.pending && hasRetryAfter)) {
+        return invalidDailyVideoResponse();
+    }
+    const video = normalizeDailyVideoPayload(result.video);
+    const transient = normalizeDailyVideoPayload(result.transient);
+    if ((!result.pending && transient !== null)
+        || (transient !== null && transient.autoFilled !== true)
+        || (transient !== null && video?.autoFilled === false)) {
+        return invalidDailyVideoResponse();
+    }
+    const normalized = {
+        ok: true,
+        action: 'resolveDailyVideo',
+        requestId: expectedRequestId,
+        serviceDate: result.serviceDate,
+        video,
+        transient,
+        pending: result.pending,
+    };
+    if (result.pending) normalized.retryAfterMs = result.retryAfterMs;
+    return normalized;
+};
+
+export const resolveDailyVideo = (options = {}) => {
+    const requestId = options.requestId || createRequestId();
+    const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+        ? options.timeoutMs
+        : DAILY_VIDEO_TIMEOUT_MS;
+    return callPlatformApi('resolveDailyVideo', {}, { ...options, requestId, timeoutMs })
+        .then(result => validateDailyVideoResolveResponse(result, requestId));
+};
+
 export const issueJoinTicket = ({ churchId, entryCode, purpose }, options = {}) => {
     const normalizedChurchId = typeof churchId === 'string' ? churchId.trim() : '';
     const normalizedEntryCode = typeof entryCode === 'string' ? entryCode.trim() : '';
@@ -304,7 +453,6 @@ const safePlatformDocumentId = value => {
         && !/[\u0000-\u001f\u007f]/.test(normalized) ? normalized : null;
 };
 
-const isResponseRecord = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const isAdminTalentBalance = value => (
     typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000_000
 );

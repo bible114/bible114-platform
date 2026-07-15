@@ -142,6 +142,7 @@ const serverIndex = read('supabase/functions/platform-api/index.ts');
 const dailyVideoCore = read('supabase/functions/platform-api/dailyVideoCore.ts');
 const dailyVideoResolve = read('supabase/functions/platform-api/dailyVideoResolve.ts');
 const dailyVideoResolveTest = read('supabase/functions/platform-api/dailyVideoResolve_test.ts');
+const dailyVideoClient = read('src/utils/dailyVideoClient.js');
 const firestoreRules = read('firestore.rules');
 
 const resolveBranchStart = serverIndex.indexOf('if (parsed.action === "resolveDailyVideo")');
@@ -324,6 +325,15 @@ const ttlMinutes = Number(ttlMinutesMatch[1]);
 assert.ok(
     ttlMinutes >= 30 && ttlMinutes <= 60,
     'chapters TTL은 설계 범위인 30~60분이어야 한다.',
+);
+const clientTtlMinutesMatch = dailyVideoClient.match(
+    /export const DAILY_VIDEO_CLIENT_TTL_MS = (\d+) \* 60 \* 1000;/,
+);
+assert.ok(clientTtlMinutesMatch, '클라이언트 캐시 준비 판정에도 chapters TTL 상수가 필요하다.');
+assert.equal(
+    Number(clientTtlMinutesMatch[1]),
+    ttlMinutes,
+    '클라이언트 캐시 TTL이 서버 TTL보다 늦으면 서버 갱신을 호출하지 못한다.',
 );
 assert.match(
     dailyVideoCore,

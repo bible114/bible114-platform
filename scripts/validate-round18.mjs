@@ -6,6 +6,21 @@ import {
     titleMatchesDate,
 } from '../src/utils/dailyVideoPolicy.js';
 import {
+    DAILY_VIDEO_CLIENT_TTL_MS,
+    clearDailyVideoRetryNotBefore,
+    getDailyVideoClientRefreshDelay,
+    getDailyVideoDisplaySignature,
+    getDailyVideoRetryDelay,
+    getDailyVideoRetryNotBefore,
+    getSafeCachedDailyVideo,
+    isDailyVideoClientRefreshDue,
+    recordDailyVideoRetryNotBefore,
+    selectDailyVideoDisplay,
+    shouldDiscardDailyVideoResolveResult,
+    shouldReopenDailyVideoAfterSnapshot,
+    shouldResolveDailyVideo,
+} from '../src/utils/dailyVideoClient.js';
+import {
     getDefaultQuizLevel,
     getQuizLevel,
     getQuizProgressKey,
@@ -81,6 +96,7 @@ const userAuth = read('src/hooks/useUserAuth.js');
 const helperSource = read('src/utils/helpers.js');
 const dailyVideoChaptersSource = read('src/utils/dailyVideoChapters.js');
 const dailyVideo = read('src/components/dashboard/DailyVideoCard.jsx');
+const adminDailyVideoPreview = read('src/utils/adminDailyVideoPreview.js');
 const departmentHook = read('src/hooks/useDepartment.js');
 const bibleLogic = read('src/hooks/useBibleLogic.js');
 const rankingModal = read('src/components/modals/RankingModal.jsx');
@@ -199,8 +215,6 @@ assert.match(authFlow, /\[로그인 속도\]/);
 assert.match(app, /view === 'admin_entry'[\s\S]*📖 성경 읽기[\s\S]*⚙️ 공동체 관리/);
 assert.match(app, /sessionStorage\.removeItem\(ADMIN_ENTRY_SESSION_KEY\)/);
 assert.match(app, /\['dashboard', 'church_admin'\]\.includes\(savedAdminEntry\)/);
-assert.match(dailyVideo, /refreshDescriptionChapters\(storedVideo\)/);
-assert.match(dailyVideo, /fetchVideoDescriptionChapters\(entry\.url, apiKey\)/);
 const dailyVideoCandidates = [
     { snippet: { title: '7월 14일 매일성경' }, contentDetails: { videoPublishedAt: '2026-07-14T03:00:00Z', videoId: 'todayVideo1' } },
     { snippet: { title: '7월 13일 매일성경' }, contentDetails: { videoPublishedAt: '2026-07-13T03:00:00Z', videoId: 'pastVideo01' } },
@@ -240,21 +254,227 @@ const pendingDailyVideo = selectDailyVideoCandidate(dailyVideoCandidates, {
 assert.equal(pendingDailyVideo.candidate, null);
 assert.equal(pendingDailyVideo.pending, true);
 assert.equal(pendingDailyVideo.stale, true);
-assert.match(dailyVideo, /selectDailyVideoCandidate\(items/);
-assert.match(dailyVideo, /pendingError\.code = 'VIDEO_DATE_PENDING'/);
-assert.match(dailyVideo, /AUTO_RETRY_DELAYS_MS = \[2, 5, 15, 30\]/);
-assert.match(dailyVideo, /AUTO_RETRY_IDLE_MS = 60 \* 60 \* 1000/);
-assert.match(dailyVideo, /retryIndex < AUTO_RETRY_DELAYS_MS\.length[\s\S]*AUTO_RETRY_IDLE_MS/);
+const clientNow = Date.parse('2026-07-15T00:00:00.000Z');
+const cachedManual = {
+    adult: { url: 'https://youtu.be/M1234567890', chapters: [{ label: '해설', sec: 0 }] },
+    kids: null,
+    autoFilled: false,
+    chaptersRefreshedAt: new Date(clientNow - 60_000).toISOString(),
+    updatedAt: new Date(clientNow - 60_000).toISOString(),
+};
+const cachedAuto = {
+    adult: { url: 'https://youtu.be/A1234567890', chapters: [], matchedDate: true },
+    kids: { url: 'https://youtu.be/K1234567890', chapters: [], matchedDate: true },
+    autoFilled: true,
+    chaptersRefreshedAt: { toMillis: () => clientNow - 60_000 },
+};
+assert.equal(DAILY_VIDEO_CLIENT_TTL_MS, 45 * 60 * 1000);
+assert.equal(shouldResolveDailyVideo(null, clientNow), true);
+assert.equal(shouldResolveDailyVideo(cachedManual, clientNow), false);
+assert.equal(shouldResolveDailyVideo(cachedAuto, clientNow), false);
+assert.equal(shouldResolveDailyVideo({ ...cachedAuto, kids: null }, clientNow), true);
+assert.equal(isDailyVideoClientRefreshDue({ ...cachedManual, chaptersRefreshedAt: clientNow - DAILY_VIDEO_CLIENT_TTL_MS }, clientNow), true);
+assert.equal(isDailyVideoClientRefreshDue({ ...cachedManual, updatedAt: clientNow + 86_400_000 }, clientNow), false);
+assert.equal(
+    getDailyVideoClientRefreshDelay(cachedAuto, clientNow),
+    DAILY_VIDEO_CLIENT_TTL_MS - 60_000,
+    'fresh 캐시는 TTL 경계까지 남은 시간을 반환해야 한다.',
+);
+assert.equal(
+    getDailyVideoClientRefreshDelay({
+        ...cachedAuto,
+        updatedAt: clientNow + 2 * 60_000,
+    }, clientNow),
+    2 * 60_000,
+    '미래 updatedAt은 그 시각 전까지 반복 resolve를 막되 TTL보다 길게 미루면 안 된다.',
+);
+assert.equal(getDailyVideoRetryDelay(0), 2 * 60 * 1000);
+assert.equal(getDailyVideoRetryDelay(1, 30 * 60 * 1000), 30 * 60 * 1000);
+assert.equal(getDailyVideoRetryDelay(9), 60 * 60 * 1000);
+assert.equal(getSafeCachedDailyVideo({
+    ...cachedAuto,
+    kids: { ...cachedAuto.kids, matchedDate: false },
+})?.kids, null);
+const transientVideo = {
+    adult: cachedAuto.adult,
+    kids: null,
+    autoFilled: true,
+};
+assert.equal(selectDailyVideoDisplay(cachedManual, {
+    video: cachedManual,
+    transient: transientVideo,
+})?.autoFilled, true, 'partial transient가 저장 캐시보다 먼저 표시돼야 한다.');
+const previousPartialDisplay = {
+    ...cachedAuto,
+    adult: { ...cachedAuto.adult, chapters: [{ label: '해설', sec: 10 }] },
+    kids: { ...cachedAuto.kids, chapters: [{ label: '기도', sec: 20 }] },
+};
+const nextPartialDisplay = selectDailyVideoDisplay(previousPartialDisplay, {
+    video: {
+        ...cachedAuto,
+        adult: { ...cachedAuto.adult, chapters: [{ label: '해설', sec: 30 }] },
+        kids: null,
+    },
+    transient: null,
+});
+assert.equal(nextPartialDisplay?.adult?.chapters?.[0]?.sec, 30, '새 응답의 모드는 우선해야 한다.');
+assert.equal(nextPartialDisplay?.kids?.chapters?.[0]?.sec, 20, '새 응답에서 빠진 안전 모드는 보존해야 한다.');
+const manualKidsOnly = {
+    adult: null,
+    kids: cachedManual.adult,
+    autoFilled: false,
+};
+const manualOverrideDisplay = selectDailyVideoDisplay(previousPartialDisplay, {
+    video: manualKidsOnly,
+    transient: null,
+});
+assert.equal(manualOverrideDisplay?.adult, null, '수동 문서가 비운 모드를 이전 자동 영상으로 채우면 안 된다.');
+assert.equal(manualOverrideDisplay?.kids?.url, cachedManual.adult.url);
+const resolveFenceBase = {
+    requestSnapshotSignature: 'snapshot-a',
+    currentSnapshotSignature: 'snapshot-b',
+    pending: false,
+    resultVideo: cachedAuto,
+    latestVideo: cachedAuto,
+    latestRefreshDue: false,
+};
+assert.equal(
+    shouldDiscardDailyVideoResolveResult(resolveFenceBase),
+    false,
+    'HTTP보다 먼저 관찰한 동일 payload 자체 write는 중복 resolve를 만들면 안 된다.',
+);
+assert.equal(
+    shouldDiscardDailyVideoResolveResult({ ...resolveFenceBase, latestRefreshDue: true }),
+    true,
+    '동일 표시여도 최신 metadata가 refresh-due이면 완료 응답을 폐기해야 한다.',
+);
+assert.equal(
+    shouldDiscardDailyVideoResolveResult({
+        ...resolveFenceBase,
+        pending: true,
+        latestRefreshDue: true,
+    }),
+    false,
+    '동일 payload의 partial write는 서버 backoff를 보존해야 한다.',
+);
+assert.equal(
+    shouldDiscardDailyVideoResolveResult({ ...resolveFenceBase, latestVideo: manualKidsOnly }),
+    true,
+    '요청 중 수동 authority가 등장하면 늦은 자동 응답을 폐기해야 한다.',
+);
+const freshOneModeAuto = { ...cachedAuto, kids: null };
+const reopenBase = {
+    settledByResponse: true,
+    settledResponseSnapshotSignature: 'snapshot-a',
+    currentSnapshotSignature: 'snapshot-b',
+    settledResponseDisplaySignature: getDailyVideoDisplaySignature(freshOneModeAuto),
+    latestStoredVideo: freshOneModeAuto,
+    nowMs: clientNow,
+};
+assert.equal(
+    shouldReopenDailyVideoAfterSnapshot(reopenBase),
+    false,
+    'HTTP보다 늦게 온 fresh one-mode 자체 snapshot은 중복 resolve를 만들면 안 된다.',
+);
+assert.equal(
+    shouldReopenDailyVideoAfterSnapshot({
+        ...reopenBase,
+        settledResponseDisplaySignature: getDailyVideoDisplaySignature(cachedManual),
+        latestStoredVideo: {
+            ...cachedManual,
+            chaptersRefreshedAt: clientNow - 60_000,
+            updatedAt: clientNow,
+        },
+    }),
+    true,
+    '응답 뒤 수동 metadata가 갱신되면 같은 표시값이어도 refresh를 다시 열어야 한다.',
+);
+
+const retryStorageValues = new Map();
+const retryStorage = {
+    getItem: key => retryStorageValues.get(key) ?? null,
+    setItem: (key, value) => retryStorageValues.set(key, value),
+    removeItem: key => retryStorageValues.delete(key),
+};
+const retryDate = '2099-07-15';
+const retryNow = Date.parse('2099-07-15T00:00:00.000Z');
+clearDailyVideoRetryNotBefore(retryDate, retryStorage);
+assert.equal(
+    recordDailyVideoRetryNotBefore(retryDate, 30 * 60 * 1000, retryNow, retryStorage),
+    retryNow + 30 * 60 * 1000,
+);
+assert.equal(
+    getDailyVideoRetryNotBefore(retryDate, retryNow + 60_000, retryStorage),
+    retryNow + 30 * 60 * 1000,
+    'uid/effect 재시작 뒤에도 서버 최소 재시각을 복원해야 한다.',
+);
+const reloadedDailyVideoClient = await import('../src/utils/dailyVideoClient.js?round18-reload');
+assert.equal(
+    reloadedDailyVideoClient.getDailyVideoRetryNotBefore(
+        retryDate,
+        retryNow + 60_000,
+        retryStorage,
+    ),
+    retryNow + 30 * 60 * 1000,
+    '모듈이 다시 로드돼도 sessionStorage의 최소 재시각을 복원해야 한다.',
+);
+assert.equal(
+    recordDailyVideoRetryNotBefore(retryDate, 2 * 60 * 1000, retryNow + 60_000, retryStorage),
+    retryNow + 30 * 60 * 1000,
+    '늦게 도착한 짧은 backoff가 기존 최소 재시각을 앞당기면 안 된다.',
+);
+assert.equal(
+    getDailyVideoRetryNotBefore(retryDate, retryNow + 30 * 60 * 1000, retryStorage),
+    0,
+    '최소 재시각이 지나면 저장값을 정리해야 한다.',
+);
+
+assert.match(dailyVideo, /import \{ resolveDailyVideo \} from '\.\.\/\.\.\/utils\/platformApi'/);
+assert.match(dailyVideo, /db\.collection\('dailyVideos'\)\.doc\(dateKey\)/);
+const cacheThenResolveBlock = dailyVideo.slice(dailyVideo.indexOf('docRef.onSnapshot('));
+assert.match(
+    cacheThenResolveBlock,
+    /const cachedVideo = getSafeCachedDailyVideo\(storedVideo\);[\s\S]*shouldResolveDailyVideo\(storedVideo\)[\s\S]*const displayedVideo[\s\S]*applyVideoDoc\(displayedVideo\)[\s\S]*if \(fromCache\) return;[\s\S]*resolveWhenAllowed\(cachedVideo\)/,
+    'Firestore 캐시를 먼저 표시한 뒤 준비되지 않은 경우에만 서버 resolve를 호출해야 한다.',
+);
+for (const forbidden of [
+    /googleapis\.com\/youtube\/v3/,
+    /videoAutoConfig/,
+    /fetchLatestFromPlaylist/,
+    /fetchVideoDescriptionChapters/,
+    /refreshDescriptionChapters/,
+    /docRef\.set\(/,
+    /firebase\.firestore\.FieldValue/,
+]) assert.doesNotMatch(dailyVideo, forbidden, '일반 사용자 영상 카드에 직접 YouTube/설정/쓰기가 남아 있다.');
+assert.match(dailyVideo, /const result = await resolveDailyVideo\(\)/);
+assert.match(dailyVideo, /recordDailyVideoRetryNotBefore\([\s\S]*result\.serviceDate[\s\S]*result\.retryAfterMs/);
+assert.match(dailyVideo, /result\.serviceDate !== dateKey[\s\S]*carriedResolveRef\.current = result;[\s\S]*setDateKey\(result\.serviceDate\)/);
+assert.match(dailyVideo, /if \(cancelled\) return;/);
+assert.match(dailyVideo, /selectDailyVideoDisplay\([\s\S]*result\.pending[\s\S]*pendingDisplayVideo/);
+assert.match(dailyVideo, /let retryNotBeforeAt = getDailyVideoRetryNotBefore\(dateKey\)/);
+assert.match(dailyVideo, /scheduleAutoRetry[\s\S]*getDailyVideoRetryNotBefore\(dateKey, now\)/);
+assert.match(dailyVideo, /Math\.max\(delay, retryNotBeforeAt - now\)/);
+assert.match(dailyVideo, /now < retryNotBeforeAt[\s\S]*AUTO_RETRY_FOCUS_COOLDOWN_MS/);
+assert.match(dailyVideo, /docRef\.onSnapshot\([\s\S]*includeMetadataChanges: true[\s\S]*unsubscribeCache/);
+assert.match(dailyVideo, /const fromCache = doc\.metadata\?\.fromCache === true/);
+assert.match(dailyVideo, /if \(!fromCache\) \{[\s\S]*clearDailyVideoRetryNotBefore\(dateKey\);[\s\S]*clearAutoRetry\(\)/);
+assert.match(dailyVideo, /if \(fromCache\) return;[\s\S]*resolveWhenAllowed\(cachedVideo\)/);
+assert.match(dailyVideo, /cachedVideo\?\.autoFilled === false[\s\S]*pendingDisplayVideo = null/);
+assert.match(dailyVideo, /dailyVideoSnapshotSignature[\s\S]*updatedAt:[\s\S]*chaptersRefreshedAt:/);
+assert.match(dailyVideo, /const requestSnapshotSignature = latestSnapshotSignature[\s\S]*shouldDiscardDailyVideoResolveResult\(\{/);
+assert.match(dailyVideo, /latestRefreshDue: isDailyVideoClientRefreshDue\(latestStoredVideo\)[\s\S]*clearAutoRetry\(\);[\s\S]*reevaluateAfterResponse = true/);
+assert.match(dailyVideo, /shouldReopenDailyVideoAfterSnapshot\(\{[\s\S]*currentSnapshotSignature: latestSnapshotSignature[\s\S]*if \(shouldReopen\)[\s\S]*serverSettled = false/);
+assert.match(dailyVideo, /function scheduleRefreshRecheck\(storedVideo\)[\s\S]*getDailyVideoClientRefreshDelay\(storedVideo\)[\s\S]*refreshTimer = setTimeout/);
+assert.match(dailyVideo, /function reopenForRefresh\(\)[\s\S]*isDailyVideoClientRefreshDue\(latestStoredVideo\)[\s\S]*resolveWhenAllowed\(latestCachedVideo\)/);
+assert.match(dailyVideo, /if \(reopenForRefresh\(\)\) return;[\s\S]*!retryCallback/);
+assert.match(dailyVideo, /else if \(responseSnapshotChanged\)[\s\S]*settledResponseSnapshotSignature = latestSnapshotSignature;[\s\S]*if \(serverSettled && !reopenForRefresh\(\)\)[\s\S]*scheduleRefreshRecheck\(storedVideo\)/);
+assert.match(dailyVideo, /return \(\) => \{[\s\S]*cancelRefreshTimer\(\)/);
+assert.match(dailyVideo, /reevaluateAfterResponse && !cancelled[\s\S]*resolveWhenAllowed\(latestCachedVideo\)/);
 assert.match(dailyVideo, /document\.addEventListener\('visibilitychange', retryOnReturn\)/);
 assert.match(dailyVideo, /window\.addEventListener\('focus', retryOnReturn\)/);
-assert.match(dailyVideo, /getDailyVideoFillState\(configuredModeKeys, payload\)/);
-assert.match(dailyVideo, /if \(!fillState\.allReady\)[\s\S]*scheduleAutoRetry[\s\S]*return;/);
-assert.match(dailyVideo, /if \(storedVideo\?\.autoFilled !== true\)[\s\S]*refreshDescriptionChapters\(storedVideo\)/);
-assert.match(dailyVideo, /tryAutoFill\(\{ persist: false, baseVideo: storedVideo \}\)/);
-assert.match(dailyVideo, /storedVideo\?\.adult\?\.url && storedVideo\.adult\.matchedDate === true/);
-assert.match(dailyVideo, /applySafeAutoBase\(storedVideo\);[\s\S]*tryAutoFill\(\{ persist: false, baseVideo: storedVideo \}\)/);
-assert.match(dailyVideo, /const modesToFetch = modes\.filter\(\(\[key\]\) => !payload\[key\]\?\.url\)/);
-assert.match(dailyVideo, /if \(modesToFetch\.length === 0\)[\s\S]*refreshDescriptionChapters\(payload, config\.apiKey\)[\s\S]*return;/);
+assert.match(platformAdmin, /import \{ fetchLatestFromPlaylist \} from '\.\.\/utils\/adminDailyVideoPreview'/);
+assert.match(platformAdmin, /fetchLatestFromPlaylist\(playlistId, apiKey, targetDateKey\)/);
+assert.match(adminDailyVideoPreview, /youtube\/v3\/playlistItems[\s\S]*youtube\/v3\/videos/);
 assert.match(dailyVideo, /newMode === 'kids'[\s\S]*startsWith\('nt_'\)/);
 assert.match(dailyVideo, /saveGuestState\(\{ videoType: newMode,[\s\S]*quizLevel: 'easy'/);
 assert.match(dailyVideo, /videoMode: newMode,[\s\S]*quizLevel: 'easy'/);
