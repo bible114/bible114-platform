@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: T124 달란트 상점 관리자 판매·수령·환불 운영 반영 준비**. 일반 구매와 관리자 3개 action의 서버 권위 코드·멱등 ledger·응답 검증·자동 검사는 완료했고 배포 및 실로그인 관리자 스모크가 남아 있다. T123 shadow는 부서별 달란트 v2까지 준비됐지만, T123b/d2는 개발 환경 실로그인 `[read-shadow] match:true`, `[quiz-shadow] match:true` 각 1건 확인이 남아 있다. T124 운영 반영 뒤 다음 독립 구현은 T126a 서버 영상 resolve/lease이며, T127 직접 쓰기 차단은 관찰 기간 뒤에만 진행한다.
+> **현재 활성 작업: T124d 달란트 상점 실로그인 관리자 스모크**. 일반 구매와 관리자 3개 action의 서버 권위 코드·멱등 ledger·응답 검증·자동 검사는 완료했고, 2026-07-15 Edge → 웹 → Firestore rules 순서의 운영 배포와 비로그인 안전 스모크까지 통과했다. 실제 공동체 관리자 계정의 소액 판매·수령·환불 확인만 남아 있다. T123 shadow는 부서별 달란트 v2까지 준비됐지만, T123b/d2는 개발 환경 실로그인 `[read-shadow] match:true`, `[quiz-shadow] match:true` 각 1건 확인이 남아 있다. 두 실로그인 게이트와 독립적으로 진행 가능한 다음 구현은 T126a 서버 영상 resolve/lease이며, T127 직접 쓰기 차단은 관찰 기간 뒤에만 진행한다.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-15 | T124 운영 배포·비로그인 안전 스모크 | `HANDOFF_CODEX.md` 및 운영 환경 | `0ab5534`를 main에 push하고 platform-api Edge → GitHub Pages 웹 → Firestore rules 순서로 배포했다(인덱스 변경 없음). 공개 HTML이 새 `index-BbzYXMgP.js`를 참조하고 `ChurchAdminView-DiwG0dU7.js`, `PlatformAdminView-uD22aBC1.js`도 HTTP 200임을 확인했다. Edge는 허용 origin OPTIONS 204·유효 형식 미인증 관리자 요청 401, 서비스 전용 `talentAdminActions` Firestore REST 비로그인 읽기는 403이다. Firebase rules는 재로그인 뒤 컴파일·릴리스 성공. 실제 관리자 소액 판매·수령·환불 스모크는 운영 데이터 변경과 계정 선택이 필요해 T124d 미완료로 유지한다. |
 | 2026-07-15 | T124 관리자 판매·수령·환불 서버 이관 구현 | `supabase/functions/{_shared,platform-api}/*`, `src/{components/{ChurchAdminView,PlatformAdminView}.jsx,components/{churchAdmin/TalentShopTab.jsx,dashboard/TalentShop.jsx},utils/{platformApi,adminTalentRequests,talentPurchases}.js}`, `firestore.rules`, `scripts/validate-{round18,round24,department-talent}.mjs`, `package.json`, `HANDOFF_CODEX.md` | 일반 구매와 관리자 판매·수령·환불을 서버 저장 가격·최신 지갑·최신 관리자 권한으로 재검증하고 원자 처리한다. 관리자 action은 서비스 전용 불변 ledger로 멱등화하고, 개인 계정 전환 환불은 서버가 같은 transaction에서 users+동일 공동체 roster를 재확인한 뒤 관리자 2차 확인을 요구한다. 잘못된 2xx·응답 유실·현재 잔액·세션 requestId 정리까지 보강했다. 전체 validate(플랫폼 API 90 tests/check/fmt 포함), build, diff 검사와 3개 독립 재감사 통과. 운영 배포·실로그인 스모크는 다음 단계다. |
 | 2026-07-15 | R25~26 운영 배포·입장코드 원자 이전 | `HANDOFF_CODEX.md` 및 운영 환경 | `dd7374f`까지 main push. `JOIN_CODE_RATE_LIMIT_SALT` 설정 후 platform-api v5 → Firestore 인덱스 → 웹 `index-OCMsjSZz.js` → Firestore rules 순서로 배포하고 Edge/공개/인증 화면 스모크를 통과했다. 0600 백업과 SHA-256을 만든 뒤 transaction 스냅샷·백업 원본·정확한 18쓰기 게이트를 두 번 독립 검토하고, 8 private 백필+9 공개 필드 정리+디렉토리 정리를 단일 원자 커밋했다. 직후와 3분 뒤 재감사에서 공개 code/hash 0, 디렉토리 비밀 0, private 유효 8/8, 누락 0을 확인했다. 개발 환경 실로그인 shadow는 로컬 세션이 없어 남음. |
 | 2026-07-15 | T125 운영 이전 안전 보강 | `src/{utils/{entryCode,churchDirectory}.js,components/{LoginView,ChurchAdminView,PlatformAdminView}.jsx,components/churchAdmin/SettingsTab.jsx}`, `scripts/{audit-legacy-church-fields,validate-round11}.mjs`, `supabase/functions/platform-api/*`, `HANDOFF_CODEX.md` | 입장코드를 앞뒤 공백 제거 후 4~128자·제어문자 없음으로 통일하고, 이전 도구를 기본 무쓰기 사전점검으로 바꿨다. 실행 직전 재점검, private/access 최신값 보존 transaction, 전체 공개·디렉토리 비밀 필드 정리, 무소속 잔여 필드 정리, 동시 디렉토리 변경 보존을 추가했다. 운영 전체 원본을 값 출력 없이 0600 로컬 파일로 백업하는 감사 옵션과 회귀 계약을 추가했다. 자동 검증·재검토는 통과했고, secret 설정·배포·백업·실제 이전은 다음 단계다. |
@@ -347,12 +348,13 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 ## 📮 Codex → Claude 메모
 
-2026-07-15 T124 관리자 판매·수령·환불 서버 이관 구현 완료, 운영 반영 직전:
+2026-07-15 T124 관리자 판매·수령·환불 서버 이관·운영 배포 완료, 실로그인 스모크 대기:
 - 일반 구매와 관리자 창구 판매·수령·환불은 클라이언트 Firestore transaction을 사용하지 않고 `platform-api`만 호출한다. 서버는 최신 actor/구매자/roster/상점/구매를 transaction snapshot에서 읽고 관리자 3개 action은 브라우저가 읽거나 쓸 수 없는 `talentAdminActions/{requestId}` ledger와 함께 원자 commit한다.
 - 결과 불명 재시도는 같은 UUID를 세션에 보존한다. 모든 2xx 본문을 action·requestId·alreadyCompleted·안전한 최신 잔액·지갑·구매 ID/상태까지 확인한 뒤에만 키를 지우며, 나중에 구매 문서의 `requestId/adminActionRequestId`가 보이면 오래 남은 키를 정리한다.
 - R25-2 문구와 R25-3 클라이언트 구현이 어긋났던 개인 전환 환불을 서버 권위로 복원했다. v2 users 지갑 구매 뒤 활성 member가 `accountType=personal, churchId=null`이고 동일 공동체에 동일 uid 활성 roster가 있을 때 첫 요청은 전용 409로 2차 확인을 요구하고, 확인 요청은 최신 상태를 다시 읽어 roster에 환불한다. mutable `primaryOrgId`와 이관 완료 플래그는 판정 조건으로 쓰지 않는다.
 - 일반/관리자 가격·잔액은 숫자 타입의 안전한 정수와 상한만 허용한다. 기본 `npm run validate`에 Deno 전체 테스트·type·format을 묶었고 현재 90 tests, 전체 validate, production build, diff 검사, 3개 독립 재감사를 통과했다.
-- T124d 운영 배포와 실제 관리자 판매·수령·환불 스모크는 남아 있다. Firebase CLI 인증이 만료된 것이 사전점검에서 확인되어 rules 재배포는 `firebase login --reauth`가 필요할 수 있다. 새 ledger 경로는 기존 규칙에서도 unmatched default deny이므로 명시적 deny 규칙 배포가 늦어져도 브라우저 접근은 열리지 않는다.
+- `0ab5534`를 main에 push하고 platform-api Edge → GitHub Pages 웹 → Firestore rules 순서로 운영 반영했다(인덱스 변경 없음). 공개 HTML은 새 `index-BbzYXMgP.js`를 사용하고 관리자 lazy asset 2개도 HTTP 200이다. Edge OPTIONS 204·유효 형식 미인증 관리자 요청 401, `talentAdminActions` 비로그인 REST 읽기 403을 확인했으며 rules는 Firebase 재로그인 뒤 컴파일·릴리스까지 성공했다.
+- T124d의 실제 관리자 소액 창구 판매 1건, pending 구매 수령 1건, 별도 pending 구매 환불 1건은 운영 데이터 변경과 사용할 공동체·계정·구매 선택이 필요해 미완료로 유지한다. T123b/d2도 개발 환경 실로그인이 필요하다. 두 수동 게이트를 기다리는 동안 다음 독립 구현은 T126a 서버 영상 resolve/lease다.
 
 2026-07-15 R25~26 운영 배포·입장코드 이전 완료, T123 실로그인 shadow 대기:
 - `dd7374f`까지 main과 origin/main을 일치시켰다. `JOIN_CODE_RATE_LIMIT_SALT`는 새 무작위값으로 설정하고 값은 출력하지 않았으며, Supabase 목록에서 존재만 확인했다.
