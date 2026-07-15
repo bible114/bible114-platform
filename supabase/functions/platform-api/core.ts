@@ -2,8 +2,10 @@ export const PREFLIGHT_ACTION = "preflight" as const;
 export const PREVIEW_READ_COMPLETION_ACTION = "previewReadCompletion" as const;
 export const PREVIEW_QUIZ_SUBMISSION_ACTION = "previewQuizSubmission" as const;
 export const JOIN_COMMUNITY_ACTION = "joinCommunity" as const;
+export const ISSUE_JOIN_TICKET_ACTION = "issueJoinTicket" as const;
 export const COMPLETE_MEMBER_SIGNUP_ACTION = "completeMemberSignup" as const;
-export const COMPLETE_PERSONAL_SIGNUP_ACTION = "completePersonalSignup" as const;
+export const COMPLETE_PERSONAL_SIGNUP_ACTION =
+  "completePersonalSignup" as const;
 export const PURCHASE_ITEM_ACTION = "purchaseItem" as const;
 
 export type PlatformApiRequest =
@@ -33,10 +35,18 @@ export type PlatformApiRequest =
     selectedIndex: number;
   }
   | {
+    action: typeof ISSUE_JOIN_TICKET_ACTION;
+    requestId: string;
+    churchId: string;
+    entryCode: string;
+    purpose: "memberSignup" | "personalSignup" | "joinCommunity";
+  }
+  | {
     action: typeof JOIN_COMMUNITY_ACTION;
     requestId: string;
     churchId: string;
     entryCode: string;
+    joinTicket: string;
     departmentId: string;
     subgroupId: string;
   }
@@ -45,6 +55,7 @@ export type PlatformApiRequest =
     requestId: string;
     churchId: string;
     entryCode: string;
+    joinTicket: string;
     name: string;
     birthdate: string;
     guestProgress: {
@@ -59,6 +70,7 @@ export type PlatformApiRequest =
     requestId: string;
     churchId: string;
     entryCode: string;
+    joinTicket: string;
     departmentId: string;
     subgroupId: string;
     name: string;
@@ -96,6 +108,23 @@ const UUID_PATTERN =
 export const isRequestId = (value: unknown): value is string =>
   typeof value === "string" && UUID_PATTERN.test(value);
 
+const safeDocumentId = (value: unknown, { optional = false } = {}) => {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (optional && !normalized) return "";
+  return normalized && normalized.length <= 128 && !normalized.includes("/") &&
+      !/[\u0000-\u001f\u007f]/.test(normalized)
+    ? normalized
+    : null;
+};
+
+const hasEntryCodeOrTicket = (entryCode: string, joinTicket: string) => {
+  const hasEntryCode = entryCode.length >= 4 && entryCode.length <= 128 &&
+    !/[\u0000-\u001f\u007f]/.test(entryCode);
+  const hasTicket = isRequestId(joinTicket);
+  return hasEntryCode !== hasTicket;
+};
+
 export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new PlatformApiRequestError("INVALID_BODY");
@@ -111,6 +140,8 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     selectedIndex,
     churchId,
     entryCode,
+    joinTicket,
+    purpose,
     departmentId,
     subgroupId,
     name,
@@ -125,11 +156,34 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
   }
 
   if (action === PREFLIGHT_ACTION) return { action, requestId };
+  if (action === ISSUE_JOIN_TICKET_ACTION) {
+    const normalizedChurchId = safeDocumentId(churchId);
+    const normalizedEntryCode = typeof entryCode === "string"
+      ? entryCode.trim()
+      : "";
+    if (
+      !normalizedChurchId || normalizedChurchId === "unaffiliated_v1" ||
+      normalizedEntryCode.length < 4 || normalizedEntryCode.length > 128 ||
+      !["memberSignup", "personalSignup", "joinCommunity"].includes(
+        String(purpose),
+      )
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return {
+      action,
+      requestId,
+      churchId: normalizedChurchId,
+      entryCode: normalizedEntryCode,
+      purpose: purpose as "memberSignup" | "personalSignup" | "joinCommunity",
+    };
+  }
   if (action === PURCHASE_ITEM_ACTION) {
     const safeId = (value: unknown) => {
       if (typeof value !== "string") return null;
       const normalized = value.trim();
-      return normalized && normalized.length <= 128 && !normalized.includes("/") &&
+      return normalized && normalized.length <= 128 &&
+          !normalized.includes("/") &&
           !/[\u0000-\u001f\u007f]/.test(normalized)
         ? normalized
         : null;
@@ -138,12 +192,19 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     const normalizedItemId = safeId(itemId);
     const normalizedDepartmentId = safeId(departmentId);
     const normalizedMarketId = safeId(marketId);
-    if (!normalizedChurchId || !normalizedItemId || !normalizedDepartmentId || !normalizedMarketId) {
+    if (
+      !normalizedChurchId || !normalizedItemId || !normalizedDepartmentId ||
+      !normalizedMarketId
+    ) {
       throw new PlatformApiRequestError("INVALID_PAYLOAD");
     }
     return {
-      action, requestId, churchId: normalizedChurchId, itemId: normalizedItemId,
-      departmentId: normalizedDepartmentId, marketId: normalizedMarketId,
+      action,
+      requestId,
+      churchId: normalizedChurchId,
+      itemId: normalizedItemId,
+      departmentId: normalizedDepartmentId,
+      marketId: normalizedMarketId,
     };
   }
   if (action === PREVIEW_READ_COMPLETION_ACTION) {
@@ -196,10 +257,13 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     const normalizedEntryCode = typeof entryCode === "string"
       ? entryCode.trim()
       : "";
+    const normalizedJoinTicket = typeof joinTicket === "string"
+      ? joinTicket.trim()
+      : "";
     if (
       !normalizedChurchId || !normalizedDepartmentId ||
-      normalizedSubgroupId === null || normalizedEntryCode.length < 4 ||
-      normalizedEntryCode.length > 128
+      normalizedSubgroupId === null ||
+      !hasEntryCodeOrTicket(normalizedEntryCode, normalizedJoinTicket)
     ) {
       throw new PlatformApiRequestError("INVALID_PAYLOAD");
     }
@@ -208,6 +272,7 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       requestId,
       churchId: normalizedChurchId,
       entryCode: normalizedEntryCode,
+      joinTicket: normalizedJoinTicket,
       departmentId: normalizedDepartmentId,
       subgroupId: normalizedSubgroupId,
     };
@@ -218,6 +283,9 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       : "";
     const normalizedEntryCode = typeof entryCode === "string"
       ? entryCode.trim()
+      : "";
+    const normalizedJoinTicket = typeof joinTicket === "string"
+      ? joinTicket.trim()
       : "";
     const normalizedName = typeof name === "string" ? name.trim() : "";
     const normalizedBirthdate = typeof birthdate === "string"
@@ -232,7 +300,7 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       normalizedChurchId.includes("/") ||
       /[\u0000-\u001f\u007f]/.test(normalizedChurchId) ||
       normalizedChurchId === "unaffiliated_v1" ||
-      normalizedEntryCode.length < 4 || normalizedEntryCode.length > 128 ||
+      !hasEntryCodeOrTicket(normalizedEntryCode, normalizedJoinTicket) ||
       !normalizedName || normalizedName.length > 50 ||
       !/^\d{8}$/.test(normalizedBirthdate) || !normalizedGuestProgress
     ) {
@@ -243,6 +311,7 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       requestId,
       churchId: normalizedChurchId,
       entryCode: normalizedEntryCode,
+      joinTicket: normalizedJoinTicket,
       name: normalizedName,
       birthdate: normalizedBirthdate,
       guestProgress: {
@@ -267,20 +336,41 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     const normalizedChurchId = safeId(churchId);
     const normalizedDepartmentId = safeId(departmentId);
     const normalizedSubgroupId = safeId(subgroupId);
-    const normalizedEntryCode = typeof entryCode === "string" ? entryCode.trim() : "";
+    const normalizedEntryCode = typeof entryCode === "string"
+      ? entryCode.trim()
+      : "";
+    const normalizedJoinTicket = typeof joinTicket === "string"
+      ? joinTicket.trim()
+      : "";
     const normalizedName = typeof name === "string" ? name.trim() : "";
-    const normalizedBirthdate = typeof birthdate === "string" ? birthdate.trim() : "";
-    const normalizedAuthProvider = typeof authProvider === "string" ? authProvider.trim() : "";
-    const progress = guestProgress && typeof guestProgress === "object" && !Array.isArray(guestProgress)
+    const normalizedBirthdate = typeof birthdate === "string"
+      ? birthdate.trim()
+      : "";
+    const normalizedAuthProvider = typeof authProvider === "string"
+      ? authProvider.trim()
+      : "";
+    const progress = guestProgress && typeof guestProgress === "object" &&
+        !Array.isArray(guestProgress)
       ? guestProgress as Record<string, unknown>
       : null;
-    const realChurch = Boolean(normalizedChurchId && normalizedChurchId !== "unaffiliated_v1");
-    if (normalizedChurchId === null || normalizedDepartmentId === null || normalizedSubgroupId === null ||
-      !normalizedName || normalizedName.length > 50 || !/^\d{8}$/.test(normalizedBirthdate) || !progress ||
-      !["password", "google.com", "kakao.com"].includes(normalizedAuthProvider) ||
-      (realChurch && (normalizedEntryCode.length < 4 || normalizedEntryCode.length > 128 ||
-        /[\u0000-\u001f\u007f]/.test(normalizedEntryCode) || !normalizedDepartmentId)) ||
-      (!realChurch && (normalizedEntryCode || normalizedDepartmentId || normalizedSubgroupId))) {
+    const realChurch = Boolean(
+      normalizedChurchId && normalizedChurchId !== "unaffiliated_v1",
+    );
+    if (
+      normalizedChurchId === null || normalizedDepartmentId === null ||
+      normalizedSubgroupId === null ||
+      !normalizedName || normalizedName.length > 50 ||
+      !/^\d{8}$/.test(normalizedBirthdate) || !progress ||
+      !["password", "google.com", "kakao.com"].includes(
+        normalizedAuthProvider,
+      ) ||
+      (realChurch &&
+        (!hasEntryCodeOrTicket(normalizedEntryCode, normalizedJoinTicket) ||
+          !normalizedDepartmentId)) ||
+      (!realChurch &&
+        (normalizedEntryCode || normalizedJoinTicket ||
+          normalizedDepartmentId || normalizedSubgroupId))
+    ) {
       throw new PlatformApiRequestError("INVALID_PAYLOAD");
     }
     return {
@@ -288,6 +378,7 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       requestId,
       churchId: normalizedChurchId,
       entryCode: normalizedEntryCode,
+      joinTicket: normalizedJoinTicket,
       departmentId: normalizedDepartmentId,
       subgroupId: normalizedSubgroupId,
       name: normalizedName,
@@ -296,7 +387,9 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       guestProgress: {
         currentDay: Number(progress.currentDay),
         streak: Number(progress.streak),
-        lastReadDate: progress.lastReadDate === null ? null : String(progress.lastReadDate ?? ""),
+        lastReadDate: progress.lastReadDate === null
+          ? null
+          : String(progress.lastReadDate ?? ""),
         planId: String(progress.planId ?? ""),
       },
     };

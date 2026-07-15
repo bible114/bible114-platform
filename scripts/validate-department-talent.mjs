@@ -215,7 +215,7 @@ assert.match(purchaseCore, /shop\.schemaVersion === 2[\s\S]*departmentSettings[\
 assert.match(purchaseCore, /items\.map\(record\)\.find[\s\S]*candidate\.active !== false[\s\S]*Number\(item\?\.price\)[\s\S]*price <= 0/,
     '서버 저장 상품과 양수 가격만 사용해야 한다.');
 assert.match(purchaseCore, /input\.user\.isDeleted === true[\s\S]*MEMBERSHIP_REQUIRED[\s\S]*INSUFFICIENT_TALENT/);
-assert.match(platformApiServer, /purchasePath = `\$\{churchPath\}\/talentPurchases\/\$\{parsed\.requestId\}`[\s\S]*existingPurchase[\s\S]*alreadyCompleted: true/,
+assert.match(platformApiServer, /purchasePath\s*=\s*[\s\S]*`\$\{churchPath\}\/talentPurchases\/\$\{parsed\.requestId\}`[\s\S]*existingPurchase[\s\S]*alreadyCompleted: true/,
     '결정적 purchase id로 재요청을 멱등 처리해야 한다.');
 assert.match(platformApiServer, /beginTransaction[\s\S]*validatePurchase\([\s\S]*updateWrite\(service\.projectId, walletPath[\s\S]*updateWrite\(service\.projectId, purchasePath[\s\S]*\{ transaction \}/,
     '서버가 지갑 차감과 구매 생성을 같은 트랜잭션으로 커밋해야 한다.');

@@ -11,6 +11,9 @@ const department = read('src/hooks/useDepartment.js');
 const app = read('src/App.jsx');
 const actions = read('src/hooks/useUserBibleActions.js');
 const header = read('src/components/dashboard/DashboardHeader.jsx');
+const churchAdmin = read('src/components/ChurchAdminView.jsx');
+const platformAdmin = read('src/components/PlatformAdminView.jsx');
+const churchDirectory = read('src/utils/churchDirectory.js');
 
 for (const text of ['5초만에 빠른 시작', '카카오로 시작', 'Google', '기존 회원 로그인(이름으로)', '로그인 없이 둘러보기', '공동체 등록하기']) assert.match(login, new RegExp(text.replace(/[()·]/g, '\\$&')));
 assert.doesNotMatch(login, /카카오톡으로 로그인|Google로 로그인|기존 회원 로그인 \(이름·생년월일로\)/);
@@ -25,9 +28,9 @@ assert.match(onboarding, /1단계 \/ 3단계/);
 assert.match(onboarding, /2단계 \/ 3단계/);
 assert.match(onboarding, /3단계 \/ 3단계/);
 assert.match(onboarding, /UNAFFILIATED_CHURCH_ID/);
-assert.match(auth, /completePersonalSignupViaApi\(\{[\s\S]*churchId: organization\.orgId[\s\S]*entryCode: organization\.entryCode/);
+assert.match(auth, /completePersonalSignupViaApi\(\{[\s\S]*churchId: organization\.orgId[\s\S]*joinTicket: organization\.joinTicket/);
 assert.doesNotMatch(auth, /transaction\.set\(rosterRef/);
-assert.match(membership, /entryCode,[\s\S]*\.\.\.selection/);
+assert.match(membership, /joinTicket,[\s\S]*\.\.\.selection/);
 assert.match(dashboard, /내 단체 관리/);
 assert.match(membership, /기본으로 설정/);
 assert.match(membership, /현재 보고 있음/);
@@ -42,4 +45,42 @@ assert.doesNotMatch(actions, /users[^\n]*\.set\([^\n]*\.\.\.currentUser/);
 assert.match(header, /flex flex-wrap items-center gap-1\.5 w-full py-1 md:order-2[^"]*md:flex-nowrap md:justify-end/);
 assert.doesNotMatch(header, /overflow-x-auto|scrollbar-hide|justify-between md:justify-end/);
 assert.match(header, /hidden h-4 w-px shrink-0 bg-slate-200 md:block/);
+
+// 기존 공동체의 입장코드 변경도 private/access 저장과 공개 비밀 삭제를
+// 한 batch로 커밋해야 한다.
+const saveChurchCodeStart = churchAdmin.indexOf('const saveChurchCode = async () =>');
+const saveChurchCodeEnd = churchAdmin.indexOf('const saveOrg = async () =>', saveChurchCodeStart);
+assert.ok(saveChurchCodeStart >= 0 && saveChurchCodeEnd > saveChurchCodeStart, '공동체 입장코드 변경 함수가 필요하다.');
+const saveChurchCode = churchAdmin.slice(saveChurchCodeStart, saveChurchCodeEnd);
+for (const pattern of [
+    /const batch = db\.batch\(\)/,
+    /batch\.set\(churchRef\.collection\('private'\)\.doc\('access'\),\s*\{[\s\S]*codeHash:\s*churchCodeHash/,
+    /churchCode:\s*firebase\.firestore\.FieldValue\.delete\(\)/,
+    /churchCodeHash:\s*firebase\.firestore\.FieldValue\.delete\(\)/,
+    /await batch\.commit\(\)/,
+]) assert.match(saveChurchCode, pattern);
+assert.doesNotMatch(
+    platformAdmin,
+    /churchCodeHash:\s*null|churchCode:\s*null/,
+    '가상 공동체를 포함한 새 공개 공동체 문서에 비밀 필드 자리표시자를 쓰면 안 된다.',
+);
+
+// 운영 보안 이전 도구는 공개 디렉토리를 최소 필드로 정리하고, 교회별로
+// private/access 백필과 공개 원문·해시 삭제를 같은 batch에 넣어야 한다.
+assert.match(churchDirectory, /export const migrateChurchAccessSecrets = async/);
+const sanitizeDirectoryStart = churchDirectory.indexOf('const sanitizeDirectoryChurches');
+const migrationStart = churchDirectory.indexOf('export const migrateChurchAccessSecrets');
+assert.ok(sanitizeDirectoryStart >= 0 && migrationStart > sanitizeDirectoryStart, '공개 디렉토리 정리기가 필요하다.');
+const sanitizeDirectory = churchDirectory.slice(sanitizeDirectoryStart, migrationStart);
+assert.match(sanitizeDirectory, /id:\s*entry\.id[\s\S]*name:[\s\S]*hidden/);
+assert.doesNotMatch(sanitizeDirectory, /churchCode|codeHash/);
+const securityMigration = churchDirectory.slice(migrationStart);
+for (const pattern of [
+    /DIRECTORY_DOC\(\)\.get\(\)/,
+    /batch\.set\(DIRECTORY_DOC\(\),\s*\{[\s\S]*churches:\s*sanitizedDirectory/,
+    /batch\.set\(churchDoc\.ref\.collection\('private'\)\.doc\('access'\),\s*\{[\s\S]*codeHash/,
+    /batch\.update\(churchDoc\.ref,\s*\{[\s\S]*churchCode:\s*firebase\.firestore\.FieldValue\.delete\(\)[\s\S]*churchCodeHash:\s*firebase\.firestore\.FieldValue\.delete\(\)/,
+    /await batch\.commit\(\)/,
+]) assert.match(securityMigration, pattern);
+assert.match(platformAdmin, /handleMigrateChurchAccessSecrets[\s\S]*migrateChurchAccessSecrets\(/);
 console.log('라운드 11 계약 검증 통과: 첫 화면, 소셜, 3단계 온보딩, 소속 관리, roster-only');

@@ -1,6 +1,6 @@
 import { db, firebase } from './firebase';
-import { sha256 } from './crypto';
 import { UNAFFILIATED_CHURCH_ID } from '../data/constants';
+import { sha256 } from './crypto';
 
 // ── 최근 교회 기억 (localStorage) ──────────────────────────────────────────
 // 멤버 로그인 성공 시 저장, 다음 방문 시 URL 파라미터가 없으면 preselect에 사용.
@@ -21,10 +21,9 @@ export const saveLastChurch = (church) => {
     } catch { /* localStorage 사용 불가 환경 무시 */ }
 };
 
-// settings/churchDirectory: { churches: [{ id, name, codeHash }], updatedAt }
-// - 비로그인 로그인 화면에서 교회 목록/코드 검증에 필요한 최소 정보만 공개한다.
-// - codeHash를 포함시켜 회원가입 시 Firebase Auth 계정 생성 "전"에
-//   클라이언트에서 입장코드를 검증할 수 있게 한다 (churches/{id} 문서 직접 읽기 방지).
+// settings/churchDirectory: { churches: [{ id, name, hidden? }], updatedAt }
+// - 비로그인 로그인 화면에서 교회 목록에 필요한 최소 정보만 공개한다.
+// - 입장코드 검증은 platform-api의 issueJoinTicket이 담당한다.
 const DIRECTORY_DOC = () => db.collection('settings').doc('churchDirectory');
 
 // 모듈 레벨 캐시: 세션(탭)당 1회만 read
@@ -48,9 +47,9 @@ export const invalidateChurchDirectoryCache = () => {
 };
 
 // 신규 교회 1건을 디렉토리에 추가 (교회 관리자 가입 시 호출)
-export const addChurchToDirectory = async ({ id, name, codeHash }) => {
+export const addChurchToDirectory = async ({ id, name }) => {
     await DIRECTORY_DOC().set({
-        churches: firebase.firestore.FieldValue.arrayUnion({ id, name, codeHash }),
+        churches: firebase.firestore.FieldValue.arrayUnion({ id, name }),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
     invalidateChurchDirectoryCache();
@@ -61,13 +60,13 @@ export const addChurchToDirectory = async ({ id, name, codeHash }) => {
 // 전체 배열을 읽어 해당 id 항목만 교체하는 방식을 쓴다.
 // hidden 인자를 넘기지 않으면 기존 항목의 hidden 상태를 그대로 보존한다
 // (예: 입장코드만 바꾸는 ChurchAdminView 호출은 숨김 여부에 영향을 주지 않아야 함).
-export const syncChurchDirectoryEntry = async ({ id, name, codeHash, hidden }) => {
+export const syncChurchDirectoryEntry = async ({ id, name, hidden }) => {
     const ref = DIRECTORY_DOC();
     const doc = await ref.get();
     const churches = doc.exists ? (doc.data().churches || []) : [];
     const idx = churches.findIndex(c => c.id === id);
     const resolvedHidden = hidden !== undefined ? !!hidden : !!churches[idx]?.hidden;
-    const entry = { id, name, codeHash: codeHash ?? churches[idx]?.codeHash ?? null };
+    const entry = { id, name };
     if (resolvedHidden) entry.hidden = true;
     if (idx === -1) churches.push(entry);
     else churches[idx] = entry;
@@ -91,9 +90,8 @@ export const removeChurchFromDirectory = async (id) => {
     invalidateChurchDirectoryCache();
 };
 
-// 전체 churches 컬렉션을 스캔해 디렉토리를 재작성 (백필/복구용).
-// 해싱 도입 이전에 생성된 교회는 churchCodeHash가 없고 평문 churchCode만 있을 수 있어,
-// 그런 경우 여기서 즉시 해시를 계산해 채워준다 (레거시 교회 가입 불가 방지).
+// 전체 churches 컬렉션을 스캔해 공개 디렉토리를 재작성 (백필/복구용).
+// 입장코드 해시는 더 이상 공개 디렉토리에 쓰지 않는다.
 export const rebuildChurchDirectory = async () => {
     const snap = await db.collection('churches').get();
     const churches = (await Promise.all(
@@ -103,10 +101,9 @@ export const rebuildChurchDirectory = async () => {
             // 그래야 초대 링크(?church=id)·가입 코드 검증이 계속 동작한다.
             // 검색 노출만 막고 싶다면 hidden 플래그로 표시하고, 소비자 쪽(검색 결과 등)에서 걸러낸다.
             .filter(c => !c.isDeleted && c.id !== UNAFFILIATED_CHURCH_ID)
-            .map(async c => ({
+            .map(c => ({
                 id: c.id,
                 name: c.name || '',
-                codeHash: c.churchCodeHash || (c.churchCode ? await sha256(c.churchCode) : null),
                 ...(c.hiddenFromDirectory ? { hidden: true } : {}),
             }))
     )).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko-KR'));
@@ -117,4 +114,115 @@ export const rebuildChurchDirectory = async () => {
     });
     invalidateChurchDirectoryCache();
     return churches.length;
+};
+
+const validCodeHash = value => (
+    typeof value === 'string' && /^[0-9a-f]{64}$/i.test(value.trim())
+        ? value.trim().toLowerCase()
+        : ''
+);
+
+const sanitizeDirectoryChurches = churches => (
+    (Array.isArray(churches) ? churches : [])
+        .filter(entry => entry && typeof entry.id === 'string' && entry.id)
+        .map(entry => ({
+            id: entry.id,
+            name: typeof entry.name === 'string' ? entry.name : '',
+            ...(entry.hidden === true ? { hidden: true } : {}),
+        }))
+);
+
+// 기존 공개 교회 문서와 공개 디렉토리에 남은 입장코드 정보를 private/access로 옮긴다.
+// 교회별 private 백필과 공개 필드 삭제는 같은 batch에 넣어 둘 중 하나만 반영되지 않게 한다.
+// Firestore batch 상한을 지키기 위해 200개 교회씩 처리하며, 재실행해도 같은 결과가 난다.
+export const migrateChurchAccessSecrets = async ({ onProgress } = {}) => {
+    const [churchSnap, directorySnap] = await Promise.all([
+        db.collection('churches').get(),
+        DIRECTORY_DOC().get(),
+    ]);
+    const churchDocs = churchSnap.docs.filter(doc => doc.id !== UNAFFILIATED_CHURCH_ID);
+    const originalDirectory = directorySnap.exists ? directorySnap.data().churches : [];
+    // 일부 초기 데이터는 공개 디렉토리에만 codeHash가 남아 있다. 공개 배열을
+    // 정리하기 전에 원본 해시를 따로 보존해 private/access 백필에 사용한다.
+    const directoryHashesByChurchId = new Map(
+        (Array.isArray(originalDirectory) ? originalDirectory : [])
+            .map(entry => [entry?.id, validCodeHash(entry?.codeHash)])
+            .filter(([id, codeHash]) => typeof id === 'string' && id && codeHash)
+    );
+    const sanitizedDirectory = sanitizeDirectoryChurches(originalDirectory);
+    const records = [];
+    const missing = [];
+    let alreadyPrivate = 0;
+    let migrated = 0;
+
+    for (let offset = 0; offset < churchDocs.length; offset += 25) {
+        const chunk = churchDocs.slice(offset, offset + 25);
+        const accessDocs = await Promise.all(chunk.map(doc => (
+            doc.ref.collection('private').doc('access').get()
+        )));
+        for (let index = 0; index < chunk.length; index += 1) {
+            const churchDoc = chunk[index];
+            const church = churchDoc.data() || {};
+            const accessHash = validCodeHash(accessDocs[index].exists
+                ? accessDocs[index].data().codeHash
+                : '');
+            const publicHash = validCodeHash(church.churchCodeHash);
+            const directoryHash = directoryHashesByChurchId.get(churchDoc.id) || '';
+            const plainCode = typeof church.churchCode === 'string' ? church.churchCode.trim() : '';
+            const codeHash = accessHash || publicHash || directoryHash || (plainCode ? await sha256(plainCode) : '');
+            if (accessHash) alreadyPrivate += 1;
+            else if (codeHash) migrated += 1;
+            else {
+                missing.push({ id: churchDoc.id, name: church.name || churchDoc.id });
+            }
+            records.push({ churchDoc, codeHash });
+        }
+        onProgress?.({ done: Math.min(offset + chunk.length, churchDocs.length), total: churchDocs.length });
+    }
+
+    const batchSize = 200;
+    if (records.length === 0) {
+        await DIRECTORY_DOC().set({
+            churches: sanitizedDirectory,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+    }
+    for (let offset = 0; offset < records.length; offset += batchSize) {
+        const batch = db.batch();
+        const now = firebase.firestore.FieldValue.serverTimestamp();
+        // 첫 batch에서 공개 디렉토리의 모든 codeHash를 먼저 제거한다.
+        if (offset === 0) {
+            batch.set(DIRECTORY_DOC(), {
+                churches: sanitizedDirectory,
+                updatedAt: now,
+            }, { merge: true });
+        }
+        records.slice(offset, offset + batchSize).forEach(({ churchDoc, codeHash }) => {
+            if (codeHash) {
+                batch.set(churchDoc.ref.collection('private').doc('access'), {
+                    codeHash,
+                    updatedAt: now,
+                }, { merge: true });
+            }
+            batch.update(churchDoc.ref, {
+                churchCode: firebase.firestore.FieldValue.delete(),
+                churchCodeHash: firebase.firestore.FieldValue.delete(),
+                updatedAt: now,
+            });
+        });
+        await batch.commit();
+        onProgress?.({
+            done: Math.min(offset + batchSize, records.length),
+            total: records.length,
+            committing: true,
+        });
+    }
+    invalidateChurchDirectoryCache();
+    return {
+        scanned: churchDocs.length,
+        migrated,
+        alreadyPrivate,
+        missing,
+        directoryCount: sanitizedDirectory.length,
+    };
 };

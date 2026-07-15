@@ -151,10 +151,38 @@ assert.match(socialOnboarding, /<GuardianConsent/);
 assert.match(socialOnboarding, /<PolicyConsent/);
 assert.match(authHook, /writeSignupConsent\(/);
 assert.match(authHook, /consentSummary: buildSignupConsentSummary\(signupConsent\)/);
-assert.match(authHook, /completeMemberSignupViaApi\(\{[\s\S]*churchId,[\s\S]*entryCode:\s*churchCode,[\s\S]*name:\s*newUser\.name,[\s\S]*birthdate:\s*newUser\.birthdate,[\s\S]*guestProgress:/);
+
+// 신규 공동체 관리자 가입은 공개 churches 문서에 입장코드 원문·해시를 쓰지 않고,
+// 같은 transaction에서 private/access.codeHash까지 저장해야 한다.
+const churchCreateWrites = [...authHook.matchAll(
+    /transaction\.set\(churchRef,\s*(\{[\s\S]*?\})\);/g
+)];
+assert.equal(churchCreateWrites.length, 2, 'Google·이메일 관리자 가입의 공개 공동체 쓰기 두 곳을 모두 검증해야 한다.');
+for (const [, publicChurchPayload] of churchCreateWrites) {
+    assert.doesNotMatch(publicChurchPayload, /\bchurchCode(?:Hash)?\b/);
+}
+const googleAdminStart = authHook.indexOf('if (isGoogleSignup)');
+const emailAdminStart = authHook.indexOf("let cred = null", googleAdminStart);
+assert.ok(googleAdminStart >= 0 && emailAdminStart > googleAdminStart, 'Google 관리자 가입 분기가 필요하다.');
+const googleAdminSignup = authHook.slice(googleAdminStart, emailAdminStart);
+assert.match(
+    googleAdminSignup,
+    /db\.runTransaction\(async transaction =>[\s\S]*transaction\.set\(churchRef,[\s\S]*transaction\.set\(churchAccessRef,\s*\{[\s\S]*codeHash:\s*churchCodeHash/,
+    'Google 관리자 가입은 공개 공동체와 private/access를 같은 transaction에 저장해야 한다.',
+);
+const emailAdminTransactionStart = authHook.indexOf('await db.runTransaction(async transaction =>', emailAdminStart);
+const emailAdminTransactionEnd = authHook.indexOf('});', authHook.indexOf('transaction.set(directoryRef', emailAdminTransactionStart));
+assert.ok(emailAdminTransactionStart >= 0 && emailAdminTransactionEnd > emailAdminTransactionStart, '이메일 관리자 가입 transaction이 필요하다.');
+const emailAdminSignup = authHook.slice(emailAdminTransactionStart, emailAdminTransactionEnd + 3);
+assert.match(
+    emailAdminSignup,
+    /transaction\.set\(churchRef,[\s\S]*transaction\.set\(churchAccessRef,\s*\{[\s\S]*codeHash:\s*churchCodeHash/,
+    '이메일 관리자 가입도 공개 공동체와 private/access를 같은 transaction에 저장해야 한다.',
+);
+assert.match(authHook, /completeMemberSignupViaApi\(\{[\s\S]*churchId,[\s\S]*entryCode:\s*joinTicket \? '' : churchCode,[\s\S]*joinTicket,[\s\S]*name:\s*newUser\.name,[\s\S]*birthdate:\s*newUser\.birthdate,[\s\S]*guestProgress:/);
 assert.match(authHook, /created = result\.created === true;[\s\S]*if \(created\)[\s\S]*total_readers/);
 assert.match(authHook, /const migrateGuest = shouldMigrateGuestState\(\);[\s\S]*if \(migrateGuest\)[\s\S]*migratedAt/);
-assert.match(authHook, /finishMemberSignup\(\{\s*user:\s*cred\.user,[\s\S]*churchCode,[\s\S]*signupConsent\s*\}\)/);
+assert.match(authHook, /finishMemberSignup\(\{\s*user:\s*cred\.user,[\s\S]*churchCode,[\s\S]*joinTicket,[\s\S]*signupConsent\s*\}\)/);
 assert.match(
     firestoreRules,
     /request\.resource\.data\.role == 'member'[\s\S]*request\.resource\.data\.churchId == 'unaffiliated_v1'[\s\S]*accountType', null\) != 'personal'/,

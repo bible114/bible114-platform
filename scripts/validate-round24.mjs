@@ -19,9 +19,11 @@ assert.match(packageJson.scripts.validate, /npm run validate:round24$/);
 for (const pattern of [
     /export class PlatformApiError extends Error/,
     /export const callPlatformApi = async \(action, payload = \{\}, options = \{\}\)/,
+    /export const callPlatformApiPublic = async \(action, payload = \{\}, options = \{\}\)/,
     /export const preflightPlatformApi =/,
     /export const previewReadCompletion = \(cycle, day, options = \{\}\)/,
-    /export const joinCommunity = \(\{ churchId, entryCode, departmentId, subgroupId = '' \}, options = \{\}\)/,
+    /export const issueJoinTicket = \(\{ churchId, entryCode, purpose \}, options = \{\}\)/,
+    /export const joinCommunity = \(\{ churchId, entryCode = '', joinTicket = '', departmentId, subgroupId = '' \}, options = \{\}\)/,
     /Number\.isInteger\(cycle\)/,
     /Number\.isInteger\(day\)/,
     /callPlatformApi\('previewReadCompletion', \{ cycle, day \}, options\)/,
@@ -280,6 +282,83 @@ assert.equal(exists(corePath), true, `${corePath}가 필요하다.`);
 assert.equal(exists(indexPath), true, `${indexPath}가 필요하다.`);
 const serverCore = read(corePath);
 const serverIndex = read(indexPath);
+
+// T125 입장코드 방어 계약: 목적과 무관한 이중 속도 제한, requestId에 묶인
+// ticket 재시도, 공개 오류의 동일 응답을 정적 검증한다.
+const joinSecurityCorePath = 'supabase/functions/platform-api/joinSecurityCore.ts';
+const joinSecurityCoreTestPath = 'supabase/functions/platform-api/joinSecurityCore_test.ts';
+assert.equal(exists(joinSecurityCorePath), true, `${joinSecurityCorePath}가 필요하다.`);
+assert.equal(exists(joinSecurityCoreTestPath), true, `${joinSecurityCoreTestPath}가 필요하다.`);
+const joinSecurityCore = read(joinSecurityCorePath);
+assert.doesNotMatch(
+    joinSecurityCore,
+    /(?:\bfetch\s*\(|\bDeno\.|db\.collection|firebase\.firestore|\bgetDocument\s*\(|\bbeginTransaction\s*\(|\bcommitWrites\s*\()/,
+    'joinSecurityCore는 외부 I/O가 없는 순수 보안 계약이어야 한다.',
+);
+assert.match(joinSecurityCore, /JOIN_CLIENT_HOURLY_LIMIT\s*=\s*10/);
+assert.match(joinSecurityCore, /JOIN_CHURCH_HOURLY_LIMIT\s*=\s*200/);
+assert.match(joinSecurityCore, /scope:\s*"clientChurch"[\s\S]*scope:\s*"churchGlobal"/);
+const rateScopeStart = joinSecurityCore.indexOf('export const buildJoinRateLimitScopes');
+const rateScopeEnd = joinSecurityCore.indexOf('export const canConsumeJoinAttempt', rateScopeStart);
+assert.ok(rateScopeStart >= 0 && rateScopeEnd > rateScopeStart, '공유 입장코드 속도 제한 키 계산기가 필요하다.');
+assert.doesNotMatch(
+    joinSecurityCore.slice(rateScopeStart, rateScopeEnd),
+    /purpose/,
+    '회원가입·온보딩·추가 참여가 purpose별 제한을 따로 가져서는 안 된다.',
+);
+assert.match(joinSecurityCore, /usedRequestId\?: unknown/);
+assert.match(
+    joinSecurityCore,
+    /ticket\.usedAt && ticket\.usedBy === input\.uid[\s\S]*ticket\.usedRequestId === input\.requestId[\s\S]*consume:\s*false/,
+    '같은 uid라도 동일 requestId일 때만 ticket 응답 유실 재시도를 허용해야 한다.',
+);
+
+const consumeAttemptStart = serverIndex.indexOf('const consumeJoinAttempt = async');
+const consumeAttemptEnd = serverIndex.indexOf('const getChurchAccessHash = async', consumeAttemptStart);
+assert.ok(consumeAttemptStart >= 0 && consumeAttemptEnd > consumeAttemptStart, '입장코드 속도 제한 소비 함수가 필요하다.');
+const consumeAttempt = serverIndex.slice(consumeAttemptStart, consumeAttemptEnd);
+for (const pattern of [
+    /beginTransaction\(/,
+    /paths\.map\(/,
+    /canConsumeJoinAttempt/,
+    /commitWrites\([\s\S]*paths\.map\([\s\S]*\{ transaction \}/,
+]) assert.match(consumeAttempt, pattern);
+assert.doesNotMatch(consumeAttempt, /purpose/, '모든 입장코드 목적은 같은 속도 제한 예산을 소비해야 한다.');
+
+const accessHashStart = serverIndex.indexOf('const getChurchAccessHash = async');
+const accessHashEnd = serverIndex.indexOf('const resolveJoinCredential = async', accessHashStart);
+assert.ok(accessHashStart >= 0 && accessHashEnd > accessHashStart, 'private/access 우선 조회 함수가 필요하다.');
+const accessHashContract = serverIndex.slice(accessHashStart, accessHashEnd);
+assert.match(accessHashContract, /churches\/\$\{churchId\}\/private\/access/);
+assert.match(accessHashContract, /privateHash \|\| legacyHash/);
+assert.equal(
+    (accessHashContract.match(/message:\s*INVALID_JOIN_CODE_MESSAGE/g) || []).length,
+    2,
+    '없는·삭제된 공동체와 코드 미설정은 동일한 공개 오류를 사용해야 한다.',
+);
+assert.match(serverIndex, /const INVALID_JOIN_CODE_MESSAGE = "입장코드가 올바르지 않습니다\."/);
+
+const ticketBranchStart = serverIndex.indexOf('if (parsed.action === "issueJoinTicket")');
+const ticketBranchEnd = serverIndex.indexOf('const idToken = getBearerToken(request)', ticketBranchStart);
+assert.ok(ticketBranchStart >= 0 && ticketBranchEnd > ticketBranchStart, '공개 join ticket 발급 분기가 필요하다.');
+const ticketBranch = serverIndex.slice(ticketBranchStart, ticketBranchEnd);
+assert.match(ticketBranch, /consumeJoinAttempt\([\s\S]*parsed\.churchId/);
+assert.match(ticketBranch, /hash !== await sha256Hex\(parsed\.entryCode\)[\s\S]*message:\s*INVALID_JOIN_CODE_MESSAGE/);
+assert.match(ticketBranch, /usedRequestId:\s*null/);
+
+const credentialStart = serverIndex.indexOf('const resolveJoinCredential = async');
+const credentialEnd = serverIndex.indexOf('const joinValidationError', credentialStart);
+const credentialContract = serverIndex.slice(credentialStart, credentialEnd);
+assert.match(credentialContract, /requestId:\s*string/);
+assert.match(credentialContract, /usedRequestId|validateJoinTicketUse/);
+assert.ok(
+    (serverIndex.match(/usedRequestId:\s*parsed\.requestId/g) || []).length >= 3,
+    '가입·온보딩·추가 참여 모두 성공 transaction에서 ticket을 requestId와 함께 소비해야 한다.',
+);
+assert.ok(
+    (serverIndex.match(/updateMask:\s*\["usedAt", "usedBy", "usedRequestId"\]/g) || []).length >= 3,
+    'ticket 소비 표식은 세 서버 참여 경로 모두 원자 커밋에 포함되어야 한다.',
+);
 assert.match(quizCore, /export const validateQuizSubmission\s*=/);
 assert.match(
     quizCore,
@@ -548,7 +627,7 @@ for (const pattern of [
     /getDocument<MemberSignupUser>/,
     /getDocument<MemberSignupChurch>/,
     /getDocument<MemberSignupConsent>/,
-    /sha256Hex\(parsed\.entryCode\)/,
+    /resolveJoinCredential\(service,/,
     /validateMemberSignup\(/,
     /updateWrite\(service\.projectId, userPath/,
     /commitWrites\(/,
@@ -624,7 +703,8 @@ for (const args of [
         `잘못된 공동체 참여 입력(${JSON.stringify(args)})은 네트워크 전에 거부해야 한다.`,
     );
 }
-assert.match(membershipCard, /joinCommunityViaApi\(\{[\s\S]*churchId:\s*orgId[\s\S]*entryCode[\s\S]*departmentId[\s\S]*subgroupId/);
+assert.match(membershipCard, /issueJoinTicket\(\{[\s\S]*churchId:\s*orgId[\s\S]*entryCode[\s\S]*purpose/);
+assert.match(membershipCard, /joinCommunityViaApi\(\{[\s\S]*churchId:\s*orgId[\s\S]*joinTicket[\s\S]*departmentId[\s\S]*subgroupId/);
 const clientJoinStart = membershipCard.indexOf('const joinCommunity = async () =>');
 const clientLeaveStart = membershipCard.indexOf('const leaveCommunity = async', clientJoinStart);
 assert.ok(clientJoinStart >= 0 && clientLeaveStart > clientJoinStart, '추가 공동체 참여 클라이언트 분기가 필요하다.');

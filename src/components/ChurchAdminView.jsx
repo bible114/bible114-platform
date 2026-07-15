@@ -208,7 +208,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             if (churchDoc.exists) {
                 const data = churchDoc.data();
                 setChurchInfo(data);
-                setNewChurchCode(data.churchCode || '');
+                // 입장코드 원문은 공개 교회 문서에서 읽지 않는다.
+                setNewChurchCode('');
                 const storedOrg = data.departments || data.communities;
                 setOrgComms(Array.isArray(storedOrg) ? storedOrg.filter(Boolean) : []);
             }
@@ -816,15 +817,28 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         if (!newChurchCode || newChurchCode.length < 4) { alert('입장코드는 4자리 이상이어야 합니다.'); return; }
         setSavingCode(true);
         try {
-            // [Phase 3] 회원가입 검증은 churchCodeHash(디렉토리 codeHash)만 사용하므로
-            // 해시도 함께 갱신하고, 공개 디렉토리의 codeHash도 동기화한다.
+            // private/access 갱신과 공개 문서의 레거시 비밀 삭제를 원자 처리한다.
             const churchCodeHash = await sha256(newChurchCode);
-            await db.collection('churches').doc(currentUser.churchId).set(
-                { churchCode: newChurchCode, churchCodeHash, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
-                { merge: true }
-            );
-            await syncChurchDirectoryEntry({ id: currentUser.churchId, name: churchInfo?.name || currentUser.churchName, codeHash: churchCodeHash })
+            const churchRef = db.collection('churches').doc(currentUser.churchId);
+            const batch = db.batch();
+            const now = firebase.firestore.FieldValue.serverTimestamp();
+            batch.set(churchRef.collection('private').doc('access'), {
+                codeHash: churchCodeHash,
+                updatedAt: now,
+            }, { merge: true });
+            batch.set(churchRef, {
+                churchCode: firebase.firestore.FieldValue.delete(),
+                churchCodeHash: firebase.firestore.FieldValue.delete(),
+                updatedAt: now,
+            }, { merge: true });
+            await batch.commit();
+            await syncChurchDirectoryEntry({ id: currentUser.churchId, name: churchInfo?.name || currentUser.churchName })
                 .catch(err => console.error('디렉토리 동기화 실패:', err));
+            setChurchInfo(previous => {
+                if (!previous) return previous;
+                const { churchCode: _churchCode, churchCodeHash: _churchCodeHash, ...safe } = previous;
+                return safe;
+            });
             alert('입장코드가 변경되었습니다!');
         } catch (e) {
             alert('변경 실패');
@@ -1125,7 +1139,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         }
         const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const churchName = esc(churchInfo?.name || currentUser.churchName || '');
-        const code = churchInfo?.churchCode || '';
+        // 코드 원문은 저장하지 않으므로 현재 세션에서 관리자가 입력한 값만 인쇄한다.
+        const code = newChurchCode || '';
         const codeBlock = code
             ? `<span class="code">${esc(code)}</span>`
             : '<span class="code blank">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span> <span class="hint">(관리자가 적어주세요)</span>';

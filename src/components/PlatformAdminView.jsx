@@ -5,8 +5,7 @@ import { firebase } from '../utils/firebase';
 import ChurchAdminView from './ChurchAdminView';
 import { fetchLatestFromPlaylist } from './dashboard/DailyVideoCard';
 import { getDaysRead, getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
-import { rebuildChurchDirectory, removeChurchFromDirectory, syncChurchDirectoryEntry } from '../utils/churchDirectory';
-import { sha256 } from '../utils/crypto';
+import { migrateChurchAccessSecrets, rebuildChurchDirectory, removeChurchFromDirectory, syncChurchDirectoryEntry } from '../utils/churchDirectory';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
 import { migrateCredentialsIfNeeded, fetchMemberCredentials } from '../utils/memberCredentials';
 
@@ -49,6 +48,9 @@ const PlatformAdminView = ({
     const [popupInput, setPopupInput] = React.useState({ enabled: false, title: '', text: '', imageUrl: '', links: [] });
     const [popupSaving, setPopupSaving] = React.useState(false);
     const [directoryRebuilding, setDirectoryRebuilding] = React.useState(false);
+    const [accessSecretsMigrating, setAccessSecretsMigrating] = React.useState(false);
+    const [accessSecretsProgress, setAccessSecretsProgress] = React.useState({ done: 0, total: 0 });
+    const [accessSecretsReport, setAccessSecretsReport] = React.useState(null);
     const [checkingUnaffiliatedChurch, setCheckingUnaffiliatedChurch] = React.useState(false);
     const [fetchedCurrentPassword, setFetchedCurrentPassword] = React.useState(null); // changingPassword 모달에서 조회한 현재 암호
     const [credentialMigrating, setCredentialMigrating] = React.useState(false);
@@ -354,6 +356,31 @@ const PlatformAdminView = ({
         }
     };
 
+    const handleMigrateChurchAccessSecrets = async () => {
+        if (!db || accessSecretsMigrating) return;
+        if (!confirm('전체 교회의 입장코드를 비공개 저장소로 이전하고 공개 문서의 코드를 삭제합니다. 계속할까요?')) return;
+        setAccessSecretsMigrating(true);
+        setAccessSecretsReport(null);
+        setAccessSecretsProgress({ done: 0, total: 0 });
+        try {
+            const report = await migrateChurchAccessSecrets({
+                onProgress: progress => setAccessSecretsProgress({
+                    done: progress.done || 0,
+                    total: progress.total || 0,
+                }),
+            });
+            setAccessSecretsReport(report);
+            alert(report.missing.length > 0
+                ? `이전 완료: ${report.migrated}개 이전, ${report.alreadyPrivate}개 기존 비공개. 원천 코드가 없는 ${report.missing.length}개 교회는 관리자가 새 코드를 설정해야 합니다.`
+                : `입장코드 보안 이전 완료: ${report.migrated}개 이전, ${report.alreadyPrivate}개 기존 비공개.`);
+        } catch (error) {
+            console.error('입장코드 보안 이전 실패:', error);
+            alert('입장코드 보안 이전 실패: ' + error.message);
+        } finally {
+            setAccessSecretsMigrating(false);
+        }
+    };
+
     const handleEnsureUnaffiliatedChurch = async () => {
         if (!db) return;
         setCheckingUnaffiliatedChurch(true);
@@ -362,7 +389,6 @@ const PlatformAdminView = ({
                 name: UNAFFILIATED_CHURCH_NAME,
                 pastorName: '',
                 denomination: '',
-                churchCodeHash: null,
                 isVirtual: true,
                 departments: [{
                     id: 'personal',
@@ -396,8 +422,7 @@ const PlatformAdminView = ({
         setHiddenToggling(true);
         try {
             await db.collection('churches').doc(church.id).update({ hiddenFromDirectory: next });
-            const codeHash = church.churchCodeHash || (church.churchCode ? await sha256(church.churchCode) : null);
-            await syncChurchDirectoryEntry({ id: church.id, name: church.name, codeHash, hidden: next });
+            await syncChurchDirectoryEntry({ id: church.id, name: church.name, hidden: next });
             setHiddenOverrides(prev => ({ ...prev, [church.id]: next }));
             alert(next ? '✅ 검색에서 숨겼습니다.' : '✅ 검색에 다시 노출했습니다.');
         } catch (e) {
@@ -817,7 +842,7 @@ const PlatformAdminView = ({
                                         <div>
                                             <h2 className="text-xl font-black text-slate-800">🏛️ {selectedChurch.name}</h2>
                                             <p className="text-xs text-slate-400 mt-1">관리자: {selectedChurch.adminEmail || '-'}</p>
-                                            <p className="text-xs text-slate-400">입장코드: <span className="font-mono bg-slate-100 px-1.5 rounded">{selectedChurch.churchCode || '-'}</span></p>
+                                            <p className="text-xs text-slate-400">입장코드: <span className="bg-slate-100 px-1.5 rounded">비공개 관리</span></p>
                                         </div>
                                         <div className="grid grid-cols-3 gap-3 shrink-0">
                                             <div className="bg-blue-50 p-3 rounded-xl text-center">
@@ -935,7 +960,7 @@ const PlatformAdminView = ({
                                                         </p>
                                                     )}
                                                 </div>
-                                                <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-full font-mono shrink-0">코드: {church.churchCode || '-'}</span>
+                                                <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-full shrink-0">입장코드 비공개</span>
                                             </div>
                                             <div className="grid grid-cols-3 gap-2 mb-3">
                                                 <div className="bg-slate-50 p-2 rounded-lg text-center">
@@ -1446,6 +1471,39 @@ const PlatformAdminView = ({
                             >
                                 {directoryRebuilding ? '재생성 중...' : '디렉토리 재생성'}
                             </button>
+                        </div>
+
+                        {/* 공개 입장코드 보안 이전 */}
+                        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 mb-6">
+                            <h3 className="text-sm font-bold text-rose-800 mb-1">🔐 입장코드 보안 이전·점검</h3>
+                            <p className="text-xs text-rose-700 mb-3">
+                                기존 교회의 공개 코드·해시를 <code className="bg-rose-100 px-1 rounded">private/access</code>로 이전하고,
+                                교회 문서와 공개 디렉토리에서 비밀 필드를 제거합니다. 코드 원천이 없는 교회는 아래에 따로 보고합니다.
+                            </p>
+                            <button
+                                onClick={handleMigrateChurchAccessSecrets}
+                                disabled={accessSecretsMigrating}
+                                className="bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+                            >
+                                {accessSecretsMigrating
+                                    ? `이전 중... (${accessSecretsProgress.done}/${accessSecretsProgress.total || '?'})`
+                                    : '전체 교회 보안 이전 실행'}
+                            </button>
+                            {accessSecretsReport && (
+                                <div className="mt-3 rounded-lg bg-white/70 p-3 text-xs text-rose-800">
+                                    <p className="font-bold">
+                                        총 {accessSecretsReport.scanned}개 점검 · {accessSecretsReport.migrated}개 이전 · {accessSecretsReport.alreadyPrivate}개 기존 완료 · {accessSecretsReport.missing.length}개 코드 누락
+                                    </p>
+                                    {accessSecretsReport.missing.length > 0 && (
+                                        <div className="mt-2">
+                                            <p className="font-bold">새 입장코드 설정이 필요한 교회</p>
+                                            <p className="mt-1 break-words">
+                                                {accessSecretsReport.missing.map(church => `${church.name} (${church.id})`).join(', ')}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* 무소속 가상 교회 생성/점검 */}

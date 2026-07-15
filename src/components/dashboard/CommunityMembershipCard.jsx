@@ -1,12 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ChurchPicker from '../ChurchPicker';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../../data/constants';
-import { sha256 } from '../../utils/crypto';
 import { db, firebase } from '../../utils/firebase';
 import { getChurchDirectory } from '../../utils/churchDirectory';
 import { loadUserExtraOrgsStrict } from '../../utils/roster';
 import { migratePersonalTalentWalletIfNeeded } from '../../utils/helpers';
-import { joinCommunity as joinCommunityViaApi, PlatformApiError } from '../../utils/platformApi';
+import { issueJoinTicket, joinCommunity as joinCommunityViaApi, PlatformApiError } from '../../utils/platformApi';
 
 const emptySelection = { departmentId: '', departmentName: '', subgroupId: '', subgroupName: '' };
 
@@ -15,6 +14,7 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
     const [showJoin, setShowJoin] = useState(false);
     const [orgId, setOrgId] = useState('');
     const [entryCode, setEntryCode] = useState('');
+    const [joinTicket, setJoinTicket] = useState('');
     const [departments, setDepartments] = useState([]);
     const [selection, setSelection] = useState(emptySelection);
     const [step, setStep] = useState('church');
@@ -75,6 +75,7 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
         setShowJoin(false);
         setOrgId('');
         setEntryCode('');
+        setJoinTicket('');
         setDepartments([]);
         setSelection(emptySelection);
         setStep('church');
@@ -92,20 +93,18 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
         }
         if (extraOrgs.length >= 3) return setNotice({ type: 'error', text: '공동체는 최대 3개까지 추가할 수 있습니다.' });
 
-        const entry = directory.find(org => org.id === orgId);
-        if (!entry?.codeHash) return setNotice({ type: 'error', text: '입장코드 정보를 확인할 수 없습니다.' });
         setBusy(true);
         try {
-            if (await sha256(entryCode) !== entry.codeHash) {
-                setNotice({ type: 'error', text: '공동체 입장코드가 틀렸습니다.' });
-                return;
-            }
-            const churchSnap = await db.collection('churches').doc(orgId).get();
-            if (!churchSnap.exists) throw new Error('missing church');
-            const churchData = churchSnap.data() || {};
-            const nextDepartments = Array.isArray(churchData.departments)
-                ? churchData.departments
-                : (Array.isArray(churchData.communities) ? churchData.communities : []);
+            const ticketResult = await issueJoinTicket({
+                churchId: orgId,
+                entryCode,
+                purpose: selectionOnly || onboarding ? 'personalSignup' : 'joinCommunity',
+            });
+            const nextDepartments = Array.isArray(ticketResult?.church?.departments)
+                ? ticketResult.church.departments
+                : [];
+            if (!ticketResult?.joinTicket) throw new Error('missing join ticket');
+            setJoinTicket(ticketResult.joinTicket);
             setDepartments(nextDepartments);
             setSelection(emptySelection);
             setStep('organization');
@@ -144,7 +143,7 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
             return;
         }
         if (selectionOnly) {
-            onJoinComplete?.({ orgId, orgName: orgName(orgId), entryCode, ...selection });
+            onJoinComplete?.({ orgId, orgName: orgName(orgId), entryCode: '', joinTicket, ...selection });
             setShowJoin(false);
             return;
         }
@@ -153,7 +152,8 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
         try {
             const joinResult = await joinCommunityViaApi({
                 churchId: orgId,
-                entryCode,
+                entryCode: joinTicket ? '' : entryCode,
+                joinTicket,
                 departmentId: selection.departmentId,
                 subgroupId: selection.subgroupId || '',
             });
@@ -203,6 +203,7 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
             setShowJoin(false);
             setOrgId('');
             setEntryCode('');
+            setJoinTicket('');
             setDepartments([]);
             setSelection(emptySelection);
             setStep('church');

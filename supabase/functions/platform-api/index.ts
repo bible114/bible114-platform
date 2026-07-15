@@ -56,12 +56,26 @@ import {
   PurchaseValidationError,
   validatePurchase,
 } from "./purchaseCore.ts";
+import {
+  buildJoinRateLimitScopes,
+  canConsumeJoinAttempt,
+  type JoinPurpose,
+  type JoinTicketRecord,
+  validateJoinTicketUse,
+} from "./joinSecurityCore.ts";
 
 // T122-T123 shadow 단계: 읽기·퀴즈 결과를 계산만 하며 Firestore 쓰기는 금지한다.
 type UserDocument = StoredReadUser & StoredQuizUser & {
   role?: unknown;
   isDeleted?: unknown;
 };
+
+type JoinRateLimitDocument = {
+  count?: unknown;
+  resetAt?: unknown;
+};
+
+const INVALID_JOIN_CODE_MESSAGE = "입장코드가 올바르지 않습니다.";
 
 const sha256Hex = async (value: string): Promise<string> => {
   const bytes = new TextEncoder().encode(value);
@@ -70,6 +84,195 @@ const sha256Hex = async (value: string): Promise<string> => {
     new Uint8Array(digest),
     (byte) => byte.toString(16).padStart(2, "0"),
   ).join("");
+};
+
+const isUuid = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    .test(value);
+
+const sanitizeDocId = (value: string) => value.replace(/[^A-Za-z0-9_-]/g, "_");
+
+const getClientIp = (request: Request) => {
+  const forwarded = request.headers.get("x-forwarded-for") || "";
+  const forwardedChain = forwarded.split(",").map((value) => value.trim())
+    .filter(Boolean);
+  return (
+    request.headers.get("cf-connecting-ip") ||
+    forwardedChain.at(-1) ||
+    request.headers.get("x-real-ip") ||
+    "unknown"
+  ).slice(0, 128);
+};
+
+const rateLimitKey = async (
+  request: Request,
+  churchId: string,
+) => {
+  const now = new Date();
+  const hour = `${now.toISOString().slice(0, 13)}:00`;
+  const salt = Deno.env.get("JOIN_CODE_RATE_LIMIT_SALT") ||
+    "bible114-platform-api";
+  const scopes = buildJoinRateLimitScopes({
+    hour,
+    churchId,
+    clientId: getClientIp(request),
+  });
+  return {
+    hour,
+    scopes: await Promise.all(scopes.map(async (scope) => ({
+      ...scope,
+      key: (await sha256Hex(`${salt}:${scope.keyInput}`)).slice(0, 40),
+    }))),
+  };
+};
+
+const consumeJoinAttempt = async (
+  request: Request,
+  service: { token: string; projectId: string },
+  churchId: string,
+) => {
+  const { hour, scopes } = await rateLimitKey(request, churchId);
+  const paths = scopes.map(({ key }) =>
+    `joinCodeRateLimits/${sanitizeDocId(`${hour}_${key}`)}`
+  );
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const transaction = await beginTransaction(
+      service.token,
+      service.projectId,
+    );
+    try {
+      const existingDocuments = await Promise.all(
+        paths.map((path) =>
+          getDocument<JoinRateLimitDocument>(
+            service.token,
+            service.projectId,
+            path,
+            { transaction },
+          )
+        ),
+      );
+      if (
+        existingDocuments.some((existing, index) =>
+          !canConsumeJoinAttempt(existing?.data.count, scopes[index].limit)
+        )
+      ) {
+        throw new PlatformError("RATE_LIMITED");
+      }
+      const now = new Date();
+      const resetAt = new Date(now);
+      resetAt.setMinutes(59, 59, 999);
+      await commitWrites(
+        service.token,
+        service.projectId,
+        paths.map((path, index) => {
+          const existing = existingDocuments[index];
+          return updateWrite(service.projectId, path, {
+            churchId,
+            scope: scopes[index].scope,
+            hour,
+            count: Number(existing?.data.count || 0) + 1,
+            resetAt,
+            updatedAt: now,
+          }, { exists: existing ? true : false });
+        }),
+        { transaction },
+      );
+      return;
+    } catch (error) {
+      await rollbackTransaction(service.token, service.projectId, transaction)
+        .catch(() => {});
+      const retryableContention = error instanceof PlatformError &&
+        error.code === "FIRESTORE_WRITE_FAILED" &&
+        error.details?.status === 409;
+      if (retryableContention && attempt < 2) continue;
+      throw error;
+    }
+  }
+};
+
+const getChurchAccessHash = async (
+  service: { token: string; projectId: string },
+  churchId: string,
+  options: { transaction?: string } = {},
+) => {
+  const [accessDocument, churchDocument] = await Promise.all([
+    getDocument<Record<string, unknown>>(
+      service.token,
+      service.projectId,
+      `churches/${churchId}/private/access`,
+      options,
+    ),
+    getDocument<Record<string, unknown>>(
+      service.token,
+      service.projectId,
+      `churches/${churchId}`,
+      options,
+    ),
+  ]);
+  if (!churchDocument || churchDocument.data.isDeleted === true) {
+    throw new PlatformError("FORBIDDEN", {
+      message: INVALID_JOIN_CODE_MESSAGE,
+    });
+  }
+  const privateHash = typeof accessDocument?.data.codeHash === "string"
+    ? accessDocument.data.codeHash
+    : "";
+  const legacyHash = typeof churchDocument.data.churchCodeHash === "string"
+    ? churchDocument.data.churchCodeHash
+    : "";
+  const hash = privateHash || legacyHash;
+  if (!hash) {
+    throw new PlatformError("FORBIDDEN", {
+      message: INVALID_JOIN_CODE_MESSAGE,
+    });
+  }
+  return { hash, church: churchDocument };
+};
+
+const resolveJoinCredential = async (
+  service: { token: string; projectId: string },
+  input: {
+    churchId: string;
+    entryCode: string;
+    joinTicket: string;
+    purpose: JoinPurpose;
+    uid: string;
+    requestId: string;
+    transaction: string;
+  },
+) => {
+  if (input.joinTicket) {
+    if (!isUuid(input.joinTicket)) throw new PlatformError("BAD_REQUEST");
+    const path = `joinTickets/${input.joinTicket}`;
+    const ticket = await getDocument<JoinTicketRecord>(
+      service.token,
+      service.projectId,
+      path,
+      { transaction: input.transaction },
+    );
+    const decision = validateJoinTicketUse(ticket?.data || null, {
+      churchId: input.churchId,
+      purpose: input.purpose,
+      uid: input.uid,
+      requestId: input.requestId,
+      nowMs: Date.now(),
+    });
+    if (!decision.allowed) {
+      throw new PlatformError("FORBIDDEN", {
+        message: "입장코드를 다시 확인해주세요.",
+      });
+    }
+    return {
+      entryCodeHash: decision.codeHash,
+      ticketPath: path,
+      consumeTicket: decision.consume,
+    };
+  }
+  return {
+    entryCodeHash: await sha256Hex(input.entryCode),
+    ticketPath: null,
+    consumeTicket: false,
+  };
 };
 
 const joinValidationError = (error: JoinCommunityValidationError) => {
@@ -127,20 +330,30 @@ const memberSignupValidationError = (error: MemberSignupValidationError) => {
   }
 };
 
-const personalSignupValidationError = (error: PersonalSignupValidationError) => {
+const personalSignupValidationError = (
+  error: PersonalSignupValidationError,
+) => {
   switch (error.code) {
     case "CHURCH_UNAVAILABLE":
-      return new PlatformError("NOT_FOUND", { message: "가입할 공동체를 찾을 수 없습니다." });
+      return new PlatformError("NOT_FOUND", {
+        message: "가입할 공동체를 찾을 수 없습니다.",
+      });
     case "INVALID_ENTRY_CODE":
-      return new PlatformError("FORBIDDEN", { message: "공동체 입장코드가 틀렸습니다." });
+      return new PlatformError("FORBIDDEN", {
+        message: "공동체 입장코드가 틀렸습니다.",
+      });
     case "INVALID_DEPARTMENT":
     case "INVALID_SUBGROUP":
     case "INVALID_PROFILE":
     case "INVALID_CONSENT":
-      return new PlatformError("BAD_REQUEST", { message: "가입 정보를 다시 확인해주세요." });
+      return new PlatformError("BAD_REQUEST", {
+        message: "가입 정보를 다시 확인해주세요.",
+      });
     case "USER_CONFLICT":
     case "ROSTER_CONFLICT":
-      return new PlatformError("CONFLICT", { message: "기존 가입 정보와 충돌합니다. 다시 로그인해주세요." });
+      return new PlatformError("CONFLICT", {
+        message: "기존 가입 정보와 충돌합니다. 다시 로그인해주세요.",
+      });
   }
 };
 
@@ -152,7 +365,9 @@ const purchaseValidationError = (error: PurchaseValidationError) => {
     case "MARKET_UNAVAILABLE":
     case "INVALID_DEPARTMENT":
     case "ITEM_UNAVAILABLE":
-      return new PlatformError("BAD_REQUEST", { message: "현재 구매할 수 없는 상품입니다." });
+      return new PlatformError("BAD_REQUEST", {
+        message: "현재 구매할 수 없는 상품입니다.",
+      });
     case "INSUFFICIENT_TALENT":
       return new PlatformError("CONFLICT", { message: "달란트가 부족합니다." });
   }
@@ -189,6 +404,55 @@ Deno.serve(async (request) => {
       throw error;
     }
 
+    if (parsed.action === "issueJoinTicket") {
+      const service = await getServiceAccessToken();
+      await consumeJoinAttempt(
+        request,
+        service,
+        parsed.churchId,
+      );
+      const { hash, church } = await getChurchAccessHash(
+        service,
+        parsed.churchId,
+      );
+      if (hash !== await sha256Hex(parsed.entryCode)) {
+        throw new PlatformError("FORBIDDEN", {
+          message: INVALID_JOIN_CODE_MESSAGE,
+        });
+      }
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
+      const ticketId = parsed.requestId;
+      await commitWrites(service.token, service.projectId, [
+        updateWrite(service.projectId, `joinTickets/${ticketId}`, {
+          churchId: parsed.churchId,
+          purpose: parsed.purpose,
+          codeHash: hash,
+          issuedAt: now,
+          expiresAt,
+          usedAt: null,
+          usedBy: null,
+          usedRequestId: null,
+        }, { exists: false }),
+      ]);
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        joinTicket: ticketId,
+        expiresAt: expiresAt.toISOString(),
+        church: {
+          id: parsed.churchId,
+          name: typeof church.data.name === "string" ? church.data.name : "",
+          departments: Array.isArray(church.data.departments)
+            ? church.data.departments
+            : (Array.isArray(church.data.communities)
+              ? church.data.communities
+              : []),
+        },
+      });
+    }
+
     const idToken = getBearerToken(request);
     const [verifiedUser, service] = await Promise.all([
       verifyFirebaseIdToken(idToken, { allowAnonymous: false }),
@@ -199,6 +463,13 @@ Deno.serve(async (request) => {
     // 최초 교회 교인 가입은 users 문서가 아직 없으므로
     // 기존 사용자 조회·삭제 검사보다 먼저 처리한다.
     if (parsed.action === "completeMemberSignup") {
+      if (parsed.entryCode) {
+        await consumeJoinAttempt(
+          request,
+          service,
+          parsed.churchId,
+        );
+      }
       const tokenEmail = typeof verifiedUser.claims.email === "string"
         ? verifiedUser.claims.email
         : "";
@@ -215,46 +486,74 @@ Deno.serve(async (request) => {
         // 현재 온보딩의 부서 선택과 탈퇴 UI에 중복 소속으로 노출된다.
         // 다만 새 users가 없는데 동일 기본 roster만 남은 충돌은 거부한다.
         const rosterPath = `${churchPath}/roster/${uid}`;
-        const [existingUser, churchDocument, consentDocument, existingRoster] =
-          await Promise.all([
-            getDocument<MemberSignupUser>(
-              service.token,
-              service.projectId,
-              userPath,
-              { transaction },
-            ),
-            getDocument<MemberSignupChurch>(
-              service.token,
-              service.projectId,
-              churchPath,
-              { transaction },
-            ),
-            getDocument<MemberSignupConsent>(
-              service.token,
-              service.projectId,
-              consentPath,
-              { transaction },
-            ),
-            getDocument<Record<string, unknown>>(
-              service.token,
-              service.projectId,
-              rosterPath,
-              { transaction },
-            ),
-          ]);
+        const [
+          existingUser,
+          churchDocument,
+          accessDocument,
+          consentDocument,
+          existingRoster,
+        ] = await Promise.all([
+          getDocument<MemberSignupUser>(
+            service.token,
+            service.projectId,
+            userPath,
+            { transaction },
+          ),
+          getDocument<MemberSignupChurch>(
+            service.token,
+            service.projectId,
+            churchPath,
+            { transaction },
+          ),
+          getDocument<Record<string, unknown>>(
+            service.token,
+            service.projectId,
+            `${churchPath}/private/access`,
+            { transaction },
+          ),
+          getDocument<MemberSignupConsent>(
+            service.token,
+            service.projectId,
+            consentPath,
+            { transaction },
+          ),
+          getDocument<Record<string, unknown>>(
+            service.token,
+            service.projectId,
+            rosterPath,
+            { transaction },
+          ),
+        ]);
 
+        const credential = await resolveJoinCredential(service, {
+          churchId: parsed.churchId,
+          entryCode: parsed.entryCode,
+          joinTicket: parsed.joinTicket,
+          purpose: "memberSignup",
+          uid,
+          requestId: parsed.requestId,
+          transaction,
+        });
+        const churchData = churchDocument?.data
+          ? {
+            ...churchDocument.data,
+            churchCodeHash: typeof accessDocument?.data.codeHash === "string"
+              ? accessDocument.data.codeHash
+              : churchDocument.data.churchCodeHash,
+          }
+          : null;
         let decision;
         try {
           decision = validateMemberSignup({
             uid,
             email: tokenEmail,
             churchId: parsed.churchId,
-            entryCodeHash: await sha256Hex(parsed.entryCode),
+            entryCodeHash: credential.entryCodeHash,
             name: parsed.name,
             birthdate: parsed.birthdate,
             guestProgress: parsed.guestProgress,
             calendarDate: getCalendarDateKst(),
-            church: churchDocument?.data || null,
+            church: churchData,
             consent: consentDocument?.data || null,
             existingUser: existingUser?.data || null,
             existingRoster: existingRoster?.data || null,
@@ -312,12 +611,25 @@ Deno.serve(async (request) => {
           createdAt: now,
           updatedAt: now,
         };
+        const writes = [
+          updateWrite(service.projectId, userPath, userData, {
+            exists: decision.status === "reactivate" ? true : false,
+          }),
+        ];
+        if (credential.ticketPath && credential.consumeTicket) {
+          writes.push(updateWrite(service.projectId, credential.ticketPath, {
+            usedAt: now,
+            usedBy: uid,
+            usedRequestId: parsed.requestId,
+          }, {
+            updateMask: ["usedAt", "usedBy", "usedRequestId"],
+            exists: true,
+          }));
+        }
         await commitWrites(
           service.token,
           service.projectId,
-          [updateWrite(service.projectId, userPath, userData, {
-            exists: decision.status === "reactivate" ? true : false,
-          })],
+          writes,
           { transaction },
         );
         return jsonResponse(origin, 200, {
@@ -346,24 +658,91 @@ Deno.serve(async (request) => {
     // 개인 계정의 최초 users 문서와 선택 공동체 roster를 서버가 원자적으로 만든다.
     // Auth만 생성되고 응답이 끊긴 경우 같은 요청을 다시 보내도 기존 결과를 복구한다.
     if (parsed.action === "completePersonalSignup") {
-      const transaction = await beginTransaction(service.token, service.projectId);
+      if (
+        parsed.entryCode && parsed.churchId &&
+        parsed.churchId !== "unaffiliated_v1"
+      ) {
+        await consumeJoinAttempt(
+          request,
+          service,
+          parsed.churchId,
+        );
+      }
+      const transaction = await beginTransaction(
+        service.token,
+        service.projectId,
+      );
       try {
         const userPath = `users/${uid}`;
         const consentPath = `${userPath}/private/consent`;
         const churchPath = parsed.churchId ? `churches/${parsed.churchId}` : "";
         const rosterPath = churchPath ? `${churchPath}/roster/${uid}` : "";
-        const [existingUser, consentDocument, churchDocument, existingRoster] = await Promise.all([
-          getDocument<PersonalSignupUser>(service.token, service.projectId, userPath, { transaction }),
-          getDocument<PersonalSignupConsent>(service.token, service.projectId, consentPath, { transaction }),
+        const [
+          existingUser,
+          consentDocument,
+          churchDocument,
+          accessDocument,
+          existingRoster,
+        ] = await Promise.all([
+          getDocument<PersonalSignupUser>(
+            service.token,
+            service.projectId,
+            userPath,
+            { transaction },
+          ),
+          getDocument<PersonalSignupConsent>(
+            service.token,
+            service.projectId,
+            consentPath,
+            { transaction },
+          ),
           churchPath && parsed.churchId !== "unaffiliated_v1"
-            ? getDocument<PersonalSignupChurch>(service.token, service.projectId, churchPath, { transaction })
+            ? getDocument<PersonalSignupChurch>(
+              service.token,
+              service.projectId,
+              churchPath,
+              { transaction },
+            )
+            : Promise.resolve(null),
+          churchPath && parsed.churchId !== "unaffiliated_v1"
+            ? getDocument<Record<string, unknown>>(
+              service.token,
+              service.projectId,
+              `${churchPath}/private/access`,
+              { transaction },
+            )
             : Promise.resolve(null),
           rosterPath
-            ? getDocument<Record<string, unknown>>(service.token, service.projectId, rosterPath, { transaction })
+            ? getDocument<Record<string, unknown>>(
+              service.token,
+              service.projectId,
+              rosterPath,
+              { transaction },
+            )
             : Promise.resolve(null),
         ]);
         const tokenEmail = typeof verifiedUser.claims.email === "string"
           ? verifiedUser.claims.email
+          : null;
+        const credential =
+          parsed.churchId && parsed.churchId !== "unaffiliated_v1"
+            ? await resolveJoinCredential(service, {
+              churchId: parsed.churchId,
+              entryCode: parsed.entryCode,
+              joinTicket: parsed.joinTicket,
+              purpose: "personalSignup",
+              uid,
+              requestId: parsed.requestId,
+              transaction,
+            })
+            : { entryCodeHash: "", ticketPath: null, consumeTicket: false };
+        const churchData = churchDocument?.data
+          ? {
+            ...churchDocument.data,
+            churchCodeHash: typeof accessDocument?.data.codeHash === "string"
+              ? accessDocument.data.codeHash
+              : churchDocument.data.churchCodeHash,
+          }
           : null;
         let decision;
         try {
@@ -377,21 +756,27 @@ Deno.serve(async (request) => {
             guestProgress: parsed.guestProgress,
             calendarDate: getCalendarDateKst(),
             churchId: parsed.churchId,
-            entryCodeHash: parsed.entryCode ? await sha256Hex(parsed.entryCode) : "",
+            entryCodeHash: credential.entryCodeHash,
             departmentId: parsed.departmentId,
             subgroupId: parsed.subgroupId,
-            church: churchDocument?.data || null,
+            church: churchData,
             consent: consentDocument?.data || null,
             existingUser: existingUser?.data || null,
             existingRoster: existingRoster?.data || null,
           });
         } catch (error) {
-          if (error instanceof PersonalSignupValidationError) throw personalSignupValidationError(error);
+          if (error instanceof PersonalSignupValidationError) {
+            throw personalSignupValidationError(error);
+          }
           throw error;
         }
 
         if (decision.status === "alreadyCompleted") {
-          await rollbackTransaction(service.token, service.projectId, transaction).catch(() => {});
+          await rollbackTransaction(
+            service.token,
+            service.projectId,
+            transaction,
+          ).catch(() => {});
           return jsonResponse(origin, 200, {
             ok: true,
             action: parsed.action,
@@ -407,7 +792,9 @@ Deno.serve(async (request) => {
         const progress = parsed.guestProgress;
         const churchName = parsed.churchId === "unaffiliated_v1"
           ? "성경 읽는 사람들"
-          : (typeof churchDocument?.data.name === "string" ? churchDocument.data.name.trim() : null);
+          : (typeof churchDocument?.data.name === "string"
+            ? churchDocument.data.name.trim()
+            : null);
         const userData = {
           uid,
           name: parsed.name,
@@ -461,25 +848,52 @@ Deno.serve(async (request) => {
             updatedAt: now,
           }
           : null;
-        const writes = [updateWrite(service.projectId, userPath, userData, { exists: false })];
+        const writes = [
+          updateWrite(service.projectId, userPath, userData, { exists: false }),
+        ];
         if (membership && rosterPath) {
-          writes.push(updateWrite(service.projectId, rosterPath, membership, { exists: false }));
+          writes.push(
+            updateWrite(service.projectId, rosterPath, membership, {
+              exists: false,
+            }),
+          );
         }
-        await commitWrites(service.token, service.projectId, writes, { transaction });
+        if (credential.ticketPath && credential.consumeTicket) {
+          writes.push(updateWrite(service.projectId, credential.ticketPath, {
+            usedAt: now,
+            usedBy: uid,
+            usedRequestId: parsed.requestId,
+          }, {
+            updateMask: ["usedAt", "usedBy", "usedRequestId"],
+            exists: true,
+          }));
+        }
+        await commitWrites(service.token, service.projectId, writes, {
+          transaction,
+        });
         return jsonResponse(origin, 200, {
           ok: true,
           action: parsed.action,
           requestId: parsed.requestId,
           alreadyCompleted: false,
           created: true,
-          user: { ...userData, createdAt: now.toISOString(), updatedAt: now.toISOString() },
+          user: {
+            ...userData,
+            createdAt: now.toISOString(),
+            updatedAt: now.toISOString(),
+          },
           membership: membership
-            ? { ...membership, joinedAt: now.toISOString(), updatedAt: now.toISOString() }
+            ? {
+              ...membership,
+              joinedAt: now.toISOString(),
+              updatedAt: now.toISOString(),
+            }
             : null,
           churchName,
         });
       } catch (error) {
-        await rollbackTransaction(service.token, service.projectId, transaction).catch(() => {});
+        await rollbackTransaction(service.token, service.projectId, transaction)
+          .catch(() => {});
         throw error;
       }
     }
@@ -497,24 +911,57 @@ Deno.serve(async (request) => {
     const role = normalizeRole(userDocument.data.role);
 
     if (parsed.action === "purchaseItem") {
-      const transaction = await beginTransaction(service.token, service.projectId);
+      const transaction = await beginTransaction(
+        service.token,
+        service.projectId,
+      );
       try {
         const userPath = `users/${uid}`;
         const churchPath = `churches/${parsed.churchId}`;
         const rosterPath = `${churchPath}/roster/${uid}`;
         const shopPath = `${churchPath}/settings/talentShop`;
-        const purchasePath = `${churchPath}/talentPurchases/${parsed.requestId}`;
-        const [freshUser, roster, talentShop, existingPurchase] = await Promise.all([
-          getDocument<PurchaseRecord>(service.token, service.projectId, userPath, { transaction }),
-          getDocument<PurchaseRecord>(service.token, service.projectId, rosterPath, { transaction }),
-          getDocument<PurchaseRecord>(service.token, service.projectId, shopPath, { transaction }),
-          getDocument<PurchaseRecord>(service.token, service.projectId, purchasePath, { transaction }),
-        ]);
+        const purchasePath =
+          `${churchPath}/talentPurchases/${parsed.requestId}`;
+        const [freshUser, roster, talentShop, existingPurchase] = await Promise
+          .all([
+            getDocument<PurchaseRecord>(
+              service.token,
+              service.projectId,
+              userPath,
+              { transaction },
+            ),
+            getDocument<PurchaseRecord>(
+              service.token,
+              service.projectId,
+              rosterPath,
+              { transaction },
+            ),
+            getDocument<PurchaseRecord>(
+              service.token,
+              service.projectId,
+              shopPath,
+              { transaction },
+            ),
+            getDocument<PurchaseRecord>(
+              service.token,
+              service.projectId,
+              purchasePath,
+              { transaction },
+            ),
+          ]);
         if (existingPurchase) {
-          if (existingPurchase.data.uid !== uid) throw new PlatformError("CONFLICT");
-          await rollbackTransaction(service.token, service.projectId, transaction).catch(() => {});
+          if (existingPurchase.data.uid !== uid) {
+            throw new PlatformError("CONFLICT");
+          }
+          await rollbackTransaction(
+            service.token,
+            service.projectId,
+            transaction,
+          ).catch(() => {});
           return jsonResponse(origin, 200, {
-            ok: true, action: parsed.action, requestId: parsed.requestId,
+            ok: true,
+            action: parsed.action,
+            requestId: parsed.requestId,
             alreadyCompleted: true,
             nextTalent: existingPurchase.data.walletBalanceAfter,
             walletKind: existingPurchase.data.walletKind,
@@ -536,20 +983,30 @@ Deno.serve(async (request) => {
         let decision;
         try {
           decision = validatePurchase({
-            uid, churchId: parsed.churchId, itemId: parsed.itemId,
-            departmentId: parsed.departmentId, marketId: parsed.marketId,
-            user: freshUser.data, roster: roster?.data || null,
+            uid,
+            churchId: parsed.churchId,
+            itemId: parsed.itemId,
+            departmentId: parsed.departmentId,
+            marketId: parsed.marketId,
+            user: freshUser.data,
+            roster: roster?.data || null,
             talentShop: talentShop?.data || null,
           });
         } catch (error) {
-          if (error instanceof PurchaseValidationError) throw purchaseValidationError(error);
+          if (error instanceof PurchaseValidationError) {
+            throw purchaseValidationError(error);
+          }
           throw error;
         }
         const now = new Date();
-        const walletPath = decision.walletKind === "roster" ? rosterPath : userPath;
+        const walletPath = decision.walletKind === "roster"
+          ? rosterPath
+          : userPath;
         const purchase = {
           uid,
-          memberName: String((roster?.data.name || freshUser.data.name || "회원")),
+          memberName: String(
+            roster?.data.name || freshUser.data.name || "회원",
+          ),
           itemId: decision.item.id,
           itemName: decision.item.name,
           price: decision.item.price,
@@ -569,29 +1026,48 @@ Deno.serve(async (request) => {
           : { talent: decision.nextTalent };
         await commitWrites(service.token, service.projectId, [
           updateWrite(service.projectId, walletPath, walletUpdate, {
-            updateMask: Object.keys(walletUpdate), exists: true,
+            updateMask: Object.keys(walletUpdate),
+            exists: true,
           }),
-          updateWrite(service.projectId, purchasePath, purchase, { exists: false }),
+          updateWrite(service.projectId, purchasePath, purchase, {
+            exists: false,
+          }),
         ], { transaction });
         return jsonResponse(origin, 200, {
-          ok: true, action: parsed.action, requestId: parsed.requestId,
+          ok: true,
+          action: parsed.action,
+          requestId: parsed.requestId,
           alreadyCompleted: false,
           nextTalent: decision.nextTalent,
           walletKind: decision.walletKind,
           purchase: {
-            id: parsed.requestId, itemId: purchase.itemId, itemName: purchase.itemName,
-            price: purchase.price, status: purchase.status, createdAt: now.toISOString(),
-            schemaVersion: 2, departmentId: purchase.departmentId,
-            departmentName: purchase.departmentName, marketId: purchase.marketId,
+            id: parsed.requestId,
+            itemId: purchase.itemId,
+            itemName: purchase.itemName,
+            price: purchase.price,
+            status: purchase.status,
+            createdAt: now.toISOString(),
+            schemaVersion: 2,
+            departmentId: purchase.departmentId,
+            departmentName: purchase.departmentName,
+            marketId: purchase.marketId,
           },
         });
       } catch (error) {
-        await rollbackTransaction(service.token, service.projectId, transaction).catch(() => {});
+        await rollbackTransaction(service.token, service.projectId, transaction)
+          .catch(() => {});
         throw error;
       }
     }
 
     if (parsed.action === "joinCommunity") {
+      if (parsed.entryCode) {
+        await consumeJoinAttempt(
+          request,
+          service,
+          parsed.churchId,
+        );
+      }
       const transaction = await beginTransaction(
         service.token,
         service.projectId,
@@ -603,6 +1079,7 @@ Deno.serve(async (request) => {
         const [
           transactionUser,
           churchDocument,
+          accessDocument,
           existingRoster,
           rosterDocuments,
         ] = await Promise.all([
@@ -616,6 +1093,12 @@ Deno.serve(async (request) => {
             service.token,
             service.projectId,
             churchPath,
+            { transaction },
+          ),
+          getDocument<Record<string, unknown>>(
+            service.token,
+            service.projectId,
+            `${churchPath}/private/access`,
             { transaction },
           ),
           getDocument<Record<string, unknown>>(
@@ -640,18 +1123,33 @@ Deno.serve(async (request) => {
           });
         }
 
+        const credential = await resolveJoinCredential(service, {
+          churchId: parsed.churchId,
+          entryCode: parsed.entryCode,
+          joinTicket: parsed.joinTicket,
+          purpose: "joinCommunity",
+          uid,
+          requestId: parsed.requestId,
+          transaction,
+        });
+        const churchData = {
+          ...churchDocument.data,
+          churchCodeHash: typeof accessDocument?.data.codeHash === "string"
+            ? accessDocument.data.codeHash
+            : churchDocument.data.churchCodeHash,
+        };
         let decision;
         try {
           decision = validateJoinCommunity({
             uid,
             churchId: parsed.churchId,
-            entryCodeHash: await sha256Hex(parsed.entryCode),
+            entryCodeHash: credential.entryCodeHash,
             departmentId: parsed.departmentId,
             subgroupId: parsed.subgroupId,
             rosterCount: rosterDocuments.length,
             existingRoster: existingRoster?.data || null,
             user: transactionUser.data,
-            church: churchDocument.data,
+            church: churchData,
           });
         } catch (error) {
           if (error instanceof JoinCommunityValidationError) {
@@ -687,6 +1185,16 @@ Deno.serve(async (request) => {
             exists: false,
           }),
         ];
+        if (credential.ticketPath && credential.consumeTicket) {
+          writes.push(updateWrite(service.projectId, credential.ticketPath, {
+            usedAt: now,
+            usedBy: uid,
+            usedRequestId: parsed.requestId,
+          }, {
+            updateMask: ["usedAt", "usedBy", "usedRequestId"],
+            exists: true,
+          }));
+        }
         if (decision.shouldAssignPrimary) {
           writes.push(updateWrite(service.projectId, userPath, {
             primaryOrgId: parsed.churchId,

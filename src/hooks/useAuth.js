@@ -32,6 +32,7 @@ import { writeSignupConsent } from '../utils/signupConsentStore';
 import {
     completeMemberSignup as completeMemberSignupViaApi,
     completePersonalSignup as completePersonalSignupViaApi,
+    issueJoinTicket,
     PlatformApiError,
 } from '../utils/platformApi';
 
@@ -179,7 +180,7 @@ export const useAuth = ({
         };
     };
 
-    const finishMemberSignup = async ({ user, newUser, churchId, churchCode, credentials, signupConsent }) => {
+    const finishMemberSignup = async ({ user, newUser, churchId, churchCode, joinTicket = '', credentials, signupConsent }) => {
         setErrorMsg('');
         const migrateGuest = shouldMigrateGuestState();
         await writeSignupConsent(user.uid, signupConsent);
@@ -201,7 +202,8 @@ export const useAuth = ({
         } else {
             const result = await completeMemberSignupViaApi({
                 churchId,
-                entryCode: churchCode,
+                entryCode: joinTicket ? '' : churchCode,
+                joinTicket,
                 name: newUser.name,
                 birthdate: newUser.birthdate,
                 guestProgress: {
@@ -573,7 +575,8 @@ export const useAuth = ({
         await writeSignupConsent(socialUser.uid, signupConsent);
         const result = await completePersonalSignupViaApi({
             churchId: organization.orgId,
-            entryCode: organization.entryCode || '',
+            entryCode: organization.joinTicket ? '' : (organization.entryCode || ''),
+            joinTicket: organization.joinTicket || '',
             departmentId: organization.departmentId || '',
             subgroupId: organization.subgroupId || '',
             name: name.trim(),
@@ -1017,10 +1020,9 @@ export const useAuth = ({
     };
 
     // ── 교인 가입 ──
-    // [Phase 3] churches/{churchId} 문서는 비로그인 상태에서 더 이상 읽지 않는다
-    // (firestore.rules: churches read는 isSignedIn() 필요). 대신 공개된
-    // settings/churchDirectory 의 codeHash로 입장코드를 클라이언트에서 검증한다.
-    // → Firebase Auth 계정 생성 전에 실패시키므로 가입 실패 시 롤백이 불필요하다.
+    // churches/{churchId} 문서는 비로그인 상태에서 읽지 않는다.
+    // 공개 디렉토리는 목록만 제공하고, 입장코드는 platform-api가 검증해
+    // 5분짜리 참여권을 발급한다.
     const handleMemberSignup = async ({ name, birthdate, password, churchId, churchCode, phone4, consents }) => {
         setErrorMsg('');
         try {
@@ -1033,6 +1035,7 @@ export const useAuth = ({
             const isUnaffiliated = churchId === UNAFFILIATED_CHURCH_ID;
             const normalizedPhone4 = String(phone4 || '').trim();
             let churchName = UNAFFILIATED_CHURCH_NAME;
+            let joinTicket = '';
 
             if (isUnaffiliated) {
                 if (!/^\d{4}$/.test(normalizedPhone4)) {
@@ -1044,9 +1047,13 @@ export const useAuth = ({
                 const directory = await getChurchDirectory();
                 const churchEntry = directory.find(c => c.id === churchId);
                 if (!churchEntry) { setErrorMsg('교회를 찾을 수 없습니다.'); return; }
-                if (!churchEntry.codeHash) { setErrorMsg('교회 입장코드 정보를 확인할 수 없습니다. 공동체 관리자에게 문의해주세요.'); return; }
-                const inputHash = await sha256(churchCode);
-                if (churchEntry.codeHash !== inputHash) { setErrorMsg('교회 입장코드가 틀렸습니다.'); return; }
+                const ticketResult = await issueJoinTicket({
+                    churchId,
+                    entryCode: churchCode,
+                    purpose: 'memberSignup',
+                });
+                joinTicket = ticketResult.joinTicket || '';
+                if (!joinTicket) throw new Error('JOIN_TICKET_RESPONSE_INVALID');
                 churchName = churchEntry.name;
             }
 
@@ -1066,7 +1073,7 @@ export const useAuth = ({
             };
 
             if (cred) {
-                await finishMemberSignup({ user: cred.user, newUser, churchId, churchCode, credentials, signupConsent });
+                await finishMemberSignup({ user: cred.user, newUser, churchId, churchCode, joinTicket, credentials, signupConsent });
                 return;
             }
 
@@ -1083,14 +1090,14 @@ export const useAuth = ({
             const existingDoc = await db.collection('users').doc(orphanCred.user.uid).get();
             if (existingDoc.exists) {
                 if (existingDoc.data().isDeleted) {
-                    await finishMemberSignup({ user: orphanCred.user, newUser, churchId, churchCode, credentials, signupConsent });
+                    await finishMemberSignup({ user: orphanCred.user, newUser, churchId, churchCode, joinTicket, credentials, signupConsent });
                     return;
                 }
                 setErrorMsg('이미 가입된 이름+생년월일입니다. 로그인해주세요.');
                 return;
             }
 
-            await finishMemberSignup({ user: orphanCred.user, newUser, churchId, churchCode, credentials, signupConsent });
+            await finishMemberSignup({ user: orphanCred.user, newUser, churchId, churchCode, joinTicket, credentials, signupConsent });
         } catch (err) {
             console.error(err);
             setErrorMsg(err instanceof PlatformApiError
@@ -1150,6 +1157,7 @@ export const useAuth = ({
                 const consentRef = userRef.collection('private').doc('consent');
                 const churchRef = db.collection('churches').doc();
                 const churchAdminRef = churchRef.collection('private').doc('admin');
+                const churchAccessRef = churchRef.collection('private').doc('access');
                 const directoryRef = db.collection('settings').doc('churchDirectory');
                 const churchCodeHash = await sha256(churchCode);
 
@@ -1180,7 +1188,6 @@ export const useAuth = ({
 
                     transaction.set(churchRef, {
                         name: churchName, pastorName: pastorName || '', denomination: denomination || '',
-                        churchCodeHash,
                         departments: departments || [],
                         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     });
@@ -1194,11 +1201,14 @@ export const useAuth = ({
                         adminEmail: resolvedEmail,
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                     });
+                    transaction.set(churchAccessRef, {
+                        codeHash: churchCodeHash,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    });
                     transaction.set(directoryRef, {
                         churches: firebase.firestore.FieldValue.arrayUnion({
                             id: churchRef.id,
                             name: churchName,
-                            codeHash: churchCodeHash,
                         }),
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                     }, { merge: true });
@@ -1287,6 +1297,7 @@ export const useAuth = ({
             const userRef = db.collection('users').doc(cred.user.uid);
             const consentRef = userRef.collection('private').doc('consent');
             const churchAdminRef = churchRef.collection('private').doc('admin');
+            const churchAccessRef = churchRef.collection('private').doc('access');
             const directoryRef = db.collection('settings').doc('churchDirectory');
             const churchCodeHash = await sha256(churchCode);
             const newUser = {
@@ -1309,7 +1320,6 @@ export const useAuth = ({
                     const now = firebase.firestore.FieldValue.serverTimestamp();
                     transaction.set(churchRef, {
                         name: churchName, pastorName: pastorName || '', denomination: denomination || '',
-                        churchCodeHash,
                         departments: departments || [],
                         createdAt: now,
                     });
@@ -1320,11 +1330,14 @@ export const useAuth = ({
                         adminEmail: email,
                         updatedAt: now,
                     });
+                    transaction.set(churchAccessRef, {
+                        codeHash: churchCodeHash,
+                        updatedAt: now,
+                    });
                     transaction.set(directoryRef, {
                         churches: firebase.firestore.FieldValue.arrayUnion({
                             id: churchRef.id,
                             name: churchName,
-                            codeHash: churchCodeHash,
                         }),
                         updatedAt: now,
                     }, { merge: true });

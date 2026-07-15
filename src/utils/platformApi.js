@@ -113,6 +113,25 @@ const postOnce = async ({ action, payload, requestId, timeoutMs, forceRefresh })
     }
 };
 
+const postPublicOnce = async ({ action, payload, requestId, timeoutMs }) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const response = await fetch(PLATFORM_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, requestId, ...payload }),
+            signal: controller.signal,
+        });
+        const body = await parseResponseBody(response);
+        return { response, body };
+    } catch (error) {
+        throw asPlatformApiError(error);
+    } finally {
+        clearTimeout(timeoutId);
+    }
+};
+
 export const callPlatformApi = async (action, payload = {}, options = {}) => {
     if (!PLATFORM_API_URL) {
         throw new PlatformApiError('플랫폼 API가 아직 활성화되지 않았습니다.', {
@@ -153,6 +172,32 @@ export const callPlatformApi = async (action, payload = {}, options = {}) => {
     return second.body;
 };
 
+export const callPlatformApiPublic = async (action, payload = {}, options = {}) => {
+    if (!PLATFORM_API_URL) {
+        throw new PlatformApiError('플랫폼 API가 아직 활성화되지 않았습니다.', {
+            code: 'FEATURE_DISABLED', status: 0, retryable: false,
+        });
+    }
+    if (typeof action !== 'string' || !action.trim()) {
+        throw new PlatformApiError('플랫폼 API 작업 이름이 필요합니다.', {
+            code: 'INVALID_ACTION', status: 0, retryable: false,
+        });
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)
+        || Object.keys(payload).some(key => RESERVED_PAYLOAD_KEYS.has(key))) {
+        throw new PlatformApiError('플랫폼 API 요청 형식이 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const requestId = options.requestId || createRequestId();
+    const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+        ? options.timeoutMs
+        : DEFAULT_TIMEOUT_MS;
+    const { response, body } = await postPublicOnce({ action: action.trim(), payload, requestId, timeoutMs });
+    if (!response.ok) throw responseError(response, body);
+    return body;
+};
+
 export const preflightPlatformApi = (options = {}) => callPlatformApi('preflight', {}, options);
 
 export const previewReadCompletion = (cycle, day, options = {}) => {
@@ -186,7 +231,26 @@ export const previewQuizSubmission = (progressKey, quizKey, selectedIndex, optio
     return callPlatformApi('previewQuizSubmission', { progressKey, quizKey, selectedIndex }, options);
 };
 
-export const joinCommunity = ({ churchId, entryCode, departmentId, subgroupId = '' }, options = {}) => {
+export const issueJoinTicket = ({ churchId, entryCode, purpose }, options = {}) => {
+    const normalizedChurchId = typeof churchId === 'string' ? churchId.trim() : '';
+    const normalizedEntryCode = typeof entryCode === 'string' ? entryCode.trim() : '';
+    if (!normalizedChurchId || normalizedChurchId === 'unaffiliated_v1'
+        || normalizedChurchId.length > 128 || normalizedChurchId.includes('/')
+        || /[\u0000-\u001f\u007f]/.test(normalizedChurchId)
+        || normalizedEntryCode.length < 4 || normalizedEntryCode.length > 128
+        || !['memberSignup', 'personalSignup', 'joinCommunity'].includes(purpose)) {
+        throw new PlatformApiError('입장코드 정보를 다시 확인해주세요.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApiPublic('issueJoinTicket', {
+        churchId: normalizedChurchId,
+        entryCode: normalizedEntryCode,
+        purpose,
+    }, options);
+};
+
+export const joinCommunity = ({ churchId, entryCode = '', joinTicket = '', departmentId, subgroupId = '' }, options = {}) => {
     const safeId = (value, { optional = false } = {}) => {
         if (typeof value !== 'string') return null;
         const normalized = value.trim();
@@ -198,8 +262,9 @@ export const joinCommunity = ({ churchId, entryCode, departmentId, subgroupId = 
     const normalizedDepartmentId = safeId(departmentId);
     const normalizedSubgroupId = safeId(subgroupId, { optional: true });
     const normalizedEntryCode = typeof entryCode === 'string' ? entryCode.trim() : '';
+    const normalizedJoinTicket = typeof joinTicket === 'string' ? joinTicket.trim() : '';
     if (!normalizedChurchId || !normalizedDepartmentId || normalizedSubgroupId === null
-        || normalizedEntryCode.length < 4 || normalizedEntryCode.length > 128) {
+        || ((normalizedEntryCode.length >= 4 && normalizedEntryCode.length <= 128) === /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedJoinTicket))) {
         throw new PlatformApiError('공동체 참여 정보가 올바르지 않습니다.', {
             code: 'INVALID_PAYLOAD', status: 0, retryable: false,
         });
@@ -207,6 +272,7 @@ export const joinCommunity = ({ churchId, entryCode, departmentId, subgroupId = 
     return callPlatformApi('joinCommunity', {
         churchId: normalizedChurchId,
         entryCode: normalizedEntryCode,
+        joinTicket: normalizedJoinTicket,
         departmentId: normalizedDepartmentId,
         subgroupId: normalizedSubgroupId,
     }, options);
@@ -231,9 +297,10 @@ export const purchaseItem = ({ churchId, itemId, departmentId, marketId }, optio
     return callPlatformApi('purchaseItem', payload, options);
 };
 
-export const completeMemberSignup = ({ churchId, entryCode, name, birthdate, guestProgress }, options = {}) => {
+export const completeMemberSignup = ({ churchId, entryCode = '', joinTicket = '', name, birthdate, guestProgress }, options = {}) => {
     const normalizedChurchId = typeof churchId === 'string' ? churchId.trim() : '';
     const normalizedEntryCode = typeof entryCode === 'string' ? entryCode.trim() : '';
+    const normalizedJoinTicket = typeof joinTicket === 'string' ? joinTicket.trim() : '';
     const normalizedName = typeof name === 'string' ? name.trim() : '';
     const normalizedBirthdate = typeof birthdate === 'string' ? birthdate.trim() : '';
     const normalizedGuestProgress = guestProgress && typeof guestProgress === 'object' && !Array.isArray(guestProgress)
@@ -247,7 +314,7 @@ export const completeMemberSignup = ({ churchId, entryCode, name, birthdate, gue
     if (!normalizedChurchId || normalizedChurchId === 'unaffiliated_v1'
         || normalizedChurchId.length > 128 || normalizedChurchId.includes('/')
         || /[\u0000-\u001f\u007f]/.test(normalizedChurchId)
-        || normalizedEntryCode.length < 4 || normalizedEntryCode.length > 128
+        || ((normalizedEntryCode.length >= 4 && normalizedEntryCode.length <= 128) === /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedJoinTicket))
         || !normalizedName || normalizedName.length > 50
         || !/^\d{8}$/.test(normalizedBirthdate)
         || !normalizedGuestProgress
@@ -265,6 +332,7 @@ export const completeMemberSignup = ({ churchId, entryCode, name, birthdate, gue
     return callPlatformApi('completeMemberSignup', {
         churchId: normalizedChurchId,
         entryCode: normalizedEntryCode,
+        joinTicket: normalizedJoinTicket,
         name: normalizedName,
         birthdate: normalizedBirthdate,
         guestProgress: normalizedGuestProgress,
@@ -272,7 +340,7 @@ export const completeMemberSignup = ({ churchId, entryCode, name, birthdate, gue
 };
 
 export const completePersonalSignup = ({
-    churchId = '', entryCode = '', departmentId = '', subgroupId = '',
+    churchId = '', entryCode = '', joinTicket = '', departmentId = '', subgroupId = '',
     name, birthdate, authProvider, guestProgress,
 }, options = {}) => {
     const safeId = value => {
@@ -284,6 +352,7 @@ export const completePersonalSignup = ({
     const payload = {
         churchId: safeId(churchId),
         entryCode: typeof entryCode === 'string' ? entryCode.trim() : '',
+        joinTicket: typeof joinTicket === 'string' ? joinTicket.trim() : '',
         departmentId: safeId(departmentId),
         subgroupId: safeId(subgroupId),
         name: typeof name === 'string' ? name.trim() : '',
@@ -302,10 +371,10 @@ export const completePersonalSignup = ({
     if (payload.churchId === null || payload.departmentId === null || payload.subgroupId === null
         || !payload.name || payload.name.length > 50 || !/^\d{8}$/.test(payload.birthdate)
         || !['password', 'google.com', 'kakao.com'].includes(payload.authProvider)
-        || !payload.guestProgress || (realChurch && (payload.entryCode.length < 4
-            || payload.entryCode.length > 128 || /[\u0000-\u001f\u007f]/.test(payload.entryCode)
-            || !payload.departmentId))
-        || (!realChurch && (payload.entryCode || payload.departmentId || payload.subgroupId))) {
+        || !payload.guestProgress || (realChurch && (((payload.entryCode.length >= 4
+            && payload.entryCode.length <= 128) === /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.joinTicket))
+            || /[\u0000-\u001f\u007f]/.test(payload.entryCode) || !payload.departmentId))
+        || (!realChurch && (payload.entryCode || payload.joinTicket || payload.departmentId || payload.subgroupId))) {
         throw new PlatformApiError('개인 계정 가입 정보가 올바르지 않습니다.', {
             code: 'INVALID_PAYLOAD', status: 0, retryable: false,
         });

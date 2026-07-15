@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: 라운드 24 T123d2 퀴즈 shadow API** (서버 권위 이관). T123b는 비교 장치 완료 후 실로그인 일치 1건을 기다리며, 독립 작업인 퀴즈 정답 인덱스·순수 계산 기반(T123d1)은 완료했다. 아직 퀴즈 Firestore 쓰기는 없다.
+> **현재 활성 작업: T123 읽기·퀴즈 보상 서버 commit 전환 준비**. T125 공개 입장코드 추측 방지 보완 구현은 완료했고, 운영 비밀 설정·배포·보안 이전 실행과 App Check 적용이 남았다. T123b/d2는 비교 장치 완료 후 실로그인 `[read-shadow] match:true`, `[quiz-shadow] match:true` 각 1건 확인이 남아 있으며, 아직 읽기·퀴즈 Firestore 쓰기는 서버 commit으로 전환하지 않았다.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-15 | T125 공개 입장코드 보안 전환 구현 | `supabase/functions/platform-api/{core,index,joinSecurityCore}*`, `src/{hooks/useAuth.js,components/{ChurchAdminView,PlatformAdminView}.jsx,components/dashboard/CommunityMembershipCard.jsx,utils/{platformApi,churchDirectory}.js}`, `scripts/validate-{round11,round24,signup-consent}.mjs`, `HANDOFF_CODEX.md` | 5분 참여권, 같은 요청만 허용하는 일회용 소비, 목적 통합 10회/시간·교회 전체 200회/시간 제한, 동일 오류 응답을 구현했다. 신규·변경 코드는 private/access에만 원자 저장하고 운영 공개 해시·평문을 백필/삭제하는 관리자 도구를 추가했다. 전체 validate/build, Deno 53 tests/check/fmt, diff 검사 통과. 운영 secret 설정·배포·이전 실행은 대기. |
 | 2026-07-14 | 배포·push 지침 변경 및 운영 반영 | `AGENTS.md`, `HANDOFF_CODEX.md` | 사용자 명시 지시가 있으면 Codex가 push·배포·공개 검증까지 수행하도록 절대 금지를 조건부 허용으로 변경. `04d8d2f`를 main에 push하고 GitHub Pages `Published`, Firestore rules 컴파일·릴리스 완료. 공개 사이트가 새 번들 `index-B-T0nHlS.js`와 HTTP 200을 제공함을 확인. |
 | 2026-07-14 | 공동체 다중 소그룹·부서별 달란트 운영 | `src/{App.jsx,components/ChurchAdminView.jsx,components/DashboardView.jsx,components/churchAdmin/TalentShopTab.jsx,components/dashboard/{BibleQuizCard,BibleReader,CommunityMembershipCard,TalentShop}.jsx,hooks/useUserBibleActions.js,utils/{memberships,rosterMembers,rosterSnapshot,talentProgram,talentProgramStore}.js}`, `firestore.rules`, `scripts/validate-{roster-multimembership,department-talent}.mjs`, `scripts/validate-round{18,24}.mjs`, `package.json`, `HANDOFF_CODEX.md` | 직접 회원과 외부 roster 회원 모두 주 소속+추가 3개까지 배정. 부서별 달란트 사용 여부와 통합/전용 시장을 설정하고 공동체 지갑 하나는 유지. 달란트 미사용 부서도 읽기 진도·점수는 정상 반영하되 읽기·퀴즈 달란트와 상점만 제외. 구매에 부서·시장·지갑 snapshot을 기록해 이후 소속 변경 뒤 환불도 원래 지갑으로 복원. 전체 validate/build/diff와 로컬 게스트 렌더·브라우저 오류 0 통과. 인증 관리자 저장·실회원 보상/구매는 운영 데이터 변경 없이 미검증. rules 배포 전에는 roster 추가 소속 권한 강화가 운영에 반영되지 않음. |
 | 2026-07-14 | 회원가입 필수 동의·어린이 보호자 절차 | `src/{components/LoginView.jsx,components/SocialOnboardingView.jsx,components/policies/*,data/servicePolicies.js,hooks/useAuth.js,utils/signupConsent*.js}`, `scripts/validate-{service-policies,signup-consent}.mjs`, `scripts/validate-round11.mjs`, `package.json`, `HANDOFF_CODEX.md` | 회원·개인·소셜·공동체 관리자 신규 가입에 약관·개인정보·민감정보·공동체 운영정책 동의를 필수화하고 버전·시각을 private consent 문서에 기록. 만 14세 미만은 보호자 성명·관계·직접 동의가 없으면 진행 불가, 성인은 보호자 입력 미노출. 공동체 등록에는 복음주의 기준과 주요 교단 공식 결의의 이단·사이비 제한을 명시하고 통지·소명 기준을 정책 전문에 포함. 전체 validate/build/diff 및 로컬 브라우저 성인·아동·관리자 화면·정책 전문·오류 로그 검수 통과. 실제 계정 생성은 하지 않음. |
@@ -1985,6 +1986,9 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 - `join-code`: `churchId + entryCode + purpose`를 검증하고 5분 일회용 join ticket을 발급한다. 존재 여부와 코드 오류 메시지는 통일한다. App Check/속도 제한을 적용한다.
 - `completeMemberSignup`: 현재 Auth uid와 미사용 ticket을 묶어 users 생성·roster 생성·통계 ledger를 원자 반영한다. 추가 공동체는 `joinChurch`가 코드·부서/소그룹 실재·중복·최대 3개를 함께 검증한다.
 - 입장코드는 `churches/{id}/private/access`에 저장한다. 서버는 이 문서를 우선 읽고 본문 레거시 필드에는 한시적으로만 폴백한다. 해시만 남아 원문 복원이 불가능한 교회는 관리자가 새 코드를 설정하게 한다.
+- [x] **T125a. 서버 참여권 1차** — `issueJoinTicket` public action이 코드 해시를 서버에서 검증하고 5분 ticket을 발급한다. 원문 IP는 저장하지 않고 목적을 합산한 클라이언트·공동체 해시 rate-limit 문서만 쓴다. 회원가입·개인/소셜 온보딩·추가 공동체 참여는 공개 `codeHash` 비교 대신 ticket을 사용하고, 성공 transaction 안에서 ticket을 `usedBy/usedAt/usedRequestId`로 소비한다. 구버전 탭 호환을 위한 원문 코드 action도 같은 제한을 탄다.
+- [x] **T125b. private/access 우선 저장** — 신규 교회 등록·관리자 입장코드 변경 시 `churches/{id}/private/access.codeHash`를 함께 저장한다. 서버 검증은 private/access를 우선 사용하고 레거시 `churchCodeHash`에는 한시 폴백한다.
+- [x] **T125c. 공개 디렉토리 신규 쓰기 정리** — 새 `churchDirectory` 쓰기는 `{id,name,hidden}`만 쓰며 클라이언트는 더 이상 `codeHash`를 읽어 코드 검증하지 않는다. 운영에 이미 남아 있는 `settings/churchDirectory.churches[].codeHash` 제거와 `publicChurches/{churchId}` 점진 이관은 아직 남았다.
 - `churchDirectory`는 단일 배열을 `publicChurches/{churchId}` 문서로 점진 이관하고, 변경/숨김/삭제/재생성은 관리자 서버 action만 수행한다.
 - `platformStats`는 클라이언트가 숫자를 전달하지 않고 생성/읽기 ledger에서 한 번만 집계한다. 플랫폼 관리자용 `rebuildPlatformStats({dryRun})`로 전수 재계산·차이를 먼저 확인한다.
 
@@ -2050,6 +2054,20 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 - 검증: `npm run validate`, production build, Deno platform-api 47 tests, `deno check`, Firestore rules dry-run compile, diff-check 통과.
 - **배포 순서 필수:** `platform-api Edge Function → Firestore indexes → 새 웹 → Firestore rules`. 규칙을 먼저 배포하면 열린 구버전 탭의 가입·공동체 추가·구매가 실패한다.
 - **남은 별도 보안 과제:** 공개 `codeHash`와 4자리 코드 추측/속도 제한은 T125의 private access + join ticket 백필로 해결해야 한다. 읽기·퀴즈 보상의 클라이언트 직접 증가(+17/+15 반복)는 T123b/d2 실계정 shadow 일치 확인 뒤 T123c/d3 서버 commit으로 닫는다.
+
+---
+
+## 🔐 라운드 26 — 공개 4자리 입장코드 추측 방지 보완 구현 완료 · 운영 실행 대기 (2026-07-15 Codex)
+
+- `platform-api`의 `issueJoinTicket` public action은 `churches/{id}/private/access.codeHash`를 우선 읽고 레거시 공개 해시에 한시 폴백한 뒤 5분 ticket을 발급한다. 없는 공동체·삭제된 공동체·해시 미설정·틀린 코드는 모두 `FORBIDDEN / 입장코드가 올바르지 않습니다.`로 응답해 존재 여부를 노출하지 않는다.
+- 속도 제한은 가입 목적별로 갈라지지 않는다. 같은 공동체에 대해 `clientChurch` 10회/시간과 `churchGlobal` 200회/시간을 적용하며, 두 카운터를 같은 transaction에서 검사·증가한다. 원문 IP는 저장하지 않고 `JOIN_CODE_RATE_LIMIT_SALT`로 만든 해시 키만 저장한다.
+- 교회 교인 가입, 개인/소셜 온보딩, 추가 공동체 참여는 ticket을 사용한다. 성공 transaction에서 `usedAt/usedBy/usedRequestId`를 함께 기록하고, 같은 uid와 **같은 requestId**인 응답 유실 재시도만 허용한다.
+- Google·이메일 신규 공동체 가입 transaction은 공개 `churches/{id}`에 `churchCode/churchCodeHash`를 쓰지 않고 같은 transaction에 `private/access.codeHash`를 저장한다. 관리자 코드 변경도 한 batch에서 private 해시 저장과 공개 레거시 두 필드 삭제를 처리한다.
+- 플랫폼 관리자용 `migrateChurchAccessSecrets` 도구를 추가했다. 실행하면 기존 private 해시, 공개 교회 해시, 기존 디렉토리 해시, 공개 원문 순으로 백필 원천을 찾고, 교회별 private 백필과 공개 `churchCode/churchCodeHash` 삭제를 같은 batch에 넣으며 `settings/churchDirectory.churches[]`는 `{id,name,hidden?}`만 남긴다. **운영 이전은 아직 실행하지 않았다.** 원천 코드가 없는 교회는 보고서에 남고 관리자가 새 코드를 설정해야 한다.
+- 정적 보안 검증은 신규·변경 공개 쓰기, 이전 도구, 목적 통합 이중 제한, ticket requestId 결속, 동일 공개 오류를 검사하도록 보완했다.
+- 검증: `npm run validate`, `npm run build`, Deno platform-api 53 tests, `deno check supabase/functions/platform-api/index.ts`, `git diff --check` 통과.
+- **운영 전 필수:** 기본 fallback을 사용하지 않도록 충분히 긴 임의값을 `JOIN_CODE_RATE_LIMIT_SALT` secret으로 먼저 설정한 뒤 `platform-api`와 웹을 배포한다. 이어 관리자 이전 도구 실행 후 공개 디렉토리·공개 교회 문서에서 비밀 필드가 0건인지 확인한다.
+- **남은 방어:** Firebase App Check는 아직 적용하지 않았다. 현재 이중 속도 제한은 그 전까지의 중간 방어다. 이후 App Check 적용, `publicChurches/{churchId}` 점진 이관, `churchDirectory`/`platformStats` 직접 write 차단, T123 읽기·퀴즈 서버 commit 전환이 남았다.
 
 ---
 
