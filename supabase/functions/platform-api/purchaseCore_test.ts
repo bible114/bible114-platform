@@ -80,6 +80,33 @@ Deno.test("위조 상품, 부서, 부족 잔액, 삭제 사용자를 거부한�
       isDeleted: true,
     },
   });
+  for (const talent of [10.5, "10", -1, 1_000_000_001]) {
+    rejects("INVALID_WALLET", {
+      user: {
+        role: "member",
+        churchId: "c1",
+        departmentId: "kids",
+        talent,
+      },
+    });
+  }
+  for (const price of [1.5, "7", 1_000_001]) {
+    rejects("ITEM_UNAVAILABLE", {
+      talentShop: {
+        schemaVersion: 2,
+        enabled: true,
+        departmentSettings: {
+          kids: { enabled: true, marketId: "kids-market" },
+        },
+        markets: {
+          "kids-market": {
+            enabled: true,
+            items: [{ id: "snack", name: "간식", price }],
+          },
+        },
+      },
+    });
+  }
 });
 Deno.test("레거시 shared 시장도 서버 상품을 사용한다", () => {
   const result = validatePurchase(fixture({

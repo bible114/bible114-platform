@@ -17,6 +17,7 @@ export type PurchaseValidationCode =
   | "MARKET_UNAVAILABLE"
   | "INVALID_DEPARTMENT"
   | "ITEM_UNAVAILABLE"
+  | "INVALID_WALLET"
   | "INSUFFICIENT_TALENT";
 
 export class PurchaseValidationError extends Error {
@@ -31,6 +32,7 @@ const record = (value: unknown): PurchaseRecord | null =>
     ? value as PurchaseRecord
     : null;
 const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
+const MAX_TALENT_VALUE = 1_000_000_000;
 const memberships = (source: PurchaseRecord) => {
   const rows = new Map<string, string>();
   const primary = text(source.departmentId);
@@ -97,8 +99,11 @@ export const validatePurchase = (input: PurchaseInput) => {
     candidate && text(candidate.id) === input.itemId &&
     candidate.active !== false
   );
-  const price = Number(item?.price);
-  if (!item || !Number.isFinite(price) || price <= 0) {
+  const price = item?.price;
+  if (
+    !item || typeof price !== "number" || !Number.isSafeInteger(price) ||
+    price <= 0 || price > 1_000_000
+  ) {
     throw new PurchaseValidationError("ITEM_UNAVAILABLE");
   }
 
@@ -107,7 +112,14 @@ export const validatePurchase = (input: PurchaseInput) => {
     : "user";
   const wallet = walletKind === "roster" ? input.roster : input.user;
   if (!wallet) throw new PurchaseValidationError("MEMBERSHIP_REQUIRED");
-  const balance = Number(wallet.talent) || 0;
+  const rawBalance = wallet.talent ?? 0;
+  if (
+    typeof rawBalance !== "number" || !Number.isSafeInteger(rawBalance) ||
+    rawBalance < 0 || rawBalance > MAX_TALENT_VALUE
+  ) {
+    throw new PurchaseValidationError("INVALID_WALLET");
+  }
+  const balance = rawBalance;
   if (balance < price) throw new PurchaseValidationError("INSUFFICIENT_TALENT");
   return {
     walletKind,

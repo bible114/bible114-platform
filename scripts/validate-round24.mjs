@@ -13,7 +13,8 @@ const packageJson = JSON.parse(read('package.json'));
 assert.match(constants, /export const PLATFORM_API_URL = import\.meta\.env\?\.VITE_PLATFORM_API_URL \|\| '';/);
 assert.match(envExample, /^VITE_PLATFORM_API_URL=$/m);
 assert.equal(packageJson.scripts['validate:round24'], 'node scripts/validate-round24.mjs');
-assert.match(packageJson.scripts.validate, /npm run validate:round24$/);
+assert.match(packageJson.scripts.validate, /npm run validate:round24 && npm run validate:platform-api$/);
+assert.match(packageJson.scripts['validate:platform-api'], /deno test[\s\S]*deno check[\s\S]*deno fmt --check/);
 
 // 브라우저 클라이언트 계약: 인증 토큰, 멱등 requestId, 12초 제한, 표준 오류.
 for (const pattern of [
@@ -52,6 +53,7 @@ assert.doesNotMatch(
 
 // Node에서 오류 타입과 URL 미설정 안전장치를 import/실행할 수 있어야 한다.
 const platformApi = await import('../src/utils/platformApi.js');
+const { reconcileStoredRequestIds } = await import('../src/utils/adminTalentRequests.js');
 const sampleError = new platformApi.PlatformApiError('fixture', { code: 'FIXTURE', status: 418, retryable: false });
 assert.equal(sampleError.code, 'FIXTURE');
 assert.equal(sampleError.status, 418);
@@ -62,6 +64,32 @@ assert.match(platformApi.createRequestId({
     getRandomValues: bytes => bytes.fill(255),
 }, () => 0), uuidV4Pattern, 'getRandomValues fallback도 UUIDv4여야 한다.');
 assert.doesNotMatch(client, /`b114-/, '서버가 거부하는 비 UUID requestId fallback이 없어야 한다.');
+const completedAdminRequestId = '123e4567-e89b-42d3-a456-426614174000';
+const fallbackRequests = new Map([
+    ['b114_admin_talent_request_v1:done', completedAdminRequestId],
+    ['b114_admin_talent_request_v1:pending', '223e4567-e89b-42d3-a456-426614174000'],
+]);
+const storedRequests = new Map([
+    ['b114_admin_talent_request_v1:done', completedAdminRequestId],
+    ['b114_admin_talent_request_v1:pending', '223e4567-e89b-42d3-a456-426614174000'],
+    ['unrelated', completedAdminRequestId],
+]);
+const fakeStorage = {
+    get length() { return storedRequests.size; },
+    key: index => [...storedRequests.keys()][index] ?? null,
+    getItem: key => storedRequests.get(key) ?? null,
+    removeItem: key => storedRequests.delete(key),
+};
+assert.equal(reconcileStoredRequestIds({
+    completedRequestIds: new Set([completedAdminRequestId]),
+    fallback: fallbackRequests,
+    storage: fakeStorage,
+    prefix: 'b114_admin_talent_request_v1:',
+}), 2);
+assert.equal(fallbackRequests.has('b114_admin_talent_request_v1:done'), false);
+assert.equal(storedRequests.has('b114_admin_talent_request_v1:done'), false);
+assert.equal(storedRequests.has('b114_admin_talent_request_v1:pending'), true);
+assert.equal(storedRequests.has('unrelated'), true);
 await assert.rejects(
     () => platformApi.callPlatformApi('preflight'),
     error => error instanceof platformApi.PlatformApiError && error.code === 'FEATURE_DISABLED' && error.status === 0 && error.retryable === false,
@@ -809,5 +837,164 @@ assert.doesNotMatch(
     /(?:rosterRef\.set|transaction\.set\(rosterRef|db\.runTransaction)/,
     '일반 추가 공동체 참여는 roster를 클라이언트에서 직접 쓰면 안 된다.',
 );
+
+// T124 관리자 판매·수령·환불: 활성 관리자와 대상 지갑을 서버가 다시
+// 검증하고 결과 불명 재전송을 불변 ledger로 멱등 처리해야 한다.
+const adminPurchaseCorePath = 'supabase/functions/platform-api/adminPurchaseCore.ts';
+const adminPurchaseCoreTestPath = 'supabase/functions/platform-api/adminPurchaseCore_test.ts';
+const churchAdminViewPath = 'src/components/ChurchAdminView.jsx';
+assert.equal(exists(adminPurchaseCorePath), true, `${adminPurchaseCorePath}가 필요하다.`);
+assert.equal(exists(adminPurchaseCoreTestPath), true, `${adminPurchaseCoreTestPath}가 필요하다.`);
+const adminPurchaseCore = read(adminPurchaseCorePath);
+const churchAdminView = read(churchAdminViewPath);
+assert.doesNotMatch(
+    adminPurchaseCore,
+    /(?:\bfetch\s*\(|\bDeno\.|db\.collection|firebase\.firestore|\bgetDocument\s*\(|\bbeginTransaction\s*\(|\bcommitWrites\s*\()/,
+    'adminPurchaseCore는 외부 I/O가 없는 순수 검증 모듈이어야 한다.',
+);
+for (const action of ['adminCounterSale', 'adminDeliverPurchase', 'adminRefundPurchase']) {
+    assert.match(serverCore, new RegExp(`["']${action}["']`));
+    assert.match(client, new RegExp(`export const ${action}\\s*=`));
+    assert.match(serverIndex, new RegExp(`parsed\\.action === ["']${action}["']`));
+}
+assert.match(client, /callValidatedAdminTalentAction[\s\S]*validateAdminTalentResponse/);
+const counterBranchStart = serverIndex.indexOf('if (parsed.action === "adminCounterSale")');
+const deliverBranchStart = serverIndex.indexOf('if (parsed.action === "adminDeliverPurchase")', counterBranchStart);
+const refundBranchStart = serverIndex.indexOf('if (parsed.action === "adminRefundPurchase")', deliverBranchStart);
+const purchaseBranchStart = serverIndex.indexOf('if (parsed.action === "purchaseItem")', refundBranchStart);
+assert.ok(counterBranchStart >= 0 && deliverBranchStart > counterBranchStart
+    && refundBranchStart > deliverBranchStart && purchaseBranchStart > refundBranchStart);
+const adminBranches = [
+    ['판매', serverIndex.slice(counterBranchStart, deliverBranchStart), /validateAdminCounterSale\(/],
+    ['수령', serverIndex.slice(deliverBranchStart, refundBranchStart), /validateAdminPurchaseDelivery\(/],
+    ['환불', serverIndex.slice(refundBranchStart, purchaseBranchStart), /validateAdminPurchaseRefund\(/],
+];
+for (const [label, branch, validatorPattern] of adminBranches) {
+    for (const pattern of [/beginTransaction\(/, /talentAdminActions\/\$\{parsed\.requestId\}/,
+        /requireOrganizationAdmin\(/, /ledgerResult\(/, validatorPattern,
+        /await commitWrites\([\s\S]*updateWrite\(service\.projectId, ledgerPath,[\s\S]*\{ exists: false \}\),[\s\S]*\], \{ transaction \}\);/]) {
+        assert.match(branch, pattern, `관리자 ${label} 분기는 자체 transaction·권한 재검증·ledger·commit을 가져야 한다.`);
+    }
+}
+const counterBranch = adminBranches[0][1];
+const deliverBranch = adminBranches[1][1];
+const refundBranch = adminBranches[2][1];
+assert.match(counterBranch, /replayWallet\s*\?[\s\S]*readAdminTalentBalance\(replayWallet\.talent\)[\s\S]*nextTalent:\s*latestTalent/);
+assert.match(deliverBranch, /adminActionRequestId:\s*parsed\.requestId[\s\S]*updateMask:[\s\S]*"adminActionRequestId"/);
+assert.match(refundBranch, /migratedWalletConfirmed:\s*parsed\.migratedWalletConfirmed[\s\S]*Promise\.all\(\[[\s\S]*userPath[\s\S]*rosterPath[\s\S]*validateAdminPurchaseRefund\(/);
+assert.match(refundBranch, /readAdminTalentBalance\([\s\S]*nextTalent:\s*latestTalent/);
+assert.match(refundBranch, /balanceBefore:[\s\S]*balanceAfter:[\s\S]*result,[\s\S]*at:\s*now/);
+assert.match(churchAdminView, /ADMIN_TALENT_REQUEST_STORAGE_PREFIX[\s\S]*getOrCreateAdminTalentRequestId/);
+assert.match(churchAdminView, /adminCounterSale\([\s\S]*adminRefundPurchase\([\s\S]*adminDeliverPurchase\(/);
+assert.match(churchAdminView, /reconcileAdminTalentRequestIds[\s\S]*purchase\.requestId, purchase\.adminActionRequestId/);
+const purchaseStatusBranch = churchAdminView.slice(
+    churchAdminView.indexOf('const updatePurchaseStatus = async'),
+    churchAdminView.indexOf('const loadMorePendingPurchases = async'),
+);
+const migratedRefundIndex = purchaseStatusBranch.indexOf("error?.code === 'REFUND_MIGRATION_CONFIRM_REQUIRED'");
+const genericConflictIndex = purchaseStatusBranch.indexOf("error?.code === 'CONFLICT'");
+assert.ok(migratedRefundIndex >= 0 && genericConflictIndex > migratedRefundIndex,
+    '개인 전환 환불 2차 확인은 일반 충돌 안내보다 먼저 처리해야 한다.');
+assert.match(churchAdminView, /refundMigratedPurchase[\s\S]*migratedWalletConfirmed/);
+assert.doesNotMatch(
+    churchAdminView,
+    /collection\('talentPurchases'\)\.doc\(\)[\s\S]*transaction\.set\(/,
+    '관리자 화면이 구매 문서를 직접 만들면 안 된다.',
+);
+for (const invalidPrice of [0, -1, 1.5, 1_000_001]) {
+    assert.throws(
+        () => platformApi.adminCounterSale({
+            churchId: 'church-1', memberUid: 'member-1', departmentId: 'adult',
+            marketId: 'shared', itemName: '세탁세제', price: invalidPrice,
+        }),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_PAYLOAD' && error.status === 0,
+    );
+}
+
+const adminRequestId = '123e4567-e89b-42d3-a456-426614174000';
+const counterPayload = {
+    churchId: 'church-1', memberUid: 'member-1', departmentId: 'adult',
+    marketId: 'shared', itemName: '세탁세제', price: 7,
+};
+const validCounterResponse = {
+    ok: true, action: 'adminCounterSale', requestId: adminRequestId, alreadyCompleted: false,
+    nextTalent: 3, walletKind: 'user',
+    purchase: {
+        id: adminRequestId, requestId: adminRequestId, uid: 'member-1', status: 'delivered',
+        walletKind: 'user', departmentId: 'adult', marketId: 'shared', itemName: '세탁세제', price: 7,
+    },
+};
+assert.equal(
+    platformApi.validateAdminTalentResponse(
+        'adminCounterSale', counterPayload, validCounterResponse, adminRequestId,
+    ),
+    validCounterResponse,
+);
+const invalidAdminResponses = [
+    {},
+    { ...validCounterResponse, action: 'adminRefundPurchase' },
+    { ...validCounterResponse, requestId: '223e4567-e89b-42d3-a456-426614174000' },
+    { ...validCounterResponse, alreadyCompleted: 'false' },
+    { ...validCounterResponse, nextTalent: 3.5 },
+    { ...validCounterResponse, walletKind: 'other' },
+    { ...validCounterResponse, purchase: { ...validCounterResponse.purchase, id: 'wrong' } },
+    { ...validCounterResponse, purchase: { ...validCounterResponse.purchase, status: 'pending' } },
+];
+for (const response of invalidAdminResponses) {
+    assert.throws(
+        () => platformApi.validateAdminTalentResponse(
+            'adminCounterSale', counterPayload, response, adminRequestId,
+        ),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_RESPONSE' && error.status === 200 && error.retryable === true,
+    );
+}
+for (const [action, payload, response] of [
+    ['adminDeliverPurchase', { purchaseId: 'purchase-1' }, {
+        ok: true, action: 'adminDeliverPurchase', requestId: adminRequestId, alreadyCompleted: false,
+        purchase: { id: 'purchase-1', status: 'delivered', adminActionRequestId: adminRequestId },
+    }],
+    ['adminRefundPurchase', { purchaseId: 'purchase-1' }, {
+        ok: true, action: 'adminRefundPurchase', requestId: adminRequestId, alreadyCompleted: true,
+        nextTalent: 10, walletKind: 'roster',
+        purchase: {
+            id: 'purchase-1', uid: 'member-1', status: 'cancelled', adminActionRequestId: adminRequestId,
+        },
+    }],
+]) {
+    assert.equal(platformApi.validateAdminTalentResponse(action, payload, response, adminRequestId), response);
+}
+
+const memberPurchasePayload = {
+    churchId: 'church-1', itemId: 'item-1', departmentId: 'adult', marketId: 'shared',
+};
+const validMemberPurchaseResponse = {
+    ok: true, action: 'purchaseItem', requestId: adminRequestId, alreadyCompleted: false,
+    nextTalent: 9, walletKind: 'user',
+    purchase: {
+        id: adminRequestId, itemId: 'item-1', departmentId: 'adult', marketId: 'shared',
+        status: 'pending', schemaVersion: 2, price: 1,
+    },
+};
+assert.equal(
+    platformApi.validatePurchaseItemResponse(
+        memberPurchasePayload, validMemberPurchaseResponse, adminRequestId,
+    ),
+    validMemberPurchaseResponse,
+);
+for (const response of [
+    {},
+    { ...validMemberPurchaseResponse, requestId: 'wrong' },
+    { ...validMemberPurchaseResponse, nextTalent: 9.5 },
+    { ...validMemberPurchaseResponse, purchase: { ...validMemberPurchaseResponse.purchase, price: 1.5 } },
+]) {
+    assert.throws(
+        () => platformApi.validatePurchaseItemResponse(memberPurchasePayload, response, adminRequestId),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_RESPONSE' && error.status === 200 && error.retryable === true,
+    );
+}
+assert.match(client, /callValidatedPurchaseAction[\s\S]*validatePurchaseItemResponse/);
 
 console.log('✅ Round 24 shadow + server-authoritative community join validation passed');

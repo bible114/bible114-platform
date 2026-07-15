@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: T123 읽기·퀴즈 보상 서버 commit 전환 준비**. T125 공개 입장코드 추측 방지의 secret 설정, Edge·인덱스·웹·규칙 배포, 운영 8개 공동체 private/access 이전, 공개 비밀 필드 0건 감사까지 완료했다. App Check와 T127의 7일 관찰·직접 쓰기 차단은 남아 있다. T123 shadow는 부서별 달란트 v2까지 준비됐지만, T123b/d2는 개발 환경 실로그인 `[read-shadow] match:true`, `[quiz-shadow] match:true` 각 1건 확인이 남아 있다. 아직 읽기·퀴즈 Firestore 쓰기는 서버 commit으로 전환하지 않았다.
+> **현재 활성 작업: T124 달란트 상점 관리자 판매·수령·환불 운영 반영 준비**. 일반 구매와 관리자 3개 action의 서버 권위 코드·멱등 ledger·응답 검증·자동 검사는 완료했고 배포 및 실로그인 관리자 스모크가 남아 있다. T123 shadow는 부서별 달란트 v2까지 준비됐지만, T123b/d2는 개발 환경 실로그인 `[read-shadow] match:true`, `[quiz-shadow] match:true` 각 1건 확인이 남아 있다. T124 운영 반영 뒤 다음 독립 구현은 T126a 서버 영상 resolve/lease이며, T127 직접 쓰기 차단은 관찰 기간 뒤에만 진행한다.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-15 | T124 관리자 판매·수령·환불 서버 이관 구현 | `supabase/functions/{_shared,platform-api}/*`, `src/{components/{ChurchAdminView,PlatformAdminView}.jsx,components/{churchAdmin/TalentShopTab.jsx,dashboard/TalentShop.jsx},utils/{platformApi,adminTalentRequests,talentPurchases}.js}`, `firestore.rules`, `scripts/validate-{round18,round24,department-talent}.mjs`, `package.json`, `HANDOFF_CODEX.md` | 일반 구매와 관리자 판매·수령·환불을 서버 저장 가격·최신 지갑·최신 관리자 권한으로 재검증하고 원자 처리한다. 관리자 action은 서비스 전용 불변 ledger로 멱등화하고, 개인 계정 전환 환불은 서버가 같은 transaction에서 users+동일 공동체 roster를 재확인한 뒤 관리자 2차 확인을 요구한다. 잘못된 2xx·응답 유실·현재 잔액·세션 requestId 정리까지 보강했다. 전체 validate(플랫폼 API 90 tests/check/fmt 포함), build, diff 검사와 3개 독립 재감사 통과. 운영 배포·실로그인 스모크는 다음 단계다. |
 | 2026-07-15 | R25~26 운영 배포·입장코드 원자 이전 | `HANDOFF_CODEX.md` 및 운영 환경 | `dd7374f`까지 main push. `JOIN_CODE_RATE_LIMIT_SALT` 설정 후 platform-api v5 → Firestore 인덱스 → 웹 `index-OCMsjSZz.js` → Firestore rules 순서로 배포하고 Edge/공개/인증 화면 스모크를 통과했다. 0600 백업과 SHA-256을 만든 뒤 transaction 스냅샷·백업 원본·정확한 18쓰기 게이트를 두 번 독립 검토하고, 8 private 백필+9 공개 필드 정리+디렉토리 정리를 단일 원자 커밋했다. 직후와 3분 뒤 재감사에서 공개 code/hash 0, 디렉토리 비밀 0, private 유효 8/8, 누락 0을 확인했다. 개발 환경 실로그인 shadow는 로컬 세션이 없어 남음. |
 | 2026-07-15 | T125 운영 이전 안전 보강 | `src/{utils/{entryCode,churchDirectory}.js,components/{LoginView,ChurchAdminView,PlatformAdminView}.jsx,components/churchAdmin/SettingsTab.jsx}`, `scripts/{audit-legacy-church-fields,validate-round11}.mjs`, `supabase/functions/platform-api/*`, `HANDOFF_CODEX.md` | 입장코드를 앞뒤 공백 제거 후 4~128자·제어문자 없음으로 통일하고, 이전 도구를 기본 무쓰기 사전점검으로 바꿨다. 실행 직전 재점검, private/access 최신값 보존 transaction, 전체 공개·디렉토리 비밀 필드 정리, 무소속 잔여 필드 정리, 동시 디렉토리 변경 보존을 추가했다. 운영 전체 원본을 값 출력 없이 0600 로컬 파일로 백업하는 감사 옵션과 회귀 계약을 추가했다. 자동 검증·재검토는 통과했고, secret 설정·배포·백업·실제 이전은 다음 단계다. |
 | 2026-07-15 | T123 v2 달란트 shadow 로컬 준비 | `supabase/functions/platform-api/{index,readCore,quizCore,talentProgramCore}*`, `src/{hooks/useUserBibleActions.js,components/dashboard/BibleQuizCard.jsx,utils/readCompletionShadow.js}`, `scripts/validate-round24.mjs`, `HANDOFF_CODEX.md` | 브라우저와 같은 v1/v2 달란트 해석, canonical roster 검증·정렬, 지갑별 적립 가능 여부를 서버 preview에 연결했다. 읽기·퀴즈는 v2에서도 DEV 4초 shadow를 실행하고 실제 적립 가능한 지갑이 없으면 effective reward 0으로 비교한다. 시도 0인 stale quizKey 교체 예외와 preview 응답 식별자·조직·경로·잔액·설정 금지 계약을 추가했다. 로컬 자동 검증은 완료했으나 실제 로그인 match 증거가 없어 T123b/d2는 미완료 유지. |
@@ -345,6 +346,13 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-15 T124 관리자 판매·수령·환불 서버 이관 구현 완료, 운영 반영 직전:
+- 일반 구매와 관리자 창구 판매·수령·환불은 클라이언트 Firestore transaction을 사용하지 않고 `platform-api`만 호출한다. 서버는 최신 actor/구매자/roster/상점/구매를 transaction snapshot에서 읽고 관리자 3개 action은 브라우저가 읽거나 쓸 수 없는 `talentAdminActions/{requestId}` ledger와 함께 원자 commit한다.
+- 결과 불명 재시도는 같은 UUID를 세션에 보존한다. 모든 2xx 본문을 action·requestId·alreadyCompleted·안전한 최신 잔액·지갑·구매 ID/상태까지 확인한 뒤에만 키를 지우며, 나중에 구매 문서의 `requestId/adminActionRequestId`가 보이면 오래 남은 키를 정리한다.
+- R25-2 문구와 R25-3 클라이언트 구현이 어긋났던 개인 전환 환불을 서버 권위로 복원했다. v2 users 지갑 구매 뒤 활성 member가 `accountType=personal, churchId=null`이고 동일 공동체에 동일 uid 활성 roster가 있을 때 첫 요청은 전용 409로 2차 확인을 요구하고, 확인 요청은 최신 상태를 다시 읽어 roster에 환불한다. mutable `primaryOrgId`와 이관 완료 플래그는 판정 조건으로 쓰지 않는다.
+- 일반/관리자 가격·잔액은 숫자 타입의 안전한 정수와 상한만 허용한다. 기본 `npm run validate`에 Deno 전체 테스트·type·format을 묶었고 현재 90 tests, 전체 validate, production build, diff 검사, 3개 독립 재감사를 통과했다.
+- T124d 운영 배포와 실제 관리자 판매·수령·환불 스모크는 남아 있다. Firebase CLI 인증이 만료된 것이 사전점검에서 확인되어 rules 재배포는 `firebase login --reauth`가 필요할 수 있다. 새 ledger 경로는 기존 규칙에서도 unmatched default deny이므로 명시적 deny 규칙 배포가 늦어져도 브라우저 접근은 열리지 않는다.
 
 2026-07-15 R25~26 운영 배포·입장코드 이전 완료, T123 실로그인 shadow 대기:
 - `dd7374f`까지 main과 origin/main을 일치시켰다. `JOIN_CODE_RATE_LIMIT_SALT`는 새 무작위값으로 설정하고 값은 출력하지 않았으며, Supabase 목록에서 존재만 확인했다.
@@ -2005,9 +2013,14 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 
 ### [ ] T124. 달란트 상점 구매 서버 이관
 
+- [x] **T124a. 일반 구매 서버 권위 전환** — 서버가 실제 소속·활성 시장·상품·안전한 정수 가격·최신 지갑 잔액을 읽고 requestId 문서로 원자 차감·생성한다. 재전송은 입력 결속 뒤 최신 잔액을 반환하며 브라우저 직접 create 규칙은 닫혔다.
+- [x] **T124b. 관리자 판매·수령·환불 서버 action** — 매 action이 transaction 안에서 최신 관리자 권한과 대상/구매/지갑을 다시 읽고, 지갑·구매·서비스 전용 `talentAdminActions/{requestId}` 불변 ledger를 한 commit으로 처리한다.
+- [x] **T124c. 응답 유실·개인 전환 환불 안전장치** — 모든 구매 2xx 응답을 action/requestId/잔액/지갑/구매 상태까지 검증한 뒤에만 requestId를 정리한다. Firestore에서 완료 requestId를 관찰하면 세션 보존키를 정리하고 replay는 최신 잔액을 반환한다. v2 users 구매 뒤 personal 전환은 같은 공동체의 활성·동일 uid roster를 서버가 재검증하고 명시적 2차 확인 뒤 roster로 환불한다.
+- [ ] **T124d. 운영 배포·실로그인 스모크** — 최신 Edge와 웹을 배포한 뒤 실제 공동체 관리자 계정에서 소액 창구 판매 1건, pending 일반 구매 수령 1건, 별도 pending 일반 구매 환불 1건(가능하면 개인 전환 환불 2차 확인 포함)을 확인한다. 기존 관리자 직접 쓰기 규칙은 T127 관찰 종료 전까지 호환용으로 유지한다.
+
 - `purchaseItem({churchId,itemId,requestId})`: 호출자가 그 공동체 roster/소속인지, 상점 활성/상품 활성/서버 저장 가격, 지갑 종류와 잔액을 다시 읽는다.
 - 지갑 차감과 `talentPurchases` 생성은 원자 처리한다. `purchaseId`는 requestId에서 결정적으로 만들어 재전송 시 같은 구매를 반환한다.
-- 응답은 `purchase`, `nextTalent`, `walletType`만 반환한다. 이름·가격·상태는 서버 저장값으로 만든다.
+- 응답은 `purchase`, `nextTalent`, `walletKind`만 반환한다. 이름·가격·상태는 서버 저장값으로 만든다.
 - 관리자 창구 판매/환불은 권한과 대상 지갑을 별도 action으로 검증하고 감사 로그를 남긴다. 일반 구매 전환 확인 뒤 기존 직접 create 규칙을 닫는다.
 
 ### [ ] T125. 입장코드·가입·공동체 참여·디렉토리·통계 이관

@@ -13,14 +13,14 @@ const TalentShopTab = ({ ctx }) => {
         talentShop, toggleTalentShopEnabled, savingTalentShop,
         orgComms, talentMarketId, setTalentMarketId, activeTalentMarket, activeShopItems,
         setDepartmentTalentEnabled, setDepartmentTalentMarketMode,
-        setShowShopPreview, showShopPreview, currentUser, setCurrentUser, shopPreviewTalent,
+        setShowShopPreview, showShopPreview, currentUser, shopPreviewTalent,
         shopItemDraft, setShopItemDraft, editingShopItemId, emojiGroupIdx, setEmojiGroupIdx,
         submitShopItem, resetShopItemDraft, editShopItem, deleteShopItem, printShopItems,
         deductForm, setDeductForm, members, requestManualDeduct, deducting,
         purchaseFilter, setPurchaseFilter, filteredPurchases, memberById,
         purchaseLoadWarning, pendingPurchaseCount, hasMorePendingPurchases, loadingMorePendingPurchases,
         loadMorePendingPurchases,
-        formatAnyDate, setConfirmAction, requestPurchaseRefund, deliverPurchase, refundPurchase,
+        formatAnyDate, setConfirmAction, requestPurchaseRefund,
     } = ctx;
 
     return (

@@ -39,6 +39,11 @@ export const ERROR_DEFINITIONS = {
     message: "이미 처리되었거나 현재 상태와 충돌합니다.",
     retryable: false,
   },
+  REFUND_MIGRATION_CONFIRM_REQUIRED: {
+    status: 409,
+    message: "개인 계정 전환 뒤 환불할 명부 지갑을 다시 확인해주세요.",
+    retryable: false,
+  },
   RATE_LIMITED: {
     status: 429,
     message: "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",

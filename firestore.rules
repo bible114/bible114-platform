@@ -360,6 +360,12 @@ service cloud.firestore {
             ['status', 'deliveredAt', 'deliveredBy']);
         allow delete: if isPlatformAdmin();
       }
+
+      // 관리자 판매·수령·환불의 멱등 감사 ledger. 서비스 계정만 쓰고
+      // 브라우저 SDK에는 관리자 역할과 무관하게 읽기·쓰기를 모두 닫는다.
+      match /talentAdminActions/{requestId} {
+        allow read, write: if false;
+      }
     }
 
     // 말씀 (verses) — 읽기 전용

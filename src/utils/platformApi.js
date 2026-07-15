@@ -294,7 +294,156 @@ export const purchaseItem = ({ churchId, itemId, departmentId, marketId }, optio
             code: 'INVALID_PAYLOAD', status: 0, retryable: false,
         });
     }
-    return callPlatformApi('purchaseItem', payload, options);
+    return callValidatedPurchaseAction(payload, options);
+};
+
+const safePlatformDocumentId = value => {
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim();
+    return normalized && normalized.length <= 128 && !normalized.includes('/')
+        && !/[\u0000-\u001f\u007f]/.test(normalized) ? normalized : null;
+};
+
+const isResponseRecord = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const isAdminTalentBalance = value => (
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000_000
+);
+
+const invalidAdminTalentResponse = () => {
+    throw new PlatformApiError('플랫폼 API 처리 결과를 안전하게 확인하지 못했습니다.', {
+        code: 'INVALID_RESPONSE', status: 200, retryable: true,
+    });
+};
+
+export const validatePurchaseItemResponse = (payload, result, expectedRequestId) => {
+    const purchase = isResponseRecord(result?.purchase) ? result.purchase : null;
+    if (!isResponseRecord(payload) || !isResponseRecord(result)
+        || result.ok !== true || result.action !== 'purchaseItem'
+        || result.requestId !== expectedRequestId
+        || typeof result.alreadyCompleted !== 'boolean'
+        || !isAdminTalentBalance(result.nextTalent)
+        || !['user', 'roster'].includes(result.walletKind)
+        || !purchase || purchase.id !== expectedRequestId
+        || purchase.itemId !== payload.itemId
+        || purchase.departmentId !== payload.departmentId
+        || purchase.marketId !== payload.marketId
+        || !['pending', 'delivered', 'cancelled'].includes(purchase.status)
+        || purchase.schemaVersion !== 2
+        || typeof purchase.price !== 'number' || !Number.isSafeInteger(purchase.price)
+        || purchase.price <= 0 || purchase.price > 1_000_000) {
+        return invalidAdminTalentResponse();
+    }
+    return result;
+};
+
+const callValidatedPurchaseAction = (payload, options = {}) => {
+    const requestId = options.requestId || createRequestId();
+    return callPlatformApi('purchaseItem', payload, { ...options, requestId })
+        .then(result => validatePurchaseItemResponse(payload, result, requestId));
+};
+
+// 쓰기 성공 뒤 연결이 끊겨도 같은 requestId로 재조회할 수 있도록, 호출자가
+// request key를 지우기 전에 서버의 2xx 본문을 작업별로 엄격히 확인한다.
+export const validateAdminTalentResponse = (action, payload, result, expectedRequestId) => {
+    if (!isResponseRecord(payload) || !isResponseRecord(result)
+        || result.ok !== true || result.action !== action
+        || result.requestId !== expectedRequestId
+        || typeof result.alreadyCompleted !== 'boolean'
+        || !isResponseRecord(result.purchase)) {
+        return invalidAdminTalentResponse();
+    }
+    const purchase = result.purchase;
+    if (action === 'adminCounterSale') {
+        if (!isAdminTalentBalance(result.nextTalent)
+            || !['user', 'roster'].includes(result.walletKind)
+            || purchase.id !== expectedRequestId || purchase.requestId !== expectedRequestId
+            || purchase.uid !== payload.memberUid || purchase.status !== 'delivered'
+            || purchase.walletKind !== result.walletKind
+            || purchase.departmentId !== payload.departmentId
+            || purchase.marketId !== payload.marketId
+            || purchase.itemName !== payload.itemName || purchase.price !== payload.price) {
+            return invalidAdminTalentResponse();
+        }
+        return result;
+    }
+    if (action === 'adminDeliverPurchase') {
+        if (purchase.id !== payload.purchaseId || purchase.status !== 'delivered'
+            || purchase.adminActionRequestId !== expectedRequestId) {
+            return invalidAdminTalentResponse();
+        }
+        return result;
+    }
+    if (action === 'adminRefundPurchase') {
+        if (!isAdminTalentBalance(result.nextTalent)
+            || !['user', 'roster'].includes(result.walletKind)
+            || purchase.id !== payload.purchaseId || purchase.status !== 'cancelled'
+            || !safePlatformDocumentId(purchase.uid)
+            || purchase.adminActionRequestId !== expectedRequestId) {
+            return invalidAdminTalentResponse();
+        }
+        return result;
+    }
+    return invalidAdminTalentResponse();
+};
+
+const callValidatedAdminTalentAction = (action, payload, options = {}) => {
+    const requestId = options.requestId || createRequestId();
+    return callPlatformApi(action, payload, { ...options, requestId })
+        .then(result => validateAdminTalentResponse(action, payload, result, requestId));
+};
+
+export const adminCounterSale = ({
+    churchId, memberUid, departmentId, marketId, itemName, price,
+}, options = {}) => {
+    const payload = {
+        churchId: safePlatformDocumentId(churchId),
+        memberUid: safePlatformDocumentId(memberUid),
+        departmentId: safePlatformDocumentId(departmentId),
+        marketId: safePlatformDocumentId(marketId),
+        itemName: typeof itemName === 'string' ? itemName.trim() : '',
+        price: Number(price),
+    };
+    if (Object.values(payload).slice(0, 4).some(value => !value)
+        || !payload.itemName || payload.itemName.length > 100
+        || /[\u0000-\u001f\u007f]/.test(payload.itemName)
+        || !Number.isSafeInteger(payload.price) || payload.price <= 0 || payload.price > 1_000_000) {
+        throw new PlatformApiError('창구 판매 정보를 다시 확인해주세요.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callValidatedAdminTalentAction('adminCounterSale', payload, options);
+};
+
+export const adminDeliverPurchase = ({ churchId, purchaseId }, options = {}) => {
+    const payload = {
+        churchId: safePlatformDocumentId(churchId),
+        purchaseId: safePlatformDocumentId(purchaseId),
+    };
+    if (Object.values(payload).some(value => !value)) {
+        throw new PlatformApiError('수령 처리할 구매 정보를 다시 확인해주세요.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callValidatedAdminTalentAction('adminDeliverPurchase', payload, options);
+};
+
+export const adminRefundPurchase = ({
+    churchId, purchaseId, legacyWalletKind = '', migratedWalletConfirmed = false,
+}, options = {}) => {
+    const payload = {
+        churchId: safePlatformDocumentId(churchId),
+        purchaseId: safePlatformDocumentId(purchaseId),
+        legacyWalletKind: typeof legacyWalletKind === 'string' ? legacyWalletKind.trim() : '',
+        migratedWalletConfirmed,
+    };
+    if (!payload.churchId || !payload.purchaseId
+        || !['', 'user', 'roster'].includes(payload.legacyWalletKind)
+        || typeof payload.migratedWalletConfirmed !== 'boolean') {
+        throw new PlatformApiError('환불할 구매 정보를 다시 확인해주세요.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callValidatedAdminTalentAction('adminRefundPurchase', payload, options);
 };
 
 export const completeMemberSignup = ({ churchId, entryCode = '', joinTicket = '', name, birthdate, guestProgress }, options = {}) => {

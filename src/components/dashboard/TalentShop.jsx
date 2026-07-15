@@ -5,6 +5,7 @@ import { LEGACY_TALENT_MARKET_ID, normalizeTalentProgram, resolveTalentProgram }
 import { updateRosterTalents } from '../../utils/talentWallet';
 import { isValidTalentPurchasePrice } from '../../utils/talentPurchases';
 import { createRequestId, purchaseItem as purchaseItemViaApi } from '../../utils/platformApi';
+import { reconcileStoredRequestIds } from '../../utils/adminTalentRequests';
 
 const LEGACY_TALENT_DEPARTMENT_ID = 'legacy_shared';
 const PURCHASE_REQUEST_STORAGE_PREFIX = 'b114_purchase_request_v1:';
@@ -44,6 +45,21 @@ const clearPurchaseRequestId = (key) => {
     } catch {
         // in-memory fallback은 이미 정리됨
     }
+};
+
+const reconcilePurchaseRequestIds = completedRequestIds => {
+    let storage = null;
+    try {
+        storage = window.sessionStorage;
+    } catch {
+        // in-memory fallback만 정리한다.
+    }
+    reconcileStoredRequestIds({
+        completedRequestIds,
+        fallback: purchaseRequestFallback,
+        storage,
+        prefix: PURCHASE_REQUEST_STORAGE_PREFIX,
+    });
 };
 
 const statusLabel = {
@@ -124,6 +140,7 @@ const TalentShop = ({
                 const rows = snap.docs
                     .map(doc => ({ id: doc.id, ...doc.data() }))
                     .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+                reconcilePurchaseRequestIds(new Set(rows.map(row => row.id)));
                 setPurchases(rows);
             })
             .catch(err => {

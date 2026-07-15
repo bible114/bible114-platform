@@ -7,8 +7,35 @@ export const COMPLETE_MEMBER_SIGNUP_ACTION = "completeMemberSignup" as const;
 export const COMPLETE_PERSONAL_SIGNUP_ACTION =
   "completePersonalSignup" as const;
 export const PURCHASE_ITEM_ACTION = "purchaseItem" as const;
+export const ADMIN_COUNTER_SALE_ACTION = "adminCounterSale" as const;
+export const ADMIN_DELIVER_PURCHASE_ACTION = "adminDeliverPurchase" as const;
+export const ADMIN_REFUND_PURCHASE_ACTION = "adminRefundPurchase" as const;
 
 export type PlatformApiRequest =
+  | {
+    action: typeof ADMIN_COUNTER_SALE_ACTION;
+    requestId: string;
+    churchId: string;
+    memberUid: string;
+    departmentId: string;
+    marketId: string;
+    itemName: string;
+    price: number;
+  }
+  | {
+    action: typeof ADMIN_DELIVER_PURCHASE_ACTION;
+    requestId: string;
+    churchId: string;
+    purchaseId: string;
+  }
+  | {
+    action: typeof ADMIN_REFUND_PURCHASE_ACTION;
+    requestId: string;
+    churchId: string;
+    purchaseId: string;
+    legacyWalletKind: "" | "user" | "roster";
+    migratedWalletConfirmed: boolean;
+  }
   | {
     action: typeof PURCHASE_ITEM_ACTION;
     requestId: string;
@@ -150,6 +177,12 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     guestProgress,
     itemId,
     marketId,
+    memberUid,
+    itemName,
+    price,
+    purchaseId,
+    legacyWalletKind,
+    migratedWalletConfirmed,
   } = body as Record<string, unknown>;
   if (!isRequestId(requestId)) {
     throw new PlatformApiRequestError("INVALID_REQUEST_ID");
@@ -205,6 +238,71 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       itemId: normalizedItemId,
       departmentId: normalizedDepartmentId,
       marketId: normalizedMarketId,
+    };
+  }
+  if (action === ADMIN_COUNTER_SALE_ACTION) {
+    const normalizedChurchId = safeDocumentId(churchId);
+    const normalizedMemberUid = safeDocumentId(memberUid);
+    const normalizedDepartmentId = safeDocumentId(departmentId);
+    const normalizedMarketId = safeDocumentId(marketId);
+    const normalizedItemName = typeof itemName === "string"
+      ? itemName.trim()
+      : "";
+    if (
+      !normalizedChurchId || !normalizedMemberUid ||
+      !normalizedDepartmentId || !normalizedMarketId ||
+      !normalizedItemName || normalizedItemName.length > 100 ||
+      /[\u0000-\u001f\u007f]/.test(normalizedItemName) ||
+      !Number.isSafeInteger(price) || Number(price) <= 0 ||
+      Number(price) > 1_000_000
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return {
+      action,
+      requestId,
+      churchId: normalizedChurchId,
+      memberUid: normalizedMemberUid,
+      departmentId: normalizedDepartmentId,
+      marketId: normalizedMarketId,
+      itemName: normalizedItemName,
+      price: Number(price),
+    };
+  }
+  if (action === ADMIN_DELIVER_PURCHASE_ACTION) {
+    const normalizedChurchId = safeDocumentId(churchId);
+    const normalizedPurchaseId = safeDocumentId(purchaseId);
+    if (!normalizedChurchId || !normalizedPurchaseId) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return {
+      action,
+      requestId,
+      churchId: normalizedChurchId,
+      purchaseId: normalizedPurchaseId,
+    };
+  }
+  if (action === ADMIN_REFUND_PURCHASE_ACTION) {
+    const normalizedChurchId = safeDocumentId(churchId);
+    const normalizedPurchaseId = safeDocumentId(purchaseId);
+    const normalizedLegacyWalletKind = typeof legacyWalletKind === "string"
+      ? legacyWalletKind.trim()
+      : "";
+    if (
+      !normalizedChurchId || !normalizedPurchaseId ||
+      !["", "user", "roster"].includes(normalizedLegacyWalletKind) ||
+      (migratedWalletConfirmed !== undefined &&
+        typeof migratedWalletConfirmed !== "boolean")
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return {
+      action,
+      requestId,
+      churchId: normalizedChurchId,
+      purchaseId: normalizedPurchaseId,
+      legacyWalletKind: normalizedLegacyWalletKind as "" | "user" | "roster",
+      migratedWalletConfirmed: migratedWalletConfirmed === true,
     };
   }
   if (action === PREVIEW_READ_COMPLETION_ACTION) {

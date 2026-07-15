@@ -716,6 +716,7 @@ const PlatformAdminView = ({
 
     if (viewingChurchAsAdmin && selectedChurch) {
         const fakeChurchAdmin = {
+            uid: currentUser.uid,
             churchId: selectedChurch.id,
             churchName: selectedChurch.name,
             name: '슈퍼관리자',

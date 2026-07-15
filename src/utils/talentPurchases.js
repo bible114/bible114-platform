@@ -1,7 +1,8 @@
 const VALID_WALLET_KINDS = new Set(['user', 'roster']);
 
 export const isValidTalentPurchasePrice = value => (
-    typeof value === 'number' && Number.isFinite(value) && value > 0
+    typeof value === 'number' && Number.isSafeInteger(value)
+    && value > 0 && value <= 1_000_000
 );
 
 const toMillis = value => {

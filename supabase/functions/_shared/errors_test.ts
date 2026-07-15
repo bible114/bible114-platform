@@ -14,6 +14,13 @@ Deno.test("platform errors expose stable status and retry classification", () =>
     "BAD_REQUEST",
   );
   assertEquals(toPlatformError(new Error("secret detail")).code, "INTERNAL");
+  const migrationConfirmation = new PlatformError(
+    "REFUND_MIGRATION_CONFIRM_REQUIRED",
+  );
+  assertEquals(
+    [migrationConfirmation.status, migrationConfirmation.retryable],
+    [409, false],
+  );
 });
 
 Deno.test("public error payload never exposes internal details", () => {

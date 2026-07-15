@@ -336,6 +336,82 @@ Deno.test("최초 개인 가입은 소속 선택과 무소속 요청을 구분�
     }), "INVALID_PAYLOAD");
 });
 
+Deno.test("관리자 창구 판매 요청은 대상과 금액을 엄격히 정규화한다", () => {
+  const requestId = "123e4567-e89b-12d3-a456-426614174000";
+  const parsed = parsePlatformApiRequest({
+    action: "adminCounterSale",
+    requestId,
+    churchId: " church-1 ",
+    memberUid: " member-1 ",
+    departmentId: " adult ",
+    marketId: " shared ",
+    itemName: " 세탁세제 ",
+    price: 7,
+  });
+  assert(parsed.action === "adminCounterSale", "counter action rejected");
+  if (parsed.action === "adminCounterSale") {
+    assert(
+      parsed.churchId === "church-1" && parsed.memberUid === "member-1" &&
+        parsed.itemName === "세탁세제" && parsed.price === 7,
+      "counter payload not normalized",
+    );
+  }
+  for (const invalid of [0, -1, 1.5, 1_000_001, "7"]) {
+    assertRequestError(() =>
+      parsePlatformApiRequest({
+        action: "adminCounterSale",
+        requestId,
+        churchId: "church-1",
+        memberUid: "member-1",
+        departmentId: "adult",
+        marketId: "shared",
+        itemName: "세탁세제",
+        price: invalid,
+      }), "INVALID_PAYLOAD");
+  }
+});
+
+Deno.test("관리자 수령·환불 요청은 구매 ID와 레거시 지갑만 받는다", () => {
+  const requestId = "123e4567-e89b-12d3-a456-426614174000";
+  const delivered = parsePlatformApiRequest({
+    action: "adminDeliverPurchase",
+    requestId,
+    churchId: "church-1",
+    purchaseId: "purchase-1",
+  });
+  assert(delivered.action === "adminDeliverPurchase", "deliver rejected");
+  const refunded = parsePlatformApiRequest({
+    action: "adminRefundPurchase",
+    requestId,
+    churchId: "church-1",
+    purchaseId: "purchase-1",
+    legacyWalletKind: " roster ",
+    migratedWalletConfirmed: true,
+  });
+  assert(
+    refunded.action === "adminRefundPurchase" &&
+      refunded.legacyWalletKind === "roster" &&
+      refunded.migratedWalletConfirmed === true,
+    "refund wallet not normalized",
+  );
+  assertRequestError(() =>
+    parsePlatformApiRequest({
+      action: "adminRefundPurchase",
+      requestId,
+      churchId: "church-1",
+      purchaseId: "purchase-1",
+      legacyWalletKind: "other",
+    }), "INVALID_PAYLOAD");
+  assertRequestError(() =>
+    parsePlatformApiRequest({
+      action: "adminRefundPurchase",
+      requestId,
+      churchId: "church-1",
+      purchaseId: "purchase-1",
+      migratedWalletConfirmed: "yes",
+    }), "INVALID_PAYLOAD");
+});
+
 Deno.test("알 수 없는 action은 거부한다", () => {
   assertRequestError(
     () =>

@@ -169,6 +169,8 @@ assert.equal(hasValidV2RefundWalletSnapshot({ schemaVersion: 2, walletKind: 'ros
 assert.equal(hasValidV2RefundWalletSnapshot({ schemaVersion: 2, walletKind: 'roster', walletOrgId: 'church-1' }, 'church-1'), true);
 assert.equal(hasValidV2RefundWalletSnapshot({ schemaVersion: 2, walletKind: 'user', walletOrgId: 'church-1' }, 'church-1'), true);
 assert.equal(isValidTalentPurchasePrice(1), true);
+assert.equal(isValidTalentPurchasePrice(1.5), false);
+assert.equal(isValidTalentPurchasePrice(1_000_001), false);
 assert.equal(isValidTalentPurchasePrice(0), false);
 assert.equal(isValidTalentPurchasePrice(-1), false);
 assert.equal(isValidTalentPurchasePrice('10'), false);
@@ -190,6 +192,7 @@ const rules = read('firestore.rules');
 const platformApi = read('src/utils/platformApi.js');
 const platformApiServer = read('supabase/functions/platform-api/index.ts');
 const purchaseCore = read('supabase/functions/platform-api/purchaseCore.ts');
+const adminPurchaseCore = read('supabase/functions/platform-api/adminPurchaseCore.ts');
 
 assert.match(readActions, /loadTalentProgramsStrict/);
 assert.match(readActions, /rewardedRosterOrgIds[\s\S]*rosterWallets\.forEach[\s\S]*transaction\.update\(wallet\.ref, rosterProgress\)/,
@@ -209,14 +212,20 @@ assert.match(memberShop, /definiteClientFailure = e\.status >= 400 && e\.status 
     'timeout·network·server 결과불명은 requestId를 유지하고 재확인 안내를 보여야 한다.');
 assert.doesNotMatch(memberShop, /collection\('talentPurchases'\)\.doc\(\)[\s\S]*transaction\.set\(/,
     '교인 화면이 구매 문서를 직접 만들면 안 된다.');
-assert.match(platformApi, /callPlatformApi\('purchaseItem', payload, options\)/);
+assert.match(platformApi, /callValidatedPurchaseAction\(payload, options\)[\s\S]*callPlatformApi\('purchaseItem', payload, \{ \.\.\.options, requestId \}\)[\s\S]*validatePurchaseItemResponse/);
 assert.match(purchaseCore, /shop\.schemaVersion === 2[\s\S]*departmentSettings[\s\S]*setting\?\.enabled !== true[\s\S]*market\?\.enabled === false/,
     '서버는 실제 부서와 활성 시장을 다시 검증해야 한다.');
-assert.match(purchaseCore, /items\.map\(record\)\.find[\s\S]*candidate\.active !== false[\s\S]*Number\(item\?\.price\)[\s\S]*price <= 0/,
-    '서버 저장 상품과 양수 가격만 사용해야 한다.');
+assert.match(purchaseCore, /items\.map\(record\)\.find[\s\S]*candidate\.active !== false[\s\S]*typeof price !== "number"[\s\S]*Number\.isSafeInteger\(price\)[\s\S]*price <= 0/,
+    '서버 저장 상품과 안전한 양수 정수 가격만 사용해야 한다.');
 assert.match(purchaseCore, /input\.user\.isDeleted === true[\s\S]*MEMBERSHIP_REQUIRED[\s\S]*INSUFFICIENT_TALENT/);
 assert.match(platformApiServer, /purchasePath\s*=\s*[\s\S]*`\$\{churchPath\}\/talentPurchases\/\$\{parsed\.requestId\}`[\s\S]*existingPurchase[\s\S]*alreadyCompleted: true/,
     '결정적 purchase id로 재요청을 멱등 처리해야 한다.');
+assert.match(platformApiServer, /existingPurchase\.data\.itemId === parsed\.itemId[\s\S]*existingPurchase\.data\.departmentId === parsed\.departmentId[\s\S]*existingPurchase\.data\.marketId === parsed\.marketId[\s\S]*latestWallet[\s\S]*latestTalent[\s\S]*nextTalent: latestTalent/,
+    '일반 구매 재요청은 원래 입력에 결속하고 과거 잔액이 아닌 최신 지갑을 반환해야 한다.');
+assert.match(memberShop, /reconcilePurchaseRequestIds\(new Set\(rows\.map\(row => row\.id\)\)\)/,
+    '서버 반영이 확인된 일반 구매는 보존된 재시도 requestId를 정리해야 한다.');
+assert.match(platformApiServer, /latestTalent[^\n]*=[\s\S]*Number\.isSafeInteger\(latestTalent\)[\s\S]*nextTalent:\s*latestTalent/,
+    '일반 구매 재전송 잔액도 안전한 최신 정수만 반환해야 한다.');
 assert.match(platformApiServer, /beginTransaction[\s\S]*validatePurchase\([\s\S]*updateWrite\(service\.projectId, walletPath[\s\S]*updateWrite\(service\.projectId, purchasePath[\s\S]*\{ transaction \}/,
     '서버가 지갑 차감과 구매 생성을 같은 트랜잭션으로 커밋해야 한다.');
 assert.match(adminView, /setDepartmentTalentEnabled/);
@@ -235,12 +244,55 @@ assert.doesNotMatch(adminView, /\.filter\(p => memberIds\.has\(p\.uid\)\)/,
     '탈퇴·제명 회원의 미처리 구매를 관리자 목록에서 숨기면 안 된다.');
 assert.match(adminView, /purchase\.status === 'pending' \|\| !talentMarketId/,
     '미처리 구매는 삭제·변경된 시장 기록이어도 관리자가 볼 수 있어야 한다.');
-assert.match(adminView, /refundLegacyPurchase[\s\S]*legacyWalletKind[\s\S]*PURCHASE_WALLET_UNRESOLVED/,
-    '레거시 구매는 현재 소속으로 지갑을 추론하지 말고 명시 선택을 강제해야 한다.');
-assert.match(adminView, /refundWalletKind === 'roster'[\s\S]*collection\('users'\)\.doc\(latestPurchase\.uid\)[\s\S]*FieldValue\.increment\(refundAmount\)/,
-    '환불은 현재 roster 존재를 추정하지 말고 구매 당시 지갑 종류에 원자 증분해야 한다.');
-assert.doesNotMatch(adminView, /PURCHASE_WALLET_MOVED_TO_ROSTER|refundMigratedPurchase|transaction\.get\(migratedUserRef\)/,
-    '관리자에게 personal users read를 열지 않으므로 이관 추정용 사용자 읽기가 없어야 한다.');
+assert.match(adminView, /ADMIN_TALENT_REQUEST_STORAGE_PREFIX[\s\S]*sessionStorage\.getItem[\s\S]*createRequestId\(\)[\s\S]*sessionStorage\.setItem/,
+    '관리자 판매·환불 결과가 불명확할 때 같은 requestId를 세션에서 재사용해야 한다.');
+assert.match(adminView, /adminCounterSale\(\{[\s\S]*memberUid:[\s\S]*departmentId:[\s\S]*marketId,[\s\S]*itemName,[\s\S]*price,[\s\S]*\}, \{ requestId \}\)/,
+    '관리자 창구 판매는 서버 action만 사용해야 한다.');
+assert.match(adminView, /adminRefundPurchase\(\{[\s\S]*legacyWalletKind:[\s\S]*migratedWalletConfirmed,[\s\S]*\}, \{ requestId \}\)[\s\S]*adminDeliverPurchase\(\{/,
+    '관리자 수령·환불은 분리된 서버 action을 사용해야 한다.');
+assert.doesNotMatch(adminView, /collection\('talentPurchases'\)\.doc\(\)[\s\S]*transaction\.set\(/,
+    '관리자 화면이 창구 판매 문서를 직접 만들면 안 된다.');
+assert.doesNotMatch(adminView, /FieldValue\.increment\(refundAmount\)|PURCHASE_WALLET_UNRESOLVED/,
+    '관리자 화면이 환불 지갑을 직접 증액하거나 서버 판정을 흉내 내면 안 된다.');
+const counterBranchStart = platformApiServer.indexOf('if (parsed.action === "adminCounterSale")');
+const deliverBranchStart = platformApiServer.indexOf('if (parsed.action === "adminDeliverPurchase")', counterBranchStart);
+const refundBranchStart = platformApiServer.indexOf('if (parsed.action === "adminRefundPurchase")', deliverBranchStart);
+const memberPurchaseBranchStart = platformApiServer.indexOf('if (parsed.action === "purchaseItem")', refundBranchStart);
+assert.ok(counterBranchStart >= 0 && deliverBranchStart > counterBranchStart && refundBranchStart > deliverBranchStart
+    && memberPurchaseBranchStart > refundBranchStart, '관리자 판매·수령·환불 서버 분기가 순서대로 필요하다.');
+const counterBranch = platformApiServer.slice(counterBranchStart, deliverBranchStart);
+for (const pattern of [/beginTransaction\(/, /talentAdminActions\/\$\{parsed\.requestId\}/,
+    /requireOrganizationAdmin\(/, /validateAdminCounterSale\(/,
+    /await commitWrites\([\s\S]*updateWrite\(service\.projectId, ledgerPath,[\s\S]*\{ exists: false \}\),[\s\S]*\], \{ transaction \}\);/]) {
+    assert.match(counterBranch, pattern, '창구 판매는 최신 관리자 권한·대상 지갑·불변 ledger를 한 transaction에서 처리해야 한다.');
+}
+const deliverBranch = platformApiServer.slice(deliverBranchStart, refundBranchStart);
+for (const pattern of [/beginTransaction\(/, /talentAdminActions\/\$\{parsed\.requestId\}/,
+    /requireOrganizationAdmin\(/, /validateAdminPurchaseDelivery\(/, /ledgerResult\(/,
+    /adminActionRequestId:\s*parsed\.requestId/,
+    /await commitWrites\([\s\S]*updateWrite\(service\.projectId, ledgerPath,[\s\S]*\{ exists: false \}\),[\s\S]*\], \{ transaction \}\);/]) {
+    assert.match(deliverBranch, pattern, '수령 처리는 최신 관리자 권한·불변 ledger·완료 요청 ID를 자체 transaction에서 처리해야 한다.');
+}
+const refundBranch = platformApiServer.slice(refundBranchStart, memberPurchaseBranchStart);
+for (const pattern of [/beginTransaction\(/, /talentAdminActions\/\$\{parsed\.requestId\}/,
+    /requireOrganizationAdmin\(/, /resolveAdminRefundWalletKind\(/, /validateAdminPurchaseRefund\(/,
+    /migratedWalletConfirmed:\s*parsed\.migratedWalletConfirmed/, /balanceBefore:/,
+    /balanceAfter:/, /adminActionRequestId:\s*parsed\.requestId/,
+    /await commitWrites\([\s\S]*updateWrite\(service\.projectId, ledgerPath,[\s\S]*\{ exists: false \}\),[\s\S]*\], \{ transaction \}\);/]) {
+    assert.match(refundBranch, pattern, '환불은 구매 당시 지갑과 전후 잔액을 서버 ledger에 기록해야 한다.');
+}
+assert.match(adminPurchaseCore, /purchase\.schemaVersion === 2[\s\S]*purchase\.walletKind[\s\S]*purchase\.walletOrgId/,
+    'v2 환불은 구매 당시 지갑 스냅샷만 신뢰해야 한다.');
+assert.match(adminPurchaseCore, /const walletKind = baseMember \? "user" : "roster"/,
+    '창구 판매 대상 지갑은 서버가 주 소속과 roster 원장으로 결정해야 한다.');
+assert.match(adminView, /refundMigratedPurchase[\s\S]*updatePurchaseStatus\(action\.purchase, 'cancelled', null, true\)/,
+    '개인 계정 전환 뒤 환불 확인은 명시적인 서버 확인 플래그로 이어져야 한다.');
+assert.match(adminView, /migratedWalletConfirmed[\s\S]*REFUND_MIGRATION_CONFIRM_REQUIRED[\s\S]*type: 'refundMigratedPurchase'/,
+    '개인 계정 전환 뒤 환불은 서버 판정에 따라 관리자 2차 확인을 받아야 한다.');
+assert.doesNotMatch(adminView, /transaction\.get\(migratedUserRef\)|collection\('users'\)\.doc\([^)]*purchase/,
+    '개인 전환 여부와 환불 지갑은 관리자 브라우저가 users를 직접 읽어 추정하면 안 된다.');
+assert.match(rules, /match \/talentAdminActions\/\{requestId\} \{[\s\S]*allow read, write: if false;/,
+    '관리자 action ledger는 브라우저 역할과 무관하게 읽기·쓰기를 모두 거부해야 한다.');
 assert.match(helpers, /talentWalletMigrated === true && \(Number\(knownUserData\.talent\) \|\| 0\) <= 0/,
     '이관 완료 뒤 users 지갑에 늦은 환불 잔액이 생기면 재이관을 건너뛰면 안 된다.');
 assert.match(helpers, /return db\.runTransaction\(async transaction =>[\s\S]*transaction\.get\(userRef\)[\s\S]*transaction\.get\(rosterRef\)[\s\S]*transaction\.update\(userRef, \{ talent: 0, talentWalletMigrated: true \}\);[\s\S]*transaction\.update\(rosterRef, \{ talent: nextRosterTalent \}\)/,

@@ -32,15 +32,78 @@ import { TALENT_PROGRAM_SCHEMA_VERSION } from '../utils/talentProgram';
 import { normalizeChurchEntryCode } from '../utils/entryCode';
 import {
     hasValidV2RefundWalletSnapshot,
-    isValidTalentPurchasePrice,
     mergeAdminTalentPurchases,
     resolvePurchaseRefundWalletKind,
 } from '../utils/talentPurchases';
+import {
+    adminCounterSale,
+    adminDeliverPurchase,
+    adminRefundPurchase,
+    createRequestId,
+} from '../utils/platformApi';
+import { reconcileStoredRequestIds } from '../utils/adminTalentRequests';
 
 const SHARED_TALENT_MARKET_ID = 'shared';
 const PENDING_PURCHASE_PAGE_SIZE = 100;
 const RECENT_PURCHASE_LIMIT = 200;
+const ADMIN_TALENT_REQUEST_STORAGE_PREFIX = 'b114_admin_talent_request_v1:';
+const adminTalentRequestFallback = new Map();
 const departmentTalentMarketId = departmentId => `department_${departmentId}`;
+
+const adminTalentRequestKey = parts => (
+    `${ADMIN_TALENT_REQUEST_STORAGE_PREFIX}${parts
+        .map(value => encodeURIComponent(String(value ?? ''))).join(':')}`
+);
+
+const getOrCreateAdminTalentRequestId = key => {
+    try {
+        const stored = window.sessionStorage.getItem(key);
+        if (stored) {
+            adminTalentRequestFallback.set(key, stored);
+            return stored;
+        }
+    } catch {
+        // sessionStorage를 막는 브라우저에서도 현재 페이지 재시도는 멱등을 유지한다.
+    }
+    const pending = adminTalentRequestFallback.get(key);
+    if (pending) return pending;
+    const requestId = createRequestId();
+    adminTalentRequestFallback.set(key, requestId);
+    try {
+        window.sessionStorage.setItem(key, requestId);
+    } catch {
+        // in-memory fallback 유지
+    }
+    return requestId;
+};
+
+const clearAdminTalentRequestId = key => {
+    adminTalentRequestFallback.delete(key);
+    try {
+        window.sessionStorage.removeItem(key);
+    } catch {
+        // in-memory fallback은 이미 정리됨
+    }
+};
+
+const reconcileAdminTalentRequestIds = completedRequestIds => {
+    let storage = null;
+    try {
+        storage = window.sessionStorage;
+    } catch {
+        // in-memory fallback만 정리한다.
+    }
+    reconcileStoredRequestIds({
+        completedRequestIds,
+        fallback: adminTalentRequestFallback,
+        storage,
+        prefix: ADMIN_TALENT_REQUEST_STORAGE_PREFIX,
+    });
+};
+
+const isDefiniteAdminTalentFailure = error => (
+    error?.status >= 400 && error.status < 500 && error.retryable !== true
+);
 
 const promoteTalentShopConfig = (rawShop, departments = []) => {
     const raw = rawShop && typeof rawShop === 'object' ? rawShop : {};
@@ -169,6 +232,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [pendingPurchaseLoadWarning, setPendingPurchaseLoadWarning] = useState('');
     const [recentPurchaseLoadWarning, setRecentPurchaseLoadWarning] = useState('');
     const purchaseLoadWarning = [pendingPurchaseLoadWarning, recentPurchaseLoadWarning].filter(Boolean).join(' ');
+    const talentActionRef = useRef(false);
 
     // 교회 전용 로그인 링크
 
@@ -269,11 +333,15 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     pendingResult.status === 'fulfilled'
                     && pendingResult.value.docs.length > PENDING_PURCHASE_PAGE_SIZE
                 );
-                setTalentPurchases(mergeAdminTalentPurchases({
+                const mergedPurchases = mergeAdminTalentPurchases({
                     pendingDocs,
                     recentDocs,
                     externalMemberIds,
-                }));
+                });
+                reconcileAdminTalentRequestIds(new Set(mergedPurchases.flatMap(purchase => (
+                    [purchase.requestId, purchase.adminActionRequestId].filter(Boolean)
+                ))));
+                setTalentPurchases(mergedPurchases);
             } catch (purchaseError) {
                 console.error('달란트 구매 내역 로드 실패:', purchaseError);
                 setTalentPurchases([]);
@@ -775,6 +843,9 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             if (action.type === 'refundLegacyPurchase') {
                 await updatePurchaseStatus(action.purchase, 'cancelled', action.legacyWalletKind);
             }
+            if (action.type === 'refundMigratedPurchase') {
+                await updatePurchaseStatus(action.purchase, 'cancelled', null, true);
+            }
             if (action.type === 'manualDeduct') await executeManualDeduct(action.form);
             // 주 소속 일괄 변경이 일부라도 실패하면 선택을 유지해 바로 재시도할 수 있게 한다.
             if (shouldRunAfter !== false) action.after?.();
@@ -1023,13 +1094,17 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     // ── 창구 판매: 관리자가 교인 대신 달란트를 차감하고 구입 물품을 기록 (어르신 지원) ──
     const requestManualDeduct = () => {
         const member = members.find(m => m.uid === deductForm.uid);
-        const price = parseInt(deductForm.price, 10);
+        const price = Number(deductForm.price);
         const itemName = deductForm.itemName.trim();
         if (!member) { toast.error('교인을 선택해주세요.'); return; }
         const membership = getMemberTalentDepartment(member);
         if (!membership) { toast.error('선택한 시장을 이용하는 부서 소속 교인만 차감할 수 있습니다.'); return; }
         if (!itemName) { toast.error('구입 물품을 반드시 기록해주세요.'); return; }
-        if (!price || price <= 0) { toast.error('차감할 달란트를 입력해주세요.'); return; }
+        if (itemName.length > 100) { toast.error('구입 물품은 100자 이내로 기록해주세요.'); return; }
+        if (!Number.isSafeInteger(price) || price <= 0 || price > 1_000_000) {
+            toast.error('차감할 달란트는 1~1,000,000 사이의 정수로 입력해주세요.');
+            return;
+        }
         if ((member.talent || 0) < price) {
             toast.error(`${member.name}님의 잔액(⭐${member.talent || 0})이 부족합니다.`);
             return;
@@ -1044,59 +1119,54 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     };
 
     const executeManualDeduct = async ({ member, itemName, price, membership, marketId }) => {
+        if (talentActionRef.current) {
+            toast.warning('다른 달란트 작업을 처리하고 있습니다. 잠시 후 다시 시도해주세요.');
+            return;
+        }
+        talentActionRef.current = true;
         setDeducting(true);
+        const requestKey = adminTalentRequestKey([
+            currentUser.uid, currentUser.churchId, 'counter', member.uid,
+            membership.departmentId, marketId, itemName, price,
+        ]);
+        const requestId = getOrCreateAdminTalentRequestId(requestKey);
         try {
-            const purchaseRef = db.collection('churches').doc(currentUser.churchId)
-                .collection('talentPurchases').doc();
-            const walletRef = member.isExternalOrgMember
-                ? db.collection('churches').doc(currentUser.churchId).collection('roster').doc(member.uid)
-                : db.collection('users').doc(member.uid);
-            await db.runTransaction(async (transaction) => {
-                const snap = await transaction.get(walletRef);
-                if (!snap.exists) throw new Error('교인 정보를 찾을 수 없습니다.');
-                const balance = snap.data().talent || 0;
-                if (balance < price) throw new Error(`잔액이 부족합니다 (현재 ⭐${balance}).`);
-                transaction.update(walletRef, {
-                    talent: balance - price,
-                    ...(member.isExternalOrgMember ? { updatedAt: firebase.firestore.FieldValue.serverTimestamp() } : {}),
-                });
-                transaction.set(purchaseRef, {
-                    schemaVersion: 2,
-                    uid: member.uid,
-                    memberName: member.name,
-                    departmentId: membership.departmentId,
-                    departmentName: membership.departmentName || null,
-                    marketId,
-                    walletKind: member.isExternalOrgMember ? 'roster' : 'user',
-                    walletOrgId: currentUser.churchId,
-                    itemId: 'manual',
-                    itemName,
-                    price,
-                    status: 'delivered',
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    deliveredAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    deliveredBy: currentUser.uid || 'platformAdmin',
-                });
-            });
+            const result = await adminCounterSale({
+                churchId: currentUser.churchId,
+                memberUid: member.uid,
+                departmentId: membership.departmentId,
+                marketId,
+                itemName,
+                price,
+            }, { requestId });
+            clearAdminTalentRequestId(requestKey);
             setMembers(prev => prev.map(m => (
-                m.uid === member.uid
-                    ? { ...m, talent: (m.talent || 0) - price }
+                m.uid === member.uid && (
+                    (result.walletKind === 'roster' && m.isExternalOrgMember)
+                    || (result.walletKind === 'user' && !m.isExternalOrgMember)
+                )
+                    ? { ...m, talent: result.nextTalent }
                     : m
             )));
-            setTalentPurchases(prev => [{
-                id: purchaseRef.id, schemaVersion: 2, uid: member.uid, memberName: member.name,
-                departmentId: membership.departmentId, departmentName: membership.departmentName || null,
-                marketId, walletKind: member.isExternalOrgMember ? 'roster' : 'user', walletOrgId: currentUser.churchId,
-                itemId: 'manual', itemName, price, status: 'delivered',
-                createdAt: new Date(), deliveredAt: new Date(), deliveredBy: currentUser.uid || 'platformAdmin',
-            }, ...prev]);
+            setTalentPurchases(prev => [
+                result.purchase,
+                ...prev.filter(purchase => purchase.id !== result.purchase.id),
+            ]);
             setDeductForm({ uid: '', itemName: '', price: '' });
             toast.success(`${member.name}님 ⭐${price} 차감 완료 (${itemName})`);
         } catch (e) {
             console.error(e);
-            toast.error(e.message || '차감 처리에 실패했습니다.');
+            if (isDefiniteAdminTalentFailure(e)) clearAdminTalentRequestId(requestKey);
+            const resultUnknown = !isDefiniteAdminTalentFailure(e) && (
+                e?.retryable === true || e?.status >= 500
+                || e?.code === 'TIMEOUT' || e?.code === 'NETWORK_ERROR'
+            );
+            toast.error(resultUnknown
+                ? '판매 결과를 확인하지 못했습니다. 같은 교인·물품·금액으로 다시 누르면 중복 차감 없이 결과를 확인합니다.'
+                : (e.message || '차감 처리에 실패했습니다.'));
         } finally {
             setDeducting(false);
+            talentActionRef.current = false;
         }
     };
 
@@ -1318,81 +1388,79 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         });
     };
 
-    const updatePurchaseStatus = async (purchase, mode, legacyWalletKind = null) => {
-        const purchaseRef = db.collection('churches').doc(currentUser.churchId)
-            .collection('talentPurchases').doc(purchase.id);
-        let completedRefundWalletKind = null;
-
+    const updatePurchaseStatus = async (
+        purchase, mode, legacyWalletKind = null, migratedWalletConfirmed = false
+    ) => {
+        if (talentActionRef.current) {
+            toast.warning('다른 달란트 작업을 처리하고 있습니다. 잠시 후 다시 시도해주세요.');
+            return;
+        }
+        talentActionRef.current = true;
+        const actionName = mode === 'cancelled' ? 'refund' : 'deliver';
+        const requestKey = adminTalentRequestKey([
+            currentUser.uid, currentUser.churchId, actionName, purchase.id,
+            mode === 'cancelled' ? (legacyWalletKind || '') : '', migratedWalletConfirmed,
+        ]);
+        const requestId = getOrCreateAdminTalentRequestId(requestKey);
         try {
-            await db.runTransaction(async transaction => {
-                const purchaseSnap = await transaction.get(purchaseRef);
-                if (!purchaseSnap.exists) throw new Error('PURCHASE_NOT_FOUND');
-                const latestPurchase = purchaseSnap.data() || {};
-                // pending에서 단 한 번만 상태를 바꾼다. 같은 요청 재시도나 오래된 화면의
-                // 버튼 클릭이 환불을 중복 적립하거나 cancelled를 delivered로 되돌리지 못한다.
-                if (latestPurchase.status !== 'pending') throw new Error('PURCHASE_ALREADY_PROCESSED');
-
-                let refundAmount = 0;
-                let refundWalletKind = null;
-                if (mode === 'cancelled') {
-                    if (
-                        latestPurchase.schemaVersion === 2
-                        && !hasValidV2RefundWalletSnapshot(latestPurchase, currentUser.churchId)
-                    ) throw new Error('PURCHASE_WALLET_UNRESOLVED');
-                    refundWalletKind = resolvePurchaseRefundWalletKind(latestPurchase, legacyWalletKind);
-                    if (!refundWalletKind) {
-                        throw new Error('PURCHASE_WALLET_UNRESOLVED');
-                    }
-                    const walletOrgId = latestPurchase.walletOrgId || currentUser.churchId;
-                    refundAmount = Number(latestPurchase.price);
-                    if (!isValidTalentPurchasePrice(refundAmount)) throw new Error('INVALID_PURCHASE_PRICE');
-                    completedRefundWalletKind = refundWalletKind;
-                }
-
-                transaction.update(purchaseRef, {
-                    status: mode,
-                    deliveredAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    deliveredBy: currentUser.uid,
-                });
-
-                if (mode === 'cancelled') {
-                    const walletOrgId = latestPurchase.walletOrgId || currentUser.churchId;
-                    const walletRef = refundWalletKind === 'roster'
-                        ? db.collection('churches').doc(walletOrgId).collection('roster').doc(latestPurchase.uid)
-                        : db.collection('users').doc(latestPurchase.uid);
-                    transaction.update(walletRef, {
-                        talent: firebase.firestore.FieldValue.increment(refundAmount),
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    });
-                }
-            });
+            const result = mode === 'cancelled'
+                ? await adminRefundPurchase({
+                    churchId: currentUser.churchId,
+                    purchaseId: purchase.id,
+                    legacyWalletKind: legacyWalletKind || '',
+                    migratedWalletConfirmed,
+                }, { requestId })
+                : await adminDeliverPurchase({
+                    churchId: currentUser.churchId,
+                    purchaseId: purchase.id,
+                }, { requestId });
+            clearAdminTalentRequestId(requestKey);
+            setTalentPurchases(prev => prev.map(row => (
+                row.id === purchase.id ? { ...row, ...result.purchase } : row
+            )));
+            if (mode === 'cancelled') {
+                setMembers(prev => prev.map(member => (
+                    member.uid === purchase.uid && (
+                        (result.walletKind === 'roster' && member.isExternalOrgMember)
+                        || (result.walletKind === 'user' && !member.isExternalOrgMember)
+                    )
+                        ? { ...member, talent: result.nextTalent }
+                        : member
+                )));
+                toast.success('구매를 취소하고 달란트를 환불했습니다.');
+            } else {
+                toast.success('수령 완료로 처리했습니다.');
+            }
         } catch (error) {
-            if (error?.message === 'PURCHASE_ALREADY_PROCESSED') {
-                toast.error('이미 처리된 구매입니다. 목록을 새로 확인해주세요.');
+            console.error(error);
+            if (isDefiniteAdminTalentFailure(error)) {
+                clearAdminTalentRequestId(requestKey);
+            }
+            if (error?.code === 'REFUND_MIGRATION_CONFIRM_REQUIRED') {
+                setConfirmAction({
+                    type: 'refundMigratedPurchase',
+                    purchase,
+                    title: `${purchase.itemName} 환불 지갑을 확인해주세요`,
+                    message: '구매 뒤 개인 계정으로 전환되어 이 공동체의 명부 지갑을 사용하는 상태입니다. 현재 명부 지갑으로 환불할지 한 번 더 확인해주세요.',
+                    danger: true,
+                    confirmLabel: '명부 지갑으로 환불',
+                });
+                return;
+            }
+            if (error?.code === 'CONFLICT') {
+                toast.error(error.message || '이미 처리된 구매입니다. 목록을 새로 확인해주세요.');
                 await loadData();
                 return;
             }
-            if (error?.code === 'permission-denied' || error?.code === 'firestore/permission-denied') {
-                toast.error(mode === 'cancelled' ? '이 공동체 지갑을 환불할 권한이 없습니다.' : '수령 처리 권한이 없습니다.');
-                return;
-            }
-            if (error?.message === 'PURCHASE_WALLET_UNRESOLVED') {
-                toast.error('환불할 지갑을 확인할 수 없습니다. 이전 구매는 지갑을 선택해주세요.');
-                return;
-            }
-            throw error;
-        }
-        setTalentPurchases(prev => prev.map(p => p.id === purchase.id ? { ...p, status: mode, deliveredAt: new Date(), deliveredBy: currentUser.uid } : p));
-        if (mode === 'cancelled') {
-            setMembers(prev => prev.map(m => (
-                m.uid === purchase.uid
-                    && (completedRefundWalletKind === 'roster' || !m.isExternalOrgMember)
-                    ? { ...m, talent: (m.talent || 0) + (purchase.price || 0) }
-                    : m
-            )));
-            toast.success('구매를 취소하고 달란트를 환불했습니다.');
-        } else {
-            toast.success('수령 완료로 처리했습니다.');
+            const resultUnknown = !isDefiniteAdminTalentFailure(error) && (
+                error?.retryable === true || error?.status >= 500
+                || error?.code === 'TIMEOUT' || error?.code === 'NETWORK_ERROR'
+            );
+            toast.error(resultUnknown
+                ? `처리 결과를 확인하지 못했습니다. 같은 ${mode === 'cancelled' ? '취소·환불' : '수령 완료'} 작업을 다시 누르면 중복 처리 없이 결과를 확인합니다.`
+                : (error.message || '구매 처리에 실패했습니다.'));
+        } finally {
+            talentActionRef.current = false;
         }
     };
 
@@ -1408,13 +1476,19 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 .get();
             const pageDocs = pageSnap.docs.slice(0, PENDING_PURCHASE_PAGE_SIZE);
             const externalMemberIds = new Set(members.filter(member => member.isExternalOrgMember).map(member => member.uid));
-            setTalentPurchases(previous => mergeAdminTalentPurchases({
+            setTalentPurchases(previous => {
+                const mergedPurchases = mergeAdminTalentPurchases({
                 pendingDocs: [
                     ...previous.map(row => ({ id: row.id, data: () => row })),
                     ...pageDocs,
                 ],
                 externalMemberIds,
-            }));
+                });
+                reconcileAdminTalentRequestIds(new Set(mergedPurchases.flatMap(purchase => (
+                    [purchase.requestId, purchase.adminActionRequestId].filter(Boolean)
+                ))));
+                return mergedPurchases;
+            });
             setPendingPurchaseCursor(pageDocs.at(-1) || pendingPurchaseCursor);
             setHasMorePendingPurchases(pageSnap.docs.length > PENDING_PURCHASE_PAGE_SIZE);
             setPendingPurchaseLoadWarning('');
@@ -1722,14 +1796,14 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                 talentShop, toggleTalentShopEnabled, savingTalentShop,
                                 orgComms, talentMarketId, setTalentMarketId, activeTalentMarket, activeShopItems,
                                 setDepartmentTalentEnabled, setDepartmentTalentMarketMode,
-                                setShowShopPreview, showShopPreview, currentUser, setCurrentUser, shopPreviewTalent,
+                                setShowShopPreview, showShopPreview, currentUser, shopPreviewTalent,
                                 shopItemDraft, setShopItemDraft, editingShopItemId, emojiGroupIdx, setEmojiGroupIdx,
                                 submitShopItem, resetShopItemDraft, editShopItem, deleteShopItem, printShopItems,
                                 deductForm, setDeductForm, members: talentMarketMembers, requestManualDeduct, deducting,
                                 purchaseFilter, setPurchaseFilter, filteredPurchases, memberById,
                                 purchaseLoadWarning, pendingPurchaseCount, hasMorePendingPurchases, loadingMorePendingPurchases,
                                 loadMorePendingPurchases,
-                                formatAnyDate, setConfirmAction, requestPurchaseRefund, deliverPurchase, refundPurchase,
+                                formatAnyDate, setConfirmAction, requestPurchaseRefund,
                             }} />
                         )}
 

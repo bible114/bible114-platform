@@ -3,7 +3,7 @@ import {
   jsonResponse,
   platformErrorResponse,
 } from "../_shared/cors.ts";
-import { normalizeRole } from "../_shared/authz.ts";
+import { normalizeRole, requireOrganizationAdmin } from "../_shared/authz.ts";
 import { PlatformError } from "../_shared/errors.ts";
 import {
   getBearerToken,
@@ -57,6 +57,15 @@ import {
   validatePurchase,
 } from "./purchaseCore.ts";
 import {
+  type AdminPurchaseRecord,
+  AdminPurchaseValidationError,
+  readAdminTalentBalance,
+  resolveAdminRefundWalletKind,
+  validateAdminCounterSale,
+  validateAdminPurchaseDelivery,
+  validateAdminPurchaseRefund,
+} from "./adminPurchaseCore.ts";
+import {
   buildJoinRateLimitScopes,
   canConsumeJoinAttempt,
   type JoinPurpose,
@@ -76,6 +85,7 @@ type UserDocument = StoredReadUser & StoredQuizUser & {
   isDeleted?: unknown;
   churchId?: unknown;
   baseChurchId?: unknown;
+  primaryOrgId?: unknown;
   departmentId?: unknown;
   extraMemberships?: unknown;
   talentDepartmentId?: unknown;
@@ -86,6 +96,22 @@ type RosterTalentDocument = TalentMembershipUser & { uid?: unknown };
 type JoinRateLimitDocument = {
   count?: unknown;
   resetAt?: unknown;
+};
+
+type TalentAdminActionDocument = {
+  action?: unknown;
+  actorUid?: unknown;
+  churchId?: unknown;
+  targetUid?: unknown;
+  purchaseId?: unknown;
+  departmentId?: unknown;
+  marketId?: unknown;
+  itemName?: unknown;
+  price?: unknown;
+  legacyWalletKind?: unknown;
+  migratedWalletConfirmed?: unknown;
+  walletKind?: unknown;
+  result?: unknown;
 };
 
 const INVALID_JOIN_CODE_MESSAGE = "입장코드가 올바르지 않습니다.";
@@ -435,7 +461,64 @@ const purchaseValidationError = (error: PurchaseValidationError) => {
       });
     case "INSUFFICIENT_TALENT":
       return new PlatformError("CONFLICT", { message: "달란트가 부족합니다." });
+    case "INVALID_WALLET":
+      return new PlatformError("CONFLICT", {
+        message: "현재 달란트 잔액을 확인할 수 없습니다.",
+      });
   }
+};
+
+const adminPurchaseValidationError = (
+  error: AdminPurchaseValidationError,
+) => {
+  switch (error.code) {
+    case "TARGET_UNAVAILABLE":
+    case "PURCHASE_UNAVAILABLE":
+      return new PlatformError("NOT_FOUND", {
+        message: "교인 또는 구매 정보를 찾을 수 없습니다.",
+      });
+    case "INVALID_DEPARTMENT":
+    case "MARKET_UNAVAILABLE":
+    case "INVALID_ITEM":
+      return new PlatformError("BAD_REQUEST", {
+        message: "창구 판매 정보를 다시 확인해주세요.",
+      });
+    case "INSUFFICIENT_TALENT":
+      return new PlatformError("CONFLICT", {
+        message: "달란트가 부족합니다.",
+      });
+    case "PURCHASE_ALREADY_PROCESSED":
+      return new PlatformError("CONFLICT", {
+        message: "이미 처리된 구매입니다. 목록을 새로 확인해주세요.",
+      });
+    case "REFUND_MIGRATION_CONFIRM_REQUIRED":
+      return new PlatformError("REFUND_MIGRATION_CONFIRM_REQUIRED");
+    case "REFUND_WALLET_UNRESOLVED":
+    case "INVALID_WALLET":
+    case "INVALID_PURCHASE_PRICE":
+      return new PlatformError("CONFLICT", {
+        message: "환불할 지갑을 안전하게 확인할 수 없습니다.",
+      });
+  }
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const ledgerResult = (
+  ledger: TalentAdminActionDocument | null,
+  expected: Record<string, unknown>,
+) => {
+  if (!ledger) return null;
+  const matches = Object.entries(expected).every(([key, value]) =>
+    ledger[key as keyof TalentAdminActionDocument] === value
+  );
+  if (!matches || !isRecord(ledger.result)) {
+    throw new PlatformError("CONFLICT", {
+      message: "같은 요청 번호가 다른 관리자 작업에 사용되었습니다.",
+    });
+  }
+  return ledger.result;
 };
 
 const readJsonBody = async (request: Request): Promise<unknown> => {
@@ -975,6 +1058,539 @@ Deno.serve(async (request) => {
 
     const role = normalizeRole(userDocument.data.role);
 
+    if (parsed.action === "adminCounterSale") {
+      const transaction = await beginTransaction(
+        service.token,
+        service.projectId,
+      );
+      try {
+        const actorPath = `users/${uid}`;
+        const targetUserPath = `users/${parsed.memberUid}`;
+        const churchPath = `churches/${parsed.churchId}`;
+        const rosterPath = `${churchPath}/roster/${parsed.memberUid}`;
+        const shopPath = `${churchPath}/settings/talentShop`;
+        const purchasePath =
+          `${churchPath}/talentPurchases/${parsed.requestId}`;
+        const ledgerPath =
+          `${churchPath}/talentAdminActions/${parsed.requestId}`;
+        const [
+          freshActor,
+          targetUser,
+          targetRoster,
+          talentShop,
+          existingPurchase,
+          existingLedger,
+        ] = await Promise.all([
+          getDocument<UserDocument>(
+            service.token,
+            service.projectId,
+            actorPath,
+            { transaction },
+          ),
+          getDocument<AdminPurchaseRecord>(
+            service.token,
+            service.projectId,
+            targetUserPath,
+            { transaction },
+          ),
+          getDocument<AdminPurchaseRecord>(
+            service.token,
+            service.projectId,
+            rosterPath,
+            { transaction },
+          ),
+          getDocument<AdminPurchaseRecord>(
+            service.token,
+            service.projectId,
+            shopPath,
+            { transaction },
+          ),
+          getDocument<AdminPurchaseRecord>(
+            service.token,
+            service.projectId,
+            purchasePath,
+            { transaction },
+          ),
+          getDocument<TalentAdminActionDocument>(
+            service.token,
+            service.projectId,
+            ledgerPath,
+            { transaction },
+          ),
+        ]);
+        requireOrganizationAdmin(
+          freshActor?.data || null,
+          parsed.churchId,
+        );
+        const expectedLedger = {
+          action: parsed.action,
+          actorUid: uid,
+          churchId: parsed.churchId,
+          targetUid: parsed.memberUid,
+          departmentId: parsed.departmentId,
+          marketId: parsed.marketId,
+          itemName: parsed.itemName,
+          price: parsed.price,
+        };
+        const replay = ledgerResult(
+          existingLedger?.data || null,
+          expectedLedger,
+        );
+        if (replay) {
+          const replayWallet = replay.walletKind === "roster"
+            ? targetRoster?.data
+            : replay.walletKind === "user"
+            ? targetUser?.data
+            : null;
+          const latestTalent = replayWallet
+            ? readAdminTalentBalance(replayWallet.talent)
+            : null;
+          const replayResult = latestTalent === null
+            ? replay
+            : { ...replay, nextTalent: latestTalent };
+          await rollbackTransaction(
+            service.token,
+            service.projectId,
+            transaction,
+          ).catch(() => {});
+          return jsonResponse(origin, 200, {
+            ok: true,
+            action: parsed.action,
+            requestId: parsed.requestId,
+            alreadyCompleted: true,
+            ...replayResult,
+          });
+        }
+        if (existingPurchase) {
+          throw new PlatformError("CONFLICT", {
+            message: "같은 요청 번호의 구매 기록이 이미 존재합니다.",
+          });
+        }
+
+        let decision;
+        try {
+          decision = validateAdminCounterSale({
+            churchId: parsed.churchId,
+            memberUid: parsed.memberUid,
+            departmentId: parsed.departmentId,
+            marketId: parsed.marketId,
+            itemName: parsed.itemName,
+            price: parsed.price,
+            user: targetUser?.data || null,
+            roster: targetRoster?.data || null,
+            talentShop: talentShop?.data || null,
+          });
+        } catch (error) {
+          if (error instanceof AdminPurchaseValidationError) {
+            throw adminPurchaseValidationError(error);
+          }
+          throw error;
+        }
+        const now = new Date();
+        const walletPath = decision.walletKind === "roster"
+          ? rosterPath
+          : targetUserPath;
+        const purchase = {
+          schemaVersion: 2,
+          uid: parsed.memberUid,
+          memberName: decision.memberName,
+          departmentId: decision.departmentId,
+          departmentName: decision.departmentName,
+          marketId: decision.marketId,
+          walletKind: decision.walletKind,
+          walletOrgId: parsed.churchId,
+          walletBalanceAfter: decision.nextTalent,
+          itemId: "manual",
+          itemName: decision.itemName,
+          price: decision.price,
+          status: "delivered",
+          sourceAction: parsed.action,
+          requestId: parsed.requestId,
+          createdAt: now,
+          createdBy: uid,
+          deliveredAt: now,
+          deliveredBy: uid,
+        };
+        const purchaseResponse = {
+          ...purchase,
+          id: parsed.requestId,
+          createdAt: now.toISOString(),
+          deliveredAt: now.toISOString(),
+        };
+        const result = {
+          nextTalent: decision.nextTalent,
+          walletKind: decision.walletKind,
+          purchase: purchaseResponse,
+        };
+        await commitWrites(service.token, service.projectId, [
+          updateWrite(service.projectId, walletPath, {
+            talent: decision.nextTalent,
+            updatedAt: now,
+          }, {
+            updateMask: ["talent", "updatedAt"],
+            exists: true,
+          }),
+          updateWrite(service.projectId, purchasePath, purchase, {
+            exists: false,
+          }),
+          updateWrite(service.projectId, ledgerPath, {
+            ...expectedLedger,
+            actorRole: normalizeRole(freshActor?.data.role),
+            targetType: "memberWallet",
+            purchaseId: parsed.requestId,
+            walletKind: decision.walletKind,
+            balanceBefore: decision.nextTalent + decision.price,
+            balanceAfter: decision.nextTalent,
+            result,
+            at: now,
+          }, { exists: false }),
+        ], { transaction });
+        return jsonResponse(origin, 200, {
+          ok: true,
+          action: parsed.action,
+          requestId: parsed.requestId,
+          alreadyCompleted: false,
+          ...result,
+        });
+      } catch (error) {
+        await rollbackTransaction(service.token, service.projectId, transaction)
+          .catch(() => {});
+        throw error;
+      }
+    }
+
+    if (parsed.action === "adminDeliverPurchase") {
+      const transaction = await beginTransaction(
+        service.token,
+        service.projectId,
+      );
+      try {
+        const actorPath = `users/${uid}`;
+        const churchPath = `churches/${parsed.churchId}`;
+        const purchasePath =
+          `${churchPath}/talentPurchases/${parsed.purchaseId}`;
+        const ledgerPath =
+          `${churchPath}/talentAdminActions/${parsed.requestId}`;
+        const [freshActor, purchaseDocument, existingLedger] = await Promise
+          .all([
+            getDocument<UserDocument>(
+              service.token,
+              service.projectId,
+              actorPath,
+              { transaction },
+            ),
+            getDocument<AdminPurchaseRecord>(
+              service.token,
+              service.projectId,
+              purchasePath,
+              { transaction },
+            ),
+            getDocument<TalentAdminActionDocument>(
+              service.token,
+              service.projectId,
+              ledgerPath,
+              { transaction },
+            ),
+          ]);
+        requireOrganizationAdmin(
+          freshActor?.data || null,
+          parsed.churchId,
+        );
+        const expectedLedger = {
+          action: parsed.action,
+          actorUid: uid,
+          churchId: parsed.churchId,
+          purchaseId: parsed.purchaseId,
+        };
+        const replay = ledgerResult(
+          existingLedger?.data || null,
+          expectedLedger,
+        );
+        if (replay) {
+          await rollbackTransaction(
+            service.token,
+            service.projectId,
+            transaction,
+          ).catch(() => {});
+          return jsonResponse(origin, 200, {
+            ok: true,
+            action: parsed.action,
+            requestId: parsed.requestId,
+            alreadyCompleted: true,
+            ...replay,
+          });
+        }
+        try {
+          validateAdminPurchaseDelivery(purchaseDocument?.data || null);
+        } catch (error) {
+          if (error instanceof AdminPurchaseValidationError) {
+            throw adminPurchaseValidationError(error);
+          }
+          throw error;
+        }
+        const now = new Date();
+        const result = {
+          purchase: {
+            id: parsed.purchaseId,
+            status: "delivered",
+            deliveredAt: now.toISOString(),
+            deliveredBy: uid,
+            adminActionRequestId: parsed.requestId,
+          },
+        };
+        await commitWrites(service.token, service.projectId, [
+          updateWrite(service.projectId, purchasePath, {
+            status: "delivered",
+            deliveredAt: now,
+            deliveredBy: uid,
+            adminActionRequestId: parsed.requestId,
+          }, {
+            updateMask: [
+              "status",
+              "deliveredAt",
+              "deliveredBy",
+              "adminActionRequestId",
+            ],
+            exists: true,
+          }),
+          updateWrite(service.projectId, ledgerPath, {
+            ...expectedLedger,
+            actorRole: normalizeRole(freshActor?.data.role),
+            targetType: "talentPurchase",
+            targetUid: purchaseDocument?.data.uid || null,
+            result,
+            at: now,
+          }, { exists: false }),
+        ], { transaction });
+        return jsonResponse(origin, 200, {
+          ok: true,
+          action: parsed.action,
+          requestId: parsed.requestId,
+          alreadyCompleted: false,
+          ...result,
+        });
+      } catch (error) {
+        await rollbackTransaction(service.token, service.projectId, transaction)
+          .catch(() => {});
+        throw error;
+      }
+    }
+
+    if (parsed.action === "adminRefundPurchase") {
+      const transaction = await beginTransaction(
+        service.token,
+        service.projectId,
+      );
+      try {
+        const actorPath = `users/${uid}`;
+        const churchPath = `churches/${parsed.churchId}`;
+        const purchasePath =
+          `${churchPath}/talentPurchases/${parsed.purchaseId}`;
+        const ledgerPath =
+          `${churchPath}/talentAdminActions/${parsed.requestId}`;
+        const [freshActor, purchaseDocument, existingLedger] = await Promise
+          .all([
+            getDocument<UserDocument>(
+              service.token,
+              service.projectId,
+              actorPath,
+              { transaction },
+            ),
+            getDocument<AdminPurchaseRecord>(
+              service.token,
+              service.projectId,
+              purchasePath,
+              { transaction },
+            ),
+            getDocument<TalentAdminActionDocument>(
+              service.token,
+              service.projectId,
+              ledgerPath,
+              { transaction },
+            ),
+          ]);
+        requireOrganizationAdmin(
+          freshActor?.data || null,
+          parsed.churchId,
+        );
+        const expectedLedger = {
+          action: parsed.action,
+          actorUid: uid,
+          churchId: parsed.churchId,
+          purchaseId: parsed.purchaseId,
+          legacyWalletKind: parsed.legacyWalletKind,
+          migratedWalletConfirmed: parsed.migratedWalletConfirmed,
+        };
+        const replay = ledgerResult(
+          existingLedger?.data || null,
+          expectedLedger,
+        );
+        if (replay) {
+          const replayTargetUid = typeof existingLedger?.data.targetUid ===
+              "string"
+            ? existingLedger.data.targetUid.trim()
+            : "";
+          const replayWalletKind = existingLedger?.data.walletKind;
+          let replayResult = replay;
+          if (
+            replayTargetUid && replayTargetUid.length <= 128 &&
+            !replayTargetUid.includes("/") &&
+            !/[\u0000-\u001f\u007f]/.test(replayTargetUid) &&
+            (replayWalletKind === "user" || replayWalletKind === "roster")
+          ) {
+            const replayWalletPath = replayWalletKind === "roster"
+              ? `${churchPath}/roster/${replayTargetUid}`
+              : `users/${replayTargetUid}`;
+            const replayWallet = await getDocument<AdminPurchaseRecord>(
+              service.token,
+              service.projectId,
+              replayWalletPath,
+              { transaction },
+            );
+            const latestTalent = replayWallet
+              ? readAdminTalentBalance(replayWallet.data.talent)
+              : null;
+            if (latestTalent !== null) {
+              replayResult = { ...replay, nextTalent: latestTalent };
+            }
+          }
+          await rollbackTransaction(
+            service.token,
+            service.projectId,
+            transaction,
+          ).catch(() => {});
+          return jsonResponse(origin, 200, {
+            ok: true,
+            action: parsed.action,
+            requestId: parsed.requestId,
+            alreadyCompleted: true,
+            ...replayResult,
+          });
+        }
+
+        const purchase = purchaseDocument?.data || null;
+        try {
+          validateAdminPurchaseDelivery(purchase);
+          resolveAdminRefundWalletKind(
+            purchase!,
+            parsed.churchId,
+            parsed.legacyWalletKind,
+          );
+        } catch (error) {
+          if (error instanceof AdminPurchaseValidationError) {
+            throw adminPurchaseValidationError(error);
+          }
+          throw error;
+        }
+        const purchaseUid = typeof purchase?.uid === "string"
+          ? purchase.uid.trim()
+          : "";
+        if (
+          !purchaseUid || purchaseUid.length > 128 ||
+          purchaseUid.includes("/") || /[\u0000-\u001f\u007f]/.test(purchaseUid)
+        ) {
+          throw adminPurchaseValidationError(
+            new AdminPurchaseValidationError("PURCHASE_UNAVAILABLE"),
+          );
+        }
+        const userPath = `users/${purchaseUid}`;
+        const rosterPath = `${churchPath}/roster/${purchaseUid}`;
+        const [refundUser, refundRoster] = await Promise.all([
+          getDocument<AdminPurchaseRecord>(
+            service.token,
+            service.projectId,
+            userPath,
+            { transaction },
+          ),
+          getDocument<AdminPurchaseRecord>(
+            service.token,
+            service.projectId,
+            rosterPath,
+            { transaction },
+          ),
+        ]);
+        let decision;
+        try {
+          decision = validateAdminPurchaseRefund({
+            purchase,
+            churchId: parsed.churchId,
+            memberUid: purchaseUid,
+            legacyWalletKind: parsed.legacyWalletKind,
+            user: refundUser?.data || null,
+            roster: refundRoster?.data || null,
+            migratedWalletConfirmed: parsed.migratedWalletConfirmed,
+          });
+        } catch (error) {
+          if (error instanceof AdminPurchaseValidationError) {
+            throw adminPurchaseValidationError(error);
+          }
+          throw error;
+        }
+        const walletPath = decision.walletKind === "roster"
+          ? rosterPath
+          : userPath;
+        const now = new Date();
+        const result = {
+          nextTalent: decision.nextTalent,
+          walletKind: decision.walletKind,
+          purchase: {
+            id: parsed.purchaseId,
+            uid: purchaseUid,
+            status: "cancelled",
+            deliveredAt: now.toISOString(),
+            deliveredBy: uid,
+            adminActionRequestId: parsed.requestId,
+          },
+        };
+        await commitWrites(service.token, service.projectId, [
+          updateWrite(service.projectId, walletPath, {
+            talent: decision.nextTalent,
+            updatedAt: now,
+          }, {
+            updateMask: ["talent", "updatedAt"],
+            exists: true,
+          }),
+          updateWrite(service.projectId, purchasePath, {
+            status: "cancelled",
+            deliveredAt: now,
+            deliveredBy: uid,
+            adminActionRequestId: parsed.requestId,
+          }, {
+            updateMask: [
+              "status",
+              "deliveredAt",
+              "deliveredBy",
+              "adminActionRequestId",
+            ],
+            exists: true,
+          }),
+          updateWrite(service.projectId, ledgerPath, {
+            ...expectedLedger,
+            actorRole: normalizeRole(freshActor?.data.role),
+            targetType: "talentPurchase",
+            targetUid: purchaseUid,
+            walletKind: decision.walletKind,
+            refundAmount: decision.refundAmount,
+            balanceBefore: decision.nextTalent - decision.refundAmount,
+            balanceAfter: decision.nextTalent,
+            result,
+            at: now,
+          }, { exists: false }),
+        ], { transaction });
+        return jsonResponse(origin, 200, {
+          ok: true,
+          action: parsed.action,
+          requestId: parsed.requestId,
+          alreadyCompleted: false,
+          ...result,
+        });
+      } catch (error) {
+        await rollbackTransaction(service.token, service.projectId, transaction)
+          .catch(() => {});
+        throw error;
+      }
+    }
+
     if (parsed.action === "purchaseItem") {
       const transaction = await beginTransaction(
         service.token,
@@ -1015,8 +1631,28 @@ Deno.serve(async (request) => {
             ),
           ]);
         if (existingPurchase) {
-          if (existingPurchase.data.uid !== uid) {
+          const existingWalletKind = existingPurchase.data.walletKind;
+          const boundToRequest = existingPurchase.data.uid === uid &&
+            existingPurchase.data.itemId === parsed.itemId &&
+            existingPurchase.data.departmentId === parsed.departmentId &&
+            existingPurchase.data.marketId === parsed.marketId &&
+            existingPurchase.data.walletOrgId === parsed.churchId &&
+            ["user", "roster"].includes(String(existingWalletKind));
+          if (!boundToRequest) {
             throw new PlatformError("CONFLICT");
+          }
+          const latestWallet = existingWalletKind === "roster"
+            ? roster?.data
+            : freshUser?.data;
+          const latestTalent = latestWallet?.talent ?? 0;
+          if (
+            !latestWallet || typeof latestTalent !== "number" ||
+            !Number.isSafeInteger(latestTalent) || latestTalent < 0 ||
+            latestTalent > 1_000_000_000
+          ) {
+            throw new PlatformError("CONFLICT", {
+              message: "현재 달란트 잔액을 확인할 수 없습니다.",
+            });
           }
           await rollbackTransaction(
             service.token,
@@ -1028,8 +1664,8 @@ Deno.serve(async (request) => {
             action: parsed.action,
             requestId: parsed.requestId,
             alreadyCompleted: true,
-            nextTalent: existingPurchase.data.walletBalanceAfter,
-            walletKind: existingPurchase.data.walletKind,
+            nextTalent: latestTalent,
+            walletKind: existingWalletKind,
             purchase: {
               id: parsed.requestId,
               itemId: existingPurchase.data.itemId,
