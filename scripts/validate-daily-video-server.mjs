@@ -124,6 +124,53 @@ assert.match(
 );
 
 assert.match(
+    serverCore,
+    /export const ADMIN_PREVIEW_DAILY_VIDEO_ACTION =\s*["']adminPreviewDailyVideo["'] as const;/,
+    'adminPreviewDailyVideo action 상수가 필요하다.',
+);
+assert.match(
+    serverCore,
+    /action:\s*typeof ADMIN_PREVIEW_DAILY_VIDEO_ACTION;\s*requestId:\s*string;\s*adultPlaylistId:\s*string;\s*kidsPlaylistId:\s*string;/,
+    '관리자 미리보기 요청 타입은 requestId와 두 playlist ID만 가져야 한다.',
+);
+const adminPreviewParserBranch = findBlock(
+    serverCore,
+    'if (action === ADMIN_PREVIEW_DAILY_VIDEO_ACTION)',
+    '\n  if (action ===',
+    'adminPreviewDailyVideo parser 분기',
+);
+assert.match(
+    adminPreviewParserBranch,
+    /new Set\(\[\s*["']action["'],\s*["']requestId["'],\s*["']adultPlaylistId["'],\s*["']kidsPlaylistId["'],?\s*\]\)/,
+    '관리자 미리보기 허용 입력은 action, requestId, adultPlaylistId, kidsPlaylistId뿐이어야 한다.',
+);
+assert.match(
+    adminPreviewParserBranch,
+    /Object\.keys\(body\)\.some\(\(key\) => !allowedKeys\.has\(key\)\)/,
+    '관리자 미리보기는 API 키·날짜 등 추가 클라이언트 입력을 거부해야 한다.',
+);
+assert.match(
+    adminPreviewParserBranch,
+    /const normalized = value\.trim\(\);[\s\S]*\/\^\[A-Za-z0-9_-\]\{1,200\}\$\/\.test\(normalized\)/,
+    'playlist ID는 trim 후 허용 문자와 길이를 엄격히 검증해야 한다.',
+);
+assert.match(
+    adminPreviewParserBranch,
+    /adultPlaylistId:\s*normalizedAdultPlaylistId,[\s\S]*kidsPlaylistId:\s*normalizedKidsPlaylistId/,
+    'parser는 정규화된 두 playlist ID만 반환해야 한다.',
+);
+assert.doesNotMatch(
+    adminPreviewParserBranch,
+    /\bapiKey\b|\bserviceDate\b|\benabled\b/,
+    '관리자 미리보기 parser가 서버 권위 입력을 받으면 안 된다.',
+);
+assert.match(
+    serverCoreTest,
+    /관리자 영상 미리보기는 playlist ID만 엄격히 정규화한다/,
+    'core_test에 관리자 미리보기 입력 경계 회귀 테스트가 필요하다.',
+);
+
+assert.match(
     dailyVideoCoreTest,
     /scripts\/fixtures\/daily-video-contract\.json/,
     '서버 순수 테스트도 브라우저와 같은 fixture를 읽어야 한다.',
@@ -167,6 +214,62 @@ assert.equal(
     '익명 허용 인증 분기는 resolveDailyVideo 한 곳뿐이어야 한다.',
 );
 
+const adminPreviewBranchStart = serverIndex.indexOf('if (parsed.action === "adminPreviewDailyVideo")');
+const adminPreviewBranchEnd = serverIndex.indexOf('\n    if (parsed.action ===', adminPreviewBranchStart + 1);
+assert.ok(
+    adminPreviewBranchStart >= 0 && adminPreviewBranchEnd > adminPreviewBranchStart,
+    'index.ts에 adminPreviewDailyVideo 전용 분기가 필요하다.',
+);
+const activeUserLookupStart = serverIndex.indexOf(
+    'const userDocument = await getDocument<UserDocument>(',
+    regularAuthStart,
+);
+const deletedUserGuardStart = serverIndex.indexOf(
+    'if (userDocument.data.isDeleted === true)',
+    activeUserLookupStart,
+);
+const normalizedRoleStart = serverIndex.indexOf(
+    'const role = normalizeRole(userDocument.data.role)',
+    deletedUserGuardStart,
+);
+assert.ok(
+    regularAuthStart >= 0 && activeUserLookupStart > regularAuthStart &&
+        deletedUserGuardStart > activeUserLookupStart &&
+        normalizedRoleStart > deletedUserGuardStart &&
+        adminPreviewBranchStart > normalizedRoleStart,
+    '관리자 미리보기는 비익명 인증과 활성 users 문서 확인 뒤에만 실행해야 한다.',
+);
+const adminPreviewIndexBranch = serverIndex.slice(adminPreviewBranchStart, adminPreviewBranchEnd);
+assert.match(
+    adminPreviewIndexBranch,
+    /requireRole\(userDocument\.data, \[["']platformAdmin["'], ["']superAdmin["']\]\)/,
+    '관리자 미리보기는 플랫폼 관리자 역할만 허용해야 한다.',
+);
+const previewRoleGuardStart = adminPreviewIndexBranch.indexOf('requireRole(');
+const previewResolverCallStart = adminPreviewIndexBranch.indexOf('await adminPreviewDailyVideo(');
+assert.ok(
+    previewRoleGuardStart >= 0 && previewResolverCallStart > previewRoleGuardStart,
+    '역할 검사를 통과한 뒤에만 관리자 미리보기 resolver를 호출해야 한다.',
+);
+assert.doesNotMatch(
+    adminPreviewIndexBranch,
+    /allowAnonymous:\s*true|\b(?:beginTransaction|commitWrites|deleteWrite|rollbackTransaction|updateWrite)\s*\(/,
+    '관리자 미리보기 분기는 익명 인증이나 Firestore 쓰기를 사용하면 안 된다.',
+);
+const adminPreviewResponseStart = adminPreviewIndexBranch.indexOf('return jsonResponse(origin, 200, {');
+assert.ok(adminPreviewResponseStart >= 0, '관리자 미리보기 성공 응답이 필요하다.');
+const adminPreviewResponseBlock = adminPreviewIndexBranch.slice(adminPreviewResponseStart);
+assert.match(
+    adminPreviewResponseBlock,
+    /ok:\s*true,[\s\S]*action:\s*parsed\.action,[\s\S]*requestId:\s*parsed\.requestId,[\s\S]*\.\.\.result/,
+    '관리자 미리보기 응답은 공통 echo와 공개 resolver 결과만 반환해야 한다.',
+);
+assert.doesNotMatch(
+    adminPreviewResponseBlock,
+    /apiKey|playlistId|config(?:uration)?|(?:daily|config|job)Path|lease(?:Owner|ExpiresAt)?/i,
+    'index 응답에 키·playlist·내부 경로·lease 상태를 섞으면 안 된다.',
+);
+
 assert.match(
     dailyVideoResolve,
     /getServiceDateKst\(/,
@@ -203,6 +306,118 @@ assert.doesNotMatch(
     /apiKey|playlistId|config(?:uration)?|(?:daily|config|job)Path|lease(?:Owner|ExpiresAt)?/i,
     'index 응답 분기에서 키·설정·내부 경로·lease 상태를 직접 섞으면 안 된다.',
 );
+
+const adminPreviewResultType = findBlock(
+    dailyVideoResolve,
+    'export type AdminDailyVideoPreviewResult = {',
+    '\n};',
+    '공개 관리자 미리보기 응답 타입',
+);
+const adminPreviewPublicFields = Array.from(
+    adminPreviewResultType.matchAll(/^\s{2}([A-Za-z][A-Za-z0-9]*)(?:\?)?:/gm),
+    match => match[1],
+);
+assert.deepEqual(
+    adminPreviewPublicFields,
+    ['serviceDate', 'previews'],
+    '관리자 미리보기 공개 결과는 serviceDate와 previews만 선언해야 한다.',
+);
+assert.match(
+    adminPreviewResultType,
+    /previews:\s*\{\s*adult:\s*DailyVideoEntry \| null;\s*kids:\s*DailyVideoEntry \| null;\s*\}/,
+    '미리보기는 adult/kids 객체에 entry 또는 null만 반환해야 한다.',
+);
+assert.doesNotMatch(
+    adminPreviewResultType,
+    /apiKey|playlistId|config(?:uration)?|(?:daily|config|job)Path|lease(?:Owner|ExpiresAt)?/i,
+    '관리자 미리보기 공개 타입에 키·playlist·내부 경로·lease 상태를 노출하면 안 된다.',
+);
+
+const adminPreviewResolverStart = dailyVideoResolve.indexOf(
+    'export const adminPreviewDailyVideo = async (',
+);
+assert.ok(adminPreviewResolverStart >= 0, '관리자 매일 영상 미리보기 resolver가 필요하다.');
+const adminPreviewResolverBlock = dailyVideoResolve.slice(adminPreviewResolverStart);
+assert.match(
+    adminPreviewResolverBlock,
+    /\): Promise<AdminDailyVideoPreviewResult> =>/,
+    '관리자 미리보기 반환형은 최소 공개 타입으로 고정해야 한다.',
+);
+assert.match(
+    adminPreviewResolverBlock,
+    /const serviceDate = getServiceDateKst\(dependencies\.now\(\)\)/,
+    '관리자 미리보기 기준일은 서버 KST 서비스 날짜를 사용해야 한다.',
+);
+const previewSecretReadStart = adminPreviewResolverBlock.indexOf(
+    'dependencies.getEnv("YOUTUBE_API_KEY")',
+);
+const previewLegacyGuardStart = adminPreviewResolverBlock.indexOf('if (!apiKey)', previewSecretReadStart);
+const previewLegacyConfigReadStart = adminPreviewResolverBlock.indexOf(
+    '"settings/videoAutoConfig"',
+    previewLegacyGuardStart,
+);
+assert.ok(
+    previewSecretReadStart >= 0 && previewLegacyGuardStart > previewSecretReadStart &&
+        previewLegacyConfigReadStart > previewLegacyGuardStart,
+    'YOUTUBE_API_KEY secret을 먼저 확인하고 없을 때만 legacy 설정을 읽어야 한다.',
+);
+assert.match(
+    adminPreviewResolverBlock.slice(previewLegacyGuardStart, previewLegacyConfigReadStart + 300),
+    /apiKey = normalizeConfig\(configDocument\)\.apiKey/,
+    'Firestore apiKey는 secret 부재 시 한시 fallback으로만 사용해야 한다.',
+);
+assert.match(
+    adminPreviewResolverBlock,
+    /mode:\s*["']adult["'],\s*playlistId:\s*playlistIds\.adultPlaylistId/,
+    '성인용 미리보기는 요청한 현재 playlist ID를 사용해야 한다.',
+);
+assert.match(
+    adminPreviewResolverBlock,
+    /if \(playlistIds\.kidsPlaylistId\)[\s\S]*mode:\s*["']kids["'],\s*playlistId:\s*playlistIds\.kidsPlaylistId/,
+    '어린이용 미리보기는 요청됐을 때만 현재 playlist ID를 사용해야 한다.',
+);
+assert.match(
+    adminPreviewResolverBlock,
+    /const previews:[\s\S]*\{\s*adult:\s*null,\s*kids:\s*null,\s*\}/,
+    '각 미리보기 모드는 조회 실패·날짜 불일치 시 null로 시작해야 한다.',
+);
+assert.match(
+    adminPreviewResolverBlock,
+    /fetchMissingVideoEntries\(\s*modes,\s*apiKey,\s*serviceDate,\s*dependencies,?\s*\)/,
+    '관리자 미리보기는 공용 mode 격리·deadline YouTube 조회를 재사용해야 한다.',
+);
+assert.match(
+    adminPreviewResolverBlock,
+    /return \{ serviceDate, previews \};/,
+    '관리자 미리보기 resolver는 최소 공개 결과만 반환해야 한다.',
+);
+assert.doesNotMatch(
+    adminPreviewResolverBlock,
+    /\b(?:beginTransaction|commitWrites|deleteWrite|rollbackTransaction|updateWrite)\s*\(|dailyVideos\/|dailyVideoJobs\/|lease(?:Owner|Purpose|ExpiresAt)/,
+    '관리자 미리보기 resolver는 Firestore 쓰기·daily 문서·lease를 사용하면 안 된다.',
+);
+const previewFetchModesBlock = findBlock(
+    dailyVideoResolve,
+    'const fetchMissingVideoEntries = async (',
+    '\nconst fetchDailyVideoChapters',
+    '미리보기 mode 격리·deadline 조회',
+);
+assert.match(
+    previewFetchModesBlock,
+    /const controller = new AbortController\(\);[\s\S]*Promise\.all\(modes\.map\(async[\s\S]*try \{[\s\S]*fetchDailyVideoEntry\([\s\S]*controller\.signal[\s\S]*\} catch \{[\s\S]*entry = null/,
+    '한 mode의 YouTube 실패는 다른 mode 결과와 분리하고 공용 abort signal을 사용해야 한다.',
+);
+for (const pattern of [
+    /setTimeout\(\(\) => \{[\s\S]*controller\.abort\(\)/,
+    /Promise\.race\(\[work, timeout\]\)/,
+    /modes\.map\(\(\{ mode \}\) => \[mode, completed\.get\(mode\) \|\| null\]/,
+]) {
+    assert.match(
+        previewFetchModesBlock,
+        pattern,
+        '공용 deadline 뒤 완료되지 않은 mode는 null로 반환해야 한다.',
+    );
+}
 
 const acquireLeaseBlock = findBlock(
     dailyVideoResolve,
@@ -454,8 +669,11 @@ assert.match(
     '추출 불가 모드를 제외한 채 전체 refresh 성공으로 오인하면 안 된다.',
 );
 
-const publicResolveBlock = dailyVideoResolve.slice(
-    dailyVideoResolve.indexOf('export const resolveDailyVideo = async ('),
+const publicResolveBlock = findBlock(
+    dailyVideoResolve,
+    'export const resolveDailyVideo = async (',
+    '\nexport const adminPreviewDailyVideo = async (',
+    '공개 resolve resolver',
 );
 assert.match(
     publicResolveBlock,
@@ -492,6 +710,66 @@ assert.match(
     /const configuredModes = getConfiguredDailyVideoModes\(data\)/,
     '값이 있는 playlist 모드는 형식이 잘못돼도 완료 조건에서 조용히 제외하면 안 된다.',
 );
+
+const adminPreviewNoWriteTest = findBlock(
+    dailyVideoResolveTest,
+    'Deno.test("관리자 영상 미리보기는 현재 playlist를 독립 조회하고 write와 lease를 만들지 않는다"',
+    '\nDeno.test(',
+    '관리자 미리보기 no-write 회귀 테스트',
+);
+for (const pattern of [
+    /previews:\s*\{\s*adult:\s*videoEntry\(["']adult["']\),\s*kids:\s*videoEntry\(["']kids["']\)/,
+    /harness\.state\.commits\.length,\s*0/,
+    /harness\.state\.transactions,\s*0/,
+    /getDocumentData\(harness\.state, DAILY_PATH\),\s*null/,
+    /getDocumentData\(harness\.state, JOB_PATH\), null/,
+    /assertNoPrivateResolveData\(result/,
+]) assert.match(adminPreviewNoWriteTest, pattern);
+
+const adminPreviewIsolationTest = findBlock(
+    dailyVideoResolveTest,
+    'Deno.test("관리자 영상 미리보기는 날짜 없음, HTTP 실패, timeout을 mode null로 격리한다"',
+    '\nDeno.test(',
+    '관리자 미리보기 mode 격리 회귀 테스트',
+);
+for (const pattern of [
+    /date missing/,
+    /HTTP failure/,
+    /timeout/,
+    /result\.previews\.adult,[\s\S]*videoEntry\(["']adult["']\)/,
+    /result\.previews\.kids,[\s\S]*null/,
+    /harness\.state\.abortedFetches/,
+    /harness\.state\.commits\.length,[\s\S]*0/,
+]) assert.match(adminPreviewIsolationTest, pattern);
+
+const adminPreviewSecretTest = findBlock(
+    dailyVideoResolveTest,
+    'Deno.test("관리자 영상 미리보기는 secret을 우선하고 legacy apiKey에 한시 fallback한다"',
+    '\nDeno.test(',
+    '관리자 미리보기 secret 우선 회귀 테스트',
+);
+for (const pattern of [
+    /envApiKey:\s*["']secret-key["'][\s\S]*expectedKey:\s*["']secret-key["']/,
+    /label:\s*["']legacy fallback["'][\s\S]*expectedKey:\s*["']firestore-key["']/,
+    /url\.searchParams\.get\(["']key["']\),[\s\S]*testCase\.expectedKey/,
+    /result\.previews\.kids, null/,
+    /harness\.state\.commits\.length, 0/,
+]) assert.match(adminPreviewSecretTest, pattern);
+
+const adminPreviewMissingKeyTest = findBlock(
+    dailyVideoResolveTest,
+    'Deno.test("관리자 영상 미리보기는 API key가 없으면 409이며 YouTube와 write를 호출하지 않는다"',
+    '\nDeno.test(',
+    '관리자 미리보기 key 부재 회귀 테스트',
+);
+for (const pattern of [
+    /received\.code,\s*["']CONFLICT["']/,
+    /received\.status,\s*409/,
+    /harness\.state\.youtubeUrls\.length,[\s\S]*0/,
+    /harness\.state\.commits\.length, 0/,
+    /harness\.state\.transactions, 0/,
+]) assert.match(adminPreviewMissingKeyTest, pattern);
+
 for (const regressionName of [
     'fresh 수동 문서는 그대로 반환하고 write와 YouTube 호출을 하지 않는다',
     'fresh 문서의 미래 updatedAt은 반복 refresh lease를 만들지 않는다',

@@ -28,6 +28,8 @@ for (const pattern of [
     /export const previewReadCompletion = \(cycle, day, options = \{\}\)/,
     /export const resolveDailyVideo = \(options = \{\}\)/,
     /export const validateDailyVideoResolveResponse = \(result, expectedRequestId\)/,
+    /export const adminPreviewDailyVideo = \(input, options = \{\}\)/,
+    /export const validateAdminDailyVideoPreviewResponse = \(payload, result, expectedRequestId\)/,
     /export const issueJoinTicket = \(\{ churchId, entryCode, purpose \}, options = \{\}\)/,
     /export const joinCommunity = \(\{ churchId, entryCode = '', joinTicket = '', departmentId, subgroupId = '' \}, options = \{\}\)/,
     /Number\.isInteger\(cycle\)/,
@@ -231,6 +233,166 @@ for (const unsafeUrl of [
     expectInvalidDailyVideoResponse(
         response => { response.video.adult.url = unsafeUrl; },
         `unsafe daily video URL: ${unsafeUrl}`,
+    );
+}
+
+// 플랫폼 관리자 미리보기도 인증형 API만 사용하며, 입력 재생목록과 2xx 응답을
+// 모두 엄격히 검증한다. 날짜와 YouTube 결과는 브라우저가 계산하지 않는다.
+const adminPreviewStart = client.indexOf('export const adminPreviewDailyVideo =');
+const adminPreviewEnd = client.indexOf('\nexport const issueJoinTicket =', adminPreviewStart);
+assert.ok(adminPreviewStart >= 0 && adminPreviewEnd > adminPreviewStart, '관리자 매일 영상 미리보기 wrapper가 필요하다.');
+const adminPreviewClient = client.slice(adminPreviewStart, adminPreviewEnd);
+for (const pattern of [
+    /if \(!isResponseRecord\(input\)\)/,
+    /const \{ adultPlaylistId, kidsPlaylistId = '', \.\.\.unknownFields \} = input/,
+    /Object\.keys\(unknownFields\)\.length > 0/,
+    /DAILY_VIDEO_PLAYLIST_ID_PATTERN\.test\(normalizedAdultPlaylistId\)/,
+    /adultPlaylistId: normalizedAdultPlaylistId/,
+    /kidsPlaylistId: normalizedKidsPlaylistId/,
+    /const requestId = options\.requestId \|\| createRequestId\(\)/,
+    /: DAILY_VIDEO_TIMEOUT_MS/,
+    /callPlatformApi\('adminPreviewDailyVideo', payload, \{ \.\.\.options, requestId, timeoutMs \}\)/,
+    /validateAdminDailyVideoPreviewResponse\(payload, result, requestId\)/,
+]) assert.match(adminPreviewClient, pattern);
+assert.doesNotMatch(adminPreviewClient, /callPlatformApiPublic|\bfetch\s*\(/, '관리자 미리보기는 인증 API 경계만 사용해야 한다.');
+assert.match(client, /const DAILY_VIDEO_TIMEOUT_MS = 70_000/, '관리자 미리보기는 서버 YouTube 조회를 위해 70초 제한을 사용해야 한다.');
+
+const adminPreviewRequestId = '423e4567-e89b-42d3-a456-426614174000';
+const adminPreviewPayload = {
+    adultPlaylistId: 'PLadult_123',
+    kidsPlaylistId: 'PLkids_456',
+};
+const adminPreviewAdult = {
+    url: 'https://youtu.be/A1234567890',
+    chapters: [{ label: '해설', sec: 0 }, { label: '기도', sec: 720 }],
+    title: '7월 15일 성인 매일 영상',
+    matchedDate: true,
+};
+const validAdminPreviewResponse = {
+    ok: true,
+    action: 'adminPreviewDailyVideo',
+    requestId: adminPreviewRequestId,
+    serviceDate: '2026-07-15',
+    previews: {
+        adult: adminPreviewAdult,
+        kids: null,
+    },
+};
+assert.deepEqual(
+    platformApi.validateAdminDailyVideoPreviewResponse(
+        adminPreviewPayload,
+        validAdminPreviewResponse,
+        adminPreviewRequestId,
+    ),
+    validAdminPreviewResponse,
+);
+const allRequestedMissing = {
+    ...validAdminPreviewResponse,
+    previews: { adult: null, kids: null },
+};
+assert.deepEqual(
+    platformApi.validateAdminDailyVideoPreviewResponse(
+        adminPreviewPayload,
+        allRequestedMissing,
+        adminPreviewRequestId,
+    ),
+    allRequestedMissing,
+    '요청한 재생목록에 당일 영상이 없으면 모드별 null은 정상 응답이어야 한다.',
+);
+const adultOnlyPreviewPayload = { adultPlaylistId: 'PLadult_123', kidsPlaylistId: '' };
+assert.deepEqual(
+    platformApi.validateAdminDailyVideoPreviewResponse(
+        adultOnlyPreviewPayload,
+        allRequestedMissing,
+        adminPreviewRequestId,
+    ).previews,
+    { adult: null, kids: null },
+    '요청하지 않은 어린이 모드는 null이어야 한다.',
+);
+
+const expectInvalidAdminPreviewResponse = (
+    mutate,
+    label,
+    payload = adminPreviewPayload,
+) => {
+    const response = structuredClone(validAdminPreviewResponse);
+    mutate(response);
+    assert.throws(
+        () => platformApi.validateAdminDailyVideoPreviewResponse(payload, response, adminPreviewRequestId),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_RESPONSE'
+            && error.status === 200
+            && error.retryable === true,
+        label,
+    );
+};
+
+for (const [label, mutate] of [
+    ['ok', response => { response.ok = false; }],
+    ['action', response => { response.action = 'resolveDailyVideo'; }],
+    ['requestId echo', response => { response.requestId = 'wrong'; }],
+    ['calendar date', response => { response.serviceDate = '2026-02-31'; }],
+    ['extra top-level', response => { response.apiKey = 'secret'; }],
+    ['previews array', response => { response.previews = []; }],
+    ['previews null', response => { response.previews = null; }],
+    ['extra preview mode', response => { response.previews.private = null; }],
+    ['missing adult mode', response => { delete response.previews.adult; }],
+    ['missing kids mode', response => { delete response.previews.kids; }],
+    ['nested private field', response => { response.previews.adult.leaseOwner = 'owner'; }],
+    ['missing matchedDate', response => { delete response.previews.adult.matchedDate; }],
+    ['false matchedDate', response => { response.previews.adult.matchedDate = false; }],
+    ['invalid title', response => { response.previews.adult.title = 123; }],
+    ['invalid publishedAt', response => { response.previews.adult.publishedAt = 'not-a-date'; }],
+]) expectInvalidAdminPreviewResponse(mutate, label);
+
+for (const unsafeUrl of [
+    'http://youtube.com/watch?v=A1234567890',
+    'https://user:pass@youtube.com/watch?v=A1234567890',
+    'https://youtube.com:443/watch?v=A1234567890',
+    'https://youtube.com.evil.example/watch?v=A1234567890',
+    'https://youtu.be.evil.example/A1234567890',
+    'https://m.youtube.com/watch?v=A1234567890',
+    'https://youtube.com./watch?v=A1234567890',
+    ' https://youtu.be/A1234567890',
+]) {
+    expectInvalidAdminPreviewResponse(
+        response => { response.previews.adult.url = unsafeUrl; },
+        `unsafe admin preview URL: ${unsafeUrl}`,
+    );
+}
+expectInvalidAdminPreviewResponse(
+    response => {
+        response.previews.kids = {
+            url: 'https://youtu.be/K1234567890',
+            chapters: [],
+            matchedDate: true,
+        };
+    },
+    'unrequested kids preview',
+    adultOnlyPreviewPayload,
+);
+
+for (const invalidInput of [
+    null,
+    [],
+    {},
+    { adultPlaylistId: '' },
+    { adultPlaylistId: 'https://youtube.com/playlist?list=PLadult_123' },
+    { adultPlaylistId: 'bad/id' },
+    { adultPlaylistId: 'P'.repeat(201) },
+    { adultPlaylistId: 'PLadult_123', kidsPlaylistId: 'bad/id' },
+    { adultPlaylistId: 'PLadult_123', kidsPlaylistId: 'PLkids_456', apiKey: 'secret' },
+    { adultPlaylistId: 'PLadult_123', serviceDate: '2026-07-15' },
+    { adultPlaylistId: 'PLadult_123', enabled: true },
+    { adultPlaylistId: 'PLadult_123', extra: true },
+]) {
+    assert.throws(
+        () => platformApi.adminPreviewDailyVideo(invalidInput),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_PAYLOAD'
+            && error.status === 0
+            && error.retryable === false,
+        `잘못된 관리자 미리보기 입력은 네트워크 전에 거부해야 한다: ${JSON.stringify(invalidInput)}`,
     );
 }
 

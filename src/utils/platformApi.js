@@ -2,6 +2,10 @@ import { PLATFORM_API_URL } from '../data/constants.js';
 
 const DEFAULT_TIMEOUT_MS = 12_000;
 const DAILY_VIDEO_TIMEOUT_MS = 70_000;
+const ADMIN_DAILY_VIDEO_PREVIEW_REQUEST_KEYS = new Set(['adultPlaylistId', 'kidsPlaylistId']);
+const ADMIN_DAILY_VIDEO_PREVIEW_RESPONSE_KEYS = new Set(['ok', 'action', 'requestId', 'serviceDate', 'previews']);
+const ADMIN_DAILY_VIDEO_PREVIEWS_KEYS = new Set(['adult', 'kids']);
+const DAILY_VIDEO_PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{1,200}$/;
 const RESERVED_PAYLOAD_KEYS = new Set(['action', 'requestId']);
 const DAILY_VIDEO_RESPONSE_KEYS = new Set([
     'ok', 'action', 'requestId', 'serviceDate', 'video', 'transient', 'pending', 'retryAfterMs',
@@ -378,6 +382,82 @@ export const resolveDailyVideo = (options = {}) => {
         : DAILY_VIDEO_TIMEOUT_MS;
     return callPlatformApi('resolveDailyVideo', {}, { ...options, requestId, timeoutMs })
         .then(result => validateDailyVideoResolveResponse(result, requestId));
+};
+
+const invalidAdminDailyVideoPreviewResponse = () => {
+    throw new PlatformApiError('매일 영상 미리보기 정보를 안전하게 확인하지 못했습니다.', {
+        code: 'INVALID_RESPONSE', status: 200, retryable: true,
+    });
+};
+
+export const validateAdminDailyVideoPreviewResponse = (payload, result, expectedRequestId) => {
+    if (!isResponseRecord(payload)
+        || Object.keys(payload).some(key => !ADMIN_DAILY_VIDEO_PREVIEW_REQUEST_KEYS.has(key))
+        || !Object.prototype.hasOwnProperty.call(payload, 'adultPlaylistId')
+        || !Object.prototype.hasOwnProperty.call(payload, 'kidsPlaylistId')
+        || typeof payload.adultPlaylistId !== 'string'
+        || typeof payload.kidsPlaylistId !== 'string'
+        || !DAILY_VIDEO_PLAYLIST_ID_PATTERN.test(payload.adultPlaylistId)
+        || (payload.kidsPlaylistId && !DAILY_VIDEO_PLAYLIST_ID_PATTERN.test(payload.kidsPlaylistId))
+        || !isResponseRecord(result)
+        || Object.keys(result).some(key => !ADMIN_DAILY_VIDEO_PREVIEW_RESPONSE_KEYS.has(key))
+        || result.ok !== true || result.action !== 'adminPreviewDailyVideo'
+        || result.requestId !== expectedRequestId
+        || !isValidServiceDate(result.serviceDate)
+        || !isResponseRecord(result.previews)
+        || Object.keys(result.previews).some(key => !ADMIN_DAILY_VIDEO_PREVIEWS_KEYS.has(key))
+        || !Object.prototype.hasOwnProperty.call(result.previews, 'adult')
+        || !Object.prototype.hasOwnProperty.call(result.previews, 'kids')) {
+        return invalidAdminDailyVideoPreviewResponse();
+    }
+    const adult = normalizeDailyVideoEntry(result.previews.adult);
+    const kids = normalizeDailyVideoEntry(result.previews.kids);
+    if ((adult && adult.matchedDate !== true)
+        || (kids && kids.matchedDate !== true)
+        || (!payload.kidsPlaylistId && kids !== null)) {
+        return invalidAdminDailyVideoPreviewResponse();
+    }
+    return {
+        ok: true,
+        action: 'adminPreviewDailyVideo',
+        requestId: expectedRequestId,
+        serviceDate: result.serviceDate,
+        previews: { adult, kids },
+    };
+};
+
+export const adminPreviewDailyVideo = (input, options = {}) => {
+    if (!isResponseRecord(input)) {
+        throw new PlatformApiError('매일 영상 미리보기 설정이 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const { adultPlaylistId, kidsPlaylistId = '', ...unknownFields } = input;
+    if (Object.keys(unknownFields).length > 0
+        || typeof adultPlaylistId !== 'string'
+        || typeof kidsPlaylistId !== 'string') {
+        throw new PlatformApiError('매일 영상 미리보기 설정이 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const normalizedAdultPlaylistId = adultPlaylistId.trim();
+    const normalizedKidsPlaylistId = kidsPlaylistId.trim();
+    if (!DAILY_VIDEO_PLAYLIST_ID_PATTERN.test(normalizedAdultPlaylistId)
+        || (normalizedKidsPlaylistId && !DAILY_VIDEO_PLAYLIST_ID_PATTERN.test(normalizedKidsPlaylistId))) {
+        throw new PlatformApiError('매일 영상 재생목록 정보를 다시 확인해주세요.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const payload = {
+        adultPlaylistId: normalizedAdultPlaylistId,
+        kidsPlaylistId: normalizedKidsPlaylistId,
+    };
+    const requestId = options.requestId || createRequestId();
+    const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+        ? options.timeoutMs
+        : DAILY_VIDEO_TIMEOUT_MS;
+    return callPlatformApi('adminPreviewDailyVideo', payload, { ...options, requestId, timeoutMs })
+        .then(result => validateAdminDailyVideoPreviewResponse(payload, result, requestId));
 };
 
 export const issueJoinTicket = ({ churchId, entryCode, purpose }, options = {}) => {

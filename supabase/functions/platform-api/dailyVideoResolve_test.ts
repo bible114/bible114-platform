@@ -2,11 +2,15 @@ import type {
   FirestoreDocument,
   FirestoreWrite,
 } from "../_shared/firestore.ts";
+import { PlatformError } from "../_shared/errors.ts";
 import {
   DAILY_VIDEO_CHAPTERS_TTL_MS,
   type DailyVideoMode,
 } from "./dailyVideoCore.ts";
-import { resolveDailyVideo } from "./dailyVideoResolve.ts";
+import {
+  adminPreviewDailyVideo,
+  resolveDailyVideo,
+} from "./dailyVideoResolve.ts";
 
 const NOW_MS = Date.parse("2026-07-15T00:00:00.000Z");
 const SERVICE_DATE = "2026-07-15";
@@ -51,8 +55,10 @@ type HarnessOptions = {
   available?: Partial<Record<DailyVideoMode, boolean>>;
   chapterDescriptions?: Partial<Record<DailyVideoMode, string>>;
   envApiKey?: string;
+  hangModes?: Partial<Record<DailyVideoMode, boolean>>;
   hangYouTube?: boolean;
   onVideoDetails?: (state: MemoryState) => void;
+  playlistHttpFailures?: Partial<Record<DailyVideoMode, boolean>>;
   videoDetails?: Partial<
     Record<DailyVideoMode, "valid" | "empty" | "missingSnippet" | "wrongId">
   >;
@@ -301,7 +307,18 @@ const createHarness = (options: HarnessOptions = {}) => {
     state.youtubeUrls.push(url);
     state.events.push(`fetch:${url.pathname.split("/").at(-1)}`);
 
-    if (options.hangYouTube) {
+    const playlistId = url.searchParams.get("playlistId");
+    const videoId = url.searchParams.get("id");
+    const requestMode = (Object.entries(MODE_CONFIG) as Array<[
+      DailyVideoMode,
+      { playlistId: string; videoId: string },
+    ]>).find(([, config]) =>
+      config.playlistId === playlistId || config.videoId === videoId
+    )?.[0];
+
+    if (
+      options.hangYouTube || (requestMode && options.hangModes?.[requestMode])
+    ) {
       return await new Promise<Response>((_resolve, reject) => {
         const signal = init?.signal;
         if (!signal) return;
@@ -315,11 +332,10 @@ const createHarness = (options: HarnessOptions = {}) => {
     }
 
     if (url.pathname.endsWith("/playlistItems")) {
-      const playlistId = url.searchParams.get("playlistId");
-      const mode = (Object.entries(MODE_CONFIG) as Array<[
-        DailyVideoMode,
-        { playlistId: string; videoId: string },
-      ]>).find(([, config]) => config.playlistId === playlistId)?.[0];
+      const mode = requestMode;
+      if (mode && options.playlistHttpFailures?.[mode]) {
+        return Response.json({ error: "simulated failure" }, { status: 503 });
+      }
       const available = mode && options.available?.[mode] !== false;
       return Response.json({
         items: available
@@ -335,11 +351,7 @@ const createHarness = (options: HarnessOptions = {}) => {
     }
 
     if (url.pathname.endsWith("/videos")) {
-      const videoId = url.searchParams.get("id");
-      const mode = (Object.entries(MODE_CONFIG) as Array<[
-        DailyVideoMode,
-        { playlistId: string; videoId: string },
-      ]>).find(([, config]) => config.videoId === videoId)?.[0];
+      const mode = requestMode;
       if (!videoDetailsHookCalled) {
         videoDetailsHookCalled = true;
         options.onVideoDetails?.(state);
@@ -404,6 +416,17 @@ const runResolve = (
     dependencies: harness.dependencies as never,
   });
 
+const runAdminPreview = (
+  harness: ReturnType<typeof createHarness>,
+  playlistIds: { adultPlaylistId: string; kidsPlaylistId: string } = {
+    adultPlaylistId: MODE_CONFIG.adult.playlistId,
+    kidsPlaylistId: MODE_CONFIG.kids.playlistId,
+  },
+) =>
+  adminPreviewDailyVideo(SERVICE, playlistIds, {
+    dependencies: harness.dependencies as never,
+  });
+
 const dailyWrites = (state: MemoryState): MemoryWrite[] =>
   state.commits.flat().filter((write) =>
     write.kind === "update" && write.path === DAILY_PATH
@@ -457,6 +480,172 @@ const assertNoPrivateResolveData = (result: unknown, message: string) => {
     );
   }
 };
+
+Deno.test("관리자 영상 미리보기는 현재 playlist를 독립 조회하고 write와 lease를 만들지 않는다", async () => {
+  const harness = createHarness();
+  setDocument(harness.state, CONFIG_PATH, {
+    ...configData(),
+    enabled: false,
+    adultPlaylistId: "PL_STORED_ADULT",
+    kidsPlaylistId: "PL_STORED_KIDS",
+  });
+
+  const result = await runAdminPreview(harness);
+
+  assertEquals(result, {
+    serviceDate: SERVICE_DATE,
+    previews: {
+      adult: videoEntry("adult"),
+      kids: videoEntry("kids"),
+    },
+  }, "admin preview result");
+  assertEquals(harness.state.commits.length, 0, "admin preview writes");
+  assertEquals(harness.state.transactions, 0, "admin preview transactions");
+  assertEquals(harness.state.rollbacks, 0, "admin preview rollbacks");
+  assertEquals(
+    getDocumentData(harness.state, DAILY_PATH),
+    null,
+    "daily created",
+  );
+  assertEquals(getDocumentData(harness.state, JOB_PATH), null, "lease created");
+  assert(
+    harness.state.youtubeUrls.some((url) =>
+      url.searchParams.get("playlistId") === MODE_CONFIG.adult.playlistId
+    ),
+    "current adult playlist was not used",
+  );
+  assert(
+    harness.state.youtubeUrls.some((url) =>
+      url.searchParams.get("playlistId") === MODE_CONFIG.kids.playlistId
+    ),
+    "current kids playlist was not used",
+  );
+  assertNoPrivateResolveData(result, "admin preview response");
+});
+
+Deno.test("관리자 영상 미리보기는 날짜 없음, HTTP 실패, timeout을 mode null로 격리한다", async () => {
+  const cases: Array<{
+    label: string;
+    options: HarnessOptions;
+    abortedFetches?: number;
+  }> = [
+    { label: "date missing", options: { available: { kids: false } } },
+    {
+      label: "HTTP failure",
+      options: { playlistHttpFailures: { kids: true } },
+    },
+    {
+      label: "timeout",
+      options: { hangModes: { kids: true }, youtubeDeadlineMs: 5 },
+      abortedFetches: 1,
+    },
+  ];
+
+  for (const testCase of cases) {
+    const harness = createHarness({
+      envApiKey: "secret-key",
+      ...testCase.options,
+    });
+    const result = await runAdminPreview(harness);
+
+    assertEquals(
+      result.previews.adult,
+      videoEntry("adult"),
+      `${testCase.label}: adult preview`,
+    );
+    assertEquals(
+      result.previews.kids,
+      null,
+      `${testCase.label}: kids preview`,
+    );
+    assertEquals(
+      harness.state.commits.length,
+      0,
+      `${testCase.label}: writes`,
+    );
+    assertEquals(
+      harness.state.transactions,
+      0,
+      `${testCase.label}: transactions`,
+    );
+    if (testCase.abortedFetches !== undefined) {
+      assertEquals(
+        harness.state.abortedFetches,
+        testCase.abortedFetches,
+        `${testCase.label}: abort count`,
+      );
+    }
+    assertNoPrivateResolveData(result, `${testCase.label}: response`);
+  }
+});
+
+Deno.test("관리자 영상 미리보기는 secret을 우선하고 legacy apiKey에 한시 fallback한다", async () => {
+  for (
+    const testCase of [
+      {
+        label: "secret",
+        options: { envApiKey: "secret-key" },
+        expectedKey: "secret-key",
+      },
+      {
+        label: "legacy fallback",
+        options: {},
+        expectedKey: "firestore-key",
+      },
+    ]
+  ) {
+    const harness = createHarness(testCase.options);
+    setDocument(harness.state, CONFIG_PATH, configData({ kids: false }));
+
+    const result = await runAdminPreview(harness, {
+      adultPlaylistId: MODE_CONFIG.adult.playlistId,
+      kidsPlaylistId: "",
+    });
+
+    assertEquals(
+      harness.state.youtubeUrls.length,
+      2,
+      `${testCase.label}: fetch count`,
+    );
+    for (const url of harness.state.youtubeUrls) {
+      assertEquals(
+        url.searchParams.get("key"),
+        testCase.expectedKey,
+        `${testCase.label}: API key`,
+      );
+    }
+    assertEquals(result.previews.kids, null, `${testCase.label}: kids preview`);
+    assertEquals(harness.state.commits.length, 0, `${testCase.label}: writes`);
+    assertNoPrivateResolveData(result, `${testCase.label}: response`);
+  }
+});
+
+Deno.test("관리자 영상 미리보기는 API key가 없으면 409이며 YouTube와 write를 호출하지 않는다", async () => {
+  const harness = createHarness();
+  let received: unknown;
+  try {
+    await runAdminPreview(harness);
+  } catch (error) {
+    received = error;
+  }
+
+  assert(received instanceof PlatformError, "missing key error type");
+  if (!(received instanceof PlatformError)) return;
+  assertEquals(received.code, "CONFLICT", "missing key error code");
+  assertEquals(received.status, 409, "missing key status");
+  assertEquals(
+    received.message,
+    "YouTube API 서버 설정을 확인해 주세요.",
+    "missing key diagnostic",
+  );
+  assertEquals(
+    harness.state.youtubeUrls.length,
+    0,
+    "missing key YouTube calls",
+  );
+  assertEquals(harness.state.commits.length, 0, "missing key writes");
+  assertEquals(harness.state.transactions, 0, "missing key transactions");
+});
 
 Deno.test("fresh 수동 문서는 그대로 반환하고 write와 YouTube 호출을 하지 않는다", async () => {
   const harness = createHarness();

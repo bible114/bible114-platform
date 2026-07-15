@@ -89,6 +89,58 @@ Deno.test("매일 영상 resolve는 requestId 외 클라이언트 입력을 거�
   }
 });
 
+Deno.test("관리자 영상 미리보기는 playlist ID만 엄격히 정규화한다", () => {
+  const requestId = "123e4567-e89b-12d3-a456-426614174000";
+  const parsed = parsePlatformApiRequest({
+    action: "adminPreviewDailyVideo",
+    requestId,
+    adultPlaylistId: " PL_ADULT-123 ",
+    kidsPlaylistId: "",
+  });
+  assert(parsed.action === "adminPreviewDailyVideo", "action mismatch");
+  if (parsed.action !== "adminPreviewDailyVideo") return;
+  assert(parsed.requestId === requestId, "requestId mismatch");
+  assert(parsed.adultPlaylistId === "PL_ADULT-123", "adult playlist mismatch");
+  assert(parsed.kidsPlaylistId === "", "empty kids playlist rejected");
+
+  for (
+    const invalid of [
+      { adultPlaylistId: "", kidsPlaylistId: "PL_KIDS" },
+      {
+        adultPlaylistId: "https://youtube.com/playlist?list=PL_ADULT",
+        kidsPlaylistId: "PL_KIDS",
+      },
+      { adultPlaylistId: "PL_ADULT", kidsPlaylistId: "bad/list" },
+      { adultPlaylistId: "PL_ADULT" },
+      {
+        adultPlaylistId: "PL_ADULT",
+        kidsPlaylistId: "",
+        apiKey: "client-key",
+      },
+      {
+        adultPlaylistId: "PL_ADULT",
+        kidsPlaylistId: "",
+        serviceDate: "2026-07-15",
+      },
+      {
+        adultPlaylistId: "PL_ADULT",
+        kidsPlaylistId: "",
+        mode: "adult",
+      },
+    ]
+  ) {
+    assertRequestError(
+      () =>
+        parsePlatformApiRequest({
+          action: "adminPreviewDailyVideo",
+          requestId,
+          ...invalid,
+        }),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
 Deno.test("상품 구매 요청은 서버 식별자만 받는다", () => {
   const parsed = parsePlatformApiRequest({
     action: "purchaseItem",

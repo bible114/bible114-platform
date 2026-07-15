@@ -35,6 +35,7 @@ import {
 import { getVisibleBibleVersions, isPlanIdAllowedForUser } from '../src/data/bible_options.js';
 
 const read = path => fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+const exists = path => fs.existsSync(new URL(`../${path}`, import.meta.url));
 
 assert.equal(getQuizProgressKey(1, 1), 'r1_d1');
 assert.equal(getQuizProgressKey(1, 2), 'r1_d2');
@@ -96,7 +97,6 @@ const userAuth = read('src/hooks/useUserAuth.js');
 const helperSource = read('src/utils/helpers.js');
 const dailyVideoChaptersSource = read('src/utils/dailyVideoChapters.js');
 const dailyVideo = read('src/components/dashboard/DailyVideoCard.jsx');
-const adminDailyVideoPreview = read('src/utils/adminDailyVideoPreview.js');
 const departmentHook = read('src/hooks/useDepartment.js');
 const bibleLogic = read('src/hooks/useBibleLogic.js');
 const rankingModal = read('src/components/modals/RankingModal.jsx');
@@ -472,9 +472,58 @@ assert.match(dailyVideo, /return \(\) => \{[\s\S]*cancelRefreshTimer\(\)/);
 assert.match(dailyVideo, /reevaluateAfterResponse && !cancelled[\s\S]*resolveWhenAllowed\(latestCachedVideo\)/);
 assert.match(dailyVideo, /document\.addEventListener\('visibilitychange', retryOnReturn\)/);
 assert.match(dailyVideo, /window\.addEventListener\('focus', retryOnReturn\)/);
-assert.match(platformAdmin, /import \{ fetchLatestFromPlaylist \} from '\.\.\/utils\/adminDailyVideoPreview'/);
-assert.match(platformAdmin, /fetchLatestFromPlaylist\(playlistId, apiKey, targetDateKey\)/);
-assert.match(adminDailyVideoPreview, /youtube\/v3\/playlistItems[\s\S]*youtube\/v3\/videos/);
+assert.match(platformAdmin, /import \{ adminPreviewDailyVideo \} from '\.\.\/utils\/platformApi'/);
+assert.equal(
+    exists('src/utils/adminDailyVideoPreview.js'),
+    false,
+    '브라우저 YouTube 미리보기 helper는 서버 전환 뒤 제거해야 한다.',
+);
+for (const forbidden of [
+    /adminDailyVideoPreview/,
+    /fetchLatestFromPlaylist/,
+    /googleapis\.com/,
+    /\bautoApiKey\b/,
+    /\bsetAutoApiKey\b/,
+    /\bd\.apiKey\b/,
+]) assert.doesNotMatch(platformAdmin, forbidden, '플랫폼 관리자 화면에 브라우저 API 키/YouTube 호출 흔적이 남아 있다.');
+
+const autoConfigStart = platformAdmin.indexOf('const saveAutoConfig = async () =>');
+const autoConfigEnd = platformAdmin.indexOf('\n    React.useEffect(', autoConfigStart);
+assert.ok(autoConfigStart >= 0 && autoConfigEnd > autoConfigStart, '자동 영상 설정 저장 구간이 필요하다.');
+const autoConfigBlock = platformAdmin.slice(autoConfigStart, autoConfigEnd);
+assert.match(autoConfigBlock, /collection\('settings'\)\.doc\('videoAutoConfig'\)\.set\(\{/);
+for (const field of ['adultPlaylistId', 'kidsPlaylistId', 'enabled', 'updatedAt']) {
+    assert.match(autoConfigBlock, new RegExp(`\\b${field}:`), `자동 영상 설정에 ${field}가 필요하다.`);
+}
+assert.match(autoConfigBlock, /\}, \{ merge: true \}\)/, '기존 설정 문서에는 안전한 merge 저장을 사용해야 한다.');
+assert.doesNotMatch(autoConfigBlock, /\bapiKey\b/, '브라우저가 YouTube API 키를 설정 문서에 저장하면 안 된다.');
+
+const connectionTestStart = platformAdmin.indexOf('const testAutoConnection = async () =>');
+const connectionTestEnd = platformAdmin.indexOf('\n    const loadVideoList', connectionTestStart);
+assert.ok(connectionTestStart >= 0 && connectionTestEnd > connectionTestStart, '자동 영상 연결 확인 구간이 필요하다.');
+const connectionTestBlock = platformAdmin.slice(connectionTestStart, connectionTestEnd);
+assert.match(connectionTestBlock, /await adminPreviewDailyVideo\(\{ adultPlaylistId, kidsPlaylistId \}\)/);
+assert.match(connectionTestBlock, /result\.previews\[mode\]/, '미리보기는 서버의 adult/kids 객체 응답을 사용해야 한다.');
+assert.match(connectionTestBlock, /result\.serviceDate/, '미리보기 기준일은 서버 serviceDate를 사용해야 한다.');
+assert.doesNotMatch(connectionTestBlock, /\bfetch\s*\(|getVideoDateKST\(/, '관리자 미리보기에서 브라우저 직접 조회/기준일 계산을 하면 안 된다.');
+assert.match(platformAdmin, /서버 Secret\([\s\S]*YOUTUBE_API_KEY/, 'API 키가 서버 Secret으로 이동했다는 안내가 필요하다.');
+
+const manualSaveStart = platformAdmin.indexOf('const saveDailyVideo = async () =>');
+const manualSaveEnd = platformAdmin.indexOf('\n    const deleteDailyVideo', manualSaveStart);
+assert.ok(manualSaveStart >= 0 && manualSaveEnd > manualSaveStart, '수동 매일 영상 저장 구간이 필요하다.');
+assert.match(
+    platformAdmin.slice(manualSaveStart, manualSaveEnd),
+    /collection\('dailyVideos'\)\.doc\(videoDate\)\.set\(payload, \{ merge: true \}\)/,
+    '관리자 수동 영상 등록/수정 경로는 유지해야 한다.',
+);
+const manualDeleteStart = platformAdmin.indexOf('const deleteDailyVideo = async (date) =>');
+const manualDeleteEnd = platformAdmin.indexOf('\n    React.useEffect(', manualDeleteStart);
+assert.ok(manualDeleteStart >= 0 && manualDeleteEnd > manualDeleteStart, '수동 매일 영상 삭제 구간이 필요하다.');
+assert.match(
+    platformAdmin.slice(manualDeleteStart, manualDeleteEnd),
+    /collection\('dailyVideos'\)\.doc\(date\)\.delete\(\)/,
+    '관리자 수동 영상 삭제 경로는 유지해야 한다.',
+);
 assert.match(dailyVideo, /newMode === 'kids'[\s\S]*startsWith\('nt_'\)/);
 assert.match(dailyVideo, /saveGuestState\(\{ videoType: newMode,[\s\S]*quizLevel: 'easy'/);
 assert.match(dailyVideo, /videoMode: newMode,[\s\S]*quizLevel: 'easy'/);

@@ -3,7 +3,7 @@ import Icon from './Icon';
 import GoogleLinkCard from './admin/GoogleLinkCard';
 import { firebase } from '../utils/firebase';
 import ChurchAdminView from './ChurchAdminView';
-import { fetchLatestFromPlaylist } from '../utils/adminDailyVideoPreview';
+import { adminPreviewDailyVideo } from '../utils/platformApi';
 import { getDaysRead, getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
 import { migrateChurchAccessSecrets, rebuildChurchDirectory, removeChurchFromDirectory, syncChurchDirectoryEntry } from '../utils/churchDirectory';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
@@ -81,7 +81,6 @@ const PlatformAdminView = ({
     const [loadingVideoList, setLoadingVideoList] = React.useState(false);
 
     // 매일 영상 자동화 설정 (settings/videoAutoConfig)
-    const [autoApiKey, setAutoApiKey] = React.useState('');
     const [autoAdultPlaylist, setAutoAdultPlaylist] = React.useState('');
     const [autoKidsPlaylist, setAutoKidsPlaylist] = React.useState('');
     const [autoEnabled, setAutoEnabled] = React.useState(false);
@@ -97,7 +96,6 @@ const PlatformAdminView = ({
             .then(doc => {
                 if (!doc.exists) return;
                 const d = doc.data();
-                setAutoApiKey(d.apiKey || '');
                 setAutoAdultPlaylist(d.adultPlaylistId || '');
                 setAutoKidsPlaylist(d.kidsPlaylistId || '');
                 setAutoEnabled(!!d.enabled);
@@ -111,7 +109,6 @@ const PlatformAdminView = ({
         setSavingAutoConfig(true);
         try {
             await db.collection('settings').doc('videoAutoConfig').set({
-                apiKey: autoApiKey.trim(),
                 adultPlaylistId: extractYouTubePlaylistId(autoAdultPlaylist) || '',
                 kidsPlaylistId: autoKidsPlaylist.trim() ? extractYouTubePlaylistId(autoKidsPlaylist) : null,
                 enabled: autoEnabled,
@@ -171,31 +168,28 @@ const PlatformAdminView = ({
         setTestingConnection(true);
         setConnectionTestResult(null);
         try {
-            const apiKey = autoApiKey.trim();
             const adultPlaylistId = extractYouTubePlaylistId(autoAdultPlaylist);
-            const kidsPlaylistId = autoKidsPlaylist.trim() ? extractYouTubePlaylistId(autoKidsPlaylist) : null;
-            if (!apiKey || !adultPlaylistId) {
-                setConnectionTestResult({ ok: false, message: 'API 키와 성인용 재생목록을 먼저 입력해주세요.' });
+            const kidsPlaylistId = autoKidsPlaylist.trim() ? extractYouTubePlaylistId(autoKidsPlaylist) : '';
+            if (!adultPlaylistId) {
+                setConnectionTestResult({ ok: false, message: '성인용 재생목록을 먼저 입력해주세요.' });
                 return;
             }
-            const targetDateKey = getVideoDateKST();
+            const result = await adminPreviewDailyVideo({ adultPlaylistId, kidsPlaylistId });
             const targets = [
-                ['성인용', adultPlaylistId],
-                ['어린이용', kidsPlaylistId],
-            ].filter(([, playlistId]) => !!playlistId);
-            const previews = await Promise.all(targets.map(async ([label, playlistId]) => {
-                try {
-                    const entry = await fetchLatestFromPlaylist(playlistId, apiKey, targetDateKey);
-                    return { label, ok: true, entry };
-                } catch (e) {
-                    return { label, ok: false, error: e.message };
-                }
-            }));
+                { mode: 'adult', label: '성인용', playlistId: adultPlaylistId },
+                { mode: 'kids', label: '어린이용', playlistId: kidsPlaylistId },
+            ].filter(target => !!target.playlistId);
+            const previews = targets.map(({ mode, label }) => {
+                const entry = result.previews[mode];
+                return entry
+                    ? { label, ok: true, entry }
+                    : { label, ok: false, error: `${result.serviceDate} 날짜와 일치하는 게시 영상이 아직 없습니다.` };
+            });
             const failed = previews.filter(p => !p.ok);
             setConnectionTestResult({
                 ok: failed.length === 0,
                 message: failed.length === 0
-                    ? `${targetDateKey} 기준 선택 미리보기 완료`
+                    ? `${result.serviceDate} 기준 선택 미리보기 완료`
                     : `${failed.map(p => p.label).join(', ')} 확인 실패`,
                 previews,
             });
@@ -1279,9 +1273,9 @@ const PlatformAdminView = ({
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                         <div>
                                             <label className="block text-xs font-bold text-slate-500 mb-1">YouTube Data API 키</label>
-                                            <input type="text" value={autoApiKey} onChange={e => setAutoApiKey(e.target.value)}
-                                                placeholder="AIza..."
-                                                className="w-full p-2.5 border rounded-lg text-sm bg-white" />
+                                            <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-2.5 text-xs font-bold text-indigo-700">
+                                                서버 Secret(<code>YOUTUBE_API_KEY</code>)으로 이동되었습니다. 이 화면에서는 키를 저장하거나 표시하지 않습니다.
+                                            </div>
                                         </div>
                                         <div className="flex items-end">
                                             <label className="flex items-center gap-2 text-sm font-bold text-slate-600 pb-2.5">
@@ -1328,8 +1322,8 @@ const PlatformAdminView = ({
                                                     <div className="flex items-center justify-between gap-3 mb-2">
                                                         <h3 className="text-sm font-black text-slate-700">{preview.label}</h3>
                                                         {preview.ok && (
-                                                            <span className={`text-[11px] font-black px-2 py-1 rounded-full ${preview.entry?.matchedDate ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
-                                                                {preview.entry?.matchedDate ? '날짜 매칭' : '최신 폴백'}
+                                                            <span className="text-[11px] font-black px-2 py-1 rounded-full bg-green-50 text-green-700">
+                                                                날짜 매칭
                                                             </span>
                                                         )}
                                                     </div>

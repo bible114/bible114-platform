@@ -11,8 +11,16 @@ export const ADMIN_COUNTER_SALE_ACTION = "adminCounterSale" as const;
 export const ADMIN_DELIVER_PURCHASE_ACTION = "adminDeliverPurchase" as const;
 export const ADMIN_REFUND_PURCHASE_ACTION = "adminRefundPurchase" as const;
 export const RESOLVE_DAILY_VIDEO_ACTION = "resolveDailyVideo" as const;
+export const ADMIN_PREVIEW_DAILY_VIDEO_ACTION =
+  "adminPreviewDailyVideo" as const;
 
 export type PlatformApiRequest =
+  | {
+    action: typeof ADMIN_PREVIEW_DAILY_VIDEO_ACTION;
+    requestId: string;
+    adultPlaylistId: string;
+    kidsPlaylistId: string;
+  }
   | {
     action: typeof RESOLVE_DAILY_VIDEO_ACTION;
     requestId: string;
@@ -188,6 +196,8 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     purchaseId,
     legacyWalletKind,
     migratedWalletConfirmed,
+    adultPlaylistId,
+    kidsPlaylistId,
   } = body as Record<string, unknown>;
   if (!isRequestId(requestId)) {
     throw new PlatformApiRequestError("INVALID_REQUEST_ID");
@@ -200,6 +210,34 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       throw new PlatformApiRequestError("INVALID_PAYLOAD");
     }
     return { action, requestId };
+  }
+  if (action === ADMIN_PREVIEW_DAILY_VIDEO_ACTION) {
+    const allowedKeys = new Set([
+      "action",
+      "requestId",
+      "adultPlaylistId",
+      "kidsPlaylistId",
+    ]);
+    const normalizePlaylistId = (value: unknown, optional = false) => {
+      if (typeof value !== "string") return null;
+      const normalized = value.trim();
+      if (optional && !normalized) return "";
+      return /^[A-Za-z0-9_-]{1,200}$/.test(normalized) ? normalized : null;
+    };
+    const normalizedAdultPlaylistId = normalizePlaylistId(adultPlaylistId);
+    const normalizedKidsPlaylistId = normalizePlaylistId(kidsPlaylistId, true);
+    if (
+      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+      !normalizedAdultPlaylistId || normalizedKidsPlaylistId === null
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return {
+      action,
+      requestId,
+      adultPlaylistId: normalizedAdultPlaylistId,
+      kidsPlaylistId: normalizedKidsPlaylistId,
+    };
   }
   if (action === ISSUE_JOIN_TICKET_ACTION) {
     const normalizedChurchId = safeDocumentId(churchId);

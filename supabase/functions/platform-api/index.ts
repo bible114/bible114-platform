@@ -3,7 +3,11 @@ import {
   jsonResponse,
   platformErrorResponse,
 } from "../_shared/cors.ts";
-import { normalizeRole, requireOrganizationAdmin } from "../_shared/authz.ts";
+import {
+  normalizeRole,
+  requireOrganizationAdmin,
+  requireRole,
+} from "../_shared/authz.ts";
 import { PlatformError } from "../_shared/errors.ts";
 import {
   getBearerToken,
@@ -78,7 +82,10 @@ import {
   resolveTalentWalletPrograms,
   type TalentMembershipUser,
 } from "./talentProgramCore.ts";
-import { resolveDailyVideo } from "./dailyVideoResolve.ts";
+import {
+  adminPreviewDailyVideo,
+  resolveDailyVideo,
+} from "./dailyVideoResolve.ts";
 
 // T122-T123 shadow 단계: 읽기·퀴즈 결과를 계산만 하며 Firestore 쓰기는 금지한다.
 type UserDocument = StoredReadUser & StoredQuizUser & {
@@ -1076,6 +1083,20 @@ Deno.serve(async (request) => {
     }
 
     const role = normalizeRole(userDocument.data.role);
+
+    if (parsed.action === "adminPreviewDailyVideo") {
+      requireRole(userDocument.data, ["platformAdmin", "superAdmin"]);
+      const result = await adminPreviewDailyVideo(service, {
+        adultPlaylistId: parsed.adultPlaylistId,
+        kidsPlaylistId: parsed.kidsPlaylistId,
+      });
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        ...result,
+      });
+    }
 
     if (parsed.action === "adminCounterSale") {
       const transaction = await beginTransaction(

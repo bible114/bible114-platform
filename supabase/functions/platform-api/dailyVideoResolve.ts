@@ -76,6 +76,14 @@ export type DailyVideoResolveResult = {
   retryAfterMs?: number;
 };
 
+export type AdminDailyVideoPreviewResult = {
+  serviceDate: string;
+  previews: {
+    adult: DailyVideoEntry | null;
+    kids: DailyVideoEntry | null;
+  };
+};
+
 type DailyVideoDependencies = {
   beginTransaction: typeof beginTransaction;
   commitWrites: typeof commitWrites;
@@ -1094,4 +1102,55 @@ export const resolveDailyVideo = async (
     fetched,
     dependencies,
   );
+};
+
+export const adminPreviewDailyVideo = async (
+  service: ServiceAccess,
+  playlistIds: { adultPlaylistId: string; kidsPlaylistId: string },
+  options: { dependencies?: Partial<DailyVideoDependencies> } = {},
+): Promise<AdminDailyVideoPreviewResult> => {
+  const dependencies = {
+    ...DEFAULT_DEPENDENCIES,
+    ...(options.dependencies || {}),
+  } as DailyVideoDependencies;
+  const serviceDate = getServiceDateKst(dependencies.now());
+  let apiKey = dependencies.getEnv("YOUTUBE_API_KEY")?.trim() || "";
+  if (!apiKey) {
+    const configDocument = await dependencies.getDocument<
+      VideoAutoConfigDocument
+    >(
+      service.token,
+      service.projectId,
+      "settings/videoAutoConfig",
+    );
+    apiKey = normalizeConfig(configDocument).apiKey;
+  }
+  if (!apiKey) {
+    throw new PlatformError("CONFLICT", {
+      message: "YouTube API 서버 설정을 확인해 주세요.",
+    });
+  }
+
+  const modes: DailyVideoModeConfig[] = [{
+    mode: "adult",
+    playlistId: playlistIds.adultPlaylistId,
+  }];
+  if (playlistIds.kidsPlaylistId) {
+    modes.push({
+      mode: "kids",
+      playlistId: playlistIds.kidsPlaylistId,
+    });
+  }
+  const previews: AdminDailyVideoPreviewResult["previews"] = {
+    adult: null,
+    kids: null,
+  };
+  const results = await fetchMissingVideoEntries(
+    modes,
+    apiKey,
+    serviceDate,
+    dependencies,
+  );
+  for (const [mode, entry] of results) previews[mode] = entry;
+  return { serviceDate, previews };
 };
