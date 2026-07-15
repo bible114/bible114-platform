@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: T123 읽기·퀴즈 보상 서버 commit 전환 준비**. T125 공개 입장코드 추측 방지 보완 구현은 완료했고, 운영 비밀 설정·배포·보안 이전 실행과 App Check 적용이 남았다. T123 shadow는 부서별 달란트 v2까지 로컬 준비를 마쳤지만, T123b/d2는 실로그인 `[read-shadow] match:true`, `[quiz-shadow] match:true` 각 1건 확인이 남아 있다. 아직 읽기·퀴즈 Firestore 쓰기는 서버 commit으로 전환하지 않았다.
+> **현재 활성 작업: T123 읽기·퀴즈 보상 서버 commit 전환 준비**. T125 공개 입장코드 추측 방지의 secret 설정, Edge·인덱스·웹·규칙 배포, 운영 8개 공동체 private/access 이전, 공개 비밀 필드 0건 감사까지 완료했다. App Check와 T127의 7일 관찰·직접 쓰기 차단은 남아 있다. T123 shadow는 부서별 달란트 v2까지 준비됐지만, T123b/d2는 개발 환경 실로그인 `[read-shadow] match:true`, `[quiz-shadow] match:true` 각 1건 확인이 남아 있다. 아직 읽기·퀴즈 Firestore 쓰기는 서버 commit으로 전환하지 않았다.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-15 | R25~26 운영 배포·입장코드 원자 이전 | `HANDOFF_CODEX.md` 및 운영 환경 | `dd7374f`까지 main push. `JOIN_CODE_RATE_LIMIT_SALT` 설정 후 platform-api v5 → Firestore 인덱스 → 웹 `index-OCMsjSZz.js` → Firestore rules 순서로 배포하고 Edge/공개/인증 화면 스모크를 통과했다. 0600 백업과 SHA-256을 만든 뒤 transaction 스냅샷·백업 원본·정확한 18쓰기 게이트를 두 번 독립 검토하고, 8 private 백필+9 공개 필드 정리+디렉토리 정리를 단일 원자 커밋했다. 직후와 3분 뒤 재감사에서 공개 code/hash 0, 디렉토리 비밀 0, private 유효 8/8, 누락 0을 확인했다. 개발 환경 실로그인 shadow는 로컬 세션이 없어 남음. |
 | 2026-07-15 | T125 운영 이전 안전 보강 | `src/{utils/{entryCode,churchDirectory}.js,components/{LoginView,ChurchAdminView,PlatformAdminView}.jsx,components/churchAdmin/SettingsTab.jsx}`, `scripts/{audit-legacy-church-fields,validate-round11}.mjs`, `supabase/functions/platform-api/*`, `HANDOFF_CODEX.md` | 입장코드를 앞뒤 공백 제거 후 4~128자·제어문자 없음으로 통일하고, 이전 도구를 기본 무쓰기 사전점검으로 바꿨다. 실행 직전 재점검, private/access 최신값 보존 transaction, 전체 공개·디렉토리 비밀 필드 정리, 무소속 잔여 필드 정리, 동시 디렉토리 변경 보존을 추가했다. 운영 전체 원본을 값 출력 없이 0600 로컬 파일로 백업하는 감사 옵션과 회귀 계약을 추가했다. 자동 검증·재검토는 통과했고, secret 설정·배포·백업·실제 이전은 다음 단계다. |
 | 2026-07-15 | T123 v2 달란트 shadow 로컬 준비 | `supabase/functions/platform-api/{index,readCore,quizCore,talentProgramCore}*`, `src/{hooks/useUserBibleActions.js,components/dashboard/BibleQuizCard.jsx,utils/readCompletionShadow.js}`, `scripts/validate-round24.mjs`, `HANDOFF_CODEX.md` | 브라우저와 같은 v1/v2 달란트 해석, canonical roster 검증·정렬, 지갑별 적립 가능 여부를 서버 preview에 연결했다. 읽기·퀴즈는 v2에서도 DEV 4초 shadow를 실행하고 실제 적립 가능한 지갑이 없으면 effective reward 0으로 비교한다. 시도 0인 stale quizKey 교체 예외와 preview 응답 식별자·조직·경로·잔액·설정 금지 계약을 추가했다. 로컬 자동 검증은 완료했으나 실제 로그인 match 증거가 없어 T123b/d2는 미완료 유지. |
 | 2026-07-15 | T125 공개 입장코드 보안 전환 구현 | `supabase/functions/platform-api/{core,index,joinSecurityCore}*`, `src/{hooks/useAuth.js,components/{ChurchAdminView,PlatformAdminView}.jsx,components/dashboard/CommunityMembershipCard.jsx,utils/{platformApi,churchDirectory}.js}`, `scripts/validate-{round11,round24,signup-consent}.mjs`, `HANDOFF_CODEX.md` | 5분 참여권, 같은 요청만 허용하는 일회용 소비, 목적 통합 10회/시간·교회 전체 200회/시간 제한, 동일 오류 응답을 구현했다. 신규·변경 코드는 private/access에만 원자 저장하고 운영 공개 해시·평문을 백필/삭제하는 관리자 도구를 추가했다. 전체 validate/build, Deno 53 tests/check/fmt, diff 검사 통과. 운영 secret 설정·배포·이전 실행은 대기. |
@@ -344,6 +345,17 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-15 R25~26 운영 배포·입장코드 이전 완료, T123 실로그인 shadow 대기:
+- `dd7374f`까지 main과 origin/main을 일치시켰다. `JOIN_CODE_RATE_LIMIT_SALT`는 새 무작위값으로 설정하고 값은 출력하지 않았으며, Supabase 목록에서 존재만 확인했다.
+- 필수 순서대로 platform-api Edge v5 → Firestore `talentPurchases(status ASC, createdAt DESC)` 인덱스 → GitHub Pages 웹 → Firestore rules를 배포했다. 일반 공개 주소가 새 `index-OCMsjSZz.js`를 반환한 뒤에만 규칙을 올렸다.
+- Edge 스모크는 허용 origin OPTIONS 204, 미인증 401, 잘못된 origin 403/CORS 미허용, 잘못된 public payload 400을 확인했다. 공개 웹과 로그인된 운영 대시보드는 새 asset을 사용하며 콘솔 error/warning 0이다.
+- 운영 원본 백업은 `/Users/jaeam/Developer/클로드/bible114-church-access-backup-before-migration-20260715-143920.json`, 권한 0600, SHA-256 `d15c76774d21a8d7dbd66d94d7c948e5e08125ecef889c8ac0312106723ecb0f`이다. Firebase 관리형 백업은 Spark 요금제에서 사용할 수 없어 이 로컬 원본 백업을 사용했다.
+- 플랫폼 관리자 UI 세션은 없어서 임의 로그인하지 않았다. 대신 일회성 관리 스크립트(실행 파일 SHA-256 `2dfbe2780d51b3f0785b2a6039e7104a79581f99fe014cd2b277c82b28dda480`)를 두 모델이 독립 검토했다. beginTransaction의 같은 snapshot에서 9 public·8 private·directory를 읽고 백업 raw 원본과 비교하며, 정확한 원천 0/7/0/1/0/0·중복/고아/누락 0·18 writes일 때만 같은 transaction으로 commit한다. 틀린 기대값 실패 시험은 rollback되고 post-audit 불변이었다. 실행 뒤 임시 파일은 삭제했다.
+- 2026-07-15T05:58:07.254315Z에 18 writes를 원자 커밋했다. 직후 감사 결과 공개 `churchCode/churchCodeHash/code` 0, 디렉토리 `codeHash/churchCode/code` 0, private/access present 8·valid 8·missing 0, 원천 private 8이다. `adminEmail/adminUid`는 이번 입장코드 이전 범위가 아니어서 현행 9건을 유지했다.
+- 2026-07-15T06:00:54Z 재감사도 같은 0/8 상태를 유지했다. 다음 필수 재감사는 T127 관찰 종료 시점이며, 그 사이 운영 이상이 보이면 같은 읽기 전용 감사부터 다시 실행한다.
+- 이미 열렸거나 캐시된 구버전 탭은 T127 규칙 차단 전까지 공개 해시를 다시 쓸 수 있다. 즉시 감사 뒤 추가 재감사와 7일 관찰이 필요하며, T127에서 `churchDirectory` 직접 write를 닫기 전까지 공개 0은 영구 강제 상태가 아니다.
+- 운영 Chrome은 실제 로그인 계정 대시보드를 정상 표시하지만 로컬 개발 origin은 로그아웃 상태다. shadow 호출·로그는 `import.meta.env.DEV`에서만 살아 있으므로 자격증명·토큰을 추출하지 않고 중단했다. 사용자가 로컬에서 실제 계정으로 로그인한 뒤 읽기 완료 1회와 퀴즈 제출 1회를 하면 `[read-shadow] match:true`, `[quiz-shadow] match:true`를 확인할 수 있다.
 
 2026-07-15 T125 운영 이전 안전 보강 완료, 배포·이전 실행 직전:
 - `migrateChurchAccessSecrets`는 이제 `dryRun=true`가 기본이며 사전점검은 쓰기를 전혀 하지 않는다. 실제 실행 버튼은 성공한 사전점검 뒤에만 열리고, 실행 직전 다시 사전점검해 대상·누락·중복·고아·원천별 건수를 확인한다. 코드·해시 원문은 화면과 로그에 표시하지 않는다.
@@ -2005,7 +2017,7 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 - 입장코드는 `churches/{id}/private/access`에 저장한다. 서버는 이 문서를 우선 읽고 본문 레거시 필드에는 한시적으로만 폴백한다. 해시만 남아 원문 복원이 불가능한 교회는 관리자가 새 코드를 설정하게 한다.
 - [x] **T125a. 서버 참여권 1차** — `issueJoinTicket` public action이 코드 해시를 서버에서 검증하고 5분 ticket을 발급한다. 원문 IP는 저장하지 않고 목적을 합산한 클라이언트·공동체 해시 rate-limit 문서만 쓴다. 회원가입·개인/소셜 온보딩·추가 공동체 참여는 공개 `codeHash` 비교 대신 ticket을 사용하고, 성공 transaction 안에서 ticket을 `usedBy/usedAt/usedRequestId`로 소비한다. 구버전 탭 호환을 위한 원문 코드 action도 같은 제한을 탄다.
 - [x] **T125b. private/access 우선 저장** — 신규 교회 등록·관리자 입장코드 변경 시 `churches/{id}/private/access.codeHash`를 함께 저장한다. 서버 검증은 private/access를 우선 사용하고 레거시 `churchCodeHash`에는 한시 폴백한다.
-- [x] **T125c. 공개 디렉토리 신규 쓰기 정리** — 새 `churchDirectory` 쓰기는 `{id,name,hidden}`만 쓰며 클라이언트는 더 이상 `codeHash`를 읽어 코드 검증하지 않는다. 운영에 이미 남아 있는 `settings/churchDirectory.churches[].codeHash` 제거와 `publicChurches/{churchId}` 점진 이관은 아직 남았다.
+- [x] **T125c. 공개 디렉토리 신규·운영 쓰기 정리** — 새 `churchDirectory` 쓰기는 `{id,name,hidden}`만 쓰며 클라이언트는 더 이상 `codeHash`를 읽어 코드 검증하지 않는다. 운영 `settings/churchDirectory.churches[].codeHash`와 공개 교회 코드 필드는 2026-07-15 원자 이전으로 0건이 됐다. `publicChurches/{churchId}` 점진 이관과 직접 쓰기 규칙 차단은 T127에 남는다.
 - `churchDirectory`는 단일 배열을 `publicChurches/{churchId}` 문서로 점진 이관하고, 변경/숨김/삭제/재생성은 관리자 서버 action만 수행한다.
 - `platformStats`는 클라이언트가 숫자를 전달하지 않고 생성/읽기 ledger에서 한 번만 집계한다. 플랫폼 관리자용 `rebuildPlatformStats({dryRun})`로 전수 재계산·차이를 먼저 확인한다.
 
@@ -2074,16 +2086,16 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 
 ---
 
-## 🔐 라운드 26 — 공개 4자리 입장코드 추측 방지 보완 구현 완료 · 운영 실행 대기 (2026-07-15 Codex)
+## 🔐 라운드 26 — 공개 4자리 입장코드 추측 방지 보완 · 운영 이전 완료 (2026-07-15 Codex)
 
 - `platform-api`의 `issueJoinTicket` public action은 `churches/{id}/private/access.codeHash`를 우선 읽고 레거시 공개 해시에 한시 폴백한 뒤 5분 ticket을 발급한다. 없는 공동체·삭제된 공동체·해시 미설정·틀린 코드는 모두 `FORBIDDEN / 입장코드가 올바르지 않습니다.`로 응답해 존재 여부를 노출하지 않는다.
 - 속도 제한은 가입 목적별로 갈라지지 않는다. 같은 공동체에 대해 `clientChurch` 10회/시간과 `churchGlobal` 200회/시간을 적용하며, 두 카운터를 같은 transaction에서 검사·증가한다. 원문 IP는 저장하지 않고 `JOIN_CODE_RATE_LIMIT_SALT`로 만든 해시 키만 저장한다.
 - 교회 교인 가입, 개인/소셜 온보딩, 추가 공동체 참여는 ticket을 사용한다. 성공 transaction에서 `usedAt/usedBy/usedRequestId`를 함께 기록하고, 같은 uid와 **같은 requestId**인 응답 유실 재시도만 허용한다.
 - Google·이메일 신규 공동체 가입 transaction은 공개 `churches/{id}`에 `churchCode/churchCodeHash`를 쓰지 않고 같은 transaction에 `private/access.codeHash`를 저장한다. 관리자 코드 변경도 한 batch에서 private 해시 저장과 공개 레거시 두 필드 삭제를 처리한다.
-- 플랫폼 관리자용 `migrateChurchAccessSecrets` 도구를 추가했다. 기본 무쓰기 사전점검은 기존 private 해시, 공개 교회 해시, 기존 디렉토리 해시, 공개 원문 순으로 백필 원천을 찾는다. 실제 실행은 교회별 transaction에서 최신 private 해시를 보존하며 공개 `churchCode/churchCodeHash/code`를 삭제하고, 마지막 디렉토리 transaction에서 전체 배열을 `{id,name,hidden?}`로 정리한다. 무소속 공개 문서의 잔여 비밀 필드도 정리 대상이다. **운영 이전은 아직 실행하지 않았다.** 원천 코드가 없는 교회는 보고서에 남고 관리자가 새 코드를 설정해야 한다.
+- 플랫폼 관리자용 `migrateChurchAccessSecrets` 도구를 추가했다. 기본 무쓰기 사전점검은 기존 private 해시, 공개 교회 해시, 기존 디렉토리 해시, 공개 원문 순으로 백필 원천을 찾는다. 실제 실행은 교회별 transaction에서 최신 private 해시를 보존하며 공개 `churchCode/churchCodeHash/code`를 삭제하고, 마지막 디렉토리 transaction에서 전체 배열을 `{id,name,hidden?}`로 정리한다. 무소속 공개 문서의 잔여 비밀 필드도 정리 대상이다. **운영 8개 공동체 이전과 공개·디렉토리 정리는 2026-07-15 완료했다.**
 - 정적 보안 검증은 신규·변경 공개 쓰기, 이전 도구, 목적 통합 이중 제한, ticket requestId 결속, 동일 공개 오류를 검사하도록 보완했다.
 - 검증: `npm run validate`, `npm run build`, Deno platform-api 64 tests, `deno check supabase/functions/platform-api/index.ts`, Deno format, Firebase rules/indexes dry-run, `git diff --check`, 독립 코드 재검토 통과.
-- **운영 전 필수:** 기본 fallback을 사용하지 않도록 충분히 긴 임의값을 `JOIN_CODE_RATE_LIMIT_SALT` secret으로 먼저 설정한 뒤 `platform-api`와 웹을 배포한다. 이어 관리자 이전 도구 실행 후 공개 디렉토리·공개 교회 문서에서 비밀 필드가 0건인지 확인한다.
+- **운영 완료:** `JOIN_CODE_RATE_LIMIT_SALT` 설정, platform-api v5·인덱스·웹 `index-OCMsjSZz.js`·rules 순차 배포, 0600 원본 백업, 18 writes 원자 이전을 완료했다. 직후 감사에서 공개·디렉토리 비밀 필드 0, private/access 유효 8/8, 누락 0을 확인했다.
 - **남은 방어:** Firebase App Check는 아직 적용하지 않았다. 현재 이중 속도 제한은 그 전까지의 중간 방어다. 이후 App Check 적용, `publicChurches/{churchId}` 점진 이관, `churchDirectory`/`platformStats` 직접 write 차단, T123 읽기·퀴즈 서버 commit 전환이 남았다.
 
 ---
