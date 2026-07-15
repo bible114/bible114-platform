@@ -29,6 +29,7 @@ import DashboardTab from './churchAdmin/DashboardTab';
 import MembersTab from './churchAdmin/MembersTab';
 import TalentShopTab from './churchAdmin/TalentShopTab';
 import { TALENT_PROGRAM_SCHEMA_VERSION } from '../utils/talentProgram';
+import { normalizeChurchEntryCode } from '../utils/entryCode';
 import {
     hasValidV2RefundWalletSnapshot,
     isValidTalentPurchasePrice,
@@ -814,11 +815,12 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     };
 
     const saveChurchCode = async () => {
-        if (!newChurchCode || newChurchCode.length < 4) { alert('입장코드는 4자리 이상이어야 합니다.'); return; }
+        const normalizedChurchCode = normalizeChurchEntryCode(newChurchCode);
+        if (!normalizedChurchCode) { alert('입장코드는 4~128자로 입력해주세요.'); return; }
         setSavingCode(true);
         try {
             // private/access 갱신과 공개 문서의 레거시 비밀 삭제를 원자 처리한다.
-            const churchCodeHash = await sha256(newChurchCode);
+            const churchCodeHash = await sha256(normalizedChurchCode);
             const churchRef = db.collection('churches').doc(currentUser.churchId);
             const batch = db.batch();
             const now = firebase.firestore.FieldValue.serverTimestamp();
@@ -829,6 +831,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             batch.set(churchRef, {
                 churchCode: firebase.firestore.FieldValue.delete(),
                 churchCodeHash: firebase.firestore.FieldValue.delete(),
+                code: firebase.firestore.FieldValue.delete(),
                 updatedAt: now,
             }, { merge: true });
             await batch.commit();

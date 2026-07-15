@@ -87,10 +87,11 @@ Deno.test("만 14세 미만은 보호자 동의 기록을 요구한다", () => {
       childGuardian: { agreed: false },
     },
   };
-  expectCode("INVALID_CONSENT", () => validateMemberSignup(fixture({
-    birthdate: "20150101",
-    consent: missingGuardian,
-  })));
+  expectCode("INVALID_CONSENT", () =>
+    validateMemberSignup(fixture({
+      birthdate: "20150101",
+      consent: missingGuardian,
+    })));
 });
 
 Deno.test("동일 uid·교회의 정상 회원은 멱등, 삭제 회원은 재활성화한다", () => {
@@ -105,24 +106,46 @@ Deno.test("동일 uid·교회의 정상 회원은 멱등, 삭제 회원은 재�
 });
 
 Deno.test("입장코드·소속 충돌·고아 roster를 거부한다", () => {
-  expectCode("INVALID_ENTRY_CODE", () =>
-    validateMemberSignup(fixture({ entryCodeHash: "wrong" })));
-  expectCode("USER_CONFLICT", () => validateMemberSignup(fixture({
-    existingUser: { role: "member", churchId: "church-2" },
-  })));
-  expectCode("ROSTER_CONFLICT", () => validateMemberSignup(fixture({
-    existingRoster: { uid: "member-1" },
-  })));
+  expectCode(
+    "INVALID_ENTRY_CODE",
+    () => validateMemberSignup(fixture({ entryCodeHash: "wrong" })),
+  );
+  expectCode("USER_CONFLICT", () =>
+    validateMemberSignup(fixture({
+      existingUser: { role: "member", churchId: "church-2" },
+    })));
+  expectCode("ROSTER_CONFLICT", () =>
+    validateMemberSignup(fixture({
+      existingRoster: { uid: "member-1" },
+    })));
 });
 
 Deno.test("게스트 진도는 일자·범위·허용 플랜을 검증한다", () => {
-  expectCode("INVALID_PROFILE", () => validateMemberSignup(fixture({
-    guestProgress: { currentDay: 366, streak: 0, lastReadDate: null, planId: "1year_revised" },
-  })));
-  expectCode("INVALID_PROFILE", () => validateMemberSignup(fixture({
-    guestProgress: { currentDay: 2, streak: 1, lastReadDate: "Thu Jul 16 2026", planId: "1year_revised" },
-  })));
-  expectCode("INVALID_PROFILE", () => validateMemberSignup(fixture({
-    guestProgress: { currentDay: 2, streak: 1, lastReadDate: null, planId: "admin_plan" },
-  })));
+  expectCode("INVALID_PROFILE", () =>
+    validateMemberSignup(fixture({
+      guestProgress: {
+        currentDay: 366,
+        streak: 0,
+        lastReadDate: null,
+        planId: "1year_revised",
+      },
+    })));
+  expectCode("INVALID_PROFILE", () =>
+    validateMemberSignup(fixture({
+      guestProgress: {
+        currentDay: 2,
+        streak: 1,
+        lastReadDate: "Thu Jul 16 2026",
+        planId: "1year_revised",
+      },
+    })));
+  expectCode("INVALID_PROFILE", () =>
+    validateMemberSignup(fixture({
+      guestProgress: {
+        currentDay: 2,
+        streak: 1,
+        lastReadDate: null,
+        planId: "admin_plan",
+      },
+    })));
 });

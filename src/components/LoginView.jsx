@@ -10,6 +10,7 @@ import { getGuestState } from '../utils/guestStorage';
 import { GuardianConsent, PolicyConsent, PolicyDialog } from './policies';
 import { SERVICE_POLICIES, createEmptyPolicyConsents, isPolicyConsentComplete } from '../data/servicePolicies';
 import { validateSignupConsent } from '../utils/signupConsent';
+import { normalizeChurchEntryCode } from '../utils/entryCode';
 
 // ─── Daily verse data ─────────────────────────────────────────────────────────
 const DAILY_VERSES = [
@@ -529,7 +530,10 @@ const LoginView = ({
         }
         if (!isGoogleSignup && aPw !== aPwConfirm) { setErrorMsg('비밀번호가 일치하지 않습니다.'); return; }
         if (!isGoogleSignup && aPw.length < 6) { setErrorMsg('비밀번호는 6자리 이상이어야 합니다.'); return; }
-        if (aChurchCode.trim().length < 4) { setErrorMsg('교회 입장코드는 4자리 이상이어야 합니다.'); return; }
+        if (!normalizeChurchEntryCode(aChurchCode)) {
+            setErrorMsg('교회 입장코드는 4~128자로 입력해주세요.');
+            return;
+        }
         const consentResult = validateSignupConsent({
             birthdate: null,
             consents: aPolicyConsents,
@@ -559,7 +563,7 @@ const LoginView = ({
                 churchName: aChurchName.trim(),
                 pastorName: aPastorName.trim(),
                 denomination: aDenomination.trim(),
-                churchCode: aChurchCode.trim(),
+                churchCode: normalizeChurchEntryCode(aChurchCode),
                 departments: validComms,
                 googleProfile: googleAdminSignupProfile,
                 ageConfirmed14Plus: aAgeConfirmed14Plus,
@@ -964,7 +968,7 @@ const LoginView = ({
                     <input type="text" value={aChurchName} onChange={e => setAChurchName(e.target.value)} placeholder="교회 이름 (예: ○○교회)" className={inputCls} />
                     <input type="text" value={aPastorName} onChange={e => setAPastorName(e.target.value)} placeholder="담임목사 성함 (필수, 예: 홍길동 목사)" className={inputCls} />
                     <input type="text" value={aDenomination} onChange={e => setADenomination(e.target.value)} placeholder="교단 (예: 예장합동, 감리교 등)" className={inputCls} />
-                    <input type="text" value={aChurchCode} onChange={e => setAChurchCode(e.target.value)} placeholder="교회 입장코드 설정 (4자리 이상)" className={inputCls} />
+                    <input type="text" value={aChurchCode} onChange={e => setAChurchCode(e.target.value)} maxLength={128} placeholder="교회 입장코드 설정 (4~128자)" className={inputCls} />
                     <p className="text-[10px] text-ink/40 ml-1">입장코드는 교인들이 가입할 때 사용합니다. 나중에 변경 가능합니다.</p>
                 </div>
                 <label className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-[12px] text-slate-700">

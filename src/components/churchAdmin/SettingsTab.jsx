@@ -18,8 +18,8 @@ const SettingsTab = ({
             <p className="font-bold text-slate-700 mb-1">교회 입장코드 변경</p>
             <p className="text-xs text-slate-400 mb-3">교인들이 가입할 때 사용하는 코드입니다.</p>
             <div className="flex gap-2">
-                <input type="text" value={newChurchCode} onChange={e => setNewChurchCode(e.target.value)}
-                    placeholder="새 입장코드 (4자리 이상)" className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm" />
+                <input type="text" value={newChurchCode} onChange={e => setNewChurchCode(e.target.value)} maxLength={128}
+                    placeholder="새 입장코드 (4~128자)" className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm" />
                 <button onClick={saveChurchCode} disabled={savingCode}
                     className="bg-indigo-600 text-white font-bold px-4 rounded-xl text-sm disabled:opacity-50 hover:bg-indigo-700">
                     {savingCode ? '...' : '변경'}

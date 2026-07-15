@@ -73,9 +73,11 @@ const record = (value: unknown): Record<string, unknown> | null =>
     : null;
 
 const legacyDateKey = (value: string) => {
-  const match = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{2}) (\d{4})$/.exec(
-    value,
-  );
+  const match =
+    /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{2}) (\d{4})$/
+      .exec(
+        value,
+      );
   if (!match) return null;
   const month = [
     "Jan",
@@ -92,7 +94,9 @@ const legacyDateKey = (value: string) => {
     "Dec",
   ].indexOf(match[2]) + 1;
   const compact = `${match[4]}${String(month).padStart(2, "0")}${match[3]}`;
-  return validDate(compact) ? `${match[4]}-${String(month).padStart(2, "0")}-${match[3]}` : null;
+  return validDate(compact)
+    ? `${match[4]}-${String(month).padStart(2, "0")}-${match[3]}`
+    : null;
 };
 
 const validateConsent = (
@@ -100,7 +104,9 @@ const validateConsent = (
   birthdate: string,
   calendarDate: string,
 ) => {
-  if (!consent || consent.schemaVersion !== 1 || consent.audience !== "member") {
+  if (
+    !consent || consent.schemaVersion !== 1 || consent.audience !== "member"
+  ) {
     throw new MemberSignupValidationError("INVALID_CONSENT");
   }
   if (
@@ -134,9 +140,11 @@ const validateConsent = (
     schemaVersion: 1,
     policyVersions: Object.fromEntries(
       ["terms", "privacy", "sensitive", "community", "childGuardian"]
-        .flatMap((key) => typeof policyVersions[key] === "string"
-          ? [[key, policyVersions[key]]]
-          : []),
+        .flatMap((key) =>
+          typeof policyVersions[key] === "string"
+            ? [[key, policyVersions[key]]]
+            : []
+        ),
     ),
     agreedAt: consent.agreedAt,
     audience: "member",

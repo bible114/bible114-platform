@@ -62,15 +62,28 @@ Deno.test("preflight 요청을 정규화한다", () => {
 
 Deno.test("상품 구매 요청은 서버 식별자만 받는다", () => {
   const parsed = parsePlatformApiRequest({
-    action: "purchaseItem", requestId: "123e4567-e89b-12d3-a456-426614174000",
-    churchId: " c1 ", itemId: " snack ", departmentId: " kids ", marketId: " shared ", price: 1,
+    action: "purchaseItem",
+    requestId: "123e4567-e89b-12d3-a456-426614174000",
+    churchId: " c1 ",
+    itemId: " snack ",
+    departmentId: " kids ",
+    marketId: " shared ",
+    price: 1,
   });
-  assert(parsed.action === "purchaseItem" && parsed.itemId === "snack", "purchase normalization failed");
+  assert(
+    parsed.action === "purchaseItem" && parsed.itemId === "snack",
+    "purchase normalization failed",
+  );
   assert(!("price" in parsed), "client price must be ignored");
-  assertRequestError(() => parsePlatformApiRequest({
-    action: "purchaseItem", requestId: "123e4567-e89b-12d3-a456-426614174000",
-    churchId: "c1", itemId: "bad/item", departmentId: "kids", marketId: "shared",
-  }), "INVALID_PAYLOAD");
+  assertRequestError(() =>
+    parsePlatformApiRequest({
+      action: "purchaseItem",
+      requestId: "123e4567-e89b-12d3-a456-426614174000",
+      churchId: "c1",
+      itemId: "bad/item",
+      departmentId: "kids",
+      marketId: "shared",
+    }), "INVALID_PAYLOAD");
 });
 
 Deno.test("읽기 완료 미리보기 요청의 회차와 날짜를 검증한다", () => {
@@ -221,44 +234,106 @@ Deno.test("최초 교인 가입 요청의 최소 프로필을 정규화한다", 
   assert(parsed.name === "홍길동", "name mismatch");
   assert(parsed.guestProgress.currentDay === 42, "guest progress mismatch");
 
-  for (const payload of [
-    { churchId: "bad/path", entryCode: "1234", name: "홍길동", birthdate: "20000101" },
-    { churchId: "church-1", entryCode: "123", name: "홍길동", birthdate: "20000101" },
-    { churchId: "church-1", entryCode: "1234", name: "", birthdate: "20000101" },
-    { churchId: "church-1", entryCode: "1234", name: "홍길동", birthdate: "200001" },
-  ]) {
-    assertRequestError(() => parsePlatformApiRequest({
-      action: "completeMemberSignup",
-      requestId: "123e4567-e89b-12d3-a456-426614174000",
-      ...payload,
-    }), "INVALID_PAYLOAD");
+  for (
+    const payload of [
+      {
+        churchId: "bad/path",
+        entryCode: "1234",
+        name: "홍길동",
+        birthdate: "20000101",
+      },
+      {
+        churchId: "church-1",
+        entryCode: "123",
+        name: "홍길동",
+        birthdate: "20000101",
+      },
+      {
+        churchId: "church-1",
+        entryCode: "1234",
+        name: "",
+        birthdate: "20000101",
+      },
+      {
+        churchId: "church-1",
+        entryCode: "1234",
+        name: "홍길동",
+        birthdate: "200001",
+      },
+    ]
+  ) {
+    assertRequestError(() =>
+      parsePlatformApiRequest({
+        action: "completeMemberSignup",
+        requestId: "123e4567-e89b-12d3-a456-426614174000",
+        ...payload,
+      }), "INVALID_PAYLOAD");
   }
 });
 
 Deno.test("최초 개인 가입은 소속 선택과 무소속 요청을 구분해 정규화한다", () => {
   const requestId = "123e4567-e89b-12d3-a456-426614174000";
   const regular = parsePlatformApiRequest({
-    action: "completePersonalSignup", requestId,
-    churchId: " church-1 ", entryCode: " 1234 ", departmentId: " kids ", subgroupId: " class-1 ",
-    name: " 홍길동 ", birthdate: "19900101", authProvider: "google.com",
-    guestProgress: { currentDay: 1, streak: 0, lastReadDate: null, planId: "1year_revised" },
+    action: "completePersonalSignup",
+    requestId,
+    churchId: " church-1 ",
+    entryCode: " 1234 ",
+    departmentId: " kids ",
+    subgroupId: " class-1 ",
+    name: " 홍길동 ",
+    birthdate: "19900101",
+    authProvider: "google.com",
+    guestProgress: {
+      currentDay: 1,
+      streak: 0,
+      lastReadDate: null,
+      planId: "1year_revised",
+    },
   });
-  assert(regular.action === "completePersonalSignup", "personal action rejected");
-  if (regular.action === "completePersonalSignup") assert(regular.departmentId === "kids", "department not normalized");
+  assert(
+    regular.action === "completePersonalSignup",
+    "personal action rejected",
+  );
+  if (regular.action === "completePersonalSignup") {
+    assert(regular.departmentId === "kids", "department not normalized");
+  }
 
   const solo = parsePlatformApiRequest({
-    action: "completePersonalSignup", requestId,
-    churchId: "unaffiliated_v1", entryCode: "", departmentId: "", subgroupId: "",
-    name: "홍길동", birthdate: "19900101", authProvider: "kakao.com",
-    guestProgress: { currentDay: 1, streak: 0, lastReadDate: null, planId: "nt_new" },
+    action: "completePersonalSignup",
+    requestId,
+    churchId: "unaffiliated_v1",
+    entryCode: "",
+    departmentId: "",
+    subgroupId: "",
+    name: "홍길동",
+    birthdate: "19900101",
+    authProvider: "kakao.com",
+    guestProgress: {
+      currentDay: 1,
+      streak: 0,
+      lastReadDate: null,
+      planId: "nt_new",
+    },
   });
   assert(solo.action === "completePersonalSignup", "solo action rejected");
-  assertRequestError(() => parsePlatformApiRequest({
-    action: "completePersonalSignup", requestId,
-    churchId: "unaffiliated_v1", entryCode: "forged", departmentId: "", subgroupId: "",
-    name: "홍길동", birthdate: "19900101", authProvider: "kakao.com",
-    guestProgress: { currentDay: 1, streak: 0, lastReadDate: null, planId: "nt_new" },
-  }), "INVALID_PAYLOAD");
+  assertRequestError(() =>
+    parsePlatformApiRequest({
+      action: "completePersonalSignup",
+      requestId,
+      churchId: "unaffiliated_v1",
+      entryCode: "forged",
+      departmentId: "",
+      subgroupId: "",
+      name: "홍길동",
+      birthdate: "19900101",
+      authProvider: "kakao.com",
+      guestProgress: {
+        currentDay: 1,
+        streak: 0,
+        lastReadDate: null,
+        planId: "nt_new",
+      },
+    }), "INVALID_PAYLOAD");
 });
 
 Deno.test("알 수 없는 action은 거부한다", () => {

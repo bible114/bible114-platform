@@ -49,7 +49,8 @@ const PlatformAdminView = ({
     const [popupSaving, setPopupSaving] = React.useState(false);
     const [directoryRebuilding, setDirectoryRebuilding] = React.useState(false);
     const [accessSecretsMigrating, setAccessSecretsMigrating] = React.useState(false);
-    const [accessSecretsProgress, setAccessSecretsProgress] = React.useState({ done: 0, total: 0 });
+    const [accessSecretsOperation, setAccessSecretsOperation] = React.useState(null);
+    const [accessSecretsProgress, setAccessSecretsProgress] = React.useState({ done: 0, total: 0, phase: null });
     const [accessSecretsReport, setAccessSecretsReport] = React.useState(null);
     const [checkingUnaffiliatedChurch, setCheckingUnaffiliatedChurch] = React.useState(false);
     const [fetchedCurrentPassword, setFetchedCurrentPassword] = React.useState(null); // changingPassword 모달에서 조회한 현재 암호
@@ -356,28 +357,82 @@ const PlatformAdminView = ({
         }
     };
 
-    const handleMigrateChurchAccessSecrets = async () => {
+    const handleCheckChurchAccessSecrets = async () => {
         if (!db || accessSecretsMigrating) return;
-        if (!confirm('전체 교회의 입장코드를 비공개 저장소로 이전하고 공개 문서의 코드를 삭제합니다. 계속할까요?')) return;
         setAccessSecretsMigrating(true);
+        setAccessSecretsOperation('dryRun');
         setAccessSecretsReport(null);
-        setAccessSecretsProgress({ done: 0, total: 0 });
+        setAccessSecretsProgress({ done: 0, total: 0, phase: 'scan' });
         try {
             const report = await migrateChurchAccessSecrets({
+                dryRun: true,
                 onProgress: progress => setAccessSecretsProgress({
                     done: progress.done || 0,
                     total: progress.total || 0,
+                    phase: progress.phase || 'scan',
+                }),
+            });
+            setAccessSecretsReport(report);
+            alert(`사전점검 완료: 총 ${report.scanned}개 교회 · 이전 대상 ${report.migrated}개 · 원천 누락 ${report.missing.length}개 · 디렉토리 고아 ${report.orphans.length}개 · 중복 ${report.duplicates.length}개`);
+        } catch (error) {
+            console.error('입장코드 보안 사전점검 실패:', error);
+            alert('입장코드 보안 사전점검 실패: ' + error.message);
+        } finally {
+            setAccessSecretsMigrating(false);
+            setAccessSecretsOperation(null);
+        }
+    };
+
+    const handleMigrateChurchAccessSecrets = async () => {
+        if (!db || accessSecretsMigrating) return;
+        if (accessSecretsReport?.dryRun !== true) {
+            alert('먼저 사전점검을 성공적으로 완료해 주세요.');
+            return;
+        }
+        setAccessSecretsMigrating(true);
+        setAccessSecretsOperation('execute');
+        setAccessSecretsProgress({ done: 0, total: 0, phase: 'scan' });
+        try {
+            // 첫 점검 이후 데이터가 바뀌었을 수 있으므로 실제 쓰기 직전에도 다시 읽기 전용 점검한다.
+            const checkedReport = await migrateChurchAccessSecrets({
+                dryRun: true,
+                onProgress: progress => setAccessSecretsProgress({
+                    done: progress.done || 0,
+                    total: progress.total || 0,
+                    phase: progress.phase || 'scan',
+                }),
+            });
+            setAccessSecretsReport(checkedReport);
+            const warning = [
+                `최신 사전점검 결과: 총 ${checkedReport.scanned}개`,
+                `이전 대상 ${checkedReport.migrated}개`,
+                `원천 누락 ${checkedReport.missing.length}개`,
+                `디렉토리 고아 ${checkedReport.orphans.length}개`,
+                `중복 ${checkedReport.duplicates.length}개`,
+                '',
+                '비공개 저장소 백필 후 공개 필드를 삭제합니다. 실제 이전을 실행할까요?',
+            ].join('\n');
+            if (!confirm(warning)) return;
+            // 실제 실행이 실패하면 이전 사전점검 결과로 재시도하지 못하도록 즉시 무효화한다.
+            setAccessSecretsReport(null);
+            const report = await migrateChurchAccessSecrets({
+                dryRun: false,
+                onProgress: progress => setAccessSecretsProgress({
+                    done: progress.done || 0,
+                    total: progress.total || 0,
+                    phase: progress.phase || 'scan',
                 }),
             });
             setAccessSecretsReport(report);
             alert(report.missing.length > 0
-                ? `이전 완료: ${report.migrated}개 이전, ${report.alreadyPrivate}개 기존 비공개. 원천 코드가 없는 ${report.missing.length}개 교회는 관리자가 새 코드를 설정해야 합니다.`
+                ? `이전 완료: ${report.migrated}개 이전, ${report.alreadyPrivate}개 기존 비공개. 원천이 없는 ${report.missing.length}개 교회는 관리자가 새 입장코드를 설정해야 합니다.`
                 : `입장코드 보안 이전 완료: ${report.migrated}개 이전, ${report.alreadyPrivate}개 기존 비공개.`);
         } catch (error) {
             console.error('입장코드 보안 이전 실패:', error);
-            alert('입장코드 보안 이전 실패: ' + error.message);
+            alert('입장코드 보안 이전 실패: ' + error.message + '\n안전을 위해 사전점검부터 다시 실행해 주세요.');
         } finally {
             setAccessSecretsMigrating(false);
+            setAccessSecretsOperation(null);
         }
     };
 
@@ -1478,27 +1533,60 @@ const PlatformAdminView = ({
                             <h3 className="text-sm font-bold text-rose-800 mb-1">🔐 입장코드 보안 이전·점검</h3>
                             <p className="text-xs text-rose-700 mb-3">
                                 기존 교회의 공개 코드·해시를 <code className="bg-rose-100 px-1 rounded">private/access</code>로 이전하고,
-                                교회 문서와 공개 디렉토리에서 비밀 필드를 제거합니다. 코드 원천이 없는 교회는 아래에 따로 보고합니다.
+                                교회 문서와 공개 디렉토리에서 비밀 필드를 제거합니다. 쓰기 없는 사전점검을 성공해야 실제 이전 버튼이 열립니다.
                             </p>
-                            <button
-                                onClick={handleMigrateChurchAccessSecrets}
-                                disabled={accessSecretsMigrating}
-                                className="bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-                            >
-                                {accessSecretsMigrating
-                                    ? `이전 중... (${accessSecretsProgress.done}/${accessSecretsProgress.total || '?'})`
-                                    : '전체 교회 보안 이전 실행'}
-                            </button>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    onClick={handleCheckChurchAccessSecrets}
+                                    disabled={accessSecretsMigrating}
+                                    className="bg-white border border-rose-300 hover:bg-rose-100 disabled:opacity-50 text-rose-800 text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+                                >
+                                    {accessSecretsMigrating && accessSecretsOperation === 'dryRun'
+                                        ? `사전점검 중... (${accessSecretsProgress.done}/${accessSecretsProgress.total || '?'})`
+                                        : '1. 쓰기 없는 사전점검'}
+                                </button>
+                                <button
+                                    onClick={handleMigrateChurchAccessSecrets}
+                                    disabled={accessSecretsMigrating || accessSecretsReport?.dryRun !== true}
+                                    className="bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+                                >
+                                    {accessSecretsMigrating && accessSecretsOperation === 'execute'
+                                        ? `${accessSecretsProgress.phase === 'scan' ? '재점검' : accessSecretsProgress.phase === 'directory' ? '디렉토리 정리' : '이전'} 중... (${accessSecretsProgress.done}/${accessSecretsProgress.total || '?'})`
+                                        : '2. 확인 결과대로 실제 이전'}
+                                </button>
+                            </div>
                             {accessSecretsReport && (
                                 <div className="mt-3 rounded-lg bg-white/70 p-3 text-xs text-rose-800">
                                     <p className="font-bold">
-                                        총 {accessSecretsReport.scanned}개 점검 · {accessSecretsReport.migrated}개 이전 · {accessSecretsReport.alreadyPrivate}개 기존 완료 · {accessSecretsReport.missing.length}개 코드 누락
+                                        {accessSecretsReport.dryRun ? '사전점검 완료' : '실제 이전 완료'} · 총 {accessSecretsReport.scanned}개 · 이전 대상 {accessSecretsReport.migrated}개 · 기존 비공개 {accessSecretsReport.alreadyPrivate}개 · 원천 누락 {accessSecretsReport.missing.length}개
+                                    </p>
+                                    <p className="mt-2">
+                                        원천별: 기존 비공개 {accessSecretsReport.sourceCounts.privateAccess} · 공개 교회 해시 {accessSecretsReport.sourceCounts.publicChurchHash} · 디렉토리 해시 {accessSecretsReport.sourceCounts.directoryHash} · 공개 입장코드 {accessSecretsReport.sourceCounts.publicChurchCode} · 레거시 코드 {accessSecretsReport.sourceCounts.legacyPublicCode}
+                                    </p>
+                                    <p className="mt-1">
+                                        공개 디렉토리 {accessSecretsReport.directoryCount}개 항목 · 고아 {accessSecretsReport.orphans.length}개 · 중복 ID {accessSecretsReport.duplicates.length}개
                                     </p>
                                     {accessSecretsReport.missing.length > 0 && (
                                         <div className="mt-2">
                                             <p className="font-bold">새 입장코드 설정이 필요한 교회</p>
                                             <p className="mt-1 break-words">
                                                 {accessSecretsReport.missing.map(church => `${church.name} (${church.id})`).join(', ')}
+                                            </p>
+                                        </div>
+                                    )}
+                                    {accessSecretsReport.orphans.length > 0 && (
+                                        <div className="mt-2">
+                                            <p className="font-bold">교회 문서가 없는 디렉토리 항목</p>
+                                            <p className="mt-1 break-words">
+                                                {accessSecretsReport.orphans.map(church => `${church.name} (${church.id})`).join(', ')}
+                                            </p>
+                                        </div>
+                                    )}
+                                    {accessSecretsReport.duplicates.length > 0 && (
+                                        <div className="mt-2">
+                                            <p className="font-bold">중복 디렉토리 ID</p>
+                                            <p className="mt-1 break-words">
+                                                {accessSecretsReport.duplicates.map(church => `${church.name} (${church.id}, ${church.count}건)`).join(', ')}
                                             </p>
                                         </div>
                                     )}

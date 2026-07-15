@@ -46,11 +46,15 @@ const memberships = (source: PurchaseRecord) => {
 };
 
 export const validatePurchase = (input: PurchaseInput) => {
-  if (input.user.isDeleted === true || !["member", "churchAdmin"].includes(text(input.user.role))) {
+  if (
+    input.user.isDeleted === true ||
+    !["member", "churchAdmin"].includes(text(input.user.role))
+  ) {
     throw new PurchaseValidationError("USER_UNAVAILABLE");
   }
   const baseMember = text(input.user.churchId) === input.churchId;
-  const rosterMember = Boolean(input.roster) && input.roster?.isDeleted !== true &&
+  const rosterMember = Boolean(input.roster) &&
+    input.roster?.isDeleted !== true &&
     (!text(input.roster?.uid) || text(input.roster?.uid) === input.uid);
   if (!baseMember && !rosterMember) {
     throw new PurchaseValidationError("MEMBERSHIP_REQUIRED");
@@ -66,12 +70,18 @@ export const validatePurchase = (input: PurchaseInput) => {
     if (shop.enabled !== true || !departmentRows.has(input.departmentId)) {
       throw new PurchaseValidationError("INVALID_DEPARTMENT");
     }
-    const setting = record(record(shop.departmentSettings)?.[input.departmentId]);
-    if (setting?.enabled !== true || text(setting.marketId) !== input.marketId) {
+    const setting = record(
+      record(shop.departmentSettings)?.[input.departmentId],
+    );
+    if (
+      setting?.enabled !== true || text(setting.marketId) !== input.marketId
+    ) {
       throw new PurchaseValidationError("MARKET_UNAVAILABLE");
     }
     market = record(record(shop.markets)?.[input.marketId]);
-    if (market?.enabled === false) throw new PurchaseValidationError("MARKET_UNAVAILABLE");
+    if (market?.enabled === false) {
+      throw new PurchaseValidationError("MARKET_UNAVAILABLE");
+    }
   } else {
     if (shop.enabled !== true || input.marketId !== "shared") {
       throw new PurchaseValidationError("MARKET_UNAVAILABLE");
@@ -84,7 +94,8 @@ export const validatePurchase = (input: PurchaseInput) => {
   }
   const items = Array.isArray(market?.items) ? market.items : [];
   const item = items.map(record).find((candidate) =>
-    candidate && text(candidate.id) === input.itemId && candidate.active !== false
+    candidate && text(candidate.id) === input.itemId &&
+    candidate.active !== false
   );
   const price = Number(item?.price);
   if (!item || !Number.isFinite(price) || price <= 0) {
@@ -103,7 +114,8 @@ export const validatePurchase = (input: PurchaseInput) => {
     nextTalent: balance - price,
     item: { id: input.itemId, name: text(item.name) || input.itemId, price },
     departmentId: canonicalDepartmentId,
-    departmentName: departmentRows.get(canonicalDepartmentId) || canonicalDepartmentId,
+    departmentName: departmentRows.get(canonicalDepartmentId) ||
+      canonicalDepartmentId,
     marketId: input.marketId,
   } as const;
 };
