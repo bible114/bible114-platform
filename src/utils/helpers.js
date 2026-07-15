@@ -3,6 +3,7 @@ import { SHOP_ITEMS } from '../data/shop_items';
 import { titleMatchesDate } from './dailyVideoPolicy';
 
 export { titleMatchesDate };
+export { parseChapters, mapToStandardLabel, parseAndMapChapters } from './dailyVideoChapters.js';
 
 // 교인 로그인용 가짜 이메일 (이름+생년월일+교회ID 조합으로 교회 간 중복 방지)
 export const makePseudoEmail = (name, birthdate, churchId = '') => {
@@ -204,69 +205,6 @@ export const extractYouTubePlaylistId = (input) => {
     const m = trimmed.match(/[?&]list=([A-Za-z0-9_-]+)/);
     if (m) return m[1];
     return trimmed || null;
-};
-
-// "매일성경 해설 0:00" / "0:00 매일성경 해설" 양쪽 지원.
-// 유튜브 설명문에서 타임스탬프(0:00, 3:20, 1:02:15)를 찾아 같은 줄의 텍스트를 라벨로 추출한다.
-//
-// 주의(Fix H): 줄 중간의 성경 구절 표기(예: "마태복음 5:12", "성경읽기: 마태복음 5:12")가
-// 타임스탬프로 오인되는 것을 막기 위해, 먼저 줄 "시작"에 타임스탬프가 오는 표준 형식
-// (예: "0:00 해설", "1:02:15 기도")만 우선 매칭한다. 실제 유튜브 챕터 표기 관례가 대부분
-// 이 형식이라 라벨당 정상 동작한다. 다만 "해설 0:00"처럼 라벨이 타임스탬프보다 앞에 오는
-// 줄도 지원해야 하므로, 줄 시작 매칭이 하나도 없는 설명문에 한해서만 줄 중간(라벨-먼저)
-// 매칭으로 폴백한다 — 이러면 줄 시작 매칭이 존재하는 설명문에서는 절대 구절 표기가
-// 타임스탬프로 오인되지 않는다.
-const LEADING_TIMESTAMP_RE = /^\s*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\b/;
-const ANY_TIMESTAMP_RE = /(\d{1,2}:)?(\d{1,2}):(\d{2})/;
-
-const toSec = (m) => (m[1] ? parseInt(m[1]) * 3600 : 0) + parseInt(m[2]) * 60 + parseInt(m[3]);
-const cleanLabel = (line, matchText) =>
-    line.replace(matchText, '').trim().replace(/^[-–|·:]+|[-–|·:]+$/g, '').trim();
-
-export const parseChapters = (desc) => {
-    const lines = (desc || '').split('\n');
-
-    const leading = [];
-    for (const line of lines) {
-        const m = line.match(LEADING_TIMESTAMP_RE);
-        if (!m) continue;
-        const label = cleanLabel(line, m[0]);
-        if (label) leading.push({ label, sec: toSec(m) });
-    }
-    if (leading.length > 0) return leading;
-
-    // 줄 시작 매칭이 하나도 없을 때만 "라벨 먼저" 형식(예: "해설 0:00")을 위해
-    // 줄 중간 매칭으로 폴백한다.
-    const out = [];
-    for (const line of lines) {
-        const m = line.match(ANY_TIMESTAMP_RE);
-        if (!m) continue;
-        const label = cleanLabel(line, m[0]);
-        if (label) out.push({ label, sec: toSec(m) });
-    }
-    return out;
-};
-
-// 파싱된 자유 라벨을 표준 라벨(해설/성경읽기/기도)로 매핑. 매핑 안 되면 null.
-export const mapToStandardLabel = (label) => {
-    // "매일성경 묵상"에는 '성경'도 들어가므로 성경읽기보다 먼저 판정해야 한다.
-    if (label.includes('해설') || label.includes('묵상')) return '해설';
-    if (label.includes('성경') || label.includes('읽기')) return '성경읽기';
-    if (label.includes('기도')) return '기도';
-    return null;
-};
-
-// 설명문을 파싱해 표준 라벨로 매핑된 챕터 배열을 반환 (매핑 안 되는 챕터는 무시, 라벨당 최초 1개만 채택)
-export const parseAndMapChapters = (desc) => {
-    const parsed = parseChapters(desc);
-    const mapped = [];
-    parsed.forEach(({ label, sec }) => {
-        const std = mapToStandardLabel(label);
-        if (std && !mapped.find(m => m.label === std)) {
-            mapped.push({ label: std, sec });
-        }
-    });
-    return mapped;
 };
 
 // 숫자를 한자어 수사(일, 이, 삼...)로 변환 (안드로이드 '세 장' 방지용)

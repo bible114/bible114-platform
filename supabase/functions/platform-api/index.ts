@@ -78,6 +78,7 @@ import {
   resolveTalentWalletPrograms,
   type TalentMembershipUser,
 } from "./talentProgramCore.ts";
+import { resolveDailyVideo } from "./dailyVideoResolve.ts";
 
 // T122-T123 shadow 단계: 읽기·퀴즈 결과를 계산만 하며 Firestore 쓰기는 금지한다.
 type UserDocument = StoredReadUser & StoredQuizUser & {
@@ -598,6 +599,24 @@ Deno.serve(async (request) => {
               ? church.data.communities
               : []),
         },
+      });
+    }
+
+    if (parsed.action === "resolveDailyVideo") {
+      const idToken = getBearerToken(request);
+      const [, service] = await Promise.all([
+        verifyFirebaseIdToken(idToken, { allowAnonymous: true }),
+        getServiceAccessToken(),
+      ]);
+      const result = await resolveDailyVideo(
+        service,
+        parsed.requestId,
+      );
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        ...result,
       });
     }
 

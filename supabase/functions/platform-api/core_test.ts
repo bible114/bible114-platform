@@ -60,6 +60,35 @@ Deno.test("preflight 요청을 정규화한다", () => {
   assert(!("ignored" in parsed), "unknown field leaked into parsed request");
 });
 
+Deno.test("매일 영상 resolve는 requestId 외 클라이언트 입력을 거부한다", () => {
+  const requestId = "123e4567-e89b-12d3-a456-426614174000";
+  const parsed = parsePlatformApiRequest({
+    action: "resolveDailyVideo",
+    requestId,
+  });
+  assert(parsed.action === "resolveDailyVideo", "action mismatch");
+  assert(parsed.requestId === requestId, "requestId mismatch");
+
+  for (
+    const extra of [
+      { date: "2026-07-15" },
+      { serviceDate: "2026-07-15" },
+      { mode: "adult" },
+      { playlistId: "PL-client-controlled" },
+    ]
+  ) {
+    assertRequestError(
+      () =>
+        parsePlatformApiRequest({
+          action: "resolveDailyVideo",
+          requestId,
+          ...extra,
+        }),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
 Deno.test("상품 구매 요청은 서버 식별자만 받는다", () => {
   const parsed = parsePlatformApiRequest({
     action: "purchaseItem",

@@ -1,0 +1,388 @@
+{
+  "schemaVersion": 1,
+  "titleCases": [
+    {
+      "name": "한글 날짜는 제목 어디서나 허용",
+      "title": "오늘의 말씀 7월 15일 매일성경",
+      "dateKey": "2026-07-15",
+      "expected": true
+    },
+    {
+      "name": "점 축약 날짜는 제목 머리에서 허용",
+      "title": "07.15 신앙생활 1분만",
+      "dateKey": "2026-07-15",
+      "expected": true
+    },
+    {
+      "name": "괄호 안 슬래시 축약 날짜 허용",
+      "title": "[7/15] 어린이 매일성경",
+      "dateKey": "2026-07-15",
+      "expected": true
+    },
+    {
+      "name": "연도 포함 숫자 날짜는 제목 중간도 허용",
+      "title": "매일성경 20260715 묵상",
+      "dateKey": "2026-07-15",
+      "expected": true
+    },
+    {
+      "name": "네 자리 축약 날짜는 제목 머리에서 허용",
+      "title": "0715 매일성경",
+      "dateKey": "2026-07-15",
+      "expected": true
+    },
+    {
+      "name": "장절 모양의 점 날짜는 제목 중간에서 거부",
+      "title": "요한복음 7.15 말씀",
+      "dateKey": "2026-07-15",
+      "expected": false
+    },
+    {
+      "name": "장절 모양의 슬래시 날짜는 제목 중간에서 거부",
+      "title": "창세기 7/15 본문",
+      "dateKey": "2026-07-15",
+      "expected": false
+    },
+    {
+      "name": "장절 모양의 네 자리 숫자는 제목 중간에서 거부",
+      "title": "로마서 0715 해설",
+      "dateKey": "2026-07-15",
+      "expected": false
+    },
+    {
+      "name": "다른 날짜 거부",
+      "title": "7월 14일 매일성경",
+      "dateKey": "2026-07-15",
+      "expected": false
+    },
+    {
+      "name": "평년 2월 29일 거부",
+      "title": "2월 29일 매일성경",
+      "dateKey": "2026-02-29",
+      "expected": false
+    },
+    {
+      "name": "윤년 2월 29일 허용",
+      "title": "2월 29일 매일성경",
+      "dateKey": "2028-02-29",
+      "expected": true
+    },
+    {
+      "name": "기존 계약은 한글 날짜 앞의 다른 연도를 해석하지 않음",
+      "title": "2025년 7월 15일 매일성경",
+      "dateKey": "2026-07-15",
+      "expected": true
+    },
+    {
+      "name": "기존 계약은 ISO 제목 날짜를 지원하지 않음",
+      "title": "2026-07-15 매일성경",
+      "dateKey": "2026-07-15",
+      "expected": false
+    },
+    {
+      "name": "날짜 키는 두 자리 월일 형식이어야 함",
+      "title": "7월 15일 매일성경",
+      "dateKey": "2026-7-15",
+      "expected": false
+    }
+  ],
+  "fillCases": [
+    {
+      "name": "두 모드 중 하나만 준비",
+      "configuredModeKeys": ["adult", "kids"],
+      "payload": {
+        "adult": { "url": "adult" },
+        "kids": null
+      },
+      "expected": {
+        "hasAny": true,
+        "allReady": false,
+        "missingModes": ["kids"]
+      }
+    },
+    {
+      "name": "설정된 두 모드 모두 준비",
+      "configuredModeKeys": ["adult", "kids"],
+      "payload": {
+        "adult": { "url": "adult" },
+        "kids": { "url": "kids" }
+      },
+      "expected": {
+        "hasAny": true,
+        "allReady": true,
+        "missingModes": []
+      }
+    },
+    {
+      "name": "성인 모드만 설정되면 어린이 누락은 무관",
+      "configuredModeKeys": ["adult"],
+      "payload": {
+        "adult": { "url": "adult" },
+        "kids": null
+      },
+      "expected": {
+        "hasAny": true,
+        "allReady": true,
+        "missingModes": []
+      }
+    },
+    {
+      "name": "설정 모드가 없으면 allReady가 아님",
+      "configuredModeKeys": [],
+      "payload": {
+        "adult": { "url": "adult" }
+      },
+      "expected": {
+        "hasAny": false,
+        "allReady": false,
+        "missingModes": []
+      }
+    },
+    {
+      "name": "기존 계약은 URL 값을 truthy로만 판정",
+      "configuredModeKeys": ["adult"],
+      "payload": {
+        "adult": { "url": {} }
+      },
+      "expected": {
+        "hasAny": true,
+        "allReady": true,
+        "missingModes": []
+      }
+    },
+    {
+      "name": "모드 목록이 배열이 아니면 빈 설정",
+      "configuredModeKeys": null,
+      "payload": {
+        "adult": { "url": "adult" }
+      },
+      "expected": {
+        "hasAny": false,
+        "allReady": false,
+        "missingModes": []
+      }
+    }
+  ],
+  "candidateCases": [
+    {
+      "name": "최신이 아니어도 목표 날짜 제목을 선택",
+      "targetDateKey": "2026-07-14",
+      "now": 1784073600000,
+      "items": [
+        {
+          "id": "latest-non-match",
+          "snippet": { "title": "7월 15일 매일성경" },
+          "contentDetails": {
+            "videoPublishedAt": "2026-07-14T10:00:00Z"
+          }
+        },
+        {
+          "id": "target-match",
+          "snippet": { "title": "7월 14일 매일성경" },
+          "contentDetails": {
+            "videoPublishedAt": "2026-07-14T03:00:00Z"
+          }
+        }
+      ],
+      "expected": {
+        "candidateId": "target-match",
+        "publishedAt": "2026-07-14T03:00:00Z",
+        "title": "7월 14일 매일성경",
+        "matchedDate": true,
+        "pending": false,
+        "stale": false
+      }
+    },
+    {
+      "name": "재생목록 추가 시각보다 실제 영상 게시 시각 우선",
+      "targetDateKey": "",
+      "now": 1784111400000,
+      "items": [
+        {
+          "id": "new-playlist-old-video",
+          "snippet": {
+            "title": "A",
+            "publishedAt": "2026-07-15T10:00:00Z"
+          },
+          "contentDetails": {
+            "videoPublishedAt": "2026-07-13T10:00:00Z"
+          }
+        },
+        {
+          "id": "old-playlist-new-video",
+          "snippet": {
+            "title": "B",
+            "publishedAt": "2026-07-13T10:00:00Z"
+          },
+          "contentDetails": {
+            "videoPublishedAt": "2026-07-15T09:00:00Z"
+          }
+        }
+      ],
+      "expected": {
+        "candidateId": "old-playlist-new-video",
+        "publishedAt": "2026-07-15T09:00:00Z",
+        "title": "B",
+        "matchedDate": false,
+        "pending": false,
+        "stale": false
+      }
+    },
+    {
+      "name": "목표 영상이 미래 게시이면 과거 후보로 대체하지 않음",
+      "targetDateKey": "2026-07-15",
+      "now": 1784111400000,
+      "items": [
+        {
+          "id": "past",
+          "snippet": { "title": "7월 14일 매일성경" },
+          "contentDetails": {
+            "videoPublishedAt": "2026-07-14T03:00:00Z"
+          }
+        },
+        {
+          "id": "future-target",
+          "snippet": { "title": "7월 15일 매일성경" },
+          "contentDetails": {
+            "videoPublishedAt": "2026-07-15T11:00:00Z"
+          }
+        }
+      ],
+      "expected": {
+        "candidateId": null,
+        "publishedAt": null,
+        "title": null,
+        "matchedDate": false,
+        "pending": true,
+        "stale": true
+      }
+    },
+    {
+      "name": "게시 완료 후보가 전혀 없으면 stale이 아님",
+      "targetDateKey": "2026-07-15",
+      "now": 1784111400000,
+      "items": [],
+      "expected": {
+        "candidateId": null,
+        "publishedAt": null,
+        "title": null,
+        "matchedDate": false,
+        "pending": true,
+        "stale": false
+      }
+    }
+  ],
+  "labelCases": [
+    {
+      "name": "묵상은 성경읽기보다 해설 우선",
+      "label": "매일성경 묵상",
+      "expected": "해설"
+    },
+    {
+      "name": "성경과 기도가 함께 있으면 성경읽기 우선",
+      "label": "성경 기도",
+      "expected": "성경읽기"
+    },
+    {
+      "name": "기도 라벨",
+      "label": "오늘의 기도제목",
+      "expected": "기도"
+    },
+    {
+      "name": "알 수 없는 라벨",
+      "label": "광고",
+      "expected": null
+    }
+  ],
+  "chapterCases": [
+    {
+      "name": "선두 timestamp와 한 시간 형식",
+      "description": "0:00 매일성경 묵상\n6:33 성경읽기\n1:02:15 기도",
+      "expectedParsed": [
+        { "label": "매일성경 묵상", "sec": 0 },
+        { "label": "성경읽기", "sec": 393 },
+        { "label": "기도", "sec": 3735 }
+      ],
+      "expectedMapped": [
+        { "label": "해설", "sec": 0 },
+        { "label": "성경읽기", "sec": 393 },
+        { "label": "기도", "sec": 3735 }
+      ]
+    },
+    {
+      "name": "선두 timestamp가 없으면 라벨 먼저 형식 폴백",
+      "description": "해설 0:00\n성경읽기 6:33\n기도 16:32",
+      "expectedParsed": [
+        { "label": "해설", "sec": 0 },
+        { "label": "성경읽기", "sec": 393 },
+        { "label": "기도", "sec": 992 }
+      ],
+      "expectedMapped": [
+        { "label": "해설", "sec": 0 },
+        { "label": "성경읽기", "sec": 393 },
+        { "label": "기도", "sec": 992 }
+      ]
+    },
+    {
+      "name": "선두 형식이 하나라도 있으면 라벨 먼저 줄은 무시",
+      "description": "0:00 해설\n성경읽기 6:33\n기도 16:32",
+      "expectedParsed": [
+        { "label": "해설", "sec": 0 }
+      ],
+      "expectedMapped": [
+        { "label": "해설", "sec": 0 }
+      ]
+    },
+    {
+      "name": "표준 라벨 중복은 최초 항목만 보존",
+      "description": "0:00 묵상\n2:00 해설\n3:00 성경읽기\n4:00 기도",
+      "expectedParsed": [
+        { "label": "묵상", "sec": 0 },
+        { "label": "해설", "sec": 120 },
+        { "label": "성경읽기", "sec": 180 },
+        { "label": "기도", "sec": 240 }
+      ],
+      "expectedMapped": [
+        { "label": "해설", "sec": 0 },
+        { "label": "성경읽기", "sec": 180 },
+        { "label": "기도", "sec": 240 }
+      ]
+    },
+    {
+      "name": "기존 폴백은 성경 장절을 timestamp로 볼 수 있음",
+      "description": "성경읽기: 마태복음 5:12\n기도 16:32",
+      "expectedParsed": [
+        { "label": "성경읽기: 마태복음", "sec": 312 },
+        { "label": "기도", "sec": 992 }
+      ],
+      "expectedMapped": [
+        { "label": "성경읽기", "sec": 312 },
+        { "label": "기도", "sec": 992 }
+      ]
+    },
+    {
+      "name": "기존 계약은 분초 범위를 별도 제한하지 않음",
+      "description": "0:60 해설\n99:99 기도",
+      "expectedParsed": [
+        { "label": "해설", "sec": 60 },
+        { "label": "기도", "sec": 6039 }
+      ],
+      "expectedMapped": [
+        { "label": "해설", "sec": 60 },
+        { "label": "기도", "sec": 6039 }
+      ]
+    },
+    {
+      "name": "매핑되지 않는 챕터는 결과에서 제외",
+      "description": "0:00 광고\n1:00 묵상\n2:00 마침",
+      "expectedParsed": [
+        { "label": "광고", "sec": 0 },
+        { "label": "묵상", "sec": 60 },
+        { "label": "마침", "sec": 120 }
+      ],
+      "expectedMapped": [
+        { "label": "해설", "sec": 60 }
+      ]
+    }
+  ]
+}

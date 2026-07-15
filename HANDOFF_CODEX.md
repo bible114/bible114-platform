@@ -7,7 +7,8 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: T124d 달란트 상점 실로그인 관리자 스모크**. 일반 구매와 관리자 3개 action의 서버 권위 코드·멱등 ledger·응답 검증·자동 검사는 완료했고, 2026-07-15 Edge → 웹 → Firestore rules 순서의 운영 배포와 비로그인 안전 스모크까지 통과했다. 실제 공동체 관리자 계정의 소액 판매·수령·환불 확인만 남아 있다. T123 shadow는 부서별 달란트 v2까지 준비됐지만, T123b/d2는 개발 환경 실로그인 `[read-shadow] match:true`, `[quiz-shadow] match:true` 각 1건 확인이 남아 있다. 두 실로그인 게이트와 독립적으로 진행 가능한 다음 구현은 T126a 서버 영상 resolve/lease이며, T127 직접 쓰기 차단은 관찰 기간 뒤에만 진행한다.
+> **현재 활성 작업: T126b chapters·기도제목 서버 TTL 갱신**. T126a 서버 resolve/lease는 로컬 구현·검증·커밋까지 완료했고 아직 배포하지 않았다. 상세 설계는 아래 T126 섹션에 2026-07-15 확정본이 있다 — 소작업 T126b~T126e를 번호 순서대로 진행하고, T126e 배포 전에 사용자 수동 M-V1(YouTube 키 secret 설정)이 필요하므로 안내할 것.
+> 사용자 수동 게이트 2건은 별도 대기: ① T123b/d2 — 개발 환경 실로그인 `[read-shadow] match:true`, `[quiz-shadow] match:true` 각 1건 (확인 전 T123c/d3 실쓰기 전환 금지) ② T124d — 실제 공동체 관리자 계정의 소액 판매·수령·환불 스모크. T127 직접 쓰기 차단은 관찰 기간 뒤에만 진행한다.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -180,6 +181,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-15 | T126a 매일 영상 서버 resolve·lease | `supabase/functions/platform-api/{core,index,dailyVideoCore,dailyVideoResolve}*`, `src/utils/{dailyVideoChapters,helpers}.js`, `scripts/{fixtures/daily-video-contract.json,validate-daily-video-server.mjs,validate-round18.mjs,validate-round24.mjs}`, `package.json`, `HANDOFF_CODEX.md` | Firebase token을 필수로 하고 resolve 전용 분기에서만 익명 사용자를 허용한다. 서버 KST 03시 기준일, 90초 lease, 2/5/15/30분 뒤 시간당 backoff, requestId·설정 updateTime·attempt 세대 fence, secret 우선/Firestore 키 한시 fallback, 설정 모드 full-ready만 원자 저장을 구현했다. YouTube 전체 호출은 lease보다 짧은 60초 deadline과 공용 AbortSignal을 쓰며 videos exact id·snippet·title·날짜를 재검증한다. 수동 문서는 0 write/0 fetch이고 partial·잘못된 playlist는 저장하지 않는다. 공유 fixture 35건, resolver 12건을 포함한 platform-api 113 tests, 전체 validate/build/diff 검사와 독립 재감사를 통과했다. `firestore.rules` 변경·배포·push 없음. 배포 전 M-V1 secret 설정 필요. |
 | 2026-07-15 | T124 운영 배포·비로그인 안전 스모크 | `HANDOFF_CODEX.md` 및 운영 환경 | `0ab5534`를 main에 push하고 platform-api Edge → GitHub Pages 웹 → Firestore rules 순서로 배포했다(인덱스 변경 없음). 공개 HTML이 새 `index-BbzYXMgP.js`를 참조하고 `ChurchAdminView-DiwG0dU7.js`, `PlatformAdminView-uD22aBC1.js`도 HTTP 200임을 확인했다. Edge는 허용 origin OPTIONS 204·유효 형식 미인증 관리자 요청 401, 서비스 전용 `talentAdminActions` Firestore REST 비로그인 읽기는 403이다. Firebase rules는 재로그인 뒤 컴파일·릴리스 성공. 실제 관리자 소액 판매·수령·환불 스모크는 운영 데이터 변경과 계정 선택이 필요해 T124d 미완료로 유지한다. |
 | 2026-07-15 | T124 관리자 판매·수령·환불 서버 이관 구현 | `supabase/functions/{_shared,platform-api}/*`, `src/{components/{ChurchAdminView,PlatformAdminView}.jsx,components/{churchAdmin/TalentShopTab.jsx,dashboard/TalentShop.jsx},utils/{platformApi,adminTalentRequests,talentPurchases}.js}`, `firestore.rules`, `scripts/validate-{round18,round24,department-talent}.mjs`, `package.json`, `HANDOFF_CODEX.md` | 일반 구매와 관리자 판매·수령·환불을 서버 저장 가격·최신 지갑·최신 관리자 권한으로 재검증하고 원자 처리한다. 관리자 action은 서비스 전용 불변 ledger로 멱등화하고, 개인 계정 전환 환불은 서버가 같은 transaction에서 users+동일 공동체 roster를 재확인한 뒤 관리자 2차 확인을 요구한다. 잘못된 2xx·응답 유실·현재 잔액·세션 requestId 정리까지 보강했다. 전체 validate(플랫폼 API 90 tests/check/fmt 포함), build, diff 검사와 3개 독립 재감사 통과. 운영 배포·실로그인 스모크는 다음 단계다. |
 | 2026-07-15 | R25~26 운영 배포·입장코드 원자 이전 | `HANDOFF_CODEX.md` 및 운영 환경 | `dd7374f`까지 main push. `JOIN_CODE_RATE_LIMIT_SALT` 설정 후 platform-api v5 → Firestore 인덱스 → 웹 `index-OCMsjSZz.js` → Firestore rules 순서로 배포하고 Edge/공개/인증 화면 스모크를 통과했다. 0600 백업과 SHA-256을 만든 뒤 transaction 스냅샷·백업 원본·정확한 18쓰기 게이트를 두 번 독립 검토하고, 8 private 백필+9 공개 필드 정리+디렉토리 정리를 단일 원자 커밋했다. 직후와 3분 뒤 재감사에서 공개 code/hash 0, 디렉토리 비밀 0, private 유효 8/8, 누락 0을 확인했다. 개발 환경 실로그인 shadow는 로컬 세션이 없어 남음. |
@@ -347,6 +349,13 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-15 T126a 매일 영상 서버 resolve·lease 로컬 완료, T126b 진행 대기:
+- `resolveDailyVideo`는 payload에서 `requestId` 외 입력을 거부하고, Firebase token을 필수로 하되 이 전용 분기에서만 익명 계정을 허용한다. 서버가 KST 오전 3시 기준일과 설정 문서를 결정하며, 수동 문서와 완성 자동 캐시는 외부 호출·쓰기를 하지 않는다.
+- 미준비 문서는 `dailyVideoJobs/{date}`의 90초 lease와 2/5/15/30분 뒤 시간당 backoff로 단일화한다. 획득·완료 transaction 사이를 requestId, config updateTime, attemptCount 세대로 묶어 같은 requestId 재획득과 설정·수동 문서 경합에서도 오래된 worker가 저장하지 못한다.
+- YouTube playlist와 videos 호출 전체는 공용 AbortSignal과 60초 상한을 사용한다. videos 응답의 exact id·snippet·title을 확인하고 제목 날짜를 다시 검증한 뒤에만 안전한 YouTube URL을 만든다. 일부 성공, timeout, 잘못된 설정은 daily 문서에 저장하지 않고 transient와 backoff만 반환한다.
+- 브라우저/서버 정책은 35개 공유 fixture를 사용한다. secret 우선·Firestore 키 fallback, invalid playlist, 빈 videos 응답, deadline, 동일 requestId 새 lease 세대 회귀를 동적 테스트로 고정했다. platform-api 113 tests와 전체 validate/build/diff 검사, 독립 재감사에서 남은 P0/P1이 없음을 확인했다. `firestore.rules`는 건드리지 않았다.
+- 아직 Edge·웹 배포와 push는 하지 않았다. 다음 구현은 T126b chapters·기도제목 TTL 갱신이며, T126e 배포 전 사용자가 M-V1 `YOUTUBE_API_KEY` secret을 설정해야 한다.
 
 2026-07-15 T124 관리자 판매·수령·환불 서버 이관·운영 배포 완료, 실로그인 스모크 대기:
 - 일반 구매와 관리자 창구 판매·수령·환불은 클라이언트 Firestore transaction을 사용하지 않고 `platform-api`만 호출한다. 서버는 최신 actor/구매자/roster/상점/구매를 transaction snapshot에서 읽고 관리자 3개 action은 브라우저가 읽거나 쓸 수 없는 `talentAdminActions/{requestId}` ledger와 함께 원자 commit한다.
@@ -2036,13 +2045,37 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 - `churchDirectory`는 단일 배열을 `publicChurches/{churchId}` 문서로 점진 이관하고, 변경/숨김/삭제/재생성은 관리자 서버 action만 수행한다.
 - `platformStats`는 클라이언트가 숫자를 전달하지 않고 생성/읽기 ledger에서 한 번만 집계한다. 플랫폼 관리자용 `rebuildPlatformStats({dryRun})`로 전수 재계산·차이를 먼저 확인한다.
 
-### [ ] T126. 매일 영상·기도제목 서버 이관
+### [ ] T126. 매일 영상·기도제목 서버 이관 (2026-07-15 Claude 상세 설계 — Codex 소작업 순서대로 진행)
 
-- `daily-video resolve`는 클라이언트 날짜를 받지 않고 서버 KST 오전 3시 기준일을 계산한다. Firebase token은 필수이며 익명 게스트 token은 read에 한해 허용한다.
-- YouTube 키는 Supabase `YOUTUBE_API_KEY` secret으로 이동한다. `dailyVideoJobs/{date}` lease로 한 작업자만 API를 호출하고, 오전 3시 이후 예약 prewarm + lazy 복구를 사용한다.
-- 제목이 오늘 날짜와 엄격히 일치하는 영상만 오늘 문서로 저장한다. 없으면 어제 영상을 오늘 문서에 고정하지 않고 `pending` 또는 `stale:true` 임시 응답으로 돌려 2/5/15/30분 backoff한다.
+**설계 원칙 (Codex 라운드 24 확정안 그대로):**
+- `resolveDailyVideo`는 클라이언트 날짜를 받지 않고 서버 KST 오전 3시 기준일을 계산한다. Firebase token은 필수이며 익명 게스트 token은 read에 한해 허용한다.
+- YouTube 키는 Supabase `YOUTUBE_API_KEY` secret으로 이동한다. `dailyVideoJobs/{date}` lease로 한 작업자만 API를 호출하고, lazy 복구를 기본으로 한다 (예약 prewarm은 T126e에서 가능성만 확인).
+- 제목이 오늘 날짜와 엄격히 일치하는 영상만 오늘 문서로 저장한다. 없으면 어제 영상을 오늘 문서에 고정하지 않고 `pending` 임시 응답으로 돌려 2/5/15/30분 backoff한다.
 - 설명란 chapters/기도제목도 서버가 30~60분 TTL로 갱신·저장한다. 실패 시 기존 저장값을 유지한다. 수동 등록(`autoFilled:false`)은 절대 덮지 않는다.
 - 앱은 Firestore 캐시 우선 → 서버 resolve 1회 → 저장 캐시 폴백만 수행하고 브라우저의 YouTube API 호출을 제거한다.
+
+**현재 구조 (2026-07-15 조사 확정 — 구현 전 재확인만, 재조사 불필요):**
+- 클라이언트 YouTube 직접 호출은 `src/components/dashboard/DailyVideoCard.jsx`의 `fetchPlaylistCandidates`(29행)·`fetchVideoDescriptionChapters`(44행)·`fetchLatestFromPlaylist`(55행) 3곳 + `PlatformAdminView.jsx` `testAutoConnection`(170행, `fetchLatestFromPlaylist` import 사용). apiKey는 `settings/videoAutoConfig`에서 읽는다 (`DailyVideoCard.jsx` 193·250행).
+- 문서 ID는 `getVideoDateKST()`(`src/utils/helpers.js:176`) = KST 오전 3시 경계 `YYYY-MM-DD`. **서버 `_shared/time.ts`의 `getServiceDateKst()`가 정확히 같은 값이므로 그대로 사용한다** (둘 다 UTC+9h−3h).
+- 제목 날짜 매칭·후보 선택·fill 상태 판정은 `src/utils/dailyVideoPolicy.js`의 순수 함수 `titleMatchesDate`/`selectDailyVideoCandidate`/`getDailyVideoFillState` (R25-2의 축약 날짜 머리말 제한 포함). chapters 파싱은 `src/utils/helpers.js`의 `parseAndMapChapters`(219~270행).
+- `dailyVideos/{date}` 스키마: `{ adult|kids: {url, chapters:[{label,sec}], title?, publishedAt?, matchedDate?} | null, updatedAt, autoFilled }`. 수동 등록은 항상 `autoFilled:false`.
+- 클라이언트 backoff: 2/5/15/30분 후 시간당 1회 + 포커스 복귀(5분 쿨다운) — `AUTO_RETRY_DELAYS_MS`/`scheduleAutoRetry`.
+- rules: `dailyVideos` create는 로그인(익명 포함) 누구나 4필드 화이트리스트+URL 검증, update/delete는 platformAdmin만. `videoAutoConfig` read는 로그인 전체. **rules 차단은 T127 몫 — T126에서 건드리지 않는다.**
+
+- [x] **T126a. 서버 resolve/lease** — `platform-api`에 `resolveDailyVideo` action 추가.
+  - 인증: `verifyFirebaseIdToken(idToken, { allowAnonymous: true })`. index.ts의 공통 검증(`allowAnonymous:false`) **앞에** `issueJoinTicket`처럼 별도 분기로 배치한다. payload는 `requestId`만 받는다 (클라이언트 날짜·모드 입력 금지).
+  - 기준일 = `getServiceDateKst()`. `dailyVideos/{date}` 존재 시: `autoFilled:false`(수동)면 그대로 반환하고 어떤 필드도 쓰지 않는다(T126b의 chapters TTL 갱신만 예외). `autoFilled:true`이고 `videoAutoConfig`에 설정된 모든 모드가 준비면 그대로 반환.
+  - 미준비면 `dailyVideoJobs/{date}`를 transaction으로 획득: `{ leaseExpiresAt(now+90초), attemptCount, nextRetryAt }`. lease 선점됨 또는 `nextRetryAt` 미도래면 YouTube 호출 없이 `pending:true, retryAfterMs`만 반환한다. 서버 backoff는 attemptCount 기반 2/5/15/30분, 이후 시간당 1회 — 다중 클라이언트가 동시에 와도 quota를 태우지 않는 것이 lease의 목적이다.
+  - lease 획득 시에만 YouTube API 호출. 키는 `YOUTUBE_API_KEY` secret 우선, 미설정이면 **한시적으로** `videoAutoConfig.apiKey` 폴백(폴백 제거·키 회전은 T127). playlist ID·enabled는 서버가 `settings/videoAutoConfig`에서 읽는다.
+  - 신규 `dailyVideoCore.ts` 순수 모듈: `titleMatchesDate`·`selectDailyVideoCandidate`·`getDailyVideoFillState`·chapters 파싱을 앱과 동일 계약으로 Deno 이식하고 단위 테스트를 둔다. 표류 방지: validate 스크립트에 앱(`dailyVideoPolicy.js`·`parseAndMapChapters`)과 서버가 같은 케이스 표를 통과하는 계약 검사를 추가한다 (quizShuffle 방식 참고).
+  - R25-1/2 결정 유지: 기준일 엄격 일치만 저장, 축약 날짜는 제목 머리말만, 어제 영상 고정 금지, **설정된 모드가 모두 준비될 때만 `autoFilled:true` 문서를 서비스 계정으로 저장**. 일부만 준비면 저장 없이 응답에만 담아 `pending:true`로 반환한다.
+  - 응답: `{ ok, action, requestId, serviceDate, video|null, transient|null, pending, retryAfterMs? }`. apiKey·playlistId·config 내용·문서 경로·lease 내부 상태는 응답 금지.
+- [ ] **T126b. chapters·기도제목 서버 TTL 갱신** — resolve가 저장 문서를 반환할 때 문서의 `chaptersRefreshedAt`이 30~60분 경과했고 lease를 잡은 경우에만 videos API로 설명란을 다시 읽어 chapters를 갱신한다. 실패 시 기존 저장값 유지. 수동 문서는 현재 클라이언트 동작과 동일하게 chapters만 갱신하고 url 등 다른 필드는 절대 건드리지 않는다.
+- [ ] **T126c. 클라이언트 전환** — `DailyVideoCard.jsx`: Firestore 캐시 우선 → 미준비 시 `platformApi.resolveDailyVideo()` 1회 → 실패/pending이면 기존 2/5/15/30분·포커스 backoff 재사용(서버 `retryAfterMs`가 있으면 더 이른 재시도 금지). YouTube 직접 호출 3곳, `videoAutoConfig` 읽기, `dailyVideos` create/lazy-fill 쓰기를 전부 제거한다. 게스트(익명)도 같은 경로. `src/utils/platformApi.js`에 `previewReadCompletion` 형태의 wrapper + 응답 검증(ok/action/requestId echo, url이 있으면 youtube.com|youtu.be https만 허용)을 추가한다.
+- [ ] **T126d. 관리자 화면 전환** — `PlatformAdminView.jsx` `testAutoConnection`을 무쓰기 서버 action `adminPreviewDailyVideo`(platformAdmin 전용, 응답에 apiKey 미포함)로 교체한다. 설정 저장은 playlist·enabled만 쓰도록 바꾸고 apiKey 입력란은 "서버로 이동됨" 안내로 대체한다 (기존 저장된 apiKey 필드 삭제는 T127). 수동 등록·삭제는 admin 전용 직접 쓰기 그대로 유지한다.
+- [ ] **T126e. 배포·검증** — 사용자 명시 요청 시 Edge → 웹 순서로 배포. 검증: 게스트/로그인 resolve 200, 미인증 401, 잘못된 origin 403, 오늘 영상이 아직 없는 시간대의 pending+retryAfterMs 응답, 수동 문서 불변, 멀티탭 동시 접속 시 YouTube 호출 1회(lease 로그), 기존 저장 영상 표시 회귀 없음. 오전 3시 예약 prewarm은 Supabase cron 지원 여부를 확인해 가능하면 제안만 메모에 남긴다 (lazy 복구만으로 기능 완결 — 임의 구현 금지).
+
+**사용자 수동 작업 — M-V1** (T126a 배포 전): `npx supabase@latest secrets set YOUTUBE_API_KEY=<현재 videoAutoConfig.apiKey 값>`. 값은 Firestore `settings/videoAutoConfig`에서 복사 (키 회전은 T127에서 하므로 지금은 같은 키 재사용).
 
 ### [ ] T127. 규칙 차단·민감 데이터 정리·운영 검증
 

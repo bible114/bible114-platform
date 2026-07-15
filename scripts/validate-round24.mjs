@@ -13,7 +13,10 @@ const packageJson = JSON.parse(read('package.json'));
 assert.match(constants, /export const PLATFORM_API_URL = import\.meta\.env\?\.VITE_PLATFORM_API_URL \|\| '';/);
 assert.match(envExample, /^VITE_PLATFORM_API_URL=$/m);
 assert.equal(packageJson.scripts['validate:round24'], 'node scripts/validate-round24.mjs');
-assert.match(packageJson.scripts.validate, /npm run validate:round24 && npm run validate:platform-api$/);
+assert.match(
+    packageJson.scripts.validate,
+    /npm run validate:round24 && npm run validate:daily-video-server && npm run validate:platform-api$/,
+);
 assert.match(packageJson.scripts['validate:platform-api'], /deno test[\s\S]*deno check[\s\S]*deno fmt --check/);
 
 // 브라우저 클라이언트 계약: 인증 토큰, 멱등 requestId, 12초 제한, 표준 오류.

@@ -10,8 +10,13 @@ export const PURCHASE_ITEM_ACTION = "purchaseItem" as const;
 export const ADMIN_COUNTER_SALE_ACTION = "adminCounterSale" as const;
 export const ADMIN_DELIVER_PURCHASE_ACTION = "adminDeliverPurchase" as const;
 export const ADMIN_REFUND_PURCHASE_ACTION = "adminRefundPurchase" as const;
+export const RESOLVE_DAILY_VIDEO_ACTION = "resolveDailyVideo" as const;
 
 export type PlatformApiRequest =
+  | {
+    action: typeof RESOLVE_DAILY_VIDEO_ACTION;
+    requestId: string;
+  }
   | {
     action: typeof ADMIN_COUNTER_SALE_ACTION;
     requestId: string;
@@ -189,6 +194,13 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
   }
 
   if (action === PREFLIGHT_ACTION) return { action, requestId };
+  if (action === RESOLVE_DAILY_VIDEO_ACTION) {
+    const allowedKeys = new Set(["action", "requestId"]);
+    if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return { action, requestId };
+  }
   if (action === ISSUE_JOIN_TICKET_ACTION) {
     const normalizedChurchId = safeDocumentId(churchId);
     const normalizedEntryCode = typeof entryCode === "string"

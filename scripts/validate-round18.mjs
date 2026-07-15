@@ -79,6 +79,7 @@ const manifest = read('public/manifest.webmanifest');
 const firebaseConfig = read('firebase.json');
 const userAuth = read('src/hooks/useUserAuth.js');
 const helperSource = read('src/utils/helpers.js');
+const dailyVideoChaptersSource = read('src/utils/dailyVideoChapters.js');
 const dailyVideo = read('src/components/dashboard/DailyVideoCard.jsx');
 const departmentHook = read('src/hooks/useDepartment.js');
 const bibleLogic = read('src/hooks/useBibleLogic.js');
@@ -258,7 +259,8 @@ assert.match(dailyVideo, /newMode === 'kids'[\s\S]*startsWith\('nt_'\)/);
 assert.match(dailyVideo, /saveGuestState\(\{ videoType: newMode,[\s\S]*quizLevel: 'easy'/);
 assert.match(dailyVideo, /videoMode: newMode,[\s\S]*quizLevel: 'easy'/);
 assert.match(quiz, /어린이 영상을 선택하면 쉬운 퀴즈로 자동 변경돼요/);
-assert.match(helperSource, /label\.includes\('해설'\) \|\| label\.includes\('묵상'\)/);
+assert.match(helperSource, /export \{ parseChapters, mapToStandardLabel, parseAndMapChapters \} from '\.\/dailyVideoChapters\.js'/);
+assert.match(dailyVideoChaptersSource, /label\.includes\('해설'\) \|\| label\.includes\('묵상'\)/);
 assert.match(app, /\['dashboard', 'church_admin'\]\.includes\(view\)[\s\S]*sessionStorage\.setItem\(ADMIN_ENTRY_SESSION_KEY, view\)/);
 
 console.log('라운드 18 계약 검증 통과: 첫 화면, 소셜 연결, 읽기 흐름, 기록 허브, DAY별 퀴즈, 공동체별 달란트 지갑, 관리자 읽기 기본');
