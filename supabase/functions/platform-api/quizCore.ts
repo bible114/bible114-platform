@@ -43,6 +43,10 @@ export type QuizSubmissionInput = {
   selectedIndex: unknown;
   todayLegacy: string;
   indexRecord: QuizIndexRecord | null | undefined;
+  talentRouting?: {
+    directCanEarnTalent: boolean;
+    rosterCanEarnTalent: boolean;
+  };
 };
 
 export type QuizSubmissionResult =
@@ -227,9 +231,17 @@ export const validateQuizSubmission = (
     position,
     input.todayLegacy,
   );
+  const attempts = normalizedAttempts(stored.attempts);
   // 첫 시도 뒤에는 같은 Day의 다른 허용 문항으로 바꿀 수 없다. 완료된
   // 기록도 요청 키가 다르면 그 결과를 노출하지 않고 잘못된 문항으로 본다.
-  if (validQuizKey(stored.quizKey) && stored.quizKey !== input.quizKey) {
+  // 단, 시도 0인 저장 키가 현재 후보군에서 사라진 경우 클라이언트는 새 키로
+  // 교체하므로 같은 예외를 허용한다.
+  const canReplaceStoredQuizKey = attempts === 0 && stored.solved !== true &&
+    stored.skipped !== true;
+  if (
+    !canReplaceStoredQuizKey && validQuizKey(stored.quizKey) &&
+    stored.quizKey !== input.quizKey
+  ) {
     return { status: "invalidQuiz" };
   }
   if (record.legacyBank === true) {
@@ -245,7 +257,6 @@ export const validateQuizSubmission = (
     }
   }
 
-  const attempts = normalizedAttempts(stored.attempts);
   const solved = stored.solved === true;
   const skipped = stored.skipped === true;
   if (solved || skipped || attempts >= 2) {
@@ -264,13 +275,21 @@ export const validateQuizSubmission = (
   const rewardAlready = input.user.quizRewardDate === input.todayLegacy ||
     (input.user.quizDate === input.todayLegacy &&
       input.user.quizSolved === true);
-  const reward = !isCorrect || rewardAlready
+  const baseReward = !isCorrect || rewardAlready
     ? 0
     : nextAttempts === 1
     ? 10
     : nextAttempts === 2
     ? 5
     : 0;
+  const accountUsesDirectWallet = input.user.accountType !== "personal";
+  const directCanEarnTalent = input.talentRouting
+    ? accountUsesDirectWallet && input.talentRouting.directCanEarnTalent
+    : accountUsesDirectWallet;
+  const rosterCanEarnTalent = input.talentRouting
+    ? input.talentRouting.rosterCanEarnTalent
+    : !accountUsesDirectWallet;
+  const reward = directCanEarnTalent || rosterCanEarnTalent ? baseReward : 0;
   const entry = {
     attempts: nextAttempts,
     solved: isCorrect,
@@ -285,6 +304,6 @@ export const validateQuizSubmission = (
     isCorrect,
     reward,
     entry,
-    rewardsUserWallet: input.user.accountType !== "personal",
+    rewardsUserWallet: directCanEarnTalent,
   };
 };

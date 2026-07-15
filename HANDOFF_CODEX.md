@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: T123 읽기·퀴즈 보상 서버 commit 전환 준비**. T125 공개 입장코드 추측 방지 보완 구현은 완료했고, 운영 비밀 설정·배포·보안 이전 실행과 App Check 적용이 남았다. T123b/d2는 비교 장치 완료 후 실로그인 `[read-shadow] match:true`, `[quiz-shadow] match:true` 각 1건 확인이 남아 있으며, 아직 읽기·퀴즈 Firestore 쓰기는 서버 commit으로 전환하지 않았다.
+> **현재 활성 작업: T123 읽기·퀴즈 보상 서버 commit 전환 준비**. T125 공개 입장코드 추측 방지 보완 구현은 완료했고, 운영 비밀 설정·배포·보안 이전 실행과 App Check 적용이 남았다. T123 shadow는 부서별 달란트 v2까지 로컬 준비를 마쳤지만, T123b/d2는 실로그인 `[read-shadow] match:true`, `[quiz-shadow] match:true` 각 1건 확인이 남아 있다. 아직 읽기·퀴즈 Firestore 쓰기는 서버 commit으로 전환하지 않았다.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
 1. **활성 라운드의 체크리스트**에서 `[ ]` 상태인 첫 작업을 찾는다. 작업은 번호 순서대로 진행한다 (의존성이 있다).
@@ -180,6 +180,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-15 | T123 v2 달란트 shadow 로컬 준비 | `supabase/functions/platform-api/{index,readCore,quizCore,talentProgramCore}*`, `src/{hooks/useUserBibleActions.js,components/dashboard/BibleQuizCard.jsx,utils/readCompletionShadow.js}`, `scripts/validate-round24.mjs`, `HANDOFF_CODEX.md` | 브라우저와 같은 v1/v2 달란트 해석, canonical roster 검증·정렬, 지갑별 적립 가능 여부를 서버 preview에 연결했다. 읽기·퀴즈는 v2에서도 DEV 4초 shadow를 실행하고 실제 적립 가능한 지갑이 없으면 effective reward 0으로 비교한다. 시도 0인 stale quizKey 교체 예외와 preview 응답 식별자·조직·경로·잔액·설정 금지 계약을 추가했다. 로컬 자동 검증은 완료했으나 실제 로그인 match 증거가 없어 T123b/d2는 미완료 유지. |
 | 2026-07-15 | T125 공개 입장코드 보안 전환 구현 | `supabase/functions/platform-api/{core,index,joinSecurityCore}*`, `src/{hooks/useAuth.js,components/{ChurchAdminView,PlatformAdminView}.jsx,components/dashboard/CommunityMembershipCard.jsx,utils/{platformApi,churchDirectory}.js}`, `scripts/validate-{round11,round24,signup-consent}.mjs`, `HANDOFF_CODEX.md` | 5분 참여권, 같은 요청만 허용하는 일회용 소비, 목적 통합 10회/시간·교회 전체 200회/시간 제한, 동일 오류 응답을 구현했다. 신규·변경 코드는 private/access에만 원자 저장하고 운영 공개 해시·평문을 백필/삭제하는 관리자 도구를 추가했다. 전체 validate/build, Deno 53 tests/check/fmt, diff 검사 통과. 운영 secret 설정·배포·이전 실행은 대기. |
 | 2026-07-14 | 배포·push 지침 변경 및 운영 반영 | `AGENTS.md`, `HANDOFF_CODEX.md` | 사용자 명시 지시가 있으면 Codex가 push·배포·공개 검증까지 수행하도록 절대 금지를 조건부 허용으로 변경. `04d8d2f`를 main에 push하고 GitHub Pages `Published`, Firestore rules 컴파일·릴리스 완료. 공개 사이트가 새 번들 `index-B-T0nHlS.js`와 HTTP 200을 제공함을 확인. |
 | 2026-07-14 | 공동체 다중 소그룹·부서별 달란트 운영 | `src/{App.jsx,components/ChurchAdminView.jsx,components/DashboardView.jsx,components/churchAdmin/TalentShopTab.jsx,components/dashboard/{BibleQuizCard,BibleReader,CommunityMembershipCard,TalentShop}.jsx,hooks/useUserBibleActions.js,utils/{memberships,rosterMembers,rosterSnapshot,talentProgram,talentProgramStore}.js}`, `firestore.rules`, `scripts/validate-{roster-multimembership,department-talent}.mjs`, `scripts/validate-round{18,24}.mjs`, `package.json`, `HANDOFF_CODEX.md` | 직접 회원과 외부 roster 회원 모두 주 소속+추가 3개까지 배정. 부서별 달란트 사용 여부와 통합/전용 시장을 설정하고 공동체 지갑 하나는 유지. 달란트 미사용 부서도 읽기 진도·점수는 정상 반영하되 읽기·퀴즈 달란트와 상점만 제외. 구매에 부서·시장·지갑 snapshot을 기록해 이후 소속 변경 뒤 환불도 원래 지갑으로 복원. 전체 validate/build/diff와 로컬 게스트 렌더·브라우저 오류 0 통과. 인증 관리자 저장·실회원 보상/구매는 운영 데이터 변경 없이 미검증. rules 배포 전에는 roster 추가 소속 권한 강화가 운영에 반영되지 않음. |
@@ -343,6 +344,13 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 ## 📮 Codex → Claude 메모
 
+2026-07-15 T123 부서별 달란트 v2 shadow 로컬 준비 완료, 실로그인 게이트 유지:
+- 서버에 브라우저 `talentProgram`과 같은 v1/v2 순수 해석을 추가했다. 설정 문서 없음과 상점 OFF인 v1은 기존처럼 적립하고, v2는 소속 부서의 적립 설정과 시장 존재를 확인하되 상점·시장 OFF는 사용만 막고 적립은 유지한다.
+- preview는 인증 uid와 canonical roster 경로·문서 uid·조직 중복·최대 3개를 검증하고 orgId로 정렬한 뒤 각 공동체의 `settings/talentShop`을 읽는다. 설정 404만 legacy null로 처리하며 다른 읽기 오류는 보상 없는 결과로 축소하지 않는다.
+- 읽기는 직접 users 지갑과 roster 지갑 중 하나라도 적립 가능할 때만 effective `talentEarned`를 표시하고 `talentProgramEnabled`까지 비교한다. 퀴즈도 같은 routing으로 최종 reward와 entry.reward를 계산한다. 시도 0·미완료 stale quizKey만 새 후보 키로 교체하고, 시도 후 키 변경은 계속 거부한다.
+- 읽기·퀴즈 클라이언트는 v2에서도 DEV 전용 4초 preview를 실행한다. 응답에는 uid/role/rosterCount, 조직 ID·경로·잔액·설정, 정답 인덱스를 싣지 않고 로그에도 실제 값 없이 match/status/mismatchKeys만 남긴다.
+- 로컬 구현과 자동 계약은 준비됐지만 운영 Edge에는 아직 이 변경을 배포하지 않았고 실제 로그인 비교도 하지 않았다. 따라서 T123b와 T123d2 체크박스는 열어 두며, `[read-shadow] match:true`와 `[quiz-shadow] match:true`를 각 1건 확인하기 전 T123c/d3 실제 쓰기 전환 금지.
+
 2026-07-14 배포·push 지침 변경:
 - 사용자가 기존 절대 금지를 해제했다. 앞으로 `firebase deploy`, `npm run deploy`, `git push`는 평소에는 하지 않되 사용자가 현재 작업에서 명시적으로 요청하면 Codex가 검증 후 직접 실행하고 공개 결과까지 확인한다.
 - 이번 변경은 `04d8d2f` main push, GitHub Pages Published, Firestore rules 컴파일·릴리스, 공개 번들 `index-B-T0nHlS.js` HTTP 200까지 완료했다.
@@ -352,7 +360,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 - 달란트 설정 v2는 `departmentSettings[departmentId] = { enabled, marketId }`, `markets[marketId] = { name, enabled, items }` 구조다. 여러 부서가 `shared`를 고르면 통합 시장, `department_{id}`를 고르면 전용 시장이다. 잔액은 기존 호환과 부서 이동 안전성을 위해 공동체별 지갑 하나를 유지한다.
 - 부서 달란트 OFF는 읽기/퀴즈 달란트와 상점만 끄며 진도·점수·랭킹 동기화는 계속한다. 검수 중 OFF roster에서 진도까지 빠지는 결함을 발견해 모든 roster에는 진도를 쓰고 활성 지갑에만 talent를 쓰도록 분리했다. 첫 읽기 여부도 보상 여부와 분리했다.
 - v2 구매 문서는 departmentId/departmentName/marketId/walletKind/walletOrgId를 snapshot으로 남기며 관리자는 선택 시장 소속 회원만 창구 차감할 수 있다. 환불은 현재 소속이 아니라 구매 당시 지갑 snapshot을 우선한다. 구버전 구매/상점은 기존 필드와 동작을 유지한다.
-- 현재 서버 shadow 계산은 v2 부서 설정을 모르므로 v2 공동체가 하나라도 있으면 개발용 읽기/퀴즈 shadow 비교를 건너뛴다. T123 실제 쓰기와 T124 구매 서버 이관 때 같은 `talentProgram` 해석을 서버에 반영해야 한다.
+- 후속 T123 작업에서 서버 shadow에 같은 v1/v2 `talentProgram` 해석을 반영해 이제 v2 공동체도 개발용 읽기·퀴즈 비교 대상이다. 실제 서버 쓰기 전환은 여전히 실로그인 match 게이트 뒤에만 진행한다.
 - `npm run validate`, `npm run build`, `git diff --check` 통과. 로컬 게스트 대시보드 실제 렌더와 브라우저 오류 0을 확인했다. 로그인 관리자/실회원 Firestore 저장·보상·구매는 테스트 자격증명이 없어 미실행이며, `firestore.rules` 변경은 사용자 배포 뒤에만 운영 적용된다.
 
 2026-07-14 회원가입 동의·아동 가입 보호:
@@ -393,7 +401,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 2026-07-14 라운드 24 T123a 완료:
 - 읽기 완료의 서버 계산을 실제 저장과 분리한 `previewReadCompletion`으로 먼저 배포했다. 영상 기준일은 오전 3시지만 읽기 보상은 기존과 동일한 KST 자정 기준이므로 날짜 함수를 분리했다.
-- 서버는 users와 collectionGroup roster를 읽어 계산하지만 어떤 문서도 쓰지 않는다. 응답은 역할·날짜·roster 수·계산 결과만 반환하고 조직 ID, 잔액, 문서 경로는 반환하지 않는다.
+- 서버는 users와 collectionGroup roster를 읽어 계산하지만 어떤 문서도 쓰지 않는다. 후속 보완에서 응답의 uid·role·roster 수까지 제거해 날짜와 계산 결과만 반환하며 조직 ID, 잔액, 문서 경로, 달란트 설정은 반환하지 않는다.
 - Deno 28 tests/check/fmt, 전체 validate, build, diff 검사가 통과했다. 운영 Edge에서 OPTIONS 204, 미인증 401, 잘못된 입력 400, 잘못된 origin 403, 잘못된 token 401을 확인했다.
 - 실제 로그인 token의 200 결과와 기존 클라이언트 계산 비교는 자격증명을 새로 만들거나 데이터를 변경하지 않고 T123b 비교 장치를 통해 확인한다. 일치 증거 전에는 실제 서버 쓰기로 전환하지 않는다.
 
@@ -1962,11 +1970,11 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 ### [ ] T123. 읽기 완료·퀴즈 보상 서버 이관
 
 - [x] **T123a. 읽기 완료 서버 계산 shadow** — KST 자정 기준 날짜, 진행 위치·하루 추가 읽기 상한·보상·연속일·개인 지갑을 서버 순수 함수로 계산하고 무쓰기 `previewReadCompletion`으로 배포한다.
-- [ ] **T123b. 로그인 사용자 shadow 비교** — 비교 장치·자동 검사는 완료. 기존 읽기 완료 직전에 개발 환경에서만 서버 미리보기를 최대 4초 호출하고 성공 응답만 기존 계산과 비교한다. 로그에는 실제 값 없이 불일치 필드명만 남긴다. **남은 완료 조건: 로그인 계정으로 `[read-shadow] match:true` 1건 확인.**
+- [ ] **T123b. 로그인 사용자 shadow 비교** — 부서별 달란트 v2를 포함한 비교 장치·자동 검사는 로컬 완료. 기존 읽기 완료 직전에 개발 환경에서만 서버 미리보기를 최대 4초 호출하고 성공 응답만 기존 계산과 비교한다. 로그에는 실제 값 없이 불일치 필드명만 남긴다. **남은 완료 조건: 최신 Edge 배포 후 로그인 계정으로 `[read-shadow] match:true` 1건 확인.**
 - [ ] **T123c. 읽기 완료 실제 쓰기 전환** — T123b 일치 확인 후 멱등 ledger와 원자 commit을 구현하고 React의 직접 보상 쓰기를 제거한다. 서버 실패 시 직접 쓰기 폴백을 두지 않는다.
 - [ ] **T123d. 퀴즈 보상 서버 이관** — 서버 정답 인덱스·출제 범위 검증·시도/보상 ledger를 구현하고 클라이언트 직접 쓰기를 제거한다.
   - [x] **T123d1. 정답 인덱스·순수 계산 기반** — 앱과 동일한 선택지 셔플로 6,657문항의 표시 정답 위치와 계획별 허용 Day를 생성한다. 현재/방금 완료 위치, 저장 문항 고정, 2회 시도, 하루 1회 보상을 무쓰기 순수 함수로 검증한다.
-  - [ ] **T123d2. 퀴즈 shadow API·클라이언트 비교** — 무쓰기 API·개발 전용 비교 장치·운영 배포와 음성 검사는 완료. 서버가 users와 정답 인덱스를 읽고 앱은 기존 transaction 전에 최대 4초 비교하되 실패가 기존 흐름을 막지 않는다. **남은 완료 조건: 로그인 계정으로 `[quiz-shadow] match:true` 1건 확인.**
+  - [ ] **T123d2. 퀴즈 shadow API·클라이언트 비교** — 부서별 달란트 v2를 포함한 무쓰기 API·개발 전용 비교 장치는 로컬 완료. 서버가 users·canonical roster·달란트 설정·정답 인덱스를 읽고 앱은 기존 transaction 전에 최대 4초 비교하되 실패가 기존 흐름을 막지 않는다. **남은 완료 조건: 최신 Edge 배포 후 로그인 계정으로 `[quiz-shadow] match:true` 1건 확인.**
   - [ ] **T123d3. 퀴즈 실제 쓰기 전환** — shadow 일치 확인 뒤 멱등 ledger·users/roster 원자 commit을 구현하고 클라이언트 직접 쓰기를 제거한다.
 
 - `completeRead({cycle, day, requestId})`: 현재 사용자 진행 위치·하루 추가 읽기 상한·서버 KST 날짜를 검증하고 users 진행/score, 최대 3개 실제 roster 지갑, history, 통계 ledger를 한 transaction으로 반영한다. 클라이언트의 `talentEarned`, `score`, roster 목록은 받지 않는다.

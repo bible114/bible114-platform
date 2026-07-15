@@ -7,7 +7,7 @@ import { loadUserExtraOrgsStrict } from '../../utils/roster';
 import { getRosterOrgIds, updateRosterTalents } from '../../utils/talentWallet';
 import { previewQuizSubmission } from '../../utils/platformApi';
 import { compareQuizSubmissionShadow } from '../../utils/quizSubmissionShadow';
-import { isTalentProgramV2, resolveTalentProgram } from '../../utils/talentProgram';
+import { resolveTalentProgram } from '../../utils/talentProgram';
 import { loadTalentProgramsStrict } from '../../utils/talentProgramStore';
 import {
     getReadingRangeForDay,
@@ -321,7 +321,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                 ])
                 : {};
             let quizShadowPreview = null;
-            if (import.meta.env.DEV && !Object.values(talentPrograms).some(isTalentProgramV2)) {
+            if (import.meta.env.DEV) {
                 try {
                     quizShadowPreview = await previewQuizSubmission(progressKey, quizKey, selectedIndex, { timeoutMs: 4000 });
                 } catch {

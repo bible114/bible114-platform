@@ -63,12 +63,25 @@ import {
   type JoinTicketRecord,
   validateJoinTicketUse,
 } from "./joinSecurityCore.ts";
+import {
+  normalizeStoredDocumentId,
+  parseRosterTalentWallets,
+  resolveTalentWalletPrograms,
+  type TalentMembershipUser,
+} from "./talentProgramCore.ts";
 
 // T122-T123 shadow 단계: 읽기·퀴즈 결과를 계산만 하며 Firestore 쓰기는 금지한다.
 type UserDocument = StoredReadUser & StoredQuizUser & {
   role?: unknown;
   isDeleted?: unknown;
+  churchId?: unknown;
+  baseChurchId?: unknown;
+  departmentId?: unknown;
+  extraMemberships?: unknown;
+  talentDepartmentId?: unknown;
 };
+
+type RosterTalentDocument = TalentMembershipUser & { uid?: unknown };
 
 type JoinRateLimitDocument = {
   count?: unknown;
@@ -76,6 +89,58 @@ type JoinRateLimitDocument = {
 };
 
 const INVALID_JOIN_CODE_MESSAGE = "입장코드가 올바르지 않습니다.";
+
+const loadPreviewTalentRouting = async (
+  service: { token: string; projectId: string },
+  uid: string,
+  user: UserDocument,
+  rosterDocuments: Array<{ name: string; data: RosterTalentDocument }>,
+) => {
+  const directOrgId = user.accountType === "personal"
+    ? null
+    : normalizeStoredDocumentId(user.baseChurchId) ||
+      normalizeStoredDocumentId(user.churchId);
+  const parsedRosters = parseRosterTalentWallets(rosterDocuments, uid);
+  if (!parsedRosters.ok) {
+    throw new PlatformError("CONFLICT", {
+      message: "가입 공동체 수를 확인해 주세요.",
+    });
+  }
+  const rosters = parsedRosters.wallets;
+  const orgIds = Array.from(
+    new Set([
+      ...(directOrgId ? [directOrgId] : []),
+      ...rosters.map(({ orgId }) => orgId),
+    ]),
+  );
+  // 404 설정 문서만 null(v1 legacy)로 해석한다. 그 외 읽기 오류는 getDocument가
+  // 그대로 throw하므로 보상 없는 preview로 조용히 축소되지 않는다.
+  const talentShops = await Promise.all(
+    orgIds.map((orgId) =>
+      getDocument<Record<string, unknown>>(
+        service.token,
+        service.projectId,
+        `churches/${orgId}/settings/talentShop`,
+      )
+    ),
+  );
+  const shopByOrgId = new Map(
+    orgIds.map((orgId, index) => [orgId, talentShops[index]?.data || null]),
+  );
+  const resolution = resolveTalentWalletPrograms({
+    direct: directOrgId
+      ? { user, talentShop: shopByOrgId.get(directOrgId) || null }
+      : null,
+    rosters: rosters.map(({ orgId, user: rosterUser }) => ({
+      user: rosterUser,
+      talentShop: shopByOrgId.get(orgId) || null,
+    })),
+  });
+  return {
+    directCanEarnTalent: resolution.directCanEarnTalent,
+    rosterCanEarnTalent: resolution.rosterCanEarnTalent.some(Boolean),
+  };
+};
 
 const sha256Hex = async (value: string): Promise<string> => {
   const bytes = new TextEncoder().encode(value);
@@ -1246,25 +1311,50 @@ Deno.serve(async (request) => {
           message: "가입 공동체 수를 확인해 주세요.",
         });
       }
+      const talentRouting = await loadPreviewTalentRouting(
+        service,
+        uid,
+        userDocument.data,
+        rosterDocuments,
+      );
       const result = calculateReadCompletion(
         userDocument.data,
         { cycle: parsed.cycle, day: parsed.day },
         todayLegacy,
+        talentRouting,
       );
       return jsonResponse(origin, 200, {
         ok: true,
         action: parsed.action,
         requestId: parsed.requestId,
-        uid,
-        role,
         calendarDate: todayLegacy,
-        rosterCount: rosterDocuments.length,
         result,
       });
     }
 
     if (parsed.action === "previewQuizSubmission") {
       const todayLegacy = getLegacyCalendarDateStringKst();
+      const rosterDocuments = await runCollectionGroupQuery<
+        RosterTalentDocument
+      >(
+        service.token,
+        service.projectId,
+        "roster",
+        "uid",
+        uid,
+        { limit: 4 },
+      );
+      if (rosterDocuments.length >= 4) {
+        throw new PlatformError("CONFLICT", {
+          message: "가입 공동체 수를 확인해 주세요.",
+        });
+      }
+      const talentRouting = await loadPreviewTalentRouting(
+        service,
+        uid,
+        userDocument.data,
+        rosterDocuments,
+      );
       const questions = quizAnswerIndex.questions as Record<
         string,
         QuizIndexRecord | undefined
@@ -1276,13 +1366,12 @@ Deno.serve(async (request) => {
         selectedIndex: parsed.selectedIndex,
         todayLegacy,
         indexRecord: questions[parsed.quizKey],
+        talentRouting,
       });
       return jsonResponse(origin, 200, {
         ok: true,
         action: parsed.action,
         requestId: parsed.requestId,
-        uid,
-        role,
         calendarDate: todayLegacy,
         result,
       });

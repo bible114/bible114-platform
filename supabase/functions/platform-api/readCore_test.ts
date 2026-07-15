@@ -145,6 +145,34 @@ Deno.test("개인 계정은 users talent를 변경하지 않는다", () => {
   );
 });
 
+Deno.test("달란트 v2 routing은 실제 적립 가능한 지갑이 없으면 보상을 0으로 만든다", () => {
+  const disabled = calculateReadCompletion(
+    { currentDay: 10, readCount: 1, talent: 9 },
+    { cycle: 1, day: 10 },
+    TODAY,
+    { directCanEarnTalent: false, rosterCanEarnTalent: false },
+  );
+  assert(disabled.status === "ready", "ready expected");
+  if (disabled.status !== "ready") return;
+  assert(disabled.summary.talentEarned === 0, "disabled program rewarded");
+  assert(!disabled.summary.talentProgramEnabled, "disabled flag mismatch");
+  assert(!("talent" in disabled.updateData), "direct wallet was changed");
+});
+
+Deno.test("roster만 활성인 개인 계정은 유효 보상을 유지하되 users 잔액은 숨긴다", () => {
+  const rosterOnly = calculateReadCompletion(
+    { currentDay: 10, readCount: 1, accountType: "personal", talent: 99 },
+    { cycle: 1, day: 10 },
+    TODAY,
+    { directCanEarnTalent: false, rosterCanEarnTalent: true },
+  );
+  assert(rosterOnly.status === "ready", "ready expected");
+  if (rosterOnly.status !== "ready") return;
+  assert(rosterOnly.summary.talentEarned === 11, "roster reward missing");
+  assert(rosterOnly.summary.talentProgramEnabled, "roster flag mismatch");
+  assert(!("talent" in rosterOnly.updateData), "personal user balance leaked");
+});
+
 Deno.test("진도와 최근 날짜를 안정적으로 정규화한다", () => {
   assert(
     normalizeProgressDay(366) === 1 && normalizeProgressDay(0) === 1,

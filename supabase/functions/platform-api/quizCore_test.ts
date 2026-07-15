@@ -141,6 +141,37 @@ Deno.test("같은 날 다른 퀴즈 보상을 받은 사용자는 정답도 무�
   assert(!result.rewardsUserWallet, "personal wallet route mismatch");
 });
 
+Deno.test("달란트 프로그램이 모든 지갑에서 꺼져 있으면 정답 보상도 0이다", () => {
+  const result = validateQuizSubmission(submission({
+    talentRouting: {
+      directCanEarnTalent: false,
+      rosterCanEarnTalent: false,
+    },
+  }));
+  assert(result.status === "ready", "ready expected");
+  if (result.status !== "ready") return;
+  assert(result.isCorrect && result.reward === 0, "disabled program rewarded");
+  assert(result.entry.reward === 0, "stored reward mismatch");
+  assert(!result.rewardsUserWallet, "direct wallet route mismatch");
+});
+
+Deno.test("개인 계정은 roster 프로그램이 활성일 때만 유효 보상을 유지한다", () => {
+  const result = validateQuizSubmission(submission({
+    user: { currentDay: 10, readCount: 1, accountType: "personal" },
+    talentRouting: {
+      directCanEarnTalent: false,
+      rosterCanEarnTalent: true,
+    },
+  }));
+  assert(result.status === "ready", "ready expected");
+  if (result.status !== "ready") return;
+  assert(
+    result.reward === 10 && result.entry.reward === 10,
+    "roster reward missing",
+  );
+  assert(!result.rewardsUserWallet, "personal direct wallet enabled");
+});
+
 Deno.test("다른 Day나 계획 범위의 문항은 거부한다", () => {
   const otherPosition = validateQuizSubmission(
     submission({ progressKey: "r1_d9" }),
@@ -174,6 +205,30 @@ Deno.test("저장된 문항이 있으면 같은 Day의 다른 허용 문항도 �
     },
   }));
   assert(result.status === "invalidQuiz", "stored quiz key was replaced");
+});
+
+Deno.test("시도 0인 사라진 저장 문항은 현재 후보 문항으로 한 번 교체한다", () => {
+  const result = validateQuizSubmission(submission({
+    quizKey: "genesis-1-2",
+    user: {
+      currentDay: 10,
+      readCount: 1,
+      quizProgress: {
+        r1_d10: {
+          attempts: 0,
+          solved: false,
+          skipped: false,
+          quizKey: "removed-question",
+        },
+      },
+    },
+  }));
+  assert(result.status === "ready", "zero-attempt replacement rejected");
+  if (result.status !== "ready") return;
+  assert(
+    result.entry.quizKey === "genesis-1-2",
+    "replacement key not persisted",
+  );
 });
 
 Deno.test("legacyBank 문항은 같은 위치에 저장된 동일 키만 허용한다", () => {

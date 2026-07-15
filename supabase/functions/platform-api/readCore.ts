@@ -35,6 +35,11 @@ export type StoredReadUser = {
 // 클라이언트 요청에는 위치만 둔다. 점수·달란트·roster 값은 서버가 읽은 StoredReadUser에서만 취한다.
 export type ReadCompletionRequest = { cycle: number; day: number };
 
+export type TalentRewardRouting = {
+  directCanEarnTalent: boolean;
+  rosterCanEarnTalent: boolean;
+};
+
 export type ReadCompletionUpdate = {
   currentDay: number;
   readCount: number;
@@ -76,6 +81,7 @@ export type ReadCompletionResult =
       completedRound: boolean;
       secretShopJustUnlocked: boolean;
       rewardsUserWallet: boolean;
+      talentProgramEnabled: boolean;
     };
   };
 
@@ -158,6 +164,7 @@ export const calculateReadCompletion = (
   user: StoredReadUser,
   request: ReadCompletionRequest,
   todayLegacy: string,
+  talentRouting?: TalentRewardRouting,
 ): ReadCompletionResult => {
   const currentDay = normalizeProgressDay(user.currentDay);
   const readCount = normalizeReadCount(user.readCount);
@@ -203,8 +210,18 @@ export const calculateReadCompletion = (
   const completedRound = currentDay === DAYS_PER_CYCLE;
   const newProgressDay = completedRound ? 1 : currentDay + 1;
   const newReadCount = completedRound ? readCount + 1 : readCount;
-  const talentEarned = isFirstReadToday ? 10 + Math.min(newStreak, 7) : 0;
-  const rewardsUserWallet = user.accountType !== "personal";
+  const baseTalentEarned = isFirstReadToday ? 10 + Math.min(newStreak, 7) : 0;
+  const accountUsesDirectWallet = user.accountType !== "personal";
+  const directCanEarnTalent = talentRouting
+    ? accountUsesDirectWallet && talentRouting.directCanEarnTalent
+    : accountUsesDirectWallet;
+  // 구 호출부에는 기존 의미를 보존한다. 서버 preview는 항상 명시 routing을 넘긴다.
+  const rosterCanEarnTalent = talentRouting
+    ? talentRouting.rosterCanEarnTalent
+    : !accountUsesDirectWallet;
+  const talentProgramEnabled = directCanEarnTalent || rosterCanEarnTalent;
+  const talentEarned = talentProgramEnabled ? baseTalentEarned : 0;
+  const rewardsUserWallet = directCanEarnTalent;
   const maxStreak = Math.max(
     nonNegativeInteger(user.maxStreak, oldStreak),
     oldStreak,
@@ -227,7 +244,7 @@ export const calculateReadCompletion = (
       todayTimestamp,
     ),
   };
-  if (rewardsUserWallet) {
+  if (directCanEarnTalent) {
     updateData.talent = finiteNumber(user.talent) + talentEarned;
   }
   if (secretShopJustUnlocked) updateData.secretShopUnlocked = true;
@@ -248,6 +265,7 @@ export const calculateReadCompletion = (
       completedRound,
       secretShopJustUnlocked,
       rewardsUserWallet,
+      talentProgramEnabled,
     },
   };
 };

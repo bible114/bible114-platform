@@ -47,6 +47,7 @@ const SUMMARY_KEYS = [
     'nextViewingDay',
     'completedRound',
     'secretShopJustUnlocked',
+    'talentProgramEnabled',
 ];
 
 /**

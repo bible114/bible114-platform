@@ -9,7 +9,7 @@ import { DAILY_READ_ADVANCE_LIMIT, getDailyAdvanceState } from '../utils/readPol
 import { updateRosterTalents } from '../utils/talentWallet';
 import { previewReadCompletion } from '../utils/platformApi';
 import { compareReadCompletionShadow } from '../utils/readCompletionShadow';
-import { isTalentProgramV2, resolveTalentProgram } from '../utils/talentProgram';
+import { resolveTalentProgram } from '../utils/talentProgram';
 import { loadTalentProgramsStrict } from '../utils/talentProgramStore';
 
 export const useUserBibleActions = (
@@ -90,9 +90,8 @@ export const useUserBibleActions = (
                 baseChurchId,
                 ...refreshedExtraOrgs.map(org => org.orgId),
             ]);
-            const hasDepartmentTalentProgram = Object.values(talentPrograms).some(isTalentProgramV2);
             let readShadowPreview = null;
-            if (import.meta.env.DEV && !hasDepartmentTalentProgram) {
+            if (import.meta.env.DEV) {
                 try {
                     readShadowPreview = await previewReadCompletion(submittedReadCount, vDay, { timeoutMs: 4000 });
                 } catch {

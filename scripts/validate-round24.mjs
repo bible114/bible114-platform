@@ -83,6 +83,11 @@ const readShadowPath = 'src/utils/readCompletionShadow.js';
 assert.equal(exists(readShadowPath), true, `${readShadowPath}가 필요하다.`);
 const readShadowSource = read(readShadowPath);
 assert.match(readShadowSource, /export const compareReadCompletionShadow\s*=/);
+assert.match(
+    readShadowSource,
+    /['"]talentProgramEnabled['"]/,
+    '읽기 shadow는 실제 적립 가능한 지갑 존재 여부도 비교해야 한다.',
+);
 assert.match(userBibleActions, /import\s*\{\s*previewReadCompletion\s*\}\s*from\s*['"]\.\.\/utils\/platformApi['"]/);
 assert.match(userBibleActions, /import\s*\{\s*compareReadCompletionShadow\s*\}\s*from\s*['"]\.\.\/utils\/readCompletionShadow['"]/);
 
@@ -92,10 +97,10 @@ const transactionAwaitIndex = userBibleActions.indexOf('await commitRead(');
 assert.ok(devGuardIndex >= 0, '읽기 shadow preview는 import.meta.env.DEV 가드 안에서만 실행해야 한다.');
 assert.ok(previewAwaitIndex > devGuardIndex, 'DEV 가드 안에서 previewReadCompletion을 await해야 한다.');
 assert.ok(transactionAwaitIndex > previewAwaitIndex, '서버 preview를 기다린 뒤 기존 transaction을 실행해야 한다.');
-assert.match(
+assert.doesNotMatch(
     userBibleActions.slice(devGuardIndex, previewAwaitIndex),
-    /!hasDepartmentTalentProgram/,
-    '구형 서버 shadow가 부서별 달란트 보상 결과를 잘못 비교하지 않도록 v2 설정에서는 건너뛰어야 한다.',
+    /hasDepartmentTalentProgram|isTalentProgramV2/,
+    '서버가 v2 달란트 계약을 지원하므로 읽기 shadow를 v2 설정에서 건너뛰면 안 된다.',
 );
 assert.match(
     userBibleActions.slice(previewAwaitIndex, transactionAwaitIndex),
@@ -145,13 +150,14 @@ const { compareReadCompletionShadow } = await import('../src/utils/readCompletio
 const readyServer = {
     status: 'ready',
     updateData: { currentDay: 2, score: 15 },
-    summary: { oldLevel: 0, newLevel: 0, nextViewingDay: 2 },
+    summary: { oldLevel: 0, newLevel: 0, nextViewingDay: 2, talentProgramEnabled: true },
 };
 const readyClient = {
     updateData: { currentDay: 2, score: 15 },
     oldLevel: 0,
     newLevel: 0,
     nextViewingDay: 2,
+    talentProgramEnabled: true,
 };
 assert.deepEqual(compareReadCompletionShadow(readyServer, readyClient), {
     match: true,
@@ -165,6 +171,12 @@ const scoreMismatch = compareReadCompletionShadow(
 );
 assert.equal(scoreMismatch.match, false);
 assert.deepEqual(scoreMismatch.mismatchKeys, ['updateData.score']);
+const talentProgramMismatch = compareReadCompletionShadow(
+    readyServer,
+    { ...readyClient, talentProgramEnabled: false },
+);
+assert.equal(talentProgramMismatch.match, false);
+assert.deepEqual(talentProgramMismatch.mismatchKeys, ['summary.talentProgramEnabled']);
 assert.deepEqual(compareReadCompletionShadow(
     { status: 'dailyLimit', limit: 3, count: 3 },
     { blockedReason: 'DAILY_ADVANCE_LIMIT' },
@@ -283,6 +295,56 @@ assert.equal(exists(indexPath), true, `${indexPath}가 필요하다.`);
 const serverCore = read(corePath);
 const serverIndex = read(indexPath);
 
+// T123 v2 달란트 shadow 계약: 브라우저 talentProgram과 동일한 순수 해석,
+// canonical roster 검증, 응답 최소화, 실제 적립 가능한 지갑 기준 보상을 고정한다.
+const talentProgramCorePath = 'supabase/functions/platform-api/talentProgramCore.ts';
+const talentProgramCoreTestPath = 'supabase/functions/platform-api/talentProgramCore_test.ts';
+assert.equal(exists(talentProgramCorePath), true, `${talentProgramCorePath}가 필요하다.`);
+assert.equal(exists(talentProgramCoreTestPath), true, `${talentProgramCoreTestPath}가 필요하다.`);
+const talentProgramCore = read(talentProgramCorePath);
+assert.doesNotMatch(
+    talentProgramCore,
+    /(?:\bfetch\s*\(|\bDeno\.|db\.collection|firebase\.firestore|\bgetDocument\s*\(|\bbeginTransaction\s*\(|\bcommitWrites\s*\()/,
+    'talentProgramCore는 외부 I/O가 없는 순수 계산 모듈이어야 한다.',
+);
+for (const exportedName of [
+    'normalizeTalentProgram',
+    'resolveTalentProgram',
+    'parseRosterTalentWallets',
+    'resolveTalentWalletPrograms',
+]) {
+    assert.match(talentProgramCore, new RegExp(`export const ${exportedName}\\b`));
+}
+assert.match(
+    talentProgramCore,
+    /program\.legacy[\s\S]*membershipDepartmentIds\.length > 0[\s\S]*:\s*\[null\]/,
+    'v1과 설정 문서 없음은 부서 없는 기존 계정도 적립 가능해야 한다.',
+);
+assert.match(
+    talentProgramCore,
+    /!setting\?\.enabled \|\| !setting\.marketId[\s\S]*program\.markets\[setting\.marketId\]/,
+    'v2 적립은 활성 부서 설정과 실제 시장 존재를 함께 확인해야 한다.',
+);
+assert.match(talentProgramCore, /segments\.length === 3 && segments\[1\] === "roster"/);
+assert.match(talentProgramCore, /segments\[2\] !== uid/);
+assert.match(talentProgramCore, /document\.data\.uid/);
+assert.match(talentProgramCore, /seen\.has\(orgId\)/);
+assert.match(talentProgramCore, /wallets\.length > 3/);
+assert.match(talentProgramCore, /wallets\.sort\(\(left, right\) => left\.orgId\.localeCompare\(right\.orgId\)\)/);
+
+const talentRoutingStart = serverIndex.indexOf('const loadPreviewTalentRouting = async');
+const talentRoutingEnd = serverIndex.indexOf('const sha256Hex = async', talentRoutingStart);
+assert.ok(talentRoutingStart >= 0 && talentRoutingEnd > talentRoutingStart, 'preview 달란트 routing 로더가 필요하다.');
+const talentRoutingContract = serverIndex.slice(talentRoutingStart, talentRoutingEnd);
+for (const pattern of [
+    /parseRosterTalentWallets\(rosterDocuments, uid\)/,
+    /rosters\.map\(\(\{ orgId \}\) => orgId\)/,
+    /churches\/\$\{orgId\}\/settings\/talentShop/,
+    /talentShops\[index\]\?\.data \|\| null/,
+    /resolveTalentWalletPrograms\(/,
+    /rosterCanEarnTalent:\s*resolution\.rosterCanEarnTalent\.some\(Boolean\)/,
+]) assert.match(talentRoutingContract, pattern);
+
 // T125 입장코드 방어 계약: 목적과 무관한 이중 속도 제한, requestId에 묶인
 // ticket 재시도, 공개 오류의 동일 응답을 정적 검증한다.
 const joinSecurityCorePath = 'supabase/functions/platform-api/joinSecurityCore.ts';
@@ -362,8 +424,13 @@ assert.ok(
 assert.match(quizCore, /export const validateQuizSubmission\s*=/);
 assert.match(
     quizCore,
-    /validQuizKey\(stored\.quizKey\)\s*&&\s*stored\.quizKey\s*!==\s*input\.quizKey[\s\S]{0,160}return\s*\{\s*status:\s*['"]invalidQuiz['"]\s*\}/,
-    '저장된 quizKey와 제출 quizKey가 다르면 invalidQuiz로 거부해야 한다.',
+    /const canReplaceStoredQuizKey = attempts === 0 && stored\.solved !== true &&[\s\S]*stored\.skipped !== true/,
+    '시도 전 사라진 저장 문항만 현재 후보 문항으로 교체할 수 있어야 한다.',
+);
+assert.match(
+    quizCore,
+    /!canReplaceStoredQuizKey && validQuizKey\(stored\.quizKey\)[\s\S]*stored\.quizKey !== input\.quizKey[\s\S]*status:\s*"invalidQuiz"/,
+    '한 번이라도 시도했거나 완료한 저장 문항의 quizKey 교체를 거부해야 한다.',
 );
 
 // 퀴즈 제출 shadow API 계약: 서버가 원본 정답 인덱스로 판정하되 쓰지는
@@ -454,10 +521,10 @@ const quizPreviewIndex = quizCard.indexOf('await previewQuizSubmission(');
 const quizTransactionIndex = quizCard.indexOf('await db.runTransaction(', quizPreviewIndex);
 assert.ok(quizDevGuardIndex >= 0, '퀴즈 shadow preview는 import.meta.env.DEV 가드 안에서만 실행해야 한다.');
 assert.ok(quizPreviewIndex > quizDevGuardIndex, 'DEV 가드 안에서 previewQuizSubmission을 await해야 한다.');
-assert.match(
+assert.doesNotMatch(
     quizCard.slice(quizDevGuardIndex, quizPreviewIndex),
-    /!Object\.values\(talentPrograms\)\.some\(isTalentProgramV2\)/,
-    '구형 서버 shadow가 부서별 달란트 퀴즈 보상을 잘못 비교하지 않도록 v2 설정에서는 건너뛰어야 한다.',
+    /isTalentProgramV2|Object\.values\(talentPrograms\)\.some/,
+    '서버가 v2 달란트 계약을 지원하므로 퀴즈 shadow를 v2 설정에서 건너뛰면 안 된다.',
 );
 assert.ok(quizTransactionIndex > quizPreviewIndex, '서버 퀴즈 preview를 기다린 뒤 기존 transaction을 실행해야 한다.');
 assert.match(
@@ -591,8 +658,37 @@ assert.match(serverIndex, /getDocument/);
 assert.match(serverIndex, /runCollectionGroupQuery/);
 assert.match(serverIndex, /\{\s*limit:\s*4\s*\}/);
 assert.match(serverIndex, /calculateReadCompletion/);
-assert.match(serverIndex, /rosterCount:\s*rosterDocuments\.length/);
+assert.match(serverIndex, /loadPreviewTalentRouting\(/);
 assert.match(serverIndex, /\bresult\b/);
+
+for (const [label, branchStart, branchEnd] of [
+    ['읽기', serverIndex.indexOf('if (parsed.action === "previewReadCompletion")'), serverIndex.indexOf('if (parsed.action === "previewQuizSubmission")')],
+    ['퀴즈', serverIndex.indexOf('if (parsed.action === "previewQuizSubmission")'), serverIndex.indexOf('\n    return jsonResponse(origin, 200, {', serverIndex.indexOf('if (parsed.action === "previewQuizSubmission")'))],
+]) {
+    const responseStart = serverIndex.indexOf('return jsonResponse(origin, 200, {', branchStart);
+    const responseEnd = serverIndex.indexOf('\n      });', responseStart);
+    assert.ok(branchStart >= 0 && branchEnd > branchStart && responseStart > branchStart && responseEnd > responseStart, `${label} preview 응답 분기가 필요하다.`);
+    const response = serverIndex.slice(responseStart, responseEnd);
+    assert.doesNotMatch(
+        response,
+        /\b(?:uid|role|rosterCount|orgId|churchId|organizationId|organizationIds|documentPath|path|balance|talentShop|settings|answerIndex|indexRecord|allowed|userTalent|rosterTalentByOrgId)\b\s*[:,]/,
+        `${label} preview 응답에 사용자 식별자, 조직·경로·잔액·설정·정답 정보를 노출하면 안 된다.`,
+    );
+}
+
+assert.match(readCore, /const baseTalentEarned = isFirstReadToday/);
+assert.match(readCore, /accountUsesDirectWallet && talentRouting\.directCanEarnTalent/);
+assert.match(readCore, /rosterCanEarnTalent:\s*boolean/);
+assert.match(readCore, /const talentProgramEnabled = directCanEarnTalent \|\| rosterCanEarnTalent/);
+assert.match(readCore, /const talentEarned = talentProgramEnabled \? baseTalentEarned : 0/);
+assert.match(readCore, /if \(directCanEarnTalent\) \{[\s\S]*updateData\.talent/);
+assert.match(readCore, /talentProgramEnabled,/);
+
+assert.match(quizCore, /const baseReward = !isCorrect \|\| rewardAlready/);
+assert.match(quizCore, /accountUsesDirectWallet && input\.talentRouting\.directCanEarnTalent/);
+assert.match(quizCore, /const reward = directCanEarnTalent \|\| rosterCanEarnTalent \? baseReward : 0/);
+assert.match(quizCore, /entry = \{[\s\S]*reward,[\s\S]*updatedDate/);
+assert.match(quizCore, /rewardsUserWallet:\s*directCanEarnTalent/);
 
 // 읽기·퀴즈 preview는 계속 shadow-only이고, 명시적 server action만 트랜잭션 쓰기를 허용한다.
 const readPreviewStart = serverIndex.indexOf('if (parsed.action === "previewReadCompletion")');
