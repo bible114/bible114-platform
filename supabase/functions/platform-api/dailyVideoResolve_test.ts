@@ -2,7 +2,10 @@ import type {
   FirestoreDocument,
   FirestoreWrite,
 } from "../_shared/firestore.ts";
-import type { DailyVideoMode } from "./dailyVideoCore.ts";
+import {
+  DAILY_VIDEO_CHAPTERS_TTL_MS,
+  type DailyVideoMode,
+} from "./dailyVideoCore.ts";
 import { resolveDailyVideo } from "./dailyVideoResolve.ts";
 
 const NOW_MS = Date.parse("2026-07-15T00:00:00.000Z");
@@ -28,6 +31,7 @@ type MemoryWrite =
     kind: "update";
     path: string;
     data: Record<string, unknown>;
+    updateMask?: string[];
     exists?: boolean;
   }
   | { kind: "delete"; path: string; exists?: boolean };
@@ -45,11 +49,12 @@ type MemoryState = {
 
 type HarnessOptions = {
   available?: Partial<Record<DailyVideoMode, boolean>>;
+  chapterDescriptions?: Partial<Record<DailyVideoMode, string>>;
   envApiKey?: string;
   hangYouTube?: boolean;
   onVideoDetails?: (state: MemoryState) => void;
   videoDetails?: Partial<
-    Record<DailyVideoMode, "valid" | "empty" | "missingSnippet">
+    Record<DailyVideoMode, "valid" | "empty" | "missingSnippet" | "wrongId">
   >;
   youtubeDeadlineMs?: number;
 };
@@ -64,6 +69,40 @@ const assertEquals = (actual: unknown, expected: unknown, message: string) => {
   if (actualJson !== expectedJson) {
     throw new Error(`${message}: expected ${expectedJson}, got ${actualJson}`);
   }
+};
+
+const valueAtFieldPath = (
+  data: Record<string, unknown>,
+  fieldPath: string,
+): { found: boolean; value?: unknown } => {
+  let current: unknown = data;
+  for (const segment of fieldPath.split(".")) {
+    if (
+      !current || typeof current !== "object" || Array.isArray(current) ||
+      !Object.prototype.hasOwnProperty.call(current, segment)
+    ) {
+      return { found: false };
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return { found: true, value: current };
+};
+
+const setFieldPath = (
+  data: Record<string, unknown>,
+  fieldPath: string,
+  value: unknown,
+) => {
+  const segments = fieldPath.split(".");
+  let current = data;
+  for (const segment of segments.slice(0, -1)) {
+    const existing = current[segment];
+    if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+      current[segment] = {};
+    }
+    current = current[segment] as Record<string, unknown>;
+  }
+  current[segments.at(-1)!] = structuredClone(value);
 };
 
 const nextUpdateTime = (state: MemoryState): string => {
@@ -116,6 +155,35 @@ const manualVideo = () => ({
   autoFilled: false,
 });
 
+const freshChaptersRefreshedAt = () =>
+  new Date(NOW_MS - DAILY_VIDEO_CHAPTERS_TTL_MS + 1).toISOString();
+
+const staleChaptersRefreshedAt = () =>
+  new Date(NOW_MS - DAILY_VIDEO_CHAPTERS_TTL_MS).toISOString();
+
+const richManualVideo = () => ({
+  adult: {
+    url: videoEntry("adult").url,
+    chapters: [{ label: "해설", sec: 11 }],
+    title: "관리자 성인 제목",
+    publishedAt: "2026-07-10T00:00:00.000Z",
+    matchedDate: false,
+    sentinel: { owner: "admin", keep: true },
+  },
+  kids: {
+    url: videoEntry("kids").url,
+    chapters: [{ label: "기도", sec: 22 }],
+    title: "관리자 어린이 제목",
+    publishedAt: "2026-07-11T00:00:00.000Z",
+    matchedDate: false,
+    sentinel: { owner: "admin-kids", keep: true },
+  },
+  autoFilled: false,
+  updatedAt: "2026-07-14T00:00:00.000Z",
+  chaptersRefreshedAt: staleChaptersRefreshedAt(),
+  sentinel: { topLevel: "keep" },
+});
+
 const createHarness = (options: HarnessOptions = {}) => {
   const state: MemoryState = {
     abortedFetches: 0,
@@ -155,11 +223,12 @@ const createHarness = (options: HarnessOptions = {}) => {
     _projectId: string,
     path: string,
     data: Record<string, unknown>,
-    writeOptions: { exists?: boolean } = {},
+    writeOptions: { updateMask?: string[]; exists?: boolean } = {},
   ): FirestoreWrite => ({
     kind: "update",
     path,
     data,
+    updateMask: writeOptions.updateMask,
     exists: writeOptions.exists,
   } as unknown as FirestoreWrite);
 
@@ -194,7 +263,21 @@ const createHarness = (options: HarnessOptions = {}) => {
       if (write.kind === "delete") {
         state.documents.delete(write.path);
       } else {
-        setDocument(state, write.path, write.data);
+        if (!write.updateMask) {
+          setDocument(state, write.path, structuredClone(write.data));
+          continue;
+        }
+        const merged = structuredClone(
+          state.documents.get(write.path)?.data || {},
+        );
+        for (const fieldPath of write.updateMask) {
+          const field = valueAtFieldPath(write.data, fieldPath);
+          if (!field.found) {
+            throw new Error(`updateMask field missing from data: ${fieldPath}`);
+          }
+          setFieldPath(merged, fieldPath, field.value);
+        }
+        setDocument(state, write.path, merged);
       }
     }
     return {};
@@ -269,12 +352,21 @@ const createHarness = (options: HarnessOptions = {}) => {
           ? []
           : detailsKind === "missingSnippet"
           ? [{ id: videoId }]
+          : detailsKind === "wrongId"
+          ? [{
+            id: "Z1234567890",
+            snippet: {
+              title: "wrong video",
+              description: "0:00 매일성경 묵상",
+            },
+          }]
           : mode
           ? [{
-            id: MODE_CONFIG[mode].videoId,
+            id: videoId,
             snippet: {
               title: `7월 15일 ${mode}`,
-              description: "0:00 매일성경 묵상\n6:33 성경읽기",
+              description: options.chapterDescriptions?.[mode] ||
+                "0:00 매일성경 묵상\n6:33 성경읽기",
               publishedAt: "2026-07-14T20:00:00.000Z",
             },
           }]
@@ -312,10 +404,67 @@ const runResolve = (
     dependencies: harness.dependencies as never,
   });
 
-Deno.test("수동 문서는 그대로 반환하고 write와 YouTube 호출을 하지 않는다", async () => {
+const dailyWrites = (state: MemoryState): MemoryWrite[] =>
+  state.commits.flat().filter((write) =>
+    write.kind === "update" && write.path === DAILY_PATH
+  );
+
+const requireUpdateWrite = (
+  write: MemoryWrite | undefined,
+  message: string,
+): Extract<MemoryWrite, { kind: "update" }> => {
+  if (!write || write.kind !== "update") throw new Error(message);
+  return write;
+};
+
+const timestampIso = (value: unknown): string | null => {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+};
+
+const assertNoPrivateResolveData = (result: unknown, message: string) => {
+  const serialized = JSON.stringify(result);
+  for (
+    const secret of [
+      "secret-key",
+      "firestore-key",
+      MODE_CONFIG.adult.playlistId,
+      MODE_CONFIG.kids.playlistId,
+      DAILY_PATH,
+      JOB_PATH,
+      CONFIG_PATH,
+    ]
+  ) {
+    assert(!serialized.includes(secret), `${message}: leaked ${secret}`);
+  }
+  for (
+    const internalField of [
+      "apiKey",
+      "playlistId",
+      "leaseOwner",
+      "leasePurpose",
+      "leaseExpiresAt",
+      "refreshAttemptCount",
+      "refreshNextRetryAt",
+      "chaptersRefreshedAt",
+    ]
+  ) {
+    assert(
+      !serialized.includes(`"${internalField}"`),
+      `${message}: leaked ${internalField}`,
+    );
+  }
+};
+
+Deno.test("fresh 수동 문서는 그대로 반환하고 write와 YouTube 호출을 하지 않는다", async () => {
   const harness = createHarness();
   setDocument(harness.state, CONFIG_PATH, configData());
-  setDocument(harness.state, DAILY_PATH, manualVideo());
+  setDocument(harness.state, DAILY_PATH, {
+    ...manualVideo(),
+    chaptersRefreshedAt: freshChaptersRefreshedAt(),
+  });
 
   const result = await runResolve(harness);
 
@@ -329,13 +478,33 @@ Deno.test("수동 문서는 그대로 반환하고 write와 YouTube 호출을 �
   assertEquals(harness.state.youtubeUrls.length, 0, "manual YouTube count");
 });
 
-Deno.test("설정된 모든 모드가 완성된 자동 문서는 lease 없이 반환한다", async () => {
+Deno.test("fresh 문서의 미래 updatedAt은 반복 refresh lease를 만들지 않는다", async () => {
+  const original = {
+    ...richManualVideo(),
+    updatedAt: new Date(NOW_MS + 86_400_000).toISOString(),
+    chaptersRefreshedAt: new Date(NOW_MS).toISOString(),
+  };
+  const harness = createHarness({ envApiKey: "secret-key" });
+  setDocument(harness.state, CONFIG_PATH, configData());
+  setDocument(harness.state, DAILY_PATH, original);
+
+  const result = await runResolve(harness);
+
+  assertEquals(result.pending, false, "future updatedAt pending");
+  assertEquals(result.video?.adult?.url, original.adult.url, "stored video");
+  assertEquals(harness.state.youtubeUrls.length, 0, "future updatedAt fetches");
+  assertEquals(harness.state.commits.length, 0, "future updatedAt writes");
+  assertEquals(getDocumentData(harness.state, JOB_PATH), null, "job created");
+});
+
+Deno.test("fresh 완성 자동 문서는 lease 없이 반환한다", async () => {
   const harness = createHarness();
   setDocument(harness.state, CONFIG_PATH, configData());
   setDocument(harness.state, DAILY_PATH, {
     adult: videoEntry("adult"),
     kids: videoEntry("kids"),
     autoFilled: true,
+    chaptersRefreshedAt: freshChaptersRefreshedAt(),
   });
 
   const result = await runResolve(harness);
@@ -350,6 +519,479 @@ Deno.test("설정된 모든 모드가 완성된 자동 문서는 lease 없이 �
     "complete auto YouTube count",
   );
   assertEquals(getDocumentData(harness.state, JOB_PATH), null, "job created");
+});
+
+Deno.test("stale 수동 문서는 videos API로만 갱신하고 chapters 외 필드를 보존한다", async () => {
+  const original = richManualVideo();
+  const harness = createHarness({
+    envApiKey: "secret-key",
+    chapterDescriptions: {
+      adult: "1:00 매일성경 묵상\n5:00 기도제목",
+      kids: "2:00 매일성경 묵상\n7:00 성경읽기",
+    },
+  });
+  setDocument(harness.state, CONFIG_PATH, configData());
+  setDocument(harness.state, DAILY_PATH, original);
+
+  const result = await runResolve(harness);
+
+  assertEquals(result.pending, false, "manual refresh pending");
+  assertEquals(result.transient, null, "manual refresh transient");
+  assertEquals(harness.state.youtubeUrls.length, 2, "manual videos calls");
+  assert(
+    harness.state.youtubeUrls.every((url) => url.pathname.endsWith("/videos")),
+    "manual refresh called playlistItems",
+  );
+  for (const url of harness.state.youtubeUrls) {
+    assertEquals(url.searchParams.get("key"), "secret-key", "refresh secret");
+    assert(
+      !url.toString().includes("firestore-key"),
+      "refresh fallback leaked",
+    );
+  }
+  assert(
+    harness.state.events.findIndex((event) => event.startsWith("commit:")) <
+      harness.state.events.findIndex((event) => event.startsWith("fetch:")),
+    "manual refresh fetched before lease commit",
+  );
+  assertEquals(harness.state.commits.length, 2, "manual refresh commits");
+  assertEquals(
+    harness.state.commits[1].map((write) => `${write.kind}:${write.path}`),
+    [`update:${DAILY_PATH}`, `delete:${JOB_PATH}`],
+    "manual refresh final writes",
+  );
+  const refreshWrite = requireUpdateWrite(
+    dailyWrites(harness.state)[0],
+    "manual refresh write missing",
+  );
+  assertEquals(
+    refreshWrite.updateMask,
+    ["adult.chapters", "kids.chapters", "chaptersRefreshedAt"],
+    "manual refresh update mask",
+  );
+
+  const expected = structuredClone(original);
+  expected.adult.chapters = [
+    { label: "해설", sec: 60 },
+    { label: "기도", sec: 300 },
+  ];
+  expected.kids.chapters = [
+    { label: "해설", sec: 120 },
+    { label: "성경읽기", sec: 420 },
+  ];
+  (expected as Record<string, unknown>).chaptersRefreshedAt = new Date(NOW_MS);
+  assertEquals(
+    getDocumentData(harness.state, DAILY_PATH),
+    expected,
+    "manual non-chapter fields changed",
+  );
+  assertEquals(getDocumentData(harness.state, JOB_PATH), null, "refresh job");
+  assertEquals(
+    result.video?.adult?.chapters,
+    expected.adult.chapters,
+    "manual response adult chapters",
+  );
+  assertEquals(result.video?.autoFilled, false, "manual autoFilled changed");
+  assertNoPrivateResolveData(result, "manual refresh response");
+});
+
+Deno.test("stale 완성 자동 문서도 nested chapters와 timestamp만 갱신한다", async () => {
+  const original = {
+    adult: { ...videoEntry("adult"), sentinel: "adult-keep" },
+    kids: { ...videoEntry("kids"), sentinel: "kids-keep" },
+    autoFilled: true,
+    updatedAt: "2026-07-14T00:00:00.000Z",
+    chaptersRefreshedAt: staleChaptersRefreshedAt(),
+    sentinel: { topLevel: "keep" },
+  };
+  const harness = createHarness({
+    envApiKey: "secret-key",
+    chapterDescriptions: {
+      adult: "3:00 매일성경 묵상\n8:00 기도제목",
+      kids: "4:00 매일성경 묵상\n9:00 성경읽기",
+    },
+  });
+  setDocument(harness.state, CONFIG_PATH, configData());
+  setDocument(harness.state, DAILY_PATH, original);
+
+  const result = await runResolve(harness);
+
+  assertEquals(result.pending, false, "auto refresh pending");
+  assertEquals(harness.state.youtubeUrls.length, 2, "auto videos calls");
+  assert(
+    harness.state.youtubeUrls.every((url) => url.pathname.endsWith("/videos")),
+    "auto refresh called playlistItems",
+  );
+  const refreshWrite = requireUpdateWrite(
+    dailyWrites(harness.state)[0],
+    "auto refresh write missing",
+  );
+  assertEquals(
+    refreshWrite.updateMask,
+    ["adult.chapters", "kids.chapters", "chaptersRefreshedAt"],
+    "auto refresh update mask",
+  );
+  const expected = structuredClone(original);
+  expected.adult.chapters = [
+    { label: "해설", sec: 180 },
+    { label: "기도", sec: 480 },
+  ];
+  expected.kids.chapters = [
+    { label: "해설", sec: 240 },
+    { label: "성경읽기", sec: 540 },
+  ];
+  (expected as Record<string, unknown>).chaptersRefreshedAt = new Date(NOW_MS);
+  assertEquals(
+    getDocumentData(harness.state, DAILY_PATH),
+    expected,
+    "auto non-chapter fields changed",
+  );
+  assertNoPrivateResolveData(result, "auto refresh response");
+});
+
+Deno.test("두 모드 refresh 일부 성공은 성공 chapters만 저장하고 독립 2분 backoff한다", async () => {
+  const original = richManualVideo();
+  const fillNextRetryAt = new Date(NOW_MS + 30 * 60 * 1000).toISOString();
+  const harness = createHarness({
+    envApiKey: "secret-key",
+    chapterDescriptions: { adult: "1:30 매일성경 묵상\n10:00 기도제목" },
+    videoDetails: { kids: "empty" },
+  });
+  setDocument(harness.state, CONFIG_PATH, configData());
+  setDocument(harness.state, DAILY_PATH, original);
+  setDocument(harness.state, JOB_PATH, {
+    leaseExpiresAt: new Date(NOW_MS).toISOString(),
+    attemptCount: 4,
+    nextRetryAt: fillNextRetryAt,
+    refreshAttemptCount: 0,
+    refreshNextRetryAt: new Date(NOW_MS).toISOString(),
+  });
+
+  const result = await runResolve(harness);
+
+  assertEquals(result.pending, true, "partial refresh pending");
+  assertEquals(result.retryAfterMs, 120_000, "partial refresh retry");
+  assertEquals(result.transient, null, "partial refresh transient");
+  assertEquals(harness.state.youtubeUrls.length, 2, "partial videos calls");
+  const refreshWrite = requireUpdateWrite(
+    dailyWrites(harness.state)[0],
+    "partial daily write missing",
+  );
+  assertEquals(
+    refreshWrite.updateMask,
+    ["adult.chapters"],
+    "partial refresh update mask",
+  );
+  const expected = structuredClone(original);
+  expected.adult.chapters = [
+    { label: "해설", sec: 90 },
+    { label: "기도", sec: 600 },
+  ];
+  assertEquals(
+    getDocumentData(harness.state, DAILY_PATH),
+    expected,
+    "partial refresh changed failed mode or metadata",
+  );
+  assertEquals(
+    result.video?.kids?.chapters,
+    original.kids.chapters,
+    "failed kids chapters changed",
+  );
+  const job = getDocumentData(harness.state, JOB_PATH);
+  assertEquals(job?.attemptCount, 4, "fill attempt count changed");
+  assertEquals(job?.nextRetryAt, fillNextRetryAt, "fill backoff changed");
+  assertEquals(job?.refreshAttemptCount, 1, "refresh attempt count");
+  assertEquals(
+    timestampIso(job?.refreshNextRetryAt),
+    new Date(NOW_MS + 120_000).toISOString(),
+    "refresh next retry",
+  );
+  assertEquals(job?.leaseOwner, null, "partial refresh lease owner");
+  assertNoPrivateResolveData(result, "partial refresh response");
+});
+
+Deno.test("추출 불가 모드가 섞이면 성공 모드만 갱신하고 전체 TTL을 전진시키지 않는다", async () => {
+  const original = richManualVideo();
+  original.kids.url = `${videoEntry("kids").url}/extra`;
+  const harness = createHarness({
+    envApiKey: "secret-key",
+    chapterDescriptions: { adult: "1:30 매일성경 묵상\n10:00 기도제목" },
+  });
+  setDocument(harness.state, CONFIG_PATH, configData());
+  setDocument(harness.state, DAILY_PATH, original);
+
+  const result = await runResolve(harness);
+
+  assertEquals(result.pending, true, "unextractable mixed pending");
+  assertEquals(result.retryAfterMs, 120_000, "unextractable mixed retry");
+  assertEquals(harness.state.youtubeUrls.length, 1, "valid-mode fetch count");
+  const refreshWrite = requireUpdateWrite(
+    dailyWrites(harness.state)[0],
+    "mixed refresh write missing",
+  );
+  assertEquals(
+    refreshWrite.updateMask,
+    ["adult.chapters"],
+    "mixed refresh advanced global TTL",
+  );
+  const stored = getDocumentData(harness.state, DAILY_PATH);
+  assertEquals(
+    stored?.chaptersRefreshedAt,
+    original.chaptersRefreshedAt,
+    "mixed refresh timestamp changed",
+  );
+  assertEquals(
+    (stored?.kids as { chapters?: unknown })?.chapters,
+    original.kids.chapters,
+    "unextractable mode chapters changed",
+  );
+  assertEquals(
+    getDocumentData(harness.state, JOB_PATH)?.refreshAttemptCount,
+    1,
+    "mixed refresh attempt count",
+  );
+});
+
+Deno.test("모든 저장 URL이 추출 불가면 lease와 YouTube 호출 없이 기존 영상을 반환한다", async () => {
+  const original = {
+    ...manualVideo(),
+    adult: {
+      ...manualVideo().adult,
+      url: "https://youtu.be/M1234567890/extra",
+    },
+    chaptersRefreshedAt: staleChaptersRefreshedAt(),
+  };
+  const harness = createHarness({ envApiKey: "secret-key" });
+  setDocument(harness.state, CONFIG_PATH, configData({ kids: false }));
+  setDocument(harness.state, DAILY_PATH, original);
+
+  const result = await runResolve(harness);
+
+  assertEquals(result.pending, false, "all-unextractable pending");
+  assertEquals(result.video?.adult?.url, original.adult.url, "cached URL");
+  assertEquals(harness.state.youtubeUrls.length, 0, "unexpected YouTube call");
+  assertEquals(harness.state.commits.length, 0, "unexpected lease/write");
+  assertEquals(getDocumentData(harness.state, JOB_PATH), null, "job created");
+});
+
+Deno.test("refresh 전부 실패 또는 timeout이면 daily를 쓰지 않고 기존 chapters를 반환한다", async () => {
+  for (const failure of ["empty", "timeout"] as const) {
+    const original = richManualVideo();
+    const harness = createHarness({
+      envApiKey: "secret-key",
+      ...(failure === "empty"
+        ? { videoDetails: { adult: "empty", kids: "empty" } as const }
+        : { hangYouTube: true, youtubeDeadlineMs: 5 }),
+    });
+    setDocument(harness.state, CONFIG_PATH, configData());
+    setDocument(harness.state, DAILY_PATH, original);
+
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    const result = await Promise.race([
+      runResolve(harness),
+      new Promise<never>((_resolve, reject) => {
+        watchdog = setTimeout(
+          () => reject(new Error(`${failure} refresh did not finish`)),
+          500,
+        );
+      }),
+    ]).finally(() => clearTimeout(watchdog));
+
+    assertEquals(result.pending, true, `${failure}: pending`);
+    assertEquals(result.retryAfterMs, 120_000, `${failure}: retry`);
+    assertEquals(result.transient, null, `${failure}: transient`);
+    assertEquals(
+      dailyWrites(harness.state).length,
+      0,
+      `${failure}: daily write`,
+    );
+    assertEquals(
+      getDocumentData(harness.state, DAILY_PATH),
+      original,
+      `${failure}: stored video changed`,
+    );
+    assertEquals(
+      result.video?.adult?.chapters,
+      original.adult.chapters,
+      `${failure}: adult chapters changed`,
+    );
+    assertEquals(
+      result.video?.kids?.chapters,
+      original.kids.chapters,
+      `${failure}: kids chapters changed`,
+    );
+    assertEquals(
+      harness.state.youtubeUrls.length,
+      2,
+      `${failure}: videos calls`,
+    );
+    if (failure === "timeout") {
+      assertEquals(harness.state.abortedFetches, 2, "refresh abort count");
+    }
+    const job = getDocumentData(harness.state, JOB_PATH);
+    assertEquals(job?.refreshAttemptCount, 1, `${failure}: attempt count`);
+    assertEquals(job?.leaseOwner, null, `${failure}: lease owner`);
+    assertNoPrivateResolveData(result, `${failure} refresh response`);
+  }
+});
+
+Deno.test("active refresh lease와 refresh backoff는 기존 video를 즉시 반환하고 YouTube를 호출하지 않는다", async () => {
+  for (const blockedBy of ["lease", "backoff"] as const) {
+    const original = richManualVideo();
+    const harness = createHarness({ envApiKey: "secret-key" });
+    setDocument(harness.state, CONFIG_PATH, configData());
+    setDocument(harness.state, DAILY_PATH, original);
+    setDocument(harness.state, JOB_PATH, {
+      leaseExpiresAt: new Date(
+        blockedBy === "lease" ? NOW_MS + 90_000 : NOW_MS,
+      ).toISOString(),
+      leaseOwner: blockedBy === "lease" ? "other-owner" : null,
+      leasePurpose: "refresh",
+      refreshAttemptCount: 2,
+      refreshNextRetryAt: new Date(
+        blockedBy === "backoff" ? NOW_MS + 300_000 : NOW_MS,
+      ).toISOString(),
+    });
+
+    const result = await runResolve(harness);
+
+    assertEquals(result.pending, true, `${blockedBy}: pending`);
+    assertEquals(
+      result.retryAfterMs,
+      blockedBy === "lease" ? 90_000 : 300_000,
+      `${blockedBy}: retry boundary`,
+    );
+    assertEquals(
+      result.video?.adult?.url,
+      original.adult.url,
+      `${blockedBy}: stored video missing`,
+    );
+    assertEquals(harness.state.youtubeUrls.length, 0, `${blockedBy}: fetches`);
+    assertEquals(harness.state.commits.length, 0, `${blockedBy}: writes`);
+  }
+});
+
+Deno.test("fill은 refresh backoff와 세대를 덮지 않고 독립적으로 획득한다", async () => {
+  const harness = createHarness({ envApiKey: "secret-key" });
+  setDocument(harness.state, CONFIG_PATH, configData({ kids: false }));
+  setDocument(harness.state, JOB_PATH, {
+    leaseExpiresAt: new Date(NOW_MS).toISOString(),
+    attemptCount: 0,
+    nextRetryAt: new Date(NOW_MS).toISOString(),
+    refreshAttemptCount: 4,
+    refreshNextRetryAt: new Date(NOW_MS + 60 * 60 * 1000).toISOString(),
+  });
+
+  const result = await runResolve(harness);
+
+  assertEquals(result.pending, false, "fill blocked by refresh backoff");
+  assertEquals(harness.state.youtubeUrls.length, 2, "fill YouTube calls");
+  const leaseWrite = requireUpdateWrite(
+    harness.state.commits[0]?.[0],
+    "fill lease write missing",
+  );
+  assertEquals(
+    leaseWrite.updateMask,
+    [
+      "leaseExpiresAt",
+      "attemptCount",
+      "nextRetryAt",
+      "leaseOwner",
+      "leasePurpose",
+      "configUpdateTime",
+      "updatedAt",
+    ],
+    "fill lease changed refresh fields",
+  );
+  assertEquals(
+    (leaseWrite.data as Record<string, unknown>).leasePurpose,
+    "fill",
+    "fill purpose",
+  );
+  assertEquals(getDocumentData(harness.state, JOB_PATH), null, "fill job");
+});
+
+Deno.test("refresh fetch 중 수동 URL 또는 chapters 수정은 updateTime fence로 보존한다", async () => {
+  for (const mutation of ["url", "chapters"] as const) {
+    const original = richManualVideo();
+    let adminVersion: ReturnType<typeof richManualVideo> | undefined;
+    const harness = createHarness({
+      envApiKey: "secret-key",
+      onVideoDetails: (state) => {
+        adminVersion = structuredClone(original);
+        if (mutation === "url") {
+          adminVersion.adult.url = "https://youtu.be/Z1234567890";
+          adminVersion.adult.chapters = [{ label: "해설", sec: 777 }];
+        } else {
+          adminVersion.adult.chapters = [{ label: "기도", sec: 888 }];
+        }
+        setDocument(state, DAILY_PATH, adminVersion);
+      },
+    });
+    setDocument(harness.state, CONFIG_PATH, configData());
+    setDocument(harness.state, DAILY_PATH, original);
+
+    const result = await runResolve(harness);
+
+    const latestAdminVersion = adminVersion;
+    if (!latestAdminVersion) {
+      throw new Error(`${mutation}: admin mutation missing`);
+    }
+    assertEquals(
+      getDocumentData(harness.state, DAILY_PATH),
+      latestAdminVersion,
+      `${mutation}: admin edit overwritten`,
+    );
+    assertEquals(
+      dailyWrites(harness.state).length,
+      0,
+      `${mutation}: daily write`,
+    );
+    assertEquals(harness.state.commits.length, 1, `${mutation}: final commit`);
+    assertEquals(result.pending, false, `${mutation}: stale worker pending`);
+    assertEquals(
+      result.video?.adult?.chapters,
+      latestAdminVersion.adult.chapters,
+      `${mutation}: latest chapters not returned`,
+    );
+  }
+});
+
+Deno.test("refresh lease purpose와 generation 변경은 이전 worker 결과를 폐기한다", async () => {
+  for (const mutation of ["purpose", "generation"] as const) {
+    const original = richManualVideo();
+    const harness = createHarness({
+      envApiKey: "secret-key",
+      onVideoDetails: (state) => {
+        const job = getDocumentData(state, JOB_PATH);
+        if (!job) throw new Error(`${mutation}: refresh lease missing`);
+        setDocument(state, JOB_PATH, {
+          ...job,
+          ...(mutation === "purpose" ? { leasePurpose: "fill" } : {
+            refreshAttemptCount: Number(job.refreshAttemptCount) + 1,
+            leaseExpiresAt: new Date(NOW_MS + 90_000).toISOString(),
+          }),
+        });
+      },
+    });
+    setDocument(harness.state, CONFIG_PATH, configData());
+    setDocument(harness.state, DAILY_PATH, original);
+
+    const result = await runResolve(harness);
+
+    assertEquals(
+      getDocumentData(harness.state, DAILY_PATH),
+      original,
+      `${mutation}: stale refresh stored`,
+    );
+    assertEquals(
+      dailyWrites(harness.state).length,
+      0,
+      `${mutation}: daily write`,
+    );
+    assertEquals(harness.state.commits.length, 1, `${mutation}: final commit`);
+    assertEquals(result.pending, false, `${mutation}: stale worker pending`);
+  }
 });
 
 Deno.test("첫 resolve는 lease를 먼저 저장하고 full 모드일 때만 daily를 저장한 뒤 job을 삭제한다", async () => {
@@ -379,6 +1021,11 @@ Deno.test("첫 resolve는 lease를 먼저 저장하고 full 모드일 때만 dai
   assert(stored?.autoFilled === true, "full daily not stored");
   assert((stored?.adult as { url?: string })?.url, "adult not stored");
   assert((stored?.kids as { url?: string })?.url, "kids not stored");
+  assertEquals(
+    (stored?.chaptersRefreshedAt as Date)?.toISOString(),
+    new Date(NOW_MS).toISOString(),
+    "full fill chapters refresh timestamp",
+  );
   assertEquals(
     getDocumentData(harness.state, JOB_PATH),
     null,
@@ -417,6 +1064,43 @@ Deno.test("partial 결과는 daily에 저장하지 않고 2분 backoff와 transi
     (job?.nextRetryAt as Date)?.toISOString(),
     new Date(NOW_MS + 120_000).toISOString(),
     "partial next retry",
+  );
+});
+
+Deno.test("partial 자동 문서가 fill 중 삭제되면 이전 worker가 문서를 되살리지 않는다", async () => {
+  const original = {
+    adult: videoEntry("adult"),
+    kids: null,
+    autoFilled: true,
+    updatedAt: "2026-07-14T00:00:00.000Z",
+  };
+  const harness = createHarness({
+    envApiKey: "secret-key",
+    onVideoDetails: (state) => state.documents.delete(DAILY_PATH),
+  });
+  setDocument(harness.state, CONFIG_PATH, configData());
+  setDocument(harness.state, DAILY_PATH, original);
+
+  const result = await runResolve(harness);
+
+  assertEquals(result.pending, true, "deleted daily pending");
+  assertEquals(
+    result.video,
+    null,
+    "deleted daily video resurrected in response",
+  );
+  assertEquals(result.transient, null, "stale fill transient leaked");
+  assertEquals(
+    getDocumentData(harness.state, DAILY_PATH),
+    null,
+    "daily recreated",
+  );
+  assertEquals(dailyWrites(harness.state).length, 0, "stale daily write");
+  assertEquals(harness.state.youtubeUrls.length, 2, "missing mode fetch count");
+  assertEquals(
+    harness.state.commits.length,
+    1,
+    "stale worker finalized writes",
   );
 });
 
@@ -509,6 +1193,7 @@ Deno.test("YOUTUBE_API_KEY secret은 Firestore apiKey보다 모든 YouTube URL�
     );
     assert(!url.toString().includes("firestore-key"), "Firestore key leaked");
   }
+  assertNoPrivateResolveData(result, "fill secret response");
 });
 
 Deno.test("YOUTUBE_API_KEY secret이 없을 때만 Firestore apiKey를 한시적으로 사용한다", async () => {
@@ -526,6 +1211,7 @@ Deno.test("YOUTUBE_API_KEY secret이 없을 때만 Firestore apiKey를 한시적
       "Firestore fallback key",
     );
   }
+  assertNoPrivateResolveData(result, "fill fallback response");
 });
 
 Deno.test("값이 있으나 형식이 잘못된 playlist 모드도 완료 조건에서 제외하지 않는다", async () => {
@@ -555,7 +1241,7 @@ Deno.test("값이 있으나 형식이 잘못된 playlist 모드도 완료 조건
 });
 
 Deno.test("videos API가 빈 items 또는 snippet 없는 항목을 반환하면 완료 저장하지 않는다", async () => {
-  for (const detailsKind of ["empty", "missingSnippet"] as const) {
+  for (const detailsKind of ["empty", "wrongId", "missingSnippet"] as const) {
     const harness = createHarness({
       envApiKey: "secret-key",
       videoDetails: { adult: detailsKind },

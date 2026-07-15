@@ -14,14 +14,18 @@ import {
   buildDailyVideoFailureState,
   buildDailyVideoLease,
   DAILY_VIDEO_LEASE_MS,
+  type DailyVideoChapter,
   type DailyVideoEntry,
   type DailyVideoJob,
   type DailyVideoMode,
   type DailyVideoPayload,
+  extractYouTubeVideoId,
   getConfiguredDailyVideoModes,
+  getDailyVideoBackoffMs,
   getDailyVideoFillState,
   getSafeDailyVideoBase,
   inspectDailyVideoLease,
+  isDailyVideoChaptersRefreshDue,
   parseAndMapChapters,
   sanitizeDailyVideoEntry,
   sanitizeDailyVideoPayload,
@@ -40,7 +44,17 @@ type VideoAutoConfigDocument = {
 
 type DailyVideoJobDocument = DailyVideoJob & {
   leaseOwner?: unknown;
+  leasePurpose?: unknown;
   configUpdateTime?: unknown;
+  refreshAttemptCount?: unknown;
+  refreshNextRetryAt?: unknown;
+};
+
+type DailyVideoLeasePurpose = "fill" | "refresh";
+
+type DailyVideoRefreshTarget = {
+  mode: DailyVideoMode;
+  videoId: string | null;
 };
 
 type DailyVideoModeConfig = {
@@ -96,6 +110,25 @@ const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
+const timestampMs = (value: unknown): number => {
+  if (value instanceof Date) {
+    const parsed = value.getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+};
+
+const normalizeAttemptCount = (value: unknown): number => {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(parsed)));
+};
+
 const normalizedPlaylistId = (value: unknown): string => {
   if (typeof value !== "string") return "";
   const normalized = value.trim();
@@ -138,6 +171,47 @@ const publicPayload = (value: unknown): DailyVideoPayload | null => {
 
 const safeAutoPayload = (value: unknown): DailyVideoPayload | null =>
   publicPayload(getSafeDailyVideoBase(value));
+
+const storedPayload = (value: unknown): DailyVideoPayload | null =>
+  isRecord(value) && value.autoFilled === true
+    ? safeAutoPayload(value)
+    : publicPayload(value);
+
+const refreshTargetsForPayload = (
+  payload: DailyVideoPayload | null,
+): DailyVideoRefreshTarget[] => {
+  if (!payload) return [];
+  const targets: DailyVideoRefreshTarget[] = [];
+  for (const mode of ["adult", "kids"] as const) {
+    if (!payload[mode]?.url) continue;
+    targets.push({ mode, videoId: extractYouTubeVideoId(payload[mode]?.url) });
+  }
+  return targets;
+};
+
+const inspectRefreshLease = (
+  job: DailyVideoJobDocument | null | undefined,
+  nowMs: number,
+): { canAcquire: boolean; retryAfterMs: number } => {
+  const leaseRemaining = Math.max(
+    0,
+    Math.ceil(timestampMs(job?.leaseExpiresAt) - nowMs),
+  );
+  const retryRemaining = Math.max(
+    0,
+    Math.ceil(timestampMs(job?.refreshNextRetryAt) - nowMs),
+  );
+  if (leaseRemaining > 0) {
+    return {
+      canAcquire: false,
+      retryAfterMs: Math.max(leaseRemaining, retryRemaining),
+    };
+  }
+  if (retryRemaining > 0) {
+    return { canAcquire: false, retryAfterMs: retryRemaining };
+  }
+  return { canAcquire: true, retryAfterMs: 0 };
+};
 
 const isFirestoreContention = (error: unknown): boolean =>
   error instanceof PlatformError &&
@@ -306,6 +380,72 @@ const fetchMissingVideoEntries = async (
   return modes.map(({ mode }) => [mode, completed.get(mode) || null] as const);
 };
 
+const fetchDailyVideoChapters = async (
+  videoId: string,
+  apiKey: string,
+  fetcher: typeof fetch,
+  signal?: AbortSignal,
+): Promise<DailyVideoChapter[] | null> => {
+  if (!VIDEO_ID_PATTERN.test(videoId)) return null;
+  const url = new URL("https://www.googleapis.com/youtube/v3/videos");
+  url.searchParams.set("part", "snippet");
+  url.searchParams.set("id", videoId);
+  url.searchParams.set("key", apiKey);
+  const body = await readJson(await fetcher(url, { signal }));
+  const first = Array.isArray(body.items) ? body.items[0] : null;
+  if (!isRecord(first) || first.id !== videoId || !isRecord(first.snippet)) {
+    return null;
+  }
+  const chapters = parseAndMapChapters(first.snippet.description);
+  return chapters.length > 0 ? chapters : null;
+};
+
+const fetchRefreshedChapters = async (
+  targets: DailyVideoRefreshTarget[],
+  apiKey: string,
+  dependencies: DailyVideoDependencies,
+): Promise<Array<readonly [DailyVideoMode, DailyVideoChapter[] | null]>> => {
+  const controller = new AbortController();
+  const completed = new Map<DailyVideoMode, DailyVideoChapter[] | null>();
+  const work = Promise.all(targets.map(async ({ mode, videoId }) => {
+    let chapters: DailyVideoChapter[] | null = null;
+    try {
+      chapters = videoId
+        ? await fetchDailyVideoChapters(
+          videoId,
+          apiKey,
+          dependencies.fetcher,
+          controller.signal,
+        )
+        : null;
+    } catch {
+      chapters = null;
+    }
+    completed.set(mode, chapters);
+  }));
+  const deadlineMs = Math.min(
+    MAX_YOUTUBE_DEADLINE_MS,
+    Math.max(1, dependencies.youtubeDeadlineMs),
+  );
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      controller.abort();
+      reject(new Error("YOUTUBE_DEADLINE_EXCEEDED"));
+    }, deadlineMs);
+  });
+  try {
+    await Promise.race([work, timeout]);
+  } catch {
+    // 같은 deadline 안에 성공한 모드만 저장 후보로 유지한다.
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
+  return targets.map(({ mode }) =>
+    [mode, completed.get(mode) || null] as const
+  );
+};
+
 type AcquireResult =
   | { kind: "return"; result: DailyVideoResolveResult }
   | {
@@ -314,6 +454,16 @@ type AcquireResult =
     configUpdateTime: string | null;
     base: DailyVideoPayload | null;
     attemptCount: number;
+    dailyUpdateTime: string | null;
+  }
+  | {
+    kind: "refresh";
+    config: NormalizedVideoConfig;
+    configUpdateTime: string | null;
+    dailyUpdateTime: string | null;
+    video: DailyVideoPayload;
+    targets: DailyVideoRefreshTarget[];
+    refreshAttemptCount: number;
   };
 
 const acquireLease = async (
@@ -360,54 +510,100 @@ const acquireLease = async (
       const nowMs = now.getTime();
       const config = normalizeConfig(configDocument);
       const configuredModes = config.modes.map(({ mode }) => mode);
-
-      if (dailyDocument && dailyDocument.data.autoFilled !== true) {
-        await rollbackQuietly(dependencies, service, transaction);
-        return {
-          kind: "return",
-          result: {
-            serviceDate,
-            video: publicPayload(dailyDocument.data),
-            transient: null,
-            pending: false,
-          },
-        };
-      }
-
       const base = safeAutoPayload(dailyDocument?.data);
-      if (configuredModes.length === 0) {
-        await rollbackQuietly(dependencies, service, transaction);
+      const isManual = Boolean(
+        dailyDocument && dailyDocument.data.autoFilled !== true,
+      );
+      const fillNeeded = !isManual && configuredModes.length > 0 &&
+        !getDailyVideoFillState(configuredModes, base).allReady;
+      const configUpdateTime = configDocument?.updateTime || null;
+
+      // 빠진 오늘 영상 보충이 stale chapter 갱신보다 항상 우선한다.
+      if (fillNeeded) {
+        const leaseDecision = buildDailyVideoLease(jobDocument?.data, nowMs);
+        if (!leaseDecision.canAcquire || !leaseDecision.lease) {
+          await rollbackQuietly(dependencies, service, transaction);
+          return {
+            kind: "return",
+            result: {
+              serviceDate,
+              video: base,
+              transient: null,
+              pending: true,
+              retryAfterMs: Math.max(1_000, leaseDecision.retryAfterMs),
+            },
+          };
+        }
+
+        await dependencies.commitWrites(
+          service.token,
+          service.projectId,
+          [dependencies.updateWrite(service.projectId, jobPath, {
+            leaseExpiresAt: leaseDecision.lease.leaseExpiresAt,
+            attemptCount: leaseDecision.lease.attemptCount,
+            nextRetryAt: leaseDecision.lease.nextRetryAt,
+            leaseOwner: requestId,
+            leasePurpose: "fill" satisfies DailyVideoLeasePurpose,
+            configUpdateTime,
+            updatedAt: now,
+          }, {
+            exists: Boolean(jobDocument),
+            updateMask: [
+              "leaseExpiresAt",
+              "attemptCount",
+              "nextRetryAt",
+              "leaseOwner",
+              "leasePurpose",
+              "configUpdateTime",
+              "updatedAt",
+            ],
+          })],
+          { transaction },
+        );
         return {
-          kind: "return",
-          result: {
-            serviceDate,
-            video: base,
-            transient: null,
-            pending: false,
-          },
+          kind: "acquired",
+          config,
+          configUpdateTime,
+          base,
+          attemptCount: leaseDecision.lease.attemptCount,
+          dailyUpdateTime: dailyDocument?.updateTime || null,
         };
       }
-      if (getDailyVideoFillState(configuredModes, base).allReady) {
+
+      const video = storedPayload(dailyDocument?.data);
+      const apiKey = dependencies.getEnv("YOUTUBE_API_KEY")?.trim() ||
+        config.apiKey;
+      const refreshDue = Boolean(
+        dailyDocument && video && apiKey &&
+          isDailyVideoChaptersRefreshDue(
+            dailyDocument.data.chaptersRefreshedAt,
+            nowMs,
+            dailyDocument.data.updatedAt,
+          ),
+      );
+      const targets = refreshDue ? refreshTargetsForPayload(video) : [];
+      const hasRefreshableTarget = targets.some(({ videoId }) => videoId);
+      if (!dailyDocument || !video || !hasRefreshableTarget) {
         await rollbackQuietly(dependencies, service, transaction);
         return {
           kind: "return",
           result: {
             serviceDate,
-            video: base,
+            video,
             transient: null,
             pending: false,
           },
         };
       }
 
-      const leaseDecision = buildDailyVideoLease(jobDocument?.data, nowMs);
-      if (!leaseDecision.canAcquire || !leaseDecision.lease) {
+      const leaseDecision = inspectRefreshLease(jobDocument?.data, nowMs);
+      if (!leaseDecision.canAcquire) {
         await rollbackQuietly(dependencies, service, transaction);
         return {
           kind: "return",
           result: {
             serviceDate,
-            video: base,
+            video,
             transient: null,
             pending: true,
             retryAfterMs: Math.max(1_000, leaseDecision.retryAfterMs),
@@ -415,26 +611,43 @@ const acquireLease = async (
         };
       }
 
-      const configUpdateTime = configDocument?.updateTime || null;
+      const refreshAttemptCount = Math.min(
+        Number.MAX_SAFE_INTEGER,
+        normalizeAttemptCount(jobDocument?.data.refreshAttemptCount) + 1,
+      );
       await dependencies.commitWrites(
         service.token,
         service.projectId,
         [dependencies.updateWrite(service.projectId, jobPath, {
-          leaseExpiresAt: leaseDecision.lease.leaseExpiresAt,
-          attemptCount: leaseDecision.lease.attemptCount,
-          nextRetryAt: leaseDecision.lease.nextRetryAt,
+          leaseExpiresAt: new Date(nowMs + DAILY_VIDEO_LEASE_MS),
           leaseOwner: requestId,
+          leasePurpose: "refresh" satisfies DailyVideoLeasePurpose,
           configUpdateTime,
+          refreshAttemptCount,
+          refreshNextRetryAt: now,
           updatedAt: now,
-        }, { exists: Boolean(jobDocument) })],
+        }, {
+          exists: Boolean(jobDocument),
+          updateMask: [
+            "leaseExpiresAt",
+            "leaseOwner",
+            "leasePurpose",
+            "configUpdateTime",
+            "refreshAttemptCount",
+            "refreshNextRetryAt",
+            "updatedAt",
+          ],
+        })],
         { transaction },
       );
       return {
-        kind: "acquired",
+        kind: "refresh",
         config,
         configUpdateTime,
-        base,
-        attemptCount: leaseDecision.lease.attemptCount,
+        dailyUpdateTime: dailyDocument.updateTime || null,
+        video,
+        targets,
+        refreshAttemptCount,
       };
     } catch (error) {
       await rollbackQuietly(dependencies, service, transaction);
@@ -502,12 +715,15 @@ const finalizeLease = async (
       const currentBase = safeAutoPayload(dailyDocument?.data);
 
       const ownsLease = jobDocument?.data.leaseOwner === requestId &&
+        jobDocument.data.leasePurpose === "fill" &&
         jobDocument.data.configUpdateTime === acquired.configUpdateTime &&
         jobDocument.data.attemptCount === acquired.attemptCount;
       const configUnchanged = (configDocument?.updateTime || null) ===
           acquired.configUpdateTime &&
         configSignature(config) === configSignature(acquired.config);
-      if (!ownsLease || !configUnchanged) {
+      const dailyUnchanged = (dailyDocument?.updateTime || null) ===
+        acquired.dailyUpdateTime;
+      if (!ownsLease || !configUnchanged || !dailyUnchanged) {
         await rollbackQuietly(dependencies, service, transaction);
         if (dailyDocument && dailyDocument.data.autoFilled !== true) {
           return {
@@ -571,13 +787,23 @@ const finalizeLease = async (
 
       const combined = mergeVideoPayloads(currentBase, fetched);
       if (getDailyVideoFillState(configuredModes, combined).allReady) {
+        const allCurrentEntriesFetched = acquired.base === null;
+        const dailyUpdate: Record<string, unknown> = {
+          adult: combined.adult,
+          kids: combined.kids,
+          autoFilled: true,
+          updatedAt: now,
+        };
+        const dailyUpdateMask = ["adult", "kids", "autoFilled", "updatedAt"];
+        if (allCurrentEntriesFetched) {
+          dailyUpdate.chaptersRefreshedAt = now;
+          dailyUpdateMask.push("chaptersRefreshedAt");
+        }
         const writes: FirestoreWrite[] = [
-          dependencies.updateWrite(service.projectId, dailyPath, {
-            adult: combined.adult,
-            kids: combined.kids,
-            autoFilled: true,
-            updatedAt: now,
-          }, { exists: Boolean(dailyDocument) }),
+          dependencies.updateWrite(service.projectId, dailyPath, dailyUpdate, {
+            exists: Boolean(dailyDocument),
+            updateMask: dailyUpdateMask,
+          }),
           dependencies.deleteWrite(service.projectId, jobPath, true),
         ];
         await dependencies.commitWrites(
@@ -606,9 +832,21 @@ const finalizeLease = async (
           attemptCount: failure.attemptCount,
           nextRetryAt: failure.nextRetryAt,
           leaseOwner: null,
+          leasePurpose: null,
           configUpdateTime: null,
           updatedAt: now,
-        }, { exists: true })],
+        }, {
+          exists: true,
+          updateMask: [
+            "leaseExpiresAt",
+            "attemptCount",
+            "nextRetryAt",
+            "leaseOwner",
+            "leasePurpose",
+            "configUpdateTime",
+            "updatedAt",
+          ],
+        })],
         { transaction },
       );
       return {
@@ -617,6 +855,175 @@ const finalizeLease = async (
         transient: publicPayload(combined),
         pending: true,
         retryAfterMs: failure.retryAfterMs,
+      };
+    } catch (error) {
+      await rollbackQuietly(dependencies, service, transaction);
+      if (isFirestoreContention(error) && contentionAttempt < 2) continue;
+      throw error;
+    }
+  }
+  throw new PlatformError("FIRESTORE_WRITE_FAILED");
+};
+
+const mergeRefreshedChapters = (
+  current: DailyVideoPayload,
+  results: Array<readonly [DailyVideoMode, DailyVideoChapter[] | null]>,
+): DailyVideoPayload => {
+  const merged: DailyVideoPayload = {
+    adult: current.adult ? { ...current.adult } : null,
+    kids: current.kids ? { ...current.kids } : null,
+    autoFilled: current.autoFilled,
+  };
+  for (const [mode, chapters] of results) {
+    if (chapters && merged[mode]) {
+      merged[mode] = { ...merged[mode], chapters };
+    }
+  }
+  return merged;
+};
+
+const finalizeRefreshLease = async (
+  service: ServiceAccess,
+  requestId: string,
+  serviceDate: string,
+  acquired: Extract<AcquireResult, { kind: "refresh" }>,
+  results: Array<readonly [DailyVideoMode, DailyVideoChapter[] | null]>,
+  dependencies: DailyVideoDependencies,
+): Promise<DailyVideoResolveResult> => {
+  const dailyPath = `dailyVideos/${serviceDate}`;
+  const configPath = "settings/videoAutoConfig";
+  const jobPath = `dailyVideoJobs/${serviceDate}`;
+
+  for (
+    let contentionAttempt = 0;
+    contentionAttempt < 3;
+    contentionAttempt += 1
+  ) {
+    const transaction = await dependencies.beginTransaction(
+      service.token,
+      service.projectId,
+    );
+    try {
+      const [dailyDocument, configDocument, jobDocument] = await Promise.all([
+        dependencies.getDocument<Record<string, unknown>>(
+          service.token,
+          service.projectId,
+          dailyPath,
+          { transaction },
+        ),
+        dependencies.getDocument<VideoAutoConfigDocument>(
+          service.token,
+          service.projectId,
+          configPath,
+          { transaction },
+        ),
+        dependencies.getDocument<DailyVideoJobDocument>(
+          service.token,
+          service.projectId,
+          jobPath,
+          { transaction },
+        ),
+      ]);
+      const now = dependencies.now();
+      const nowMs = now.getTime();
+      const config = normalizeConfig(configDocument);
+      const currentVideo = storedPayload(dailyDocument?.data);
+      const ownsLease = jobDocument?.data.leaseOwner === requestId &&
+        jobDocument.data.leasePurpose === "refresh" &&
+        jobDocument.data.configUpdateTime === acquired.configUpdateTime &&
+        jobDocument.data.refreshAttemptCount === acquired.refreshAttemptCount;
+      const configUnchanged = (configDocument?.updateTime || null) ===
+          acquired.configUpdateTime &&
+        configSignature(config) === configSignature(acquired.config);
+      const dailyUnchanged = (dailyDocument?.updateTime || null) ===
+        acquired.dailyUpdateTime;
+      if (!ownsLease || !configUnchanged || !dailyUnchanged || !currentVideo) {
+        await rollbackQuietly(dependencies, service, transaction);
+        return {
+          serviceDate,
+          video: currentVideo,
+          transient: null,
+          pending: false,
+        };
+      }
+
+      const successfulResults = results.filter(
+        (result): result is readonly [DailyVideoMode, DailyVideoChapter[]] =>
+          Boolean(result[1]?.length),
+      );
+      const allSucceeded = successfulResults.length === acquired.targets.length;
+      const merged = mergeRefreshedChapters(currentVideo, successfulResults);
+      const writes: FirestoreWrite[] = [];
+      if (successfulResults.length > 0) {
+        const dailyUpdate: Record<string, unknown> = {};
+        const dailyUpdateMask: string[] = [];
+        for (const [mode, chapters] of successfulResults) {
+          dailyUpdate[mode] = { chapters };
+          dailyUpdateMask.push(`${mode}.chapters`);
+        }
+        if (allSucceeded) {
+          dailyUpdate.chaptersRefreshedAt = now;
+          dailyUpdateMask.push("chaptersRefreshedAt");
+        }
+        writes.push(dependencies.updateWrite(
+          service.projectId,
+          dailyPath,
+          dailyUpdate,
+          { exists: true, updateMask: dailyUpdateMask },
+        ));
+      }
+
+      if (allSucceeded) {
+        writes.push(dependencies.deleteWrite(service.projectId, jobPath, true));
+        await dependencies.commitWrites(
+          service.token,
+          service.projectId,
+          writes,
+          { transaction },
+        );
+        return {
+          serviceDate,
+          video: merged,
+          transient: null,
+          pending: false,
+        };
+      }
+
+      const retryAfterMs = getDailyVideoBackoffMs(
+        jobDocument.data.refreshAttemptCount ?? acquired.refreshAttemptCount,
+      );
+      writes.push(dependencies.updateWrite(service.projectId, jobPath, {
+        leaseExpiresAt: now,
+        leaseOwner: null,
+        leasePurpose: null,
+        configUpdateTime: null,
+        refreshAttemptCount: acquired.refreshAttemptCount,
+        refreshNextRetryAt: new Date(nowMs + retryAfterMs),
+        updatedAt: now,
+      }, {
+        exists: true,
+        updateMask: [
+          "leaseExpiresAt",
+          "leaseOwner",
+          "leasePurpose",
+          "configUpdateTime",
+          "refreshAttemptCount",
+          "refreshNextRetryAt",
+          "updatedAt",
+        ],
+      }));
+      await dependencies.commitWrites(
+        service.token,
+        service.projectId,
+        writes,
+        { transaction },
+      );
+      return {
+        serviceDate,
+        video: merged,
+        transient: null,
+        pending: true,
+        retryAfterMs,
       };
     } catch (error) {
       await rollbackQuietly(dependencies, service, transaction);
@@ -647,6 +1054,20 @@ export const resolveDailyVideo = async (
 
   const apiKey = dependencies.getEnv("YOUTUBE_API_KEY")?.trim() ||
     acquired.config.apiKey;
+  if (acquired.kind === "refresh") {
+    const results = apiKey
+      ? await fetchRefreshedChapters(acquired.targets, apiKey, dependencies)
+      : acquired.targets.map(({ mode }) => [mode, null] as const);
+    return finalizeRefreshLease(
+      service,
+      requestId,
+      serviceDate,
+      acquired,
+      results,
+      dependencies,
+    );
+  }
+
   const fetched: DailyVideoPayload = {
     adult: acquired.base?.adult || null,
     kids: acquired.base?.kids || null,

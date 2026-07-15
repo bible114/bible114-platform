@@ -56,6 +56,56 @@ Deno.test("document paths are encoded by segment and writes use full resource na
   );
 });
 
+Deno.test("nested update masks preserve Firestore map structure", () => {
+  const name = documentName(
+    "fixture-project",
+    "dailyVideos/2026-07-15",
+  );
+  assertEquals(
+    updateWrite("fixture-project", "dailyVideos/2026-07-15", {
+      adult: {
+        chapters: [{ label: "기도", sec: 120 }],
+      },
+      chaptersRefreshedAt: new Date("2026-07-15T00:00:00.000Z"),
+    }, {
+      exists: true,
+      updateMask: ["adult.chapters", "chaptersRefreshedAt"],
+    }),
+    {
+      update: {
+        name,
+        fields: {
+          adult: {
+            mapValue: {
+              fields: {
+                chapters: {
+                  arrayValue: {
+                    values: [{
+                      mapValue: {
+                        fields: {
+                          label: { stringValue: "기도" },
+                          sec: { integerValue: "120" },
+                        },
+                      },
+                    }],
+                  },
+                },
+              },
+            },
+          },
+          chaptersRefreshedAt: {
+            timestampValue: "2026-07-15T00:00:00.000Z",
+          },
+        },
+      },
+      updateMask: {
+        fieldPaths: ["adult.chapters", "chaptersRefreshedAt"],
+      },
+      currentDocument: { exists: true },
+    },
+  );
+});
+
 Deno.test("collection group query sends an equality filter and decodes only documents", async () => {
   let requestUrl = "";
   let requestBody: Record<string, unknown> | null = null;

@@ -4,14 +4,17 @@ import contractFixture from "../../../scripts/fixtures/daily-video-contract.json
 import {
   buildDailyVideoFailureState,
   buildDailyVideoLease,
+  DAILY_VIDEO_CHAPTERS_TTL_MS,
   DAILY_VIDEO_LEASE_MS,
   DAILY_VIDEO_RETRY_DELAYS_MS,
   DAILY_VIDEO_RETRY_IDLE_MS,
+  extractYouTubeVideoId,
   getConfiguredDailyVideoModes,
   getDailyVideoBackoffMs,
   getDailyVideoFillState,
   getSafeDailyVideoBase,
   inspectDailyVideoLease,
+  isDailyVideoChaptersRefreshDue,
   mapToStandardLabel,
   parseAndMapChapters,
   parseChapters,
@@ -168,6 +171,161 @@ Deno.test("설정된 playlist 모드만 반환한다", () => {
   );
 });
 
+Deno.test("chapters TTL은 45분 경계와 미래 시각을 엄격히 판정한다", () => {
+  const now = Date.parse("2026-07-15T00:00:00.000Z");
+  assertEquals(DAILY_VIDEO_CHAPTERS_TTL_MS, 2_700_000, "chapters TTL");
+  for (
+    const missingOrInvalid of [
+      undefined,
+      null,
+      "",
+      "not-a-date",
+      Number.NaN,
+      new Date(Number.NaN),
+    ]
+  ) {
+    assertEquals(
+      isDailyVideoChaptersRefreshDue(missingOrInvalid, now),
+      true,
+      `invalid timestamp ${String(missingOrInvalid)}`,
+    );
+  }
+  assertEquals(
+    isDailyVideoChaptersRefreshDue(now - 2_699_999, now),
+    false,
+    "just inside TTL",
+  );
+  assertEquals(
+    isDailyVideoChaptersRefreshDue(now - 2_700_000, now),
+    true,
+    "exact TTL boundary",
+  );
+  assertEquals(
+    isDailyVideoChaptersRefreshDue(
+      new Date(now - 2_700_001).toISOString(),
+      now,
+    ),
+    true,
+    "ISO timestamp outside TTL",
+  );
+  assertEquals(
+    isDailyVideoChaptersRefreshDue(new Date(now + 86_400_000), now),
+    false,
+    "future timestamp",
+  );
+
+  let invalidNowRejected = false;
+  try {
+    isDailyVideoChaptersRefreshDue(null, Number.NaN);
+  } catch (error) {
+    invalidNowRejected = error instanceof TypeError &&
+      error.message === "INVALID_NOW";
+  }
+  assert(invalidNowRejected, "invalid now accepted");
+});
+
+Deno.test("수동 저장 updatedAt이 TTL보다 새로우면 즉시 chapters 갱신 대상이다", () => {
+  const now = Date.parse("2026-07-15T00:00:00.000Z");
+  const refreshedAt = now - 60_000;
+  assertEquals(
+    isDailyVideoChaptersRefreshDue(refreshedAt, now, refreshedAt + 1),
+    true,
+    "newer manual update",
+  );
+  assertEquals(
+    isDailyVideoChaptersRefreshDue(refreshedAt, now, now),
+    true,
+    "server-now updatedAt is eligible",
+  );
+  assertEquals(
+    isDailyVideoChaptersRefreshDue(refreshedAt, now, now + 86_400_000),
+    false,
+    "future updatedAt must not force repeated refresh",
+  );
+  assertEquals(
+    isDailyVideoChaptersRefreshDue(
+      refreshedAt,
+      now + 86_400_000,
+      now + 86_400_000,
+    ),
+    true,
+    "updatedAt becomes eligible after server time catches up",
+  );
+  assertEquals(
+    isDailyVideoChaptersRefreshDue(
+      new Date(refreshedAt).toISOString(),
+      now,
+      new Date(refreshedAt).toISOString(),
+    ),
+    false,
+    "same update timestamp",
+  );
+  assertEquals(
+    isDailyVideoChaptersRefreshDue(refreshedAt, now, refreshedAt - 1),
+    false,
+    "older update timestamp",
+  );
+  assertEquals(
+    isDailyVideoChaptersRefreshDue(
+      now - DAILY_VIDEO_CHAPTERS_TTL_MS,
+      now,
+      "invalid-updated-at",
+    ),
+    true,
+    "invalid updatedAt preserves TTL decision",
+  );
+  assertEquals(
+    isDailyVideoChaptersRefreshDue(
+      now - DAILY_VIDEO_CHAPTERS_TTL_MS,
+      now,
+      now + 86_400_000,
+    ),
+    true,
+    "future updatedAt does not suppress elapsed TTL",
+  );
+});
+
+Deno.test("서버 chapters 갱신용 YouTube ID 추출은 허용 URL만 받는다", () => {
+  const id = "AbCdEf123_-";
+  for (
+    const url of [
+      `https://youtu.be/${id}`,
+      `https://www.youtu.be/${id}/?si=share`,
+      `https://youtube.com/watch?v=${id}`,
+      `https://www.youtube.com/watch/?feature=share&v=${id}`,
+      `https://youtube.com/live/${id}?feature=share`,
+      `https://www.youtube.com/shorts/${id}/`,
+      `https://youtube.com/embed/${id}#start`,
+      `HTTPS://WWW.YOUTUBE.COM/watch?v=${id}`,
+    ]
+  ) {
+    assertEquals(extractYouTubeVideoId(url), id, `valid URL: ${url}`);
+  }
+
+  for (
+    const url of [
+      null,
+      "",
+      `http://youtube.com/watch?v=${id}`,
+      `https://m.youtube.com/watch?v=${id}`,
+      `https://youtube.com.evil.example/watch?v=${id}`,
+      `https://user:password@youtube.com/watch?v=${id}`,
+      `https://youtube.com:443/watch?v=${id}`,
+      `https://youtube.com:8443/watch?v=${id}`,
+      `https://youtu.be/${id}/extra`,
+      `https://youtu.be/${id}x`,
+      `https://youtube.com/watch?v=${id}&v=${id}`,
+      `https://youtube.com/watch?v=${id}x`,
+      `https://youtube.com/?v=${id}`,
+      `https://youtube.com/live/${id}.html`,
+      `https://youtube.com/embed/${id}/extra`,
+      `javascript:alert("${id}")`,
+    ]
+  ) {
+    assertEquals(extractYouTubeVideoId(url), null, `unsafe URL: ${url}`);
+  }
+});
+
 Deno.test("lease는 90초이고 실패 횟수별 backoff를 고정한다", () => {
   assertEquals(DAILY_VIDEO_LEASE_MS, 90_000, "lease duration");
   assertEquals(
@@ -288,6 +446,7 @@ Deno.test("영상 sanitizer는 HTTPS YouTube 주소만 보존한다", () => {
       "https://m.youtube.com/watch?v=abcdefghijk",
       "https://youtube.com.evil.example/watch?v=abcdefghijk",
       "https://youtube.com@evil.example/watch?v=abcdefghijk",
+      "https://youtube.com:443/watch?v=abcdefghijk",
       "https://vimeo.com/abcdefghijk",
       "javascript:alert(1)",
     ]

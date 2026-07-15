@@ -3,6 +3,7 @@ export const DAILY_VIDEO_RETRY_DELAYS_MS = [2, 5, 15, 30].map(
   (minutes) => minutes * 60 * 1000,
 ) as readonly number[];
 export const DAILY_VIDEO_RETRY_IDLE_MS = 60 * 60 * 1000;
+export const DAILY_VIDEO_CHAPTERS_TTL_MS = 45 * 60 * 1000;
 
 export type DailyVideoMode = "adult" | "kids";
 export type DailyVideoChapterLabel = "해설" | "성경읽기" | "기도";
@@ -256,19 +257,50 @@ const ALLOWED_YOUTUBE_HOSTS = new Set([
   "youtu.be",
   "www.youtu.be",
 ]);
+const YOUTUBE_VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
 
-export const sanitizeYouTubeHttpsUrl = (value: unknown): string | null => {
+const parseStrictYouTubeUrl = (value: unknown): URL | null => {
   if (typeof value !== "string" || !value.trim()) return null;
+  const normalized = value.trim();
+  // URL.port는 명시적인 기본 :443을 빈 값으로 정규화하므로 raw authority도 검사한다.
+  const authority = /^https:\/\/([^/?#]+)(?:[/?#]|$)/i.exec(normalized)?.[1];
+  if (!authority || !ALLOWED_YOUTUBE_HOSTS.has(authority.toLowerCase())) {
+    return null;
+  }
   try {
-    const parsed = new URL(value.trim());
+    const parsed = new URL(normalized);
     if (
       parsed.protocol !== "https:" || parsed.username || parsed.password ||
       parsed.port || !ALLOWED_YOUTUBE_HOSTS.has(parsed.hostname)
     ) return null;
-    return parsed.toString();
+    return parsed;
   } catch {
     return null;
   }
+};
+
+export const extractYouTubeVideoId = (value: unknown): string | null => {
+  const parsed = parseStrictYouTubeUrl(value);
+  if (!parsed) return null;
+  if (parsed.hostname === "youtu.be" || parsed.hostname === "www.youtu.be") {
+    const match = /^\/([A-Za-z0-9_-]{11})\/?$/.exec(parsed.pathname);
+    return match?.[1] || null;
+  }
+
+  if (/^\/watch\/?$/.test(parsed.pathname)) {
+    const ids = parsed.searchParams.getAll("v");
+    return ids.length === 1 && YOUTUBE_VIDEO_ID_PATTERN.test(ids[0])
+      ? ids[0]
+      : null;
+  }
+  const pathMatch = /^\/(?:live|shorts|embed)\/([A-Za-z0-9_-]{11})\/?$/
+    .exec(parsed.pathname);
+  return pathMatch?.[1] || null;
+};
+
+export const sanitizeYouTubeHttpsUrl = (value: unknown): string | null => {
+  const parsed = parseStrictYouTubeUrl(value);
+  return parsed?.toString() || null;
 };
 
 const sanitizeStoredChapters = (value: unknown): DailyVideoChapter[] => {
@@ -348,14 +380,36 @@ const requireNowMs = (value: number): number => {
   return value;
 };
 
-const timestampMs = (value: unknown): number => {
-  if (value instanceof Date) return value.getTime();
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+const validTimestampMs = (value: unknown): number | null => {
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value.getTime() : null;
+  }
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value === "string") {
     const parsed = Date.parse(value);
-    return Number.isFinite(parsed) ? parsed : 0;
+    return Number.isFinite(parsed) ? parsed : null;
   }
-  return 0;
+  return null;
+};
+
+const timestampMs = (value: unknown): number => validTimestampMs(value) ?? 0;
+
+export const isDailyVideoChaptersRefreshDue = (
+  chaptersRefreshedAt: unknown,
+  nowMs: number,
+  documentUpdatedAt?: unknown,
+): boolean => {
+  const now = requireNowMs(nowMs);
+  const refreshedAt = validTimestampMs(chaptersRefreshedAt);
+  if (refreshedAt === null) return true;
+  if (refreshedAt > now) return false;
+  const updatedAt = validTimestampMs(documentUpdatedAt);
+  // 수동 저장은 merge:true라 과거 TTL이 남을 수 있다. 문서가 그 뒤 수정됐으면 즉시 재조회한다.
+  // 단, 미래 updatedAt은 신뢰하지 않아 성공 직후에도 계속 due가 되는 쿼터 우회를 막는다.
+  if (updatedAt !== null && updatedAt <= now && updatedAt > refreshedAt) {
+    return true;
+  }
+  return now - refreshedAt >= DAILY_VIDEO_CHAPTERS_TTL_MS;
 };
 
 // attempt 1~4는 2/5/15/30분, 그 뒤는 시간당 한 번이다.
