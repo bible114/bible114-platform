@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { db, firebase } from '../../utils/firebase';
+import { auth, db, firebase } from '../../utils/firebase';
 import { QUIZ_BANK, getKstDateString } from '../../data/bibleQuiz';
-import { getQuizLevel, getQuizProgressKey, getQuizRewardForAnswer } from '../../utils/quizProgress';
+import { getQuizLevel, getQuizProgressKey } from '../../utils/quizProgress';
 import { saveGuestState } from '../../utils/guestStorage';
-import { loadUserExtraOrgsStrict } from '../../utils/roster';
-import { getRosterOrgIds, updateRosterTalents } from '../../utils/talentWallet';
-import { previewQuizSubmission } from '../../utils/platformApi';
-import { compareQuizSubmissionShadow } from '../../utils/quizSubmissionShadow';
-import { resolveTalentProgram } from '../../utils/talentProgram';
-import { loadTalentProgramsStrict } from '../../utils/talentProgramStore';
+import { updateRosterTalents } from '../../utils/talentWallet';
+import { PlatformApiError, skipQuiz, submitQuiz } from '../../utils/platformApi';
+import {
+    clearActivityRequest,
+    getOrCreateQuizActivityRequest,
+    getOrCreateQuizSkipActivityRequest,
+} from '../../utils/userActivityRequests';
 import {
     getReadingRangeForDay,
     loadNtEasyPoolForDay,
@@ -19,12 +20,6 @@ import {
     selectNtEasyQuiz,
     shuffleQuizChoices,
 } from '../../utils/quizEngine';
-
-const getRewardForAttempts = (attempts) => {
-    if (attempts === 1) return 10;
-    if (attempts === 2) return 5;
-    return 0;
-};
 
 export const QuizLevelToggle = ({ currentUser, setCurrentUser, finished = false }) => {
     const planType = String(currentUser?.planId || '').split('_')[0];
@@ -192,7 +187,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
         setSkipped(nextSkipped);
     }, [currentUser?.uid, persistedSkipped, skipStorageKey]);
 
-    const [quizState, setQuizState] = useState({ loading: true, quiz: null, quizKey: null, badge: '', replaceStoredQuizKey: false });
+    const [quizState, setQuizState] = useState({ loading: true, quiz: null, quizKey: null, badge: '' });
     const [selectedIndex, setSelectedIndex] = useState(null);
     const [feedback, setFeedback] = useState(() => {
         if (!finished) return null;
@@ -228,22 +223,22 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
 
         const loadQuiz = async () => {
             if (!currentUser || currentUser.role === 'guest') {
-                if (!cancelled) setQuizState({ loading: false, quiz: null, quizKey: null, badge: '', replaceStoredQuizKey: false });
+                if (!cancelled) setQuizState({ loading: false, quiz: null, quizKey: null, badge: '' });
                 return;
             }
-            setQuizState({ loading: true, quiz: null, quizKey: null, badge: '', replaceStoredQuizKey: false });
+            setQuizState({ loading: true, quiz: null, quizKey: null, badge: '' });
             try {
                 const savedKey = progress?.quizKey || null;
                 const resolved = savedKey ? await resolveQuizKey(savedKey, currentUser, progressDay) : null;
                 const nextQuiz = resolved || await buildDayQuiz(currentUser, progressDay);
                 if (!cancelled) {
                     setQuizState(nextQuiz
-                        ? { loading: false, ...nextQuiz, replaceStoredQuizKey: Boolean(savedKey && !resolved) }
-                        : { loading: false, quiz: null, quizKey: null, badge: '', replaceStoredQuizKey: false });
+                        ? { loading: false, ...nextQuiz }
+                        : { loading: false, quiz: null, quizKey: null, badge: '' });
                 }
             } catch (e) {
                 console.error('본문 기반 퀴즈 로딩 실패:', e);
-                if (!cancelled) setQuizState({ loading: false, quiz: null, quizKey: null, badge: '', replaceStoredQuizKey: false });
+                if (!cancelled) setQuizState({ loading: false, quiz: null, quizKey: null, badge: '' });
             }
         };
 
@@ -278,27 +273,55 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
 
     const skipToday = async () => {
         if (submitting || !quizKey) return;
+        const submittedUid = currentUser.uid;
+        let activityRequest = null;
         setSubmitting(true);
         try {
-            const entry = { attempts, solved: false, skipped: true, quizKey, updatedDate: todayKey, reward: 0 };
-            await db.collection('users').doc(currentUser.uid).update({
-                [`quizProgress.${progressKey}`]: entry,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            activityRequest = getOrCreateQuizSkipActivityRequest({
+                uid: submittedUid,
+                progressKey,
+                quizKey,
             });
-            setCurrentUser(previous => previous?.uid === currentUser.uid
-                ? { ...previous, quizProgress: { ...(previous.quizProgress || {}), [progressKey]: entry } }
+            const response = await skipQuiz(
+                activityRequest.payload.progressKey,
+                activityRequest.payload.quizKey,
+                { requestId: activityRequest.requestId, expectedUid: submittedUid },
+            );
+            clearActivityRequest(activityRequest);
+            if (auth?.currentUser?.uid !== submittedUid) return;
+            const entry = response.state.progress;
+            setCurrentUser(previous => previous?.uid === submittedUid
+                ? {
+                    ...previous,
+                    quizProgress: {
+                        ...(previous.quizProgress || {}),
+                        [response.state.progressKey]: entry,
+                    },
+                }
                 : previous);
-            if (typeof localStorage !== 'undefined') {
+            if (entry.skipped && typeof localStorage !== 'undefined') {
                 try {
                     localStorage.setItem(skipStorageKey, '1');
                 } catch (error) {
                     console.warn('퀴즈 건너뛰기 로컬 상태 저장 실패:', error);
                 }
             }
-            setSkipped(true);
+            setSkipped(entry.skipped === true);
         } catch (error) {
+            const outcomeUncertain = error instanceof PlatformApiError
+                && (error.retryable === true || (error.status >= 200 && error.status < 300));
+            if (activityRequest && error instanceof PlatformApiError && !outcomeUncertain) {
+                clearActivityRequest(activityRequest);
+            }
             console.error('퀴즈 건너뛰기 저장 실패:', error);
-            setFeedback({ type: 'error', message: '건너뛰기 상태를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.' });
+            if (auth?.currentUser?.uid === submittedUid) {
+                setFeedback({
+                    type: 'error',
+                    message: outcomeUncertain
+                        ? '건너뛰기 결과를 확인하지 못했어요. 같은 버튼을 다시 눌러 확인해주세요.'
+                        : '건너뛰기 상태를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.',
+                });
+            }
         } finally {
             setSubmitting(false);
         }
@@ -306,176 +329,55 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
 
     const submitAnswer = async () => {
         if (!quiz || !quizKey || selectedIndex === null || submitting || finished || skipped) return;
+        const submittedUid = currentUser.uid;
+        let activityRequest = null;
         setSubmitting(true);
         try {
-            const isCorrectSelection = selectedIndex === quiz.answerIndex;
-            const rewardRosterOrgs = isCorrectSelection
-                ? (await loadUserExtraOrgsStrict(currentUser.uid)).slice(0, 3)
-                : null;
-            const baseChurchId = currentUser.baseChurchId
-                || (currentUser.accountType === 'personal' ? null : currentUser.churchId);
-            const talentPrograms = isCorrectSelection
-                ? await loadTalentProgramsStrict([
-                    baseChurchId,
-                    ...(rewardRosterOrgs || []).map(org => org.orgId),
-                ])
-                : {};
-            let quizShadowPreview = null;
-            if (import.meta.env.DEV) {
-                try {
-                    quizShadowPreview = await previewQuizSubmission(progressKey, quizKey, selectedIndex, { timeoutMs: 4000 });
-                } catch {
-                    // shadow 확인 실패는 기존 퀴즈 저장을 막지 않는다.
-                }
-            }
-
-            // 정답일 때만 보상 지갑이 필요하다. 로그인 시 명부 조회 실패로 캐시가
-            // 비어 있을 수 있으므로 보상 날짜를 기록하기 전에 실제 명부를 확인한다.
-            // 조회가 실패하면 transaction 자체를 시작하지 않아 당일 보상이 소진되지 않는다.
-            const result = await db.runTransaction(async (transaction) => {
-                const userRef = db.collection('users').doc(currentUser.uid);
-                const snap = await transaction.get(userRef);
-                if (!snap.exists) throw new Error('USER_NOT_FOUND');
-
-                const data = snap.data();
-                const storedProgress = data.quizProgress?.[progressKey] || (canUseLegacy ? {
-                    attempts: data.quizAttempts || 0,
-                    solved: data.quizSolved === true,
-                    skipped: data.quizSkipped === true,
-                    quizKey: data.quizKey || null,
-                    reward: data.quizSolved === true ? getRewardForAttempts(data.quizAttempts || 0) : 0,
-                } : {});
-                const freshAttempts = storedProgress.attempts || 0;
-                const alreadyDone = storedProgress.solved === true || storedProgress.skipped === true || freshAttempts >= 2;
-                const storedQuizKey = storedProgress.quizKey || null;
-                if (alreadyDone) {
-                    return {
-                        alreadyDone: true,
-                        attempts: freshAttempts,
-                        solved: storedProgress.solved === true,
-                        skipped: storedProgress.skipped === true,
-                        reward: storedProgress.reward || 0,
-                        talent: data.talent || 0,
-                        quizKey: storedQuizKey || quizKey,
-                    };
-                }
-
-                const nextAttempts = freshAttempts + 1;
-                const isCorrect = selectedIndex === quiz.answerIndex;
-                const rewardAlready = data.quizRewardDate === todayKey || (data.quizDate === todayKey && data.quizSolved === true);
-                const baseReward = getQuizRewardForAnswer({
-                    attempts: nextAttempts,
-                    isCorrect,
-                    rewardDate: data.quizRewardDate,
-                    todayKey,
-                    legacyRewardedToday: data.quizDate === todayKey && data.quizSolved === true,
-                });
-                const rewardsUserWallet = data.accountType !== 'personal';
-                const rosterWallets = [];
-                if (baseReward > 0) {
-                    const refs = getRosterOrgIds({
-                        ...currentUser,
-                        extraOrgs: rewardRosterOrgs || [],
-                    }).map(orgId => ({
-                        orgId,
-                        ref: db.collection('churches').doc(orgId).collection('roster').doc(currentUser.uid),
-                    }));
-                    const snaps = await Promise.all(refs.map(item => transaction.get(item.ref)));
-                    refs.forEach((item, index) => {
-                        if (snaps[index].exists) rosterWallets.push({ ...item, data: snaps[index].data() });
-                    });
-                }
-                const rewardsDirectProgram = rewardsUserWallet && resolveTalentProgram({
-                    user: data,
-                    talentShop: talentPrograms[baseChurchId] || null,
-                }).canEarnTalent;
-                const rewardedRosterWallets = rosterWallets.filter(wallet => resolveTalentProgram({
-                    user: wallet.data,
-                    talentShop: talentPrograms[wallet.orgId] || null,
-                }).canEarnTalent);
-                const reward = (rewardsDirectProgram || rewardedRosterWallets.length > 0) ? baseReward : 0;
-                const nextTalent = (data.talent || 0) + (rewardsDirectProgram ? reward : 0);
-                const persistedQuizKey = quizState.replaceStoredQuizKey ? quizKey : (storedQuizKey || quizKey);
-                const entry = {
-                    attempts: nextAttempts,
-                    solved: isCorrect,
-                    skipped: false,
-                    quizKey: persistedQuizKey,
-                    reward,
-                    updatedDate: todayKey,
-                };
-                const updateData = {
-                    [`quizProgress.${progressKey}`]: entry,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                };
-                if (reward > 0) {
-                    if (rewardsDirectProgram) updateData.talent = nextTalent;
-                    updateData.quizRewardDate = todayKey;
-                    updateData.quizRewardAmount = reward;
-                }
-
-                transaction.update(userRef, updateData);
-                const rosterTalentByOrgId = {};
-                rewardedRosterWallets.forEach(wallet => {
-                    const nextRosterTalent = (Number(wallet.data?.talent) || 0) + reward;
-                    rosterTalentByOrgId[wallet.orgId] = nextRosterTalent;
-                    transaction.update(wallet.ref, {
-                        talent: nextRosterTalent,
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    });
-                });
-                return {
-                    alreadyDone: false,
-                    attempts: nextAttempts,
-                    solved: isCorrect,
-                    skipped: false,
-                    reward,
-                    userTalent: rewardsDirectProgram ? nextTalent : null,
-                    rosterTalentByOrgId,
-                    quizKey: entry.quizKey,
-                    entry,
-                    rewardAlready,
-                };
+            activityRequest = getOrCreateQuizActivityRequest({
+                uid: submittedUid,
+                progressKey,
+                quizKey,
+                attemptSlot: Number(attempts) + 1,
+                selectedIndex,
             });
+            const { payload, requestId } = activityRequest;
+            const response = await submitQuiz(
+                payload.progressKey,
+                payload.quizKey,
+                payload.selectedIndex,
+                payload.attemptSlot,
+                { requestId, expectedUid: submittedUid },
+            );
+            clearActivityRequest(activityRequest);
+            if (auth?.currentUser?.uid !== submittedUid) return;
 
-            if (import.meta.env.DEV && quizShadowPreview?.result) {
-                try {
-                    const comparison = compareQuizSubmissionShadow(quizShadowPreview.result, result);
-                    console.info('[quiz-shadow]', {
-                        match: comparison.match,
-                        serverStatus: comparison.serverStatus,
-                        clientStatus: comparison.clientStatus,
-                        mismatchKeys: comparison.mismatchKeys,
-                        progressKey,
-                        quizKey,
-                    });
-                } catch {
-                    // shadow 비교 자체가 기존 퀴즈 결과 처리에 영향을 주지 않게 한다.
-                }
-            }
-
-            setCurrentUser(prev => updateRosterTalents({
-                ...prev,
-                quizProgress: {
-                    ...(prev.quizProgress || {}),
-                    [progressKey]: result.entry || {
-                        attempts: result.attempts, solved: result.solved,
-                        skipped: result.skipped === true, quizKey: result.quizKey,
-                        reward: result.reward || 0, updatedDate: todayKey,
+            const freshProgress = response.state.progress;
+            const rosterTalentByOrgId = Object.fromEntries(
+                response.state.rosterTalents.map(({ orgId, talent }) => [orgId, talent]),
+            );
+            setCurrentUser((previous) => {
+                if (previous?.uid !== submittedUid) return previous;
+                return updateRosterTalents({
+                    ...previous,
+                    quizProgress: {
+                        ...(previous.quizProgress || {}),
+                        [response.state.progressKey]: freshProgress,
                     },
-                },
-                ...(result.reward > 0 ? { quizRewardDate: todayKey, quizRewardAmount: result.reward } : {}),
-                ...(result.userTalent !== null && result.userTalent !== undefined ? { talent: result.userTalent } : {}),
-                ...(rewardRosterOrgs ? { extraOrgs: rewardRosterOrgs } : {}),
-            }, result.rosterTalentByOrgId));
+                    quizRewardDate: response.state.quizRewardDate,
+                    quizRewardAmount: response.state.quizRewardAmount,
+                    talent: response.state.userTalent,
+                }, rosterTalentByOrgId, { authoritative: true });
+            });
+            setSkipped(freshProgress.skipped === true);
 
-            if (result.alreadyDone) {
-                setFeedback(result.solved
-                    ? { type: 'success', message: result.reward > 0 ? `DAY ${progressDay} 퀴즈 완료! ⭐ +${result.reward}달란트` : '정답이에요! 퀴즈 달란트는 하루 1번만 적립돼요.' }
-                    : { type: 'done', message: `DAY ${progressDay}의 두 번 시도가 끝났습니다.` });
-            } else if (result.solved) {
-                setFeedback({ type: 'success', message: result.reward > 0 ? `정답입니다! ⭐ +${result.reward}달란트를 받았어요.` : '정답이에요! 퀴즈 달란트는 하루 1번만 적립돼요.' });
-            } else if (result.attempts >= 2) {
+            if (freshProgress.solved) {
+                setFeedback({
+                    type: 'success',
+                    message: freshProgress.reward > 0
+                        ? `정답입니다! ⭐ +${freshProgress.reward}달란트를 받았어요.`
+                        : '정답이에요! 퀴즈 달란트는 하루 1번만 적립돼요.',
+                });
+            } else if (freshProgress.skipped || freshProgress.attempts >= 2) {
                 setFeedback({ type: 'done', message: '아쉽지만 오늘의 시도는 끝났습니다. 정답을 확인해보세요.' });
             } else {
                 setFeedback({ type: 'retry', message: '아쉬워요. 한 번 더 도전할 수 있습니다.' });
@@ -483,7 +385,21 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
             }
         } catch (e) {
             console.error('성경퀴즈 제출 실패:', e);
-            setFeedback({ type: 'error', message: '퀴즈 처리에 실패했습니다. 잠시 후 다시 시도해주세요.' });
+            const outcomeUncertain = e instanceof PlatformApiError
+                && (e.retryable === true || (e.status >= 200 && e.status < 300));
+            if (activityRequest && e instanceof PlatformApiError && !outcomeUncertain) {
+                clearActivityRequest(activityRequest);
+            }
+            if (auth?.currentUser?.uid !== submittedUid) return;
+            if (outcomeUncertain && activityRequest) {
+                setSelectedIndex(activityRequest.payload.selectedIndex);
+            }
+            setFeedback({
+                type: 'error',
+                message: outcomeUncertain
+                    ? '처리 결과를 확인하지 못했습니다. 같은 답으로 다시 시도해주세요.'
+                    : '퀴즈 처리에 실패했습니다. 잠시 후 다시 시도해주세요.',
+            });
         } finally {
             setSubmitting(false);
         }

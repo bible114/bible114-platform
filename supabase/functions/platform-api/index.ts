@@ -1,6 +1,6 @@
 import {
   handleCors,
-  jsonResponse,
+  jsonResponse as baseJsonResponse,
   platformErrorResponse,
 } from "../_shared/cors.ts";
 import {
@@ -86,8 +86,11 @@ import {
   adminPreviewDailyVideo,
   resolveDailyVideo,
 } from "./dailyVideoResolve.ts";
+import { completeReadTransaction } from "./readCompletionService.ts";
+import { skipQuiz, submitQuiz } from "./quizSubmission.ts";
 
-// T122-T123 shadow 단계: 읽기·퀴즈 결과를 계산만 하며 Firestore 쓰기는 금지한다.
+// preview action은 계속 무쓰기 계산만 수행하고, 실제 읽기·퀴즈 변경은 아래의
+// 전용 서비스 transaction 모듈에만 위임한다.
 type UserDocument = StoredReadUser & StoredQuizUser & {
   role?: unknown;
   isDeleted?: unknown;
@@ -550,6 +553,35 @@ Deno.serve(async (request) => {
   const corsResult = handleCors(request);
   if (corsResult instanceof Response) return corsResult;
   const origin = corsResult;
+  const startedAt = Date.now();
+  let observedAction = "unparsed";
+
+  // 운영 지표에는 작업명·결과·지연만 남긴다. uid, requestId, payload,
+  // 조직/지갑/정답 정보는 로그에 포함하지 않는다.
+  const jsonResponse = (
+    responseOrigin: string,
+    status: number,
+    body: Record<string, unknown>,
+  ) => {
+    const action = typeof body.action === "string"
+      ? body.action
+      : observedAction;
+    const pending = body.pending === true;
+    const replay = body.alreadyCompleted === true ||
+      body.alreadyJoined === true;
+    console.info(
+      "platform-api action",
+      JSON.stringify({
+        action,
+        outcome: pending ? "pending" : replay ? "replay" : "success",
+        status,
+        replay,
+        pending,
+        latencyMs: Math.max(0, Date.now() - startedAt),
+      }),
+    );
+    return baseJsonResponse(responseOrigin, status, body);
+  };
 
   try {
     let parsed;
@@ -559,6 +591,7 @@ Deno.serve(async (request) => {
       if (error instanceof PlatformApiRequestError) throw requestError(error);
       throw error;
     }
+    observedAction = parsed.action;
 
     if (parsed.action === "issueJoinTicket") {
       const service = await getServiceAccessToken();
@@ -1080,6 +1113,42 @@ Deno.serve(async (request) => {
     if (!userDocument) throw new PlatformError("NOT_FOUND");
     if (userDocument.data.isDeleted === true) {
       throw new PlatformError("FORBIDDEN");
+    }
+
+    if (parsed.action === "completeRead") {
+      const result = await completeReadTransaction(service, verifiedUser, {
+        requestId: parsed.requestId,
+        cycle: parsed.cycle,
+        day: parsed.day,
+      });
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        ...result,
+      });
+    }
+
+    if (parsed.action === "submitQuiz") {
+      const result = await submitQuiz(service, {
+        uid,
+        requestId: parsed.requestId,
+        progressKey: parsed.progressKey,
+        quizKey: parsed.quizKey,
+        selectedIndex: parsed.selectedIndex,
+        attemptSlot: parsed.attemptSlot,
+      });
+      return jsonResponse(origin, 200, result);
+    }
+
+    if (parsed.action === "skipQuiz") {
+      const result = await skipQuiz(service, {
+        uid,
+        requestId: parsed.requestId,
+        progressKey: parsed.progressKey,
+        quizKey: parsed.quizKey,
+      });
+      return jsonResponse(origin, 200, result);
     }
 
     const role = normalizeRole(userDocument.data.role);
@@ -2064,7 +2133,15 @@ Deno.serve(async (request) => {
   } catch (error) {
     // 요청 본문이나 토큰 같은 민감값은 로그에 남기지 않는다.
     const label = error instanceof PlatformError ? error.code : "INTERNAL";
-    console.error("platform-api failed", label);
+    console.error(
+      "platform-api action",
+      JSON.stringify({
+        action: observedAction,
+        outcome: "failure",
+        code: label,
+        latencyMs: Math.max(0, Date.now() - startedAt),
+      }),
+    );
     return platformErrorResponse(origin, error);
   }
 });

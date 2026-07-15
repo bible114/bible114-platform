@@ -8,6 +8,7 @@ const constants = read('src/data/constants.js');
 const envExample = read('.env.example');
 const client = read('src/utils/platformApi.js');
 const userBibleActions = read('src/hooks/useUserBibleActions.js');
+const quizCard = read('src/components/dashboard/BibleQuizCard.jsx');
 const packageJson = JSON.parse(read('package.json'));
 
 assert.match(constants, /export const PLATFORM_API_URL = import\.meta\.env\?\.VITE_PLATFORM_API_URL \|\| '';/);
@@ -26,6 +27,12 @@ for (const pattern of [
     /export const callPlatformApiPublic = async \(action, payload = \{\}, options = \{\}\)/,
     /export const preflightPlatformApi =/,
     /export const previewReadCompletion = \(cycle, day, options = \{\}\)/,
+    /export const completeRead = \(cycle, day, options = \{\}\)/,
+    /export const validateCompleteReadResponse = \(payload, result, expectedRequestId\)/,
+    /export const submitQuiz = \(progressKey, quizKey, selectedIndex, attemptSlot, options = \{\}\)/,
+    /export const validateSubmitQuizResponse = \(payload, result, expectedRequestId\)/,
+    /export const skipQuiz = \(progressKey, quizKey, options = \{\}\)/,
+    /export const validateSkipQuizResponse = \(payload, result, expectedRequestId\)/,
     /export const resolveDailyVideo = \(options = \{\}\)/,
     /export const validateDailyVideoResolveResponse = \(result, expectedRequestId\)/,
     /export const adminPreviewDailyVideo = \(input, options = \{\}\)/,
@@ -35,7 +42,11 @@ for (const pattern of [
     /Number\.isInteger\(cycle\)/,
     /Number\.isInteger\(day\)/,
     /callPlatformApi\('previewReadCompletion', \{ cycle, day \}, options\)/,
-    /auth\.currentUser\.getIdToken\(forceRefresh\)/,
+    /const requestUser = auth\.currentUser/,
+    /requestUser\.getIdToken\(forceRefresh\)/,
+    /expectedUid && requestUser\.uid !== expectedUid/,
+    /auth\.currentUser\?\.uid !== requestUser\.uid/,
+    /code: 'AUTH_CHANGED'/,
     /cryptoImpl\?\.randomUUID/,
     /cryptoImpl\?\.getRandomValues/,
     /export const createRequestId = \(cryptoImpl = globalThis\.crypto, random = Math\.random\)/,
@@ -60,7 +71,15 @@ assert.doesNotMatch(
 
 // Node에서 오류 타입과 URL 미설정 안전장치를 import/실행할 수 있어야 한다.
 const platformApi = await import('../src/utils/platformApi.js');
+const { updateRosterTalents } = await import('../src/utils/talentWallet.js');
 const { reconcileStoredRequestIds } = await import('../src/utils/adminTalentRequests.js');
+const {
+    __resetActivityRequestFallbackForTests,
+    clearActivityRequest,
+    getOrCreateQuizActivityRequest,
+    getOrCreateQuizSkipActivityRequest,
+    getOrCreateReadActivityRequest,
+} = await import('../src/utils/userActivityRequests.js');
 const sampleError = new platformApi.PlatformApiError('fixture', { code: 'FIXTURE', status: 418, retryable: false });
 assert.equal(sampleError.code, 'FIXTURE');
 assert.equal(sampleError.status, 418);
@@ -101,15 +120,111 @@ await assert.rejects(
     () => platformApi.callPlatformApi('preflight'),
     error => error instanceof platformApi.PlatformApiError && error.code === 'FEATURE_DISABLED' && error.status === 0 && error.retryable === false,
 );
+
+const makeStorage = () => {
+    const values = new Map();
+    return {
+        get length() { return values.size; },
+        key: index => [...values.keys()][index] ?? null,
+        getItem: key => values.get(key) ?? null,
+        setItem: (key, value) => values.set(key, value),
+        removeItem: key => values.delete(key),
+        values,
+    };
+};
+const activityStorage = makeStorage();
+const readRequestId = '523e4567-e89b-42d3-a456-426614174000';
+const readRequest = getOrCreateReadActivityRequest(
+    { uid: 'user-1', cycle: 2, day: 10 },
+    { storage: activityStorage, requestIdFactory: () => readRequestId },
+);
+assert.equal(readRequest.requestId, readRequestId);
+assert.deepEqual(readRequest.payload, { cycle: 2, day: 10 });
+assert.equal(
+    getOrCreateReadActivityRequest(
+        { uid: 'user-1', cycle: 2, day: 10 },
+        { storage: activityStorage, requestIdFactory: () => { throw new Error('must reuse'); } },
+    ).requestId,
+    readRequestId,
+    '같은 읽기 위치는 저장된 requestId를 재사용해야 한다.',
+);
+
+const quizRequestId = '623e4567-e89b-42d3-a456-426614174000';
+const firstQuizRequest = getOrCreateQuizActivityRequest(
+    { uid: 'user-1', progressKey: 'r2_d10', quizKey: 'quiz-1', attemptSlot: 1, selectedIndex: 0 },
+    { storage: activityStorage, requestIdFactory: () => quizRequestId },
+);
+const changedAnswerRetry = getOrCreateQuizActivityRequest(
+    { uid: 'user-1', progressKey: 'r2_d10', quizKey: 'quiz-1', attemptSlot: 1, selectedIndex: 3 },
+    { storage: activityStorage, requestIdFactory: () => { throw new Error('must reuse'); } },
+);
+assert.equal(changedAnswerRetry.requestId, quizRequestId);
+assert.equal(changedAnswerRetry.payload.selectedIndex, 0, '미확정 퀴즈 재전송은 최초 답을 보존해야 한다.');
+assert.equal(changedAnswerRetry.payload.attemptSlot, 1, '미확정 퀴즈 재전송은 최초 시도 슬롯을 보존해야 한다.');
+assert.equal(clearActivityRequest(firstQuizRequest, { storage: activityStorage }), true);
+const secondQuizRequestId = '723e4567-e89b-42d3-a456-426614174000';
+assert.equal(
+    getOrCreateQuizActivityRequest(
+        { uid: 'user-1', progressKey: 'r2_d10', quizKey: 'quiz-1', attemptSlot: 1, selectedIndex: 3 },
+        { storage: activityStorage, requestIdFactory: () => secondQuizRequestId },
+    ).requestId,
+    secondQuizRequestId,
+    '확정 성공 뒤에는 새 시도 requestId를 만들 수 있어야 한다.',
+);
+const skipRequestId = '823e4567-e89b-42d3-a456-426614174000';
+const firstSkipRequest = getOrCreateQuizSkipActivityRequest(
+    { uid: 'user-1', progressKey: 'r2_d10', quizKey: 'quiz-1' },
+    { storage: activityStorage, requestIdFactory: () => skipRequestId },
+);
+assert.equal(
+    getOrCreateQuizSkipActivityRequest(
+        { uid: 'user-1', progressKey: 'r2_d10', quizKey: 'quiz-1' },
+        { storage: activityStorage, requestIdFactory: () => { throw new Error('must reuse'); } },
+    ).requestId,
+    skipRequestId,
+    '같은 퀴즈 건너뛰기는 저장된 requestId를 재사용해야 한다.',
+);
+assert.equal(clearActivityRequest(firstSkipRequest, { storage: activityStorage }), true);
+const secondSkipRequestId = '923e4567-e89b-42d3-a456-426614174000';
+assert.equal(
+    getOrCreateQuizSkipActivityRequest(
+        { uid: 'user-1', progressKey: 'r2_d10', quizKey: 'quiz-1' },
+        { storage: activityStorage, requestIdFactory: () => secondSkipRequestId },
+    ).requestId,
+    secondSkipRequestId,
+    '확정된 건너뛰기 뒤에는 새 requestId를 만들 수 있어야 한다.',
+);
+__resetActivityRequestFallbackForTests();
+const recoveredRosterUser = updateRosterTalents(
+    { uid: 'user-1', extraOrgs: [] },
+    { Z_org: 12, a_org: 7 },
+    { authoritative: true },
+);
+assert.deepEqual(
+    recoveredRosterUser.extraOrgs.map(({ orgId, talent }) => ({ orgId, talent })),
+    [{ orgId: 'Z_org', talent: 12 }, { orgId: 'a_org', talent: 7 }],
+    '서버 명부 상태는 비어 있는 브라우저 캐시도 복구하고 코드포인트 순으로 정렬해야 한다.',
+);
+assert.equal(recoveredRosterUser.extraOrgs[0].rosterPath, 'churches/Z_org/roster/user-1');
+assert.deepEqual(
+    updateRosterTalents(
+        { uid: 'user-1', extraOrgs: [{ orgId: 'keep', talent: 1 }, { orgId: 'change', talent: 2 }] },
+        { change: 9 },
+    ).extraOrgs,
+    [{ orgId: 'keep', talent: 1 }, { orgId: 'change', talent: 9 }],
+    '일반 부분 갱신은 응답에 없는 기존 명부 행을 제거하지 않아야 한다.',
+);
 for (const [cycle, day] of [[0, 1], [1.5, 1], [1, 0], [1, 366], [1, 2.5]]) {
-    assert.throws(
-        () => platformApi.previewReadCompletion(cycle, day),
-        error => error instanceof platformApi.PlatformApiError
-            && error.code === 'INVALID_PAYLOAD'
-            && error.status === 0
-            && error.retryable === false,
-        `잘못된 읽기 범위(${cycle}, ${day})는 네트워크 요청 전에 거부해야 한다.`,
-    );
+    for (const action of [platformApi.previewReadCompletion, platformApi.completeRead]) {
+        assert.throws(
+            () => action(cycle, day),
+            error => error instanceof platformApi.PlatformApiError
+                && error.code === 'INVALID_PAYLOAD'
+                && error.status === 0
+                && error.retryable === false,
+            `잘못된 읽기 범위(${cycle}, ${day})는 네트워크 요청 전에 거부해야 한다.`,
+        );
+    }
 }
 
 // 매일 영상은 익명 Firebase 게스트도 인증형 API를 사용하고, 브라우저가 2xx 본문을
@@ -396,131 +511,134 @@ for (const invalidInput of [
     );
 }
 
-// 읽기 완료 shadow 비교 계약: DEV에서만 서버 preview를 먼저 기다리고,
-// preview 실패는 기존 클라이언트 transaction을 막지 않으며 실제 값은 로그에 남기지 않는다.
-const readShadowPath = 'src/utils/readCompletionShadow.js';
-assert.equal(exists(readShadowPath), true, `${readShadowPath}가 필요하다.`);
-const readShadowSource = read(readShadowPath);
-assert.match(readShadowSource, /export const compareReadCompletionShadow\s*=/);
-assert.match(
-    readShadowSource,
-    /['"]talentProgramEnabled['"]/,
-    '읽기 shadow는 실제 적립 가능한 지갑 존재 여부도 비교해야 한다.',
-);
-assert.match(userBibleActions, /import\s*\{\s*previewReadCompletion\s*\}\s*from\s*['"]\.\.\/utils\/platformApi['"]/);
-assert.match(userBibleActions, /import\s*\{\s*compareReadCompletionShadow\s*\}\s*from\s*['"]\.\.\/utils\/readCompletionShadow['"]/);
-
-const devGuardIndex = userBibleActions.indexOf('if (import.meta.env.DEV');
-const previewAwaitIndex = userBibleActions.indexOf('await previewReadCompletion(');
-const transactionAwaitIndex = userBibleActions.indexOf('await commitRead(');
-assert.ok(devGuardIndex >= 0, '읽기 shadow preview는 import.meta.env.DEV 가드 안에서만 실행해야 한다.');
-assert.ok(previewAwaitIndex > devGuardIndex, 'DEV 가드 안에서 previewReadCompletion을 await해야 한다.');
-assert.ok(transactionAwaitIndex > previewAwaitIndex, '서버 preview를 기다린 뒤 기존 transaction을 실행해야 한다.');
-assert.doesNotMatch(
-    userBibleActions.slice(devGuardIndex, previewAwaitIndex),
-    /hasDepartmentTalentProgram|isTalentProgramV2/,
-    '서버가 v2 달란트 계약을 지원하므로 읽기 shadow를 v2 설정에서 건너뛰면 안 된다.',
-);
-assert.match(
-    userBibleActions.slice(previewAwaitIndex, transactionAwaitIndex),
-    /previewReadCompletion\([^)]*\{\s*timeoutMs:\s*4000\s*\}\)/,
-    'shadow preview는 기존 읽기를 오래 지연시키지 않도록 4초 제한을 사용해야 한다.',
-);
-
-const transactionDeclarationIndex = userBibleActions.indexOf('\n            const commitRead', devGuardIndex);
-assert.ok(transactionDeclarationIndex > previewAwaitIndex, 'shadow 준비 구간 뒤에 기존 transaction 선언이 이어져야 한다.');
-const shadowPreparationBlock = userBibleActions.slice(devGuardIndex, transactionDeclarationIndex);
-assert.match(
-    shadowPreparationBlock,
-    /try\s*\{[\s\S]*await previewReadCompletion\([\s\S]*\}\s*catch(?:\s*\([^)]*\))?\s*\{[\s\S]*\}/,
-    'preview 실패는 catch되어 기존 읽기 transaction 흐름을 막지 않아야 한다.',
-);
-assert.doesNotMatch(
-    shadowPreparationBlock,
-    /catch(?:\s*\([^)]*\))?\s*\{[\s\S]*?\b(?:throw|return)\b/,
-    'shadow preview catch에서 throw/return으로 기존 흐름을 중단하면 안 된다.',
-);
-assert.doesNotMatch(
-    shadowPreparationBlock,
-    /(?:compareReadCompletionShadow|console\.(?:info|debug|warn|error))\s*\(/,
-    'preview 실패 catch에서는 비교하거나 허위 mismatch 로그를 남기면 안 된다.',
-);
-
+// 읽기 완료는 브라우저 Firestore transaction이 아니라 멱등 requestId를 붙인
+// completeRead 서버 action 한 번으로 저장하고, 2xx 응답도 fail-closed 검증한다.
+assert.match(userBibleActions, /import\s*\{\s*completeRead\s*\}\s*from\s*['"]\.\.\/utils\/platformApi['"]/);
 assert.match(
     userBibleActions,
-    /if\s*\(\s*import\.meta\.env\.DEV\s*&&\s*readShadowPreview\?\.result\s*\)\s*\{[\s\S]*compareReadCompletionShadow\(/,
-    'preview 결과가 실제로 있을 때만 transaction 결과와 비교해야 한다.',
+    /import\s*\{[^}]*clearActivityRequest[^}]*getOrCreateReadActivityRequest[^}]*\}\s*from\s*['"]\.\.\/utils\/userActivityRequests['"]/,
 );
-const comparisonLog = userBibleActions.match(/console\.(?:info|debug|warn)\(\s*['"]\[read(?:-completion)?-shadow\]['"]\s*,\s*\{([\s\S]*?)\}\s*\)/);
-assert.ok(comparisonLog, '읽기 shadow 비교 결과는 고정 표식과 제한된 요약 객체로 기록해야 한다.');
-const loggedKeys = Array.from(comparisonLog[1].matchAll(/\b(match|serverStatus|clientStatus|mismatchKeys|cycle|day)\b\s*(?=[:,])/g), match => match[1]);
-assert.deepEqual(
-    [...new Set(loggedKeys)].sort(),
-    ['clientStatus', 'cycle', 'day', 'match', 'mismatchKeys', 'serverStatus'].sort(),
-    'shadow 비교 로그에는 상태, 불일치 키, 요청 위치만 기록해야 한다.',
+const handleReadStart = userBibleActions.indexOf('const handleRead = useCallback(async () => {');
+const handleReadEnd = userBibleActions.indexOf('const handleRestart = useCallback(', handleReadStart);
+assert.ok(handleReadStart >= 0 && handleReadEnd > handleReadStart, 'handleRead 서버 저장 구간이 필요하다.');
+const handleReadContract = userBibleActions.slice(handleReadStart, handleReadEnd);
+assert.match(
+    handleReadContract,
+    /getOrCreateReadActivityRequest\([\s\S]*cycle:\s*submittedReadCount[\s\S]*day:\s*vDay/,
+    '현재 읽기 위치에 묶인 멱등 requestId를 먼저 복구·생성해야 한다.',
+);
+assert.match(
+    handleReadContract,
+    /await completeRead\([\s\S]*activityRequest\.payload\.cycle[\s\S]*activityRequest\.payload\.day[\s\S]*requestId:\s*activityRequest\.requestId[\s\S]*expectedUid:\s*uid/,
+    'completeRead에는 저장된 원본 payload·requestId와 제출 계정 UID를 함께 보내야 한다.',
+);
+assert.match(handleReadContract, /clearActivityRequest\(activityRequest\)/);
+assert.match(handleReadContract, /auth\.currentUser\?\.uid !== uid/);
+assert.match(
+    handleReadContract,
+    /shouldPreserveRequest[\s\S]*error\?\.retryable === true[\s\S]*error\?\.code === 'INVALID_RESPONSE'/,
+    '결과가 불확실한 오류는 같은 requestId 재전송을 위해 보존해야 한다.',
 );
 assert.doesNotMatch(
-    comparisonLog[1],
-    /\b(?:serverResult|clientResult|updateData|summary|score|talent|streak|recentReadDates|currentUser)\b/,
-    'shadow 비교 로그에 서버/클라이언트 실제 값이나 사용자 상태를 포함하면 안 된다.',
+    handleReadContract,
+    /previewReadCompletion|compareReadCompletionShadow|\[read(?:-completion)?-shadow\]/,
+    '실제 읽기 저장 경로에 shadow preview가 남으면 안 된다.',
+);
+assert.doesNotMatch(
+    handleReadContract,
+    /db\.runTransaction\s*\(|\btransaction\.(?:get|set|update|delete)\s*\(|collection\(['"]platformStats['"]\)|collection\(['"]history['"]\)\.add\s*\(/,
+    'handleRead가 읽기·지갑·통계를 브라우저에서 직접 transaction/write하면 안 된다.',
 );
 
-const { compareReadCompletionShadow } = await import('../src/utils/readCompletionShadow.js');
-const readyServer = {
-    status: 'ready',
-    updateData: { currentDay: 2, score: 15 },
-    summary: { oldLevel: 0, newLevel: 0, nextViewingDay: 2, talentProgramEnabled: true },
+const readCalendarDate = 'Thu Jul 16 2026';
+const validCompleteReadResponse = {
+    ok: true,
+    action: 'completeRead',
+    requestId: readRequestId,
+    alreadyCompleted: false,
+    committed: true,
+    calendarDate: readCalendarDate,
+    result: {
+        status: 'ready',
+        updateData: {
+            currentDay: 2,
+            readCount: 1,
+            score: 10,
+            talent: 11,
+            streak: 1,
+            maxStreak: 1,
+            lastReadDate: readCalendarDate,
+            dailyAdvanceDate: readCalendarDate,
+            dailyAdvanceCount: 1,
+            recentReadDates: [readCalendarDate],
+        },
+        summary: {
+            oldLevel: 0,
+            newLevel: 0,
+            scoreEarned: 10,
+            streakBonus: 0,
+            talentEarned: 11,
+            newStreak: 1,
+            newReadCount: 1,
+            newProgressDay: 2,
+            nextViewingDay: 2,
+            completedRound: false,
+            secretShopJustUnlocked: false,
+            rewardsUserWallet: true,
+            talentProgramEnabled: true,
+        },
+    },
+    state: {
+        user: {
+            currentDay: 2,
+            readCount: 1,
+            score: 10,
+            talent: 11,
+            streak: 1,
+            maxStreak: 1,
+            lastReadDate: readCalendarDate,
+            dailyAdvanceDate: readCalendarDate,
+            dailyAdvanceCount: 1,
+            recentReadDates: [readCalendarDate],
+            secretShopUnlocked: false,
+        },
+        rosters: [],
+    },
 };
-const readyClient = {
-    updateData: { currentDay: 2, score: 15 },
-    oldLevel: 0,
-    newLevel: 0,
-    nextViewingDay: 2,
-    talentProgramEnabled: true,
-};
-assert.deepEqual(compareReadCompletionShadow(readyServer, readyClient), {
-    match: true,
-    serverStatus: 'ready',
-    clientStatus: 'ready',
-    mismatchKeys: [],
-});
-const scoreMismatch = compareReadCompletionShadow(
-    readyServer,
-    { ...readyClient, updateData: { ...readyClient.updateData, score: 14 } },
-);
-assert.equal(scoreMismatch.match, false);
-assert.deepEqual(scoreMismatch.mismatchKeys, ['updateData.score']);
-const talentProgramMismatch = compareReadCompletionShadow(
-    readyServer,
-    { ...readyClient, talentProgramEnabled: false },
-);
-assert.equal(talentProgramMismatch.match, false);
-assert.deepEqual(talentProgramMismatch.mismatchKeys, ['summary.talentProgramEnabled']);
-assert.deepEqual(compareReadCompletionShadow(
-    { status: 'dailyLimit', limit: 3, count: 3 },
-    { blockedReason: 'DAILY_ADVANCE_LIMIT' },
-), {
-    match: true,
-    serverStatus: 'dailyLimit',
-    clientStatus: 'dailyLimit',
-    mismatchKeys: [],
-});
-assert.deepEqual(compareReadCompletionShadow(
-    { status: 'positionMismatch', expected: { cycle: 2, day: 1 }, received: { cycle: 1, day: 365 } },
-    readyClient,
-), {
-    match: false,
-    serverStatus: 'positionMismatch',
-    clientStatus: 'ready',
-    mismatchKeys: ['status'],
-});
-const repeatedClient = compareReadCompletionShadow({ status: 'ready' }, null);
-assert.equal(repeatedClient.clientStatus, 'repeated');
+const validCompleteReadPayload = { cycle: 1, day: 1 };
 assert.deepEqual(
-    Object.keys(repeatedClient).sort(),
-    ['match', 'serverStatus', 'clientStatus', 'mismatchKeys'].sort(),
-    'comparator는 실제 값을 반환하지 않고 상태와 mismatchKeys만 반환해야 한다.',
+    platformApi.validateCompleteReadResponse(
+        validCompleteReadPayload,
+        validCompleteReadResponse,
+        readRequestId,
+    ),
+    validCompleteReadResponse,
 );
+for (const mutate of [
+    response => { response.extra = true; },
+    response => { response.requestId = quizRequestId; },
+    response => { response.calendarDate = '2026-07-16'; },
+    response => { response.state.user.score = 9; },
+    response => { response.result.updateData.talent = 1_000_000_001; },
+    response => { delete response.result.summary.nextViewingDay; },
+    response => { response.state.rosters = [{ orgId: 'z-org', talent: 1 }, { orgId: 'a-org', talent: 1 }]; },
+    response => {
+        response.result.summary.secretShopJustUnlocked = true;
+        response.result.updateData.secretShopUnlocked = true;
+        response.state.user.secretShopUnlocked = true;
+    },
+]) {
+    const response = structuredClone(validCompleteReadResponse);
+    mutate(response);
+    assert.throws(
+        () => platformApi.validateCompleteReadResponse(validCompleteReadPayload, response, readRequestId),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_RESPONSE'
+            && error.status === 200
+            && error.retryable === true,
+        '읽기 2xx 응답의 키·식별자·날짜·상태 불일치는 fail-closed여야 한다.',
+    );
+}
 
 // 퀴즈 정답 서버 권위 기반: 클라이언트와 생성기가 같은 결정적 섞기 함수를
 // 공유하고, 서버에 배치되는 인덱스가 전체 원본과 정확히 대응해야 한다.
@@ -614,7 +732,7 @@ assert.equal(exists(indexPath), true, `${indexPath}가 필요하다.`);
 const serverCore = read(corePath);
 const serverIndex = read(indexPath);
 
-// T123 v2 달란트 shadow 계약: 브라우저 talentProgram과 동일한 순수 해석,
+// T123 v2 달란트 계산 계약: 브라우저 talentProgram과 동일한 순수 해석,
 // canonical roster 검증, 응답 최소화, 실제 적립 가능한 지갑 기준 보상을 고정한다.
 const talentProgramCorePath = 'supabase/functions/platform-api/talentProgramCore.ts';
 const talentProgramCoreTestPath = 'supabase/functions/platform-api/talentProgramCore_test.ts';
@@ -649,7 +767,11 @@ assert.match(talentProgramCore, /segments\[2\] !== uid/);
 assert.match(talentProgramCore, /document\.data\.uid/);
 assert.match(talentProgramCore, /seen\.has\(orgId\)/);
 assert.match(talentProgramCore, /wallets\.length > 3/);
-assert.match(talentProgramCore, /wallets\.sort\(\(left, right\) => left\.orgId\.localeCompare\(right\.orgId\)\)/);
+assert.match(
+    talentProgramCore,
+    /wallets\.sort\(\(left, right\) =>[\s\S]*left\.orgId < right\.orgId \? -1 : left\.orgId > right\.orgId \? 1 : 0[\s\S]*\);/,
+    '명부 정렬은 런타임 locale이 아닌 Firestore/ledger와 같은 코드포인트 순서를 써야 한다.',
+);
 
 const talentRoutingStart = serverIndex.indexOf('const loadPreviewTalentRouting = async');
 const talentRoutingEnd = serverIndex.indexOf('const sha256Hex = async', talentRoutingStart);
@@ -752,197 +874,287 @@ assert.match(
     '한 번이라도 시도했거나 완료한 저장 문항의 quizKey 교체를 거부해야 한다.',
 );
 
-// 퀴즈 제출 shadow API 계약: 서버가 원본 정답 인덱스로 판정하되 쓰지는
-// 않고, 브라우저는 개발 환경에서만 기존 transaction과 제한된 결과를 비교한다.
-const quizShadowPath = 'src/utils/quizSubmissionShadow.js';
-const quizCardPath = 'src/components/dashboard/BibleQuizCard.jsx';
-assert.equal(exists(quizShadowPath), true, `${quizShadowPath}가 필요하다.`);
-const quizShadowSource = read(quizShadowPath);
-const quizCard = read(quizCardPath);
-
-assert.match(quizShadowSource, /export const compareQuizSubmissionShadow\s*=/);
-assert.match(serverCore, /PREVIEW_QUIZ_SUBMISSION_ACTION\s*=\s*['"]previewQuizSubmission['"]/);
+// 퀴즈 제출도 원본 답과 requestId를 submitQuiz 서버 action에 보내고,
+// 서버의 정답·보상·최신 상태만 브라우저 상태에 반영한다.
+assert.match(serverCore, /SUBMIT_QUIZ_ACTION\s*=\s*['"]submitQuiz['"]/);
+assert.match(serverCore, /SKIP_QUIZ_ACTION\s*=\s*['"]skipQuiz['"]/);
 assert.match(
     serverCore,
-    /action\s*===\s*PREVIEW_QUIZ_SUBMISSION_ACTION[\s\S]*Number\.isInteger\(selectedIndex\)[\s\S]*selectedIndex[\s\S]*(?:<\s*0|>=?\s*4)/,
-    '서버 parser가 퀴즈 selectedIndex 0~3 정수 범위를 확인해야 한다.',
+    /action\s*===\s*SUBMIT_QUIZ_ACTION[\s\S]*Number\.isInteger\(selectedIndex\)[\s\S]*selectedIndex[\s\S]*(?:<\s*0|>=?\s*4)/,
+    '서버 parser가 submitQuiz selectedIndex 0~3 정수 범위를 확인해야 한다.',
 );
-for (const field of ['progressKey', 'quizKey', 'selectedIndex']) {
+for (const field of ['progressKey', 'quizKey', 'selectedIndex', 'attemptSlot']) {
     assert.match(
         serverCore,
-        new RegExp(`action\\s*===\\s*PREVIEW_QUIZ_SUBMISSION_ACTION[\\s\\S]*\\b${field}\\b`),
-        `previewQuizSubmission 요청에 ${field}가 필요하다.`,
+        new RegExp(`action\\s*===\\s*SUBMIT_QUIZ_ACTION[\\s\\S]*\\b${field}\\b`),
+        `submitQuiz 요청에 ${field}가 필요하다.`,
     );
 }
-assert.match(
-    serverIndex,
-    /import\s+quizAnswerIndex\s+from\s+['"]\.\/quiz-answer-index\.json['"][^;]*;/,
-    'platform-api가 배포된 퀴즈 정답 JSON을 직접 읽어야 한다.',
-);
-assert.match(
-    serverIndex,
-    /import\s*\{[^}]*validateQuizSubmission[^}]*\}\s*from\s*['"]\.\/quizCore\.ts['"]/,
-    'platform-api가 순수 퀴즈 판정 함수를 사용해야 한다.',
-);
-assert.match(serverIndex, /parsed\.action\s*===\s*['"]previewQuizSubmission['"]/);
-assert.match(serverIndex, /validateQuizSubmission\s*\(/);
+for (const field of ['progressKey', 'quizKey']) {
+    assert.match(
+        serverCore,
+        new RegExp(`action\\s*===\\s*SKIP_QUIZ_ACTION[\\s\\S]*\\b${field}\\b`),
+        `skipQuiz 요청에 ${field}가 필요하다.`,
+    );
+}
 
-const quizPreviewBranchStart = serverIndex.indexOf('if (parsed.action === "previewQuizSubmission")');
-const quizPreviewResponseStart = serverIndex.indexOf('return jsonResponse(origin, 200, {', quizPreviewBranchStart);
-const quizPreviewResponseEnd = serverIndex.indexOf('\n      });', quizPreviewResponseStart);
-assert.ok(
-    quizPreviewBranchStart >= 0 && quizPreviewResponseStart > quizPreviewBranchStart && quizPreviewResponseEnd > quizPreviewResponseStart,
-    'previewQuizSubmission 응답 분기가 필요하다.',
-);
-const quizPreviewResponse = serverIndex.slice(quizPreviewResponseStart, quizPreviewResponseEnd);
-assert.doesNotMatch(
-    quizPreviewResponse,
-    /\b(?:answerIndex|indexRecord|allowed|talent|userTalent|rosterTalentByOrgId|rosterCount|orgId|churchId|organizationId|organizationIds)\b\s*[:,]/,
-    '퀴즈 preview 응답에 정답 위치, 원본 인덱스, 잔액, 조직 정보를 노출하면 안 된다.',
-);
-assert.doesNotMatch(
-    serverIndex.slice(
-        quizPreviewBranchStart,
-        serverIndex.indexOf('\n    return jsonResponse(origin, 200, {', quizPreviewResponseEnd),
-    ),
-    /\b(?:beginTransaction|commitWrites|rollbackTransaction|createDocument|patchDocument|deleteDocument)\s*\(/,
-    '퀴즈 preview는 Firestore를 쓰지 않아야 한다.',
-);
-
-assert.match(client, /export const previewQuizSubmission\s*=\s*\(progressKey, quizKey, selectedIndex, options = \{\}\)/);
-assert.match(client, /callPlatformApi\(['"]previewQuizSubmission['"],\s*\{\s*progressKey,\s*quizKey,\s*selectedIndex\s*\},\s*options\)/);
-assert.match(client, /Number\.isInteger\(selectedIndex\)/);
-assert.match(client, /selectedIndex\s*<\s*0|selectedIndex\s*>\s*3/);
+assert.match(client, /callPlatformApi\(['"]submitQuiz['"],\s*payload,\s*\{ \.\.\.options, requestId \}\)/);
+assert.match(client, /\.then\(result\s*=>\s*validateSubmitQuizResponse\(payload, result, requestId\)\)/);
+assert.match(client, /callPlatformApi\(['"]skipQuiz['"],\s*payload,\s*\{ \.\.\.options, requestId \}\)/);
+assert.match(client, /\.then\(result\s*=>\s*validateSkipQuizResponse\(payload, result, requestId\)\)/);
 for (const args of [
-    ['', 'genesis-1-1', 0],
-    ['r0_d1', 'genesis-1-1', 0],
-    ['r1_d366', 'genesis-1-1', 0],
-    ['r1_d1', '', 0],
-    ['r1_d1', 'bad key', 0],
-    ['r1_d1', 'genesis-1-1', -1],
-    ['r1_d1', 'genesis-1-1', 4],
-    ['r1_d1', 'genesis-1-1', 1.5],
+    ['', 'genesis-1-1', 0, 1],
+    ['r0_d1', 'genesis-1-1', 0, 1],
+    ['r1_d366', 'genesis-1-1', 0, 1],
+    ['r1_d1', '', 0, 1],
+    ['r1_d1', 'bad key', 0, 1],
+    ['r1_d1', 'genesis-1-1', -1, 1],
+    ['r1_d1', 'genesis-1-1', 4, 1],
+    ['r1_d1', 'genesis-1-1', 1.5, 1],
+    ['r1_d1', 'genesis-1-1', 0, 0],
+    ['r1_d1', 'genesis-1-1', 0, 3],
+    ['r1_d1', 'genesis-1-1', 0, 1.5],
 ]) {
     assert.throws(
-        () => platformApi.previewQuizSubmission(...args),
+        () => platformApi.submitQuiz(...args),
         error => error instanceof platformApi.PlatformApiError
             && error.code === 'INVALID_PAYLOAD'
             && error.status === 0
             && error.retryable === false,
-        `잘못된 퀴즈 preview 입력(${JSON.stringify(args)})은 네트워크 전에 거부해야 한다.`,
+        `잘못된 퀴즈 제출 입력(${JSON.stringify(args)})은 네트워크 전에 거부해야 한다.`,
+    );
+}
+for (const args of [
+    ['', 'genesis-1-1'],
+    ['r0_d1', 'genesis-1-1'],
+    ['r1_d366', 'genesis-1-1'],
+    ['r1_d1', ''],
+    ['r1_d1', 'bad key'],
+]) {
+    assert.throws(
+        () => platformApi.skipQuiz(...args),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_PAYLOAD'
+            && error.status === 0
+            && error.retryable === false,
+        `잘못된 퀴즈 건너뛰기 입력(${JSON.stringify(args)})은 네트워크 전에 거부해야 한다.`,
     );
 }
 
-assert.match(quizCard, /import\s*\{[^}]*previewQuizSubmission[^}]*\}\s*from\s*['"]\.\.\/\.\.\/utils\/platformApi['"]/);
-assert.match(quizCard, /import\s*\{[^}]*compareQuizSubmissionShadow[^}]*\}\s*from\s*['"]\.\.\/\.\.\/utils\/quizSubmissionShadow['"]/);
-const quizDevGuardIndex = quizCard.indexOf('if (import.meta.env.DEV');
-const quizPreviewIndex = quizCard.indexOf('await previewQuizSubmission(');
-const quizTransactionIndex = quizCard.indexOf('await db.runTransaction(', quizPreviewIndex);
-assert.ok(quizDevGuardIndex >= 0, '퀴즈 shadow preview는 import.meta.env.DEV 가드 안에서만 실행해야 한다.');
-assert.ok(quizPreviewIndex > quizDevGuardIndex, 'DEV 가드 안에서 previewQuizSubmission을 await해야 한다.');
-assert.doesNotMatch(
-    quizCard.slice(quizDevGuardIndex, quizPreviewIndex),
-    /isTalentProgramV2|Object\.values\(talentPrograms\)\.some/,
-    '서버가 v2 달란트 계약을 지원하므로 퀴즈 shadow를 v2 설정에서 건너뛰면 안 된다.',
-);
-assert.ok(quizTransactionIndex > quizPreviewIndex, '서버 퀴즈 preview를 기다린 뒤 기존 transaction을 실행해야 한다.');
-assert.match(
-    quizCard.slice(quizPreviewIndex, quizTransactionIndex),
-    /previewQuizSubmission\([\s\S]*\{\s*timeoutMs:\s*4000\s*\}\)/,
-    '퀴즈 shadow preview는 4초 제한을 사용해야 한다.',
-);
-const quizShadowPreparation = quizCard.slice(quizDevGuardIndex, quizTransactionIndex);
-assert.match(
-    quizShadowPreparation,
-    /try\s*\{[\s\S]*await previewQuizSubmission\([\s\S]*\}\s*catch(?:\s*\([^)]*\))?\s*\{[\s\S]*\}/,
-    '퀴즈 preview 실패는 catch되어 기존 transaction을 막지 않아야 한다.',
-);
-assert.doesNotMatch(
-    quizShadowPreparation.match(/catch(?:\s*\([^)]*\))?\s*\{([\s\S]*?)\}/)?.[1] || '',
-    /\b(?:throw|return)\b|compareQuizSubmissionShadow\s*\(|console\.(?:info|debug|warn|error)\s*\(/,
-    '퀴즈 preview 실패 시 흐름을 중단하거나 허위 비교 로그를 남기면 안 된다.',
-);
+assert.match(quizCard, /import\s*\{[^}]*PlatformApiError[^}]*skipQuiz[^}]*submitQuiz[^}]*\}\s*from\s*['"]\.\.\/\.\.\/utils\/platformApi['"]/);
 assert.match(
     quizCard,
-    /if\s*\(\s*import\.meta\.env\.DEV\s*&&\s*quizShadowPreview\?\.result\s*\)\s*\{[\s\S]*compareQuizSubmissionShadow\s*\(/,
-    '성공한 서버 result가 있을 때만 퀴즈 결과를 비교해야 한다.',
+    /import\s*\{[^}]*clearActivityRequest[^}]*getOrCreateQuizActivityRequest[^}]*getOrCreateQuizSkipActivityRequest[^}]*\}\s*from\s*['"]\.\.\/\.\.\/utils\/userActivityRequests['"]/,
 );
-const quizComparisonLog = quizCard.match(/console\.(?:info|debug|warn)\(\s*['"]\[quiz-shadow\]['"]\s*,\s*\{([\s\S]*?)\}\s*\)/);
-assert.ok(quizComparisonLog, '퀴즈 shadow 비교 결과는 [quiz-shadow]와 제한된 요약 객체로 기록해야 한다.');
-const quizLoggedKeys = Array.from(
-    quizComparisonLog[1].matchAll(/\b(match|serverStatus|clientStatus|mismatchKeys|progressKey|quizKey)\b\s*(?=[:,])/g),
-    match => match[1],
+const skipTodayStart = quizCard.indexOf('const skipToday = async () => {');
+const skipTodayEnd = quizCard.indexOf('const submitAnswer = async () => {', skipTodayStart);
+assert.ok(skipTodayStart >= 0 && skipTodayEnd > skipTodayStart, 'skipToday 서버 저장 구간이 필요하다.');
+const skipTodayContract = quizCard.slice(skipTodayStart, skipTodayEnd);
+assert.match(skipTodayContract, /getOrCreateQuizSkipActivityRequest\([\s\S]*uid:\s*submittedUid[\s\S]*progressKey[\s\S]*quizKey/);
+assert.match(
+    skipTodayContract,
+    /await skipQuiz\([\s\S]*activityRequest\.payload\.progressKey[\s\S]*activityRequest\.payload\.quizKey[\s\S]*requestId:\s*activityRequest\.requestId[\s\S]*expectedUid:\s*submittedUid/,
+    'skipQuiz에는 저장된 원본 payload·requestId와 제출 계정 UID를 보내야 한다.',
 );
-assert.deepEqual(
-    [...new Set(quizLoggedKeys)].sort(),
-    ['match', 'serverStatus', 'clientStatus', 'mismatchKeys', 'progressKey', 'quizKey'].sort(),
-    '퀴즈 shadow 로그는 비교 상태와 문항 위치 식별자 6개 키만 기록해야 한다.',
+assert.match(skipTodayContract, /clearActivityRequest\(activityRequest\)/);
+assert.match(skipTodayContract, /auth\?\.currentUser\?\.uid !== submittedUid/);
+assert.doesNotMatch(
+    skipTodayContract,
+    /db\.collection\s*\(|db\.runTransaction\s*\(|\btransaction\.(?:get|set|update|delete)\s*\(/,
+    'skipToday가 브라우저 Firestore 쓰기로 제출 결과를 덮어쓰면 안 된다.',
+);
+const submitAnswerStart = quizCard.indexOf('const submitAnswer = async () => {');
+const submitAnswerEnd = quizCard.indexOf('const currentProgress =', submitAnswerStart);
+assert.ok(submitAnswerStart >= 0 && submitAnswerEnd > submitAnswerStart, 'submitAnswer 서버 저장 구간이 필요하다.');
+const submitAnswerContract = quizCard.slice(submitAnswerStart, submitAnswerEnd);
+assert.match(
+    submitAnswerContract,
+    /getOrCreateQuizActivityRequest\([\s\S]*attemptSlot:\s*Number\(attempts\) \+ 1[\s\S]*selectedIndex/,
+    '퀴즈 시도 슬롯과 최초 답을 멱등 요청에 고정해야 한다.',
+);
+assert.match(
+    submitAnswerContract,
+    /await submitQuiz\([\s\S]*payload\.progressKey[\s\S]*payload\.quizKey[\s\S]*payload\.selectedIndex[\s\S]*payload\.attemptSlot[\s\S]*\{ requestId, expectedUid:\s*submittedUid \}/,
+    'submitQuiz에는 저장된 원본 payload·requestId와 제출 계정 UID를 보내야 한다.',
+);
+assert.match(submitAnswerContract, /clearActivityRequest\(activityRequest\)/);
+assert.match(submitAnswerContract, /auth\?\.currentUser\?\.uid !== submittedUid/);
+assert.match(submitAnswerContract, /updateRosterTalents\([\s\S]*\{ authoritative:\s*true \}\)/);
+assert.match(
+    submitAnswerContract,
+    /outcomeUncertain[\s\S]*e\.retryable === true[\s\S]*e\.status >= 200 && e\.status < 300/,
+    '결과가 불확실한 퀴즈 오류는 같은 requestId와 최초 답을 보존해야 한다.',
 );
 assert.doesNotMatch(
-    quizComparisonLog[1],
-    /\b(?:serverResult|clientResult|answerIndex|selectedIndex|entry|reward|talent|currentUser|rosterTalentByOrgId)\b/,
-    '퀴즈 shadow 로그에 정답 위치, 선택값, 보상/잔액, 사용자 상태를 넣으면 안 된다.',
+    submitAnswerContract,
+    /previewQuizSubmission|compareQuizSubmissionShadow|\[quiz-shadow\]|db\.runTransaction\s*\(|\btransaction\.(?:get|set|update|delete)\s*\(/,
+    'submitAnswer가 shadow나 브라우저 Firestore transaction으로 퀴즈·지갑을 확정하면 안 된다.',
 );
 
-const { compareQuizSubmissionShadow } = await import('../src/utils/quizSubmissionShadow.js');
-const readyQuizEntry = {
+const validQuizPayload = {
+    progressKey: 'r2_d10', quizKey: 'genesis-1-1', selectedIndex: 0, attemptSlot: 1,
+};
+const validQuizProgress = {
     attempts: 1,
     solved: true,
     skipped: false,
-    quizKey: 'genesis-1-1',
+    quizKey: validQuizPayload.quizKey,
     reward: 10,
-    updatedDate: 'Tue Jul 14 2026',
+    updatedDate: readCalendarDate,
 };
-const readyQuizServer = {
-    status: 'ready',
-    nextAttempts: 1,
-    isCorrect: true,
-    reward: 10,
-    entry: readyQuizEntry,
+const validSubmitQuizResponse = {
+    ok: true,
+    action: 'submitQuiz',
+    requestId: quizRequestId,
+    calendarDate: readCalendarDate,
+    alreadyCompleted: false,
+    result: {
+        status: 'ready',
+        attempts: 1,
+        solved: true,
+        skipped: false,
+        isCorrect: true,
+        reward: 10,
+        quizKey: validQuizPayload.quizKey,
+        entry: { ...validQuizProgress },
+        rewardsUserWallet: true,
+        rewardedRosterOrgIds: [],
+    },
+    state: {
+        progressKey: validQuizPayload.progressKey,
+        progress: { ...validQuizProgress },
+        quizRewardDate: readCalendarDate,
+        quizRewardAmount: 10,
+        userTalent: 21,
+        rosterTalents: [],
+    },
 };
-const readyQuizClient = {
-    alreadyDone: false,
-    attempts: 1,
-    solved: true,
-    skipped: false,
-    reward: 10,
-    entry: { ...readyQuizEntry },
-};
-assert.deepEqual(compareQuizSubmissionShadow(readyQuizServer, readyQuizClient), {
-    match: true,
-    serverStatus: 'ready',
-    clientStatus: 'ready',
-    mismatchKeys: [],
-});
-const quizRewardMismatch = compareQuizSubmissionShadow(
-    readyQuizServer,
-    { ...readyQuizClient, reward: 5 },
-);
-assert.equal(quizRewardMismatch.match, false);
-assert.deepEqual(quizRewardMismatch.mismatchKeys, ['reward']);
-assert.deepEqual(compareQuizSubmissionShadow(
-    { status: 'alreadyDone', attempts: 2, solved: false, skipped: false, reward: 0 },
-    { alreadyDone: true, attempts: 2, solved: false, skipped: false, reward: 0 },
-), {
-    match: true,
-    serverStatus: 'alreadyDone',
-    clientStatus: 'alreadyDone',
-    mismatchKeys: [],
-});
-assert.deepEqual(compareQuizSubmissionShadow(
-    { status: 'invalidQuiz' },
-    readyQuizClient,
-), {
-    match: false,
-    serverStatus: 'invalidQuiz',
-    clientStatus: 'ready',
-    mismatchKeys: ['status'],
-});
 assert.deepEqual(
-    Object.keys(compareQuizSubmissionShadow(readyQuizServer, readyQuizClient)).sort(),
-    ['match', 'serverStatus', 'clientStatus', 'mismatchKeys'].sort(),
-    '퀴즈 comparator는 실제 정답/보상값을 반환하지 않아야 한다.',
+    platformApi.validateSubmitQuizResponse(validQuizPayload, validSubmitQuizResponse, quizRequestId),
+    validSubmitQuizResponse,
 );
+const validNonterminalReplay = structuredClone(validSubmitQuizResponse);
+validNonterminalReplay.alreadyCompleted = true;
+validNonterminalReplay.result = {
+    status: 'ready',
+    attempts: 1,
+    solved: false,
+    skipped: false,
+    isCorrect: false,
+    reward: 0,
+    quizKey: validQuizPayload.quizKey,
+    entry: {
+        attempts: 1,
+        solved: false,
+        skipped: false,
+        quizKey: validQuizPayload.quizKey,
+        reward: 0,
+        updatedDate: readCalendarDate,
+    },
+    rewardsUserWallet: false,
+    rewardedRosterOrgIds: [],
+};
+validNonterminalReplay.state.progress = {
+    attempts: 2,
+    solved: true,
+    skipped: false,
+    quizKey: validQuizPayload.quizKey,
+    reward: 5,
+    updatedDate: readCalendarDate,
+};
+validNonterminalReplay.state.quizRewardAmount = 5;
+assert.deepEqual(
+    platformApi.validateSubmitQuizResponse(validQuizPayload, validNonterminalReplay, quizRequestId),
+    validNonterminalReplay,
+    '첫 오답 replay는 서버가 반환한 정상 2차 진행 상태를 허용해야 한다.',
+);
+for (const mutate of [
+    response => { response.answerIndex = 0; },
+    response => { response.requestId = readRequestId; },
+    response => { response.calendarDate = '2026-07-16'; },
+    response => { response.state.progress.reward = 5; },
+    response => { response.state.progress.attempts = 3; },
+    response => { response.state.quizRewardDate = null; },
+    response => {
+        response.result.reward = 7;
+        response.result.entry.reward = 7;
+        response.state.progress.reward = 7;
+        response.state.quizRewardAmount = 7;
+    },
+    response => {
+        response.alreadyCompleted = true;
+        response.state.progress = {
+            attempts: 0,
+            solved: false,
+            skipped: true,
+            quizKey: validQuizPayload.quizKey,
+            reward: 0,
+            updatedDate: readCalendarDate,
+        };
+    },
+    response => { response.state.userTalent = 1_000_000_001; },
+    response => { response.result.rewardedRosterOrgIds = ['z-org', 'a-org']; },
+]) {
+    const response = structuredClone(validSubmitQuizResponse);
+    mutate(response);
+    assert.throws(
+        () => platformApi.validateSubmitQuizResponse(validQuizPayload, response, quizRequestId),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_RESPONSE'
+            && error.status === 200
+            && error.retryable === true,
+        '퀴즈 2xx 응답의 키·식별자·날짜·보상·상태 불일치는 fail-closed여야 한다.',
+    );
+}
+
+const validSkipQuizPayload = { progressKey: 'r2_d10', quizKey: 'genesis-1-1' };
+const validSkipQuizProgress = {
+    attempts: 0,
+    solved: false,
+    skipped: true,
+    quizKey: validSkipQuizPayload.quizKey,
+    reward: 0,
+    updatedDate: readCalendarDate,
+};
+const validSkipQuizResponse = {
+    ok: true,
+    action: 'skipQuiz',
+    requestId: secondSkipRequestId,
+    calendarDate: readCalendarDate,
+    alreadyCompleted: false,
+    committed: true,
+    state: {
+        progressKey: validSkipQuizPayload.progressKey,
+        progress: { ...validSkipQuizProgress },
+    },
+};
+assert.deepEqual(
+    platformApi.validateSkipQuizResponse(
+        validSkipQuizPayload,
+        validSkipQuizResponse,
+        secondSkipRequestId,
+    ),
+    validSkipQuizResponse,
+);
+for (const mutate of [
+    response => { response.extra = true; },
+    response => { response.requestId = quizRequestId; },
+    response => { response.calendarDate = '2026-07-16'; },
+    response => { response.state.progress.attempts = 2; },
+    response => { response.state.progress.skipped = false; },
+    response => { response.state.progress.updatedDate = 'Wed Jul 15 2026'; },
+]) {
+    const response = structuredClone(validSkipQuizResponse);
+    mutate(response);
+    assert.throws(
+        () => platformApi.validateSkipQuizResponse(validSkipQuizPayload, response, secondSkipRequestId),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_RESPONSE'
+            && error.status === 200
+            && error.retryable === true,
+        '퀴즈 건너뛰기 2xx 응답의 키·식별자·날짜·상태 불일치는 fail-closed여야 한다.',
+    );
+}
 
 const sharedContracts = {
     'supabase/functions/_shared/cors.ts': ['ALLOWED_ORIGINS', 'isAllowedOrigin', 'handleCors', 'jsonResponse'],
@@ -1009,7 +1221,7 @@ assert.match(quizCore, /const reward = directCanEarnTalent \|\| rosterCanEarnTal
 assert.match(quizCore, /entry = \{[\s\S]*reward,[\s\S]*updatedDate/);
 assert.match(quizCore, /rewardsUserWallet:\s*directCanEarnTalent/);
 
-// 읽기·퀴즈 preview는 계속 shadow-only이고, 명시적 server action만 트랜잭션 쓰기를 허용한다.
+// 기존 preview는 무쓰기 진단 경로로만 남고, 실제 저장은 아래 전용 service action이 맡는다.
 const readPreviewStart = serverIndex.indexOf('if (parsed.action === "previewReadCompletion")');
 const readPreviewEnd = serverIndex.indexOf('if (parsed.action === "previewQuizSubmission")', readPreviewStart);
 assert.ok(readPreviewStart >= 0 && readPreviewEnd > readPreviewStart, '읽기 preview 분기가 필요하다.');
@@ -1017,6 +1229,128 @@ assert.doesNotMatch(
     serverIndex.slice(readPreviewStart, readPreviewEnd),
     /\b(?:beginTransaction|commitWrites|rollbackTransaction|updateWrite|deleteWrite)\s*\(/,
     '읽기 preview는 Firestore를 쓰지 않아야 한다.',
+);
+
+const readCompletionServicePath = 'supabase/functions/platform-api/readCompletionService.ts';
+const readCompletionServiceTestPath = 'supabase/functions/platform-api/readCompletionService_test.ts';
+const quizSubmissionPath = 'supabase/functions/platform-api/quizSubmission.ts';
+const quizSubmissionTestPath = 'supabase/functions/platform-api/quizSubmission_test.ts';
+for (const path of [
+    readCompletionServicePath,
+    readCompletionServiceTestPath,
+    quizSubmissionPath,
+    quizSubmissionTestPath,
+]) assert.equal(exists(path), true, `${path}가 필요하다.`);
+const readCompletionService = read(readCompletionServicePath);
+const quizSubmission = read(quizSubmissionPath);
+const firestoreRules = read('firestore.rules');
+
+assert.match(serverCore, /COMPLETE_READ_ACTION\s*=\s*['"]completeRead['"]/);
+for (const field of ['cycle', 'day']) {
+    assert.match(
+        serverCore,
+        new RegExp(`action\\s*===\\s*COMPLETE_READ_ACTION[\\s\\S]*\\b${field}\\b`),
+        `completeRead 요청에 ${field}가 필요하다.`,
+    );
+}
+assert.match(serverCore, /COMPLETE_READ_ACTION[\s\S]*new Set\(\["action", "requestId", "cycle", "day"\]\)/);
+assert.match(serverCore, /SUBMIT_QUIZ_ACTION[\s\S]*new Set\(\[[\s\S]*"selectedIndex"[\s\S]*"attemptSlot"[\s\S]*\]\)/);
+assert.match(serverCore, /SKIP_QUIZ_ACTION[\s\S]*new Set\(\["action", "requestId", "progressKey", "quizKey"\]\)/);
+assert.match(
+    serverIndex,
+    /import \{ completeReadTransaction \} from "\.\/readCompletionService\.ts";/,
+);
+assert.match(serverIndex, /import \{ skipQuiz, submitQuiz \} from "\.\/quizSubmission\.ts";/);
+
+const completeReadBranchStart = serverIndex.indexOf('if (parsed.action === "completeRead")');
+const submitQuizBranchStart = serverIndex.indexOf('if (parsed.action === "submitQuiz")', completeReadBranchStart);
+const skipQuizBranchStart = serverIndex.indexOf('if (parsed.action === "skipQuiz")', submitQuizBranchStart);
+const activityBranchEnd = serverIndex.indexOf('const role = normalizeRole', skipQuizBranchStart);
+assert.ok(
+    completeReadBranchStart >= 0 && submitQuizBranchStart > completeReadBranchStart
+        && skipQuizBranchStart > submitQuizBranchStart && activityBranchEnd > skipQuizBranchStart,
+    '인증 사용자 확인 뒤 completeRead·submitQuiz·skipQuiz action 분기가 필요하다.',
+);
+const completeReadBranch = serverIndex.slice(completeReadBranchStart, submitQuizBranchStart);
+const submitQuizBranch = serverIndex.slice(submitQuizBranchStart, skipQuizBranchStart);
+const skipQuizBranch = serverIndex.slice(skipQuizBranchStart, activityBranchEnd);
+assert.match(
+    completeReadBranch,
+    /completeReadTransaction\(service, verifiedUser, \{[\s\S]*requestId:\s*parsed\.requestId[\s\S]*cycle:\s*parsed\.cycle[\s\S]*day:\s*parsed\.day/,
+);
+assert.match(completeReadBranch, /action:\s*parsed\.action[\s\S]*requestId:\s*parsed\.requestId[\s\S]*\.\.\.result/);
+assert.match(
+    submitQuizBranch,
+    /submitQuiz\(service, \{[\s\S]*uid,[\s\S]*requestId:\s*parsed\.requestId[\s\S]*progressKey:\s*parsed\.progressKey[\s\S]*quizKey:\s*parsed\.quizKey[\s\S]*selectedIndex:\s*parsed\.selectedIndex[\s\S]*attemptSlot:\s*parsed\.attemptSlot/,
+);
+assert.match(
+    skipQuizBranch,
+    /skipQuiz\(service, \{[\s\S]*uid,[\s\S]*requestId:\s*parsed\.requestId[\s\S]*progressKey:\s*parsed\.progressKey[\s\S]*quizKey:\s*parsed\.quizKey/,
+);
+
+for (const [label, source] of [
+    ['읽기', readCompletionService],
+    ['퀴즈', quizSubmission],
+]) {
+    assert.match(source, /activityActions\/\$\{input\.requestId\}/, `${label} service에 사용자 하위 멱등 ledger가 필요하다.`);
+    assert.match(source, /beginTransaction\(/, `${label} service가 서버 transaction을 시작해야 한다.`);
+    assert.match(source, /commitWrites\(/, `${label} service가 ledger와 상태를 한 transaction으로 커밋해야 한다.`);
+    assert.match(source, /alreadyCompleted:\s*true/, `${label} service가 requestId replay를 명시해야 한다.`);
+}
+assert.match(
+    firestoreRules,
+    /match \/activityActions\/\{requestId\}\s*\{\s*allow read, write: if false;\s*\}/,
+    'activityActions ledger는 브라우저 사용자·관리자 모두 직접 접근할 수 없어야 한다.',
+);
+assert.match(
+    firestoreRules,
+    /match \/quizAttemptSlots\/\{slotId\}\s*\{\s*allow read, write: if false;\s*\}/,
+    'quizAttemptSlots 의미 기반 ledger는 브라우저 사용자·관리자 모두 직접 접근할 수 없어야 한다.',
+);
+assert.match(quizSubmission, /quizAttemptSlots\/\$\{input\.progressKey\}_a1/);
+assert.match(quizSubmission, /quizAttemptSlots\/\$\{input\.progressKey\}_a2/);
+assert.match(quizSubmission, /quizAttemptSlots\/\$\{input\.progressKey\}_skip/);
+assert.match(quizSubmission, /action:\s*SKIP_QUIZ_ACTION/);
+assert.match(quizSubmission, /quizProgress\.\$\{input\.progressKey\}/);
+assert.match(quizSubmission, /sameProgress\(semantic\.skip\.progress, replay\.progress\)/);
+assert.match(quizSubmission, /repairCanonicalProgress\(canonicalProgress\)/);
+
+// 운영 로그는 action 결과와 지연만 남기며 사용자·조직·답·지갑·요청 본문은 기록하지 않는다.
+const successLogStart = serverIndex.indexOf('console.info(\n      "platform-api action"');
+const successLogEnd = serverIndex.indexOf('\n    );', successLogStart);
+assert.ok(successLogStart >= 0 && successLogEnd > successLogStart, '성공 action 관측 로그가 필요하다.');
+const successLog = serverIndex.slice(successLogStart, successLogEnd);
+const successLogKeys = Array.from(
+    successLog.matchAll(/\b(action|outcome|status|replay|pending|latencyMs)\b\s*(?=[:,])/g),
+    match => match[1],
+);
+assert.deepEqual(
+    [...new Set(successLogKeys)].sort(),
+    ['action', 'outcome', 'status', 'replay', 'pending', 'latencyMs'].sort(),
+    '성공 관측 로그는 action·결과·상태·지연 필드만 가져야 한다.',
+);
+assert.doesNotMatch(
+    successLog,
+    /\b(?:uid|requestId|payload|selectedIndex|quizKey|answerIndex|talent|orgId|churchId|entryCode)\b/,
+    '성공 관측 로그에 PII·요청·정답·조직·지갑 정보를 포함하면 안 된다.',
+);
+const failureLogStart = serverIndex.indexOf('console.error(\n      "platform-api action"');
+const failureLogEnd = serverIndex.indexOf('\n    );', failureLogStart);
+assert.ok(failureLogStart >= 0 && failureLogEnd > failureLogStart, '실패 action 관측 로그가 필요하다.');
+const failureLog = serverIndex.slice(failureLogStart, failureLogEnd);
+const failureLogKeys = Array.from(
+    failureLog.matchAll(/\b(action|outcome|code|latencyMs)\b\s*(?=[:,])/g),
+    match => match[1],
+);
+assert.deepEqual(
+    [...new Set(failureLogKeys)].sort(),
+    ['action', 'outcome', 'code', 'latencyMs'].sort(),
+    '실패 관측 로그는 action·결과·오류코드·지연 필드만 가져야 한다.',
+);
+assert.doesNotMatch(
+    failureLog,
+    /\b(?:uid|requestId|payload|selectedIndex|quizKey|answerIndex|talent|orgId|churchId|entryCode)\b/,
+    '실패 관측 로그에 PII·요청·정답·조직·지갑 정보를 포함하면 안 된다.',
 );
 
 const memberSignupCorePath = 'supabase/functions/platform-api/memberSignupCore.ts';
@@ -1288,4 +1622,4 @@ for (const response of [
 }
 assert.match(client, /callValidatedPurchaseAction[\s\S]*validatePurchaseItemResponse/);
 
-console.log('✅ Round 24 shadow + server-authoritative community join validation passed');
+console.log('✅ Round 24 server-authoritative activity + community validation passed');

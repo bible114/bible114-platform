@@ -80,7 +80,10 @@ export const parseRosterTalentWallets = (
   | { ok: true; wallets: ParsedRosterTalentWallet[] }
   | { ok: false; reason: "INVALID_ROSTER" | "DUPLICATE_ORG" | "TOO_MANY" } => {
   const uid = normalizeStoredDocumentId(authenticatedUid);
-  if (!uid) return { ok: false, reason: "INVALID_ROSTER" };
+  if (
+    !uid || uid !== authenticatedUid || uid.length > 128 || uid === "." ||
+    uid === ".." || /[\u0000-\u001f\u007f]/.test(uid)
+  ) return { ok: false, reason: "INVALID_ROSTER" };
   const marker = "/documents/churches/";
   const wallets: ParsedRosterTalentWallet[] = [];
   const seen = new Set<string>();
@@ -89,19 +92,23 @@ export const parseRosterTalentWallets = (
     const segments = markerIndex < 0
       ? []
       : document.name.slice(markerIndex + marker.length).split("/");
-    const orgId = segments.length === 3 && segments[1] === "roster"
-      ? normalizeStoredDocumentId(segments[0])
+    const rawOrgId = segments.length === 3 && segments[1] === "roster"
+      ? segments[0]
       : null;
+    const orgId = normalizeStoredDocumentId(rawOrgId);
     if (
-      !orgId || segments[2] !== uid ||
-      normalizeStoredDocumentId(document.data.uid) !== uid
+      !orgId || orgId !== rawOrgId || orgId.length > 128 || orgId === "." ||
+      orgId === ".." || /[\u0000-\u001f\u007f]/.test(orgId) ||
+      segments[2] !== uid || document.data.uid !== uid
     ) return { ok: false, reason: "INVALID_ROSTER" };
     if (seen.has(orgId)) return { ok: false, reason: "DUPLICATE_ORG" };
     seen.add(orgId);
     wallets.push({ orgId, user: document.data });
   }
   if (wallets.length > 3) return { ok: false, reason: "TOO_MANY" };
-  wallets.sort((left, right) => left.orgId.localeCompare(right.orgId));
+  wallets.sort((left, right) =>
+    left.orgId < right.orgId ? -1 : left.orgId > right.orgId ? 1 : 0
+  );
   return { ok: true, wallets };
 };
 

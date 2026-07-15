@@ -1,6 +1,9 @@
 export const PREFLIGHT_ACTION = "preflight" as const;
 export const PREVIEW_READ_COMPLETION_ACTION = "previewReadCompletion" as const;
 export const PREVIEW_QUIZ_SUBMISSION_ACTION = "previewQuizSubmission" as const;
+export const COMPLETE_READ_ACTION = "completeRead" as const;
+export const SUBMIT_QUIZ_ACTION = "submitQuiz" as const;
+export const SKIP_QUIZ_ACTION = "skipQuiz" as const;
 export const JOIN_COMMUNITY_ACTION = "joinCommunity" as const;
 export const ISSUE_JOIN_TICKET_ACTION = "issueJoinTicket" as const;
 export const COMPLETE_MEMBER_SIGNUP_ACTION = "completeMemberSignup" as const;
@@ -68,11 +71,31 @@ export type PlatformApiRequest =
     day: number;
   }
   | {
+    action: typeof COMPLETE_READ_ACTION;
+    requestId: string;
+    cycle: number;
+    day: number;
+  }
+  | {
     action: typeof PREVIEW_QUIZ_SUBMISSION_ACTION;
     requestId: string;
     progressKey: string;
     quizKey: string;
     selectedIndex: number;
+  }
+  | {
+    action: typeof SUBMIT_QUIZ_ACTION;
+    requestId: string;
+    progressKey: string;
+    quizKey: string;
+    selectedIndex: number;
+    attemptSlot: 1 | 2;
+  }
+  | {
+    action: typeof SKIP_QUIZ_ACTION;
+    requestId: string;
+    progressKey: string;
+    quizKey: string;
   }
   | {
     action: typeof ISSUE_JOIN_TICKET_ACTION;
@@ -178,6 +201,7 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     progressKey,
     quizKey,
     selectedIndex,
+    attemptSlot,
     churchId,
     entryCode,
     joinTicket,
@@ -355,16 +379,45 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       migratedWalletConfirmed: migratedWalletConfirmed === true,
     };
   }
-  if (action === PREVIEW_READ_COMPLETION_ACTION) {
+  if (
+    action === PREVIEW_READ_COMPLETION_ACTION ||
+    action === COMPLETE_READ_ACTION
+  ) {
     if (
-      !Number.isInteger(cycle) || Number(cycle) < 1 ||
-      !Number.isInteger(day) || Number(day) < 1 || Number(day) > 365
+      action === COMPLETE_READ_ACTION &&
+      Object.keys(body).some((key) =>
+        !new Set(["action", "requestId", "cycle", "day"]).has(key)
+      )
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    if (
+      !Number.isSafeInteger(cycle) || Number(cycle) < 1 ||
+      !Number.isSafeInteger(day) || Number(day) < 1 || Number(day) > 365
     ) {
       throw new PlatformApiRequestError("INVALID_PAYLOAD");
     }
     return { action, requestId, cycle: Number(cycle), day: Number(day) };
   }
-  if (action === PREVIEW_QUIZ_SUBMISSION_ACTION) {
+  if (
+    action === PREVIEW_QUIZ_SUBMISSION_ACTION ||
+    action === SUBMIT_QUIZ_ACTION
+  ) {
+    if (
+      action === SUBMIT_QUIZ_ACTION &&
+      Object.keys(body).some((key) =>
+        !new Set([
+          "action",
+          "requestId",
+          "progressKey",
+          "quizKey",
+          "selectedIndex",
+          "attemptSlot",
+        ]).has(key)
+      )
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
     const progressMatch = typeof progressKey === "string"
       ? /^r([1-9]\d*)_d([1-9]\d*)$/.exec(progressKey)
       : null;
@@ -376,16 +429,45 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       progressDay > 365 || typeof quizKey !== "string" ||
       !/^[A-Za-z0-9_-]{1,128}$/.test(quizKey) ||
       !Number.isInteger(selectedIndex) || Number(selectedIndex) < 0 ||
-      Number(selectedIndex) > 3
+      Number(selectedIndex) > 3 ||
+      (action === SUBMIT_QUIZ_ACTION &&
+        (!Number.isInteger(attemptSlot) ||
+          ![1, 2].includes(Number(attemptSlot))))
     ) {
       throw new PlatformApiRequestError("INVALID_PAYLOAD");
     }
+    const normalized = {
+      requestId,
+      progressKey: String(progressKey),
+      quizKey: String(quizKey),
+      selectedIndex: Number(selectedIndex),
+    };
+    return action === SUBMIT_QUIZ_ACTION
+      ? { action, ...normalized, attemptSlot: Number(attemptSlot) as 1 | 2 }
+      : { action, ...normalized };
+  }
+  if (action === SKIP_QUIZ_ACTION) {
+    if (
+      Object.keys(body).some((key) =>
+        !new Set(["action", "requestId", "progressKey", "quizKey"]).has(key)
+      )
+    ) throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    const progressMatch = typeof progressKey === "string"
+      ? /^r([1-9]\d*)_d([1-9]\d*)$/.exec(progressKey)
+      : null;
+    const progressCycle = progressMatch ? Number(progressMatch[1]) : NaN;
+    const progressDay = progressMatch ? Number(progressMatch[2]) : NaN;
+    if (
+      !progressMatch || !Number.isSafeInteger(progressCycle) ||
+      !Number.isSafeInteger(progressDay) || progressDay < 1 ||
+      progressDay > 365 || typeof quizKey !== "string" ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(quizKey)
+    ) throw new PlatformApiRequestError("INVALID_PAYLOAD");
     return {
       action,
       requestId,
       progressKey: String(progressKey),
       quizKey: String(quizKey),
-      selectedIndex: Number(selectedIndex),
     };
   }
   if (action === JOIN_COMMUNITY_ACTION) {

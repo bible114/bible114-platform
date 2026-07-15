@@ -6,6 +6,7 @@ import {
   encodeFirestoreFields,
   encodeFirestoreValue,
   runCollectionGroupQuery,
+  runCollectionQuery,
   updateWrite,
 } from "./firestore.ts";
 import { PlatformError } from "./errors.ts";
@@ -180,4 +181,59 @@ Deno.test("collection group query rejects empty identifiers and non-positive lim
       }
     }
   }
+});
+
+Deno.test("collection query stays under the concrete parent and joins a transaction", async () => {
+  let requestUrl = "";
+  let requestBody: unknown = null;
+  const fixtureFetch =
+    (async (input: string | URL | Request, init?: RequestInit) => {
+      requestUrl = String(input);
+      requestBody = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify([{
+        document: {
+          name:
+            "projects/fixture/databases/(default)/documents/users/u1/activityActions/r1",
+          fields: {
+            action: { stringValue: "submitQuiz" },
+            calendarDate: { stringValue: "Tue Jul 14 2026" },
+          },
+        },
+      }]));
+    }) as typeof fetch;
+
+  const documents = await runCollectionQuery<{
+    action: string;
+    calendarDate: string;
+  }>(
+    "fixture-token",
+    "fixture",
+    "users/u1",
+    "activityActions",
+    "calendarDate",
+    "Tue Jul 14 2026",
+    { limit: 101, transaction: "fixture-transaction", fetcher: fixtureFetch },
+  );
+  assertEquals(
+    requestUrl,
+    "https://firestore.googleapis.com/v1/projects/fixture/databases/(default)/documents/users/u1:runQuery",
+  );
+  assertEquals(requestBody, {
+    structuredQuery: {
+      from: [{ collectionId: "activityActions" }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "calendarDate" },
+          op: "EQUAL",
+          value: { stringValue: "Tue Jul 14 2026" },
+        },
+      },
+      limit: 101,
+    },
+    transaction: "fixture-transaction",
+  });
+  assertEquals(documents[0].data, {
+    action: "submitQuiz",
+    calendarDate: "Tue Jul 14 2026",
+  });
 });

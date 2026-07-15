@@ -213,6 +213,18 @@ service cloud.firestore {
           isPlatformAdmin());
       }
 
+      // 읽기·퀴즈 서버 action의 멱등 ledger. 소유자와 관리자도 브라우저 SDK로
+      // 읽거나 만들 수 없고, 서비스 계정 transaction만 접근한다.
+      match /activityActions/{requestId} {
+        allow read, write: if false;
+      }
+
+      // progressKey+시도 슬롯 의미 기반 ledger. 여러 탭이 서로 다른 UUID로 같은
+      // 답을 제출해도 한 번의 시도만 소비하며 서비스 계정만 접근한다.
+      match /quizAttemptSlots/{slotId} {
+        allow read, write: if false;
+      }
+
       // 읽기 기록 서브컬렉션 — 본인 읽기/쓰기, 같은 교회 관리자·플랫폼 관리자 읽기.
       // (같은 교회 churchAdmin read는 관리자 대시보드 "어제 이 시각 대비" 지표용 —
       //  기록엔 date/day/score/ts만 있어 자격증명 노출 없음.)

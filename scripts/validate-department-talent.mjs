@@ -194,12 +194,12 @@ const platformApiServer = read('supabase/functions/platform-api/index.ts');
 const purchaseCore = read('supabase/functions/platform-api/purchaseCore.ts');
 const adminPurchaseCore = read('supabase/functions/platform-api/adminPurchaseCore.ts');
 
-assert.match(readActions, /loadTalentProgramsStrict/);
-assert.match(readActions, /rewardedRosterOrgIds[\s\S]*rosterWallets\.forEach[\s\S]*transaction\.update\(wallet\.ref, rosterProgress\)/,
-    '달란트 미사용 부서도 명부 읽기 진도는 갱신해야 한다.');
-assert.match(readActions, /isFirstReadToday: resultData\.isFirstReadToday/,
-    '달란트 적립 여부와 첫 읽기 여부를 분리해야 한다.');
-assert.match(quizCard, /resolveTalentProgram[\s\S]*rewardedRosterWallets/);
+assert.match(readActions, /response\.state\.rosters\.map\(item => \[item\.orgId, item\.talent\]\)[\s\S]*updateRosterTalents\([\s\S]*response\.state\.user[\s\S]*rosterTalentByOrgId/,
+    '읽기 완료는 서버가 반환한 최신 사용자·명부 지갑 상태를 적용해야 한다.');
+assert.match(readActions, /const isFirstReadToday = summary\.scoreEarned > 0/,
+    '서버 읽기 요약의 점수 적립 여부와 첫 읽기 여부를 연결해야 한다.');
+assert.match(quizCard, /const response = await submitQuiz\([\s\S]*response\.state\.rosterTalents\.map[\s\S]*updateRosterTalents\([\s\S]*talent: response\.state\.userTalent/,
+    '퀴즈 완료는 서버가 반환한 최신 사용자·명부 지갑 상태를 적용해야 한다.');
 assert.match(memberShop, /const purchasePrice = Number\(item\?\.price\)[\s\S]*isValidTalentPurchasePrice\(purchasePrice\)/,
     '모든 상점 구매는 쓰기 전에 양수 숫자 가격으로 정규화해야 한다.');
 assert.match(memberShop, /purchaseItemViaApi\(\{[\s\S]*churchId:[\s\S]*itemId:[\s\S]*departmentId:[\s\S]*marketId:/,

@@ -7,8 +7,8 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: T127 7일 운영 관찰 — 2026-07-23 05:14 KST 이전 직접 쓰기·설정 읽기 차단 금지**. T126a~e는 2026-07-16 `YOUTUBE_API_KEY` secret 확인, platform-api Edge v8, GitHub Pages 웹 배포와 운영 스모크까지 완료했다. T127은 최소 7일 지표를 확인한 뒤 별도 사용자 승인으로만 진행하며, 그 전에는 `firestore.rules`와 legacy `videoAutoConfig.apiKey`를 건드리지 않는다.
-> 사용자 수동 게이트 2건은 별도 대기: ① T123b/d2 — 개발 환경 실로그인 `[read-shadow] match:true`, `[quiz-shadow] match:true` 각 1건 (확인 전 T123c/d3 실쓰기 전환 금지) ② T124d — 실제 공동체 관리자 계정의 소액 판매·수령·환불 스모크. T127 직접 쓰기 차단은 관찰 기간 뒤에만 진행한다.
+> **현재 활성 작업: T125 잔여 서버 권위 이관 → T127 배포 후 관찰 준비**. T123b/d2 실로그인 shadow 일치와 T123c/d3 읽기·퀴즈 서버 쓰기 전환은 2026-07-16 로컬 구현·검증까지 완료했지만 아직 배포하지 않았다. 따라서 T126 영상 경로의 기존 관찰 시계(2026-07-23 05:14 KST)는 유지하되, 읽기·퀴즈·T125를 포함한 **최종 T127 7일 시계는 최신 Edge·웹 배포 시점부터 다시 시작**한다. 그 전에는 보호 필드 직접 쓰기 차단과 legacy `videoAutoConfig.apiKey` 정리를 진행하지 않는다.
+> 사용자 개입이 필요한 잔여는 T124d 실제 공동체 관리자 소액 판매·수령·환불 스모크뿐이다. 안전한 자격증명·대상 구매 없이 운영 지갑과 불변 ledger를 만들 수 있어 Codex가 임의 실행하지 않는다. T123 shadow 확인용 일회용 계정은 생성·검증 직후 Auth와 모든 문서를 삭제했다.
 > T126 운영 관찰 잔여 2건: 오늘 서비스 날짜에 수동 영상 문서가 생길 때 URL·제목·게시일·`autoFilled` 불변 확인, 실제 platformAdmin 계정의 `adminPreviewDailyVideo` 200 확인. 배포 당일에는 오늘 문서가 없어서 자동 fill 문서가 생성됐고 운영 관리자 자격증명을 사용하지 않았으므로 조건부 미검증으로 남긴다.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
 
@@ -182,6 +182,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-16 | T123b~d3 읽기·퀴즈 서버 권위 전환 | `supabase/functions/{_shared/firestore*,platform-api/{core,index,readCompletionService,quizSubmission,talentProgramCore}*}`, `src/{hooks/useUserBibleActions.js,components/dashboard/BibleQuizCard.jsx,utils/{platformApi,userActivityRequests,talentWallet}.js}`, `firestore.rules`, `scripts/validate-{round15,round18,round24,department-talent}.mjs`, `HANDOFF_CODEX.md` | 일회용 실제 로그인 계정으로 `[read-shadow]`와 `[quiz-shadow]`의 `match:true`를 각각 확인하고 Auth/users/private/history를 완전 삭제했다. 읽기·퀴즈 제출·오늘 건너뛰기를 UUID 멱등 ledger 기반 서버 transaction으로 전환해 브라우저 직접 보상·진도·지갑 쓰기와 실패 폴백을 제거했다. users·최대 3개 canonical roster·history·platformStats를 원자 처리한다. 퀴즈는 요청 UUID ledger와 별도로 진도별 1차·2차·건너뛰기 의미 원장을 같은 transaction에 생성해 여러 탭의 서로 다른 UUID도 한 시도만 소비하고, 최신 terminal 원장으로 marker/progress 삭제·과거 요청 replay를 복구한다. strict 2xx 검증, 결과 불명 requestId 보존, 제출 계정 UID 결속, canonical 명부 복구, PII 없는 action 로그를 적용했다. 전체 `npm run validate`(platform-api 175 tests), build, Deno check/fmt, diff 검사와 독립 보안·클라이언트 검토를 통과했다. Edge·웹·rules 배포와 push는 하지 않았으므로 최종 7일 관찰은 배포 뒤 새로 시작해야 한다. |
 | 2026-07-16 | T126e 매일 영상 운영 배포·검증 | `HANDOFF_CODEX.md` 및 운영 환경 | `YOUTUBE_API_KEY` secret 이름을 확인하고 전체 validate(platform-api 134 tests)·build·diff를 재통과한 뒤 platform-api Edge v8 → GitHub Pages 웹 순서로 배포했다. OPTIONS 204, 미인증 401, 잘못된 origin 403. 서비스 날짜 `2026-07-16` 문서가 없던 상태에서 익명 동시 2요청 중 한 요청만 성인·어린이 영상을 저장하고 다른 요청은 약 90초 `pending+retryAfterMs`를 받아 lease 중복 방지를 확인했다. 임시 비익명 로그인도 200/full이고 저장 영상 URL·제목·게시일 보호 필드가 재호출 전후 같았으며 테스트 계정은 즉시 삭제했다. 공개 HTML은 `index-DmqfwdoF.js`·`index-DS2sg2XL.css`를 참조하고 관리자 자산 2개도 200, main 자산은 로컬과 SHA-256 일치. 공개 게스트 화면에서 성인·어린이의 서로 다른 미리보기와 콘솔 오류 0을 확인했다. 오늘 수동 문서 불변과 실 platformAdmin 미리보기는 조건부 미검증으로 운영 관찰에 남겼고 rules는 배포하지 않았다. |
 | 2026-07-15 | T126d 매일 영상 관리자 화면 서버 전환 | `supabase/functions/platform-api/{core,index,dailyVideoResolve}*`, `src/{components/PlatformAdminView.jsx,utils/platformApi.js}`, `src/utils/adminDailyVideoPreview.js` 삭제, `scripts/validate-{round18,round24,daily-video-server}.mjs`, `HANDOFF_CODEX.md` | platformAdmin/superAdmin만 현재 폼의 playlist ID를 무쓰기 `adminPreviewDailyVideo`에 전달하고, 서버 KST 기준일·`YOUTUBE_API_KEY` secret 우선/Firestore 키 한시 fallback으로 모드별 미리보기를 조회한다. 날짜 없음·YouTube 실패·timeout은 해당 모드 null로 격리하며 응답은 serviceDate와 공개 adult/kids entry만 반환한다. 관리자 UI의 API 키 state·입력·저장과 브라우저 YouTube helper를 제거했고 수동 등록·삭제 직접 쓰기는 유지했다. 전체 validate(platform-api 134 tests), build/fmt/check/diff와 독립 재감사 통과. 단계적 이관 설계상 기존 `videoAutoConfig.apiKey`와 signed-in read 규칙은 T127 정리·회전 전까지 남아 브라우저 네트워크 노출이 계속되므로 보호 완료로 간주하면 안 된다. `firestore.rules` 변경·배포·push 없음. |
 | 2026-07-15 | T126c 매일 영상 일반 클라이언트 서버 전환 | `src/components/{dashboard/DailyVideoCard.jsx,PlatformAdminView.jsx}`, `src/utils/{platformApi,dailyVideoClient,adminDailyVideoPreview}.js`, `scripts/validate-{round18,round24,daily-video-server}.mjs`, `HANDOFF_CODEX.md` | 일반 영상 카드는 Firestore authoritative snapshot/cache 우선 표시 후 인증된 `resolveDailyVideo`만 호출하며, 브라우저 YouTube 호출·`videoAutoConfig` 읽기·`dailyVideos` 쓰기를 제거했다. 날짜별 서버 최소 재시각을 세션에 보존하고 2/5/15/30분 뒤 시간당 재시도, 45분 TTL 타이머·포커스 재검사, 서비스 날짜 이월, 수동 authority 우선, 요청 중 snapshot 세대 fence를 적용했다. 늦은 자체 write와 metadata 경합에서도 중복 resolve나 TTL 갱신 유실이 없도록 보강했다. 관리자 연결 테스트의 레거시 브라우저 helper는 T126d 전환 전까지만 별도 파일로 격리했다. platform-api 129 tests를 포함한 전체 validate, build/diff, 독립 재감사 통과. `firestore.rules` 변경·배포·push 없음. |
@@ -354,6 +355,16 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-16 T123 실로그인 shadow 확인·읽기/퀴즈 서버 쓰기 전환 로컬 완료:
+- 일회용 Firebase 개인 계정으로 개발 앱에서 실제 읽기 1회와 퀴즈 1회를 실행해 `[read-shadow] match:true`와 `[quiz-shadow] match:true`를 각각 확인했다. 로그는 상태·불일치 키·위치·문항 키만 남겼고 금액·잔액·개인정보는 남기지 않았다. 검증 뒤 Auth, users, private, history를 완전히 삭제하고 platformStats가 테스트 전후 동일함을 확인했다.
+- `completeRead`는 Firebase 비익명 uid와 `{cycle,day,requestId}`만 받아 users, 최대 3개 canonical roster, history, `activityActions` ledger, 첫 독자·완독 platformStats를 같은 Firestore transaction에 쓴다. 같은 UUID replay는 입력을 결속하고 최신 상태를 반환하며 409 read/write 경합은 bounded retry한다. React의 읽기 직접 transaction·platformStats 쓰기·실패 폴백은 제거했다.
+- `submitQuiz`는 `{progressKey,quizKey,selectedIndex,attemptSlot,requestId}`만 받아 서버 정답 인덱스·현재/방금 완료 위치·2회 시도·달란트 v1/v2를 다시 계산하고 users/roster/UUID ledger를 원자 반영한다. 같은 transaction에서 `quizAttemptSlots/{progressKey}_a1|a2|skip` 의미 원장을 최초 1회만 생성하므로 여러 탭이 서로 다른 UUID로 같은 시도를 보내도 한 건만 소비된다. 둘째 시도·건너뛰기 원장이 있으면 과거 첫 요청 replay도 최신 terminal progress와 당일 보상 marker를 복구한다. `skipQuiz`도 제출과의 경합에서 먼저 완료된 상태를 다른 요청이 덮지 않는다. 정답 인덱스·조직 경로·잔액 원본은 응답과 로그에 없다.
+- 세 클라이언트는 세션에 최초 payload와 UUID를 보존하고 결과 불명·5xx·network·잘못된 2xx에서는 같은 요청을 재시도한다. 결정적 오류/정상 strict 응답에서만 키를 지우며, API 토큰 발급 전후와 응답 적용 전에 최초 Firebase uid를 결속한다. 서버의 canonical roster 응답이 브라우저 캐시에 없던 명부 행도 복구하며 직접 쓰기 폴백은 없다.
+- 자동 검증은 전체 `npm run validate`(platform-api 175 tests), `npm run build`, Deno check/fmt, `git diff --check`를 통과했다. 독립 보안 검토에서 roster 경로 alias, 미래·손상 날짜, 안전 정수 상한, ledger 날짜, read 409 retry, 보상 marker 우회, 계정 전환 재시도, 의미 기반 attempt slot 경합, submit/skip 경합, 과거 replay의 최신 terminal 복구, 불가능한 응답 조합, 정렬 표류와 빈 명부 캐시를 보강했다.
+- **아직 배포·push하지 않았다.** 기존 2026-07-23 05:14 KST 시계는 T126 영상 경로만의 최소 관찰이다. 읽기·퀴즈 및 다음 T125 잔여까지 포함하는 최종 T127 7일 시계는 최신 Edge→웹 배포 시점부터 다시 시작해야 한다. 그 전에는 사용자 보호 필드 직접 쓰기 규칙을 닫지 않는다.
+- T127 차단 전 추가 서버 이관이 필요한 직접 쓰기는 `useUserBibleActions.handleRestart`의 진행·보상 초기화다. `BibleQuizCard.skipToday`는 이번에 `skipQuiz` 서버 action으로 옮겼다. restart를 서버 action으로 바꾸기 전에는 해당 진행 필드 전체를 rules에서 차단하면 안 된다.
+- T124d 실운영 스모크는 `클로드테스트교회`에 안전한 관리자 자격증명·fixture가 없고, 정상 판매→구매→수령/환불은 지갑과 불변 ledger를 영구 변경한다. 실제 관리자 암호를 재설정하거나 운영 잔액을 임의 조작하지 않았다. 사용자가 승인된 disposable 공동체/계정을 제공하기 전까지 외부 게이트로 유지한다.
 
 2026-07-16 T126e 운영 배포·검증 완료, T127 관찰 시작:
 - 사용자 M-V1 완료를 값 출력 없이 secret 이름으로 확인했다. 전체 `npm run validate`(platform-api 134 tests), `npm run build`, `git diff --check` 후 platform-api Edge v7→v8, 이어서 GitHub Pages 웹을 배포했다. 공개 HTML은 `index-DmqfwdoF.js`와 `index-DS2sg2XL.css`를 사용하고 관리자 lazy asset 2개도 200이며, main JS는 로컬 빌드와 SHA-256이 일치한다.
@@ -2042,18 +2053,18 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 - 클라이언트 공용 `platformApi`는 현재 Firebase ID token을 Authorization에 붙이고 timeout·표준 오류·요청 ID를 처리한다. `.env.example`에 URL만 추가하고 실제 URL/secret은 커밋하지 않는다.
 - 순수 함수 단위 테스트: token/role 가드, KST 오전 3시 경계, 숫자/문자열 Firestore 변환, 멱등키, 허용 origin, 재시도 가능한 오류 분류. `npm run validate:round24`로 묶는다.
 
-### [ ] T123. 읽기 완료·퀴즈 보상 서버 이관
+### [x] T123. 읽기 완료·퀴즈 보상 서버 이관
 
 - [x] **T123a. 읽기 완료 서버 계산 shadow** — KST 자정 기준 날짜, 진행 위치·하루 추가 읽기 상한·보상·연속일·개인 지갑을 서버 순수 함수로 계산하고 무쓰기 `previewReadCompletion`으로 배포한다.
-- [ ] **T123b. 로그인 사용자 shadow 비교** — 부서별 달란트 v2를 포함한 비교 장치·자동 검사는 로컬 완료. 기존 읽기 완료 직전에 개발 환경에서만 서버 미리보기를 최대 4초 호출하고 성공 응답만 기존 계산과 비교한다. 로그에는 실제 값 없이 불일치 필드명만 남긴다. **남은 완료 조건: 최신 Edge 배포 후 로그인 계정으로 `[read-shadow] match:true` 1건 확인.**
-- [ ] **T123c. 읽기 완료 실제 쓰기 전환** — T123b 일치 확인 후 멱등 ledger와 원자 commit을 구현하고 React의 직접 보상 쓰기를 제거한다. 서버 실패 시 직접 쓰기 폴백을 두지 않는다.
-- [ ] **T123d. 퀴즈 보상 서버 이관** — 서버 정답 인덱스·출제 범위 검증·시도/보상 ledger를 구현하고 클라이언트 직접 쓰기를 제거한다.
+- [x] **T123b. 로그인 사용자 shadow 비교** — 부서별 달란트 v2를 포함한 비교 장치·자동 검사 뒤, 2026-07-16 일회용 실제 로그인 계정에서 `[read-shadow] {"match":true,"serverStatus":"ready","clientStatus":"ready","mismatchKeys":[],"cycle":1,"day":1}`을 확인했다. 테스트 Auth/users/private/history는 즉시 완전 삭제했다.
+- [x] **T123c. 읽기 완료 실제 쓰기 전환** — UUID 멱등 ledger와 한 transaction으로 users 진행·점수·지갑, 최대 3개 canonical roster 진도·지갑, history, 첫 독자·완독 통계를 처리한다. React의 직접 읽기 transaction과 통계 쓰기, 서버 실패 시 직접 쓰기 폴백을 제거했다.
+- [x] **T123d. 퀴즈 보상 서버 이관** — 서버 정답 인덱스·출제 범위 검증·시도/보상 ledger를 구현하고 클라이언트 직접 쓰기를 제거했다.
   - [x] **T123d1. 정답 인덱스·순수 계산 기반** — 앱과 동일한 선택지 셔플로 6,657문항의 표시 정답 위치와 계획별 허용 Day를 생성한다. 현재/방금 완료 위치, 저장 문항 고정, 2회 시도, 하루 1회 보상을 무쓰기 순수 함수로 검증한다.
-  - [ ] **T123d2. 퀴즈 shadow API·클라이언트 비교** — 부서별 달란트 v2를 포함한 무쓰기 API·개발 전용 비교 장치는 로컬 완료. 서버가 users·canonical roster·달란트 설정·정답 인덱스를 읽고 앱은 기존 transaction 전에 최대 4초 비교하되 실패가 기존 흐름을 막지 않는다. **남은 완료 조건: 최신 Edge 배포 후 로그인 계정으로 `[quiz-shadow] match:true` 1건 확인.**
-  - [ ] **T123d3. 퀴즈 실제 쓰기 전환** — shadow 일치 확인 뒤 멱등 ledger·users/roster 원자 commit을 구현하고 클라이언트 직접 쓰기를 제거한다.
+  - [x] **T123d2. 퀴즈 shadow API·클라이언트 비교** — 2026-07-16 같은 일회용 실제 로그인 계정에서 `[quiz-shadow] {"match":true,"serverStatus":"ready","clientStatus":"ready","mismatchKeys":[],"progressKey":"r1_d2","quizKey":"genesis-3-8"}`을 확인했다.
+  - [x] **T123d3. 퀴즈 실제 쓰기 전환** — UUID 멱등 ledger와 진도별 1차·2차·건너뛰기 의미 원장, users/roster 원자 commit, 서버 정답 판정, 2회 시도, 당일 1회 보상, 오늘 건너뛰기를 구현했다. 여러 탭의 서로 다른 UUID도 같은 attempt slot을 두 번 소비하지 않고, 제출·건너뛰기 경합은 transaction으로 직렬화한다. 결과 불명 재시도는 최초 payload/requestId를 보존하고 strict 2xx 응답 뒤에만 키를 지우며 브라우저 직접 transaction은 없다. 사용자 marker와 progress를 모두 지우거나 과거 첫 요청을 replay해도 최신 terminal 의미 원장과 당일 ledger가 상태를 복구하고 재적립을 막는다.
 
 - `completeRead({cycle, day, requestId})`: 현재 사용자 진행 위치·하루 추가 읽기 상한·서버 KST 날짜를 검증하고 users 진행/score, 최대 3개 실제 roster 지갑, history, 통계 ledger를 한 transaction으로 반영한다. 클라이언트의 `talentEarned`, `score`, roster 목록은 받지 않는다.
-- `submitQuiz({progressKey, quizKey, selectedIndex, requestId})`: 서버가 문제 정답과 해당 Day 출제 가능 범위를 검증하고 시도 횟수·하루 1회 보상·users/roster 지갑을 한 transaction으로 반영한다.
+- `submitQuiz({progressKey, quizKey, selectedIndex, attemptSlot, requestId})`: 서버가 문제 정답과 해당 Day 출제 가능 범위, 기대 시도 슬롯을 검증하고 의미 원장·시도 횟수·하루 1회 보상·users/roster 지갑을 한 transaction으로 반영한다.
 - 서버용 문제 정답 데이터는 앱 JSON에서 빌드 시 생성한 최소 인덱스(`quizKey → answerIndex + 적용 범위`)를 사용한다. 클라이언트가 정답 여부를 보내는 방식은 금지한다.
 - 기존 React 코드는 결과 응답으로 상태/UI만 갱신한다. 서버 장애 시 보상을 직접 쓰는 폴백은 두지 않고 “저장 실패, 다시 시도”로 안전하게 실패한다.
 
@@ -2115,7 +2126,8 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 
 ### [ ] T127. 규칙 차단·민감 데이터 정리·운영 검증
 
-- 최신 앱과 Edge Functions를 먼저 배포하고 최소 7일 관찰한다. 지표: action별 성공/실패/중복 재전송, 직접 쓰기 시도, 보상·잔액·통계 불일치, 영상 pending/stale, YouTube 쿼터.
+- 최신 앱과 Edge Functions를 먼저 배포하고 최소 7일 관찰한다. T126 영상 경로의 2026-07-16 05:14 KST 관찰은 별도로 유효하지만, T123 읽기·퀴즈와 T125 잔여를 포함한 최종 차단 시계는 이 변경들의 실제 배포 시점부터 새로 센다. 지표: action별 성공/실패/중복 재전송, 직접 쓰기 시도, 보상·잔액·통계 불일치, 영상 pending/stale, YouTube 쿼터.
+- users 보호 필드를 닫기 전에 남은 `useUserBibleActions.handleRestart`의 진행 초기화를 서버 action으로 먼저 옮긴다. `BibleQuizCard.skipToday`는 이미 서버 transaction으로 옮겼다. restart 호환 경로가 남은 동안 진도 필드 전체 차단은 금지한다.
 - 승인 후 rules에서 일반 사용자의 보호 필드 직접 증가, `talentPurchases` create, `churchDirectory`/`platformStats` write, `dailyVideos` create, `videoAutoConfig` read를 순서대로 닫는다. `users` read 규칙은 수정하지 않는다.
 - `videoAutoConfig.apiKey` 삭제 후 노출된 YouTube 키를 회전한다. 미래 dailyVideos·본문 churchCode/code/hash·공개 directory codeHash를 dry-run 감사 후 단계 삭제한다.
 - 복구 계획: 서버 장애 시 규칙을 다시 열어 보상을 클라이언트로 되돌리지 않는다. 변경 요청은 재시도 큐/안내로 멈추고, 읽기 본문·저장된 영상 같은 read-only 기능은 계속 제공한다.

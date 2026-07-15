@@ -1,16 +1,14 @@
 import { useState, useCallback, useRef } from 'react';
 import { auth, db, firebase } from '../utils/firebase';
 import { ACHIEVEMENTS, getNewAchievementIds, mergeAchievementIds } from '../data/achievements';
-import { getKstDateString } from '../data/bibleQuiz';
 import { calculateSubgroupStats } from '../utils/statsUtils';
 import { belongsToDepartment } from '../utils/memberships';
-import { loadUserExtraOrgsStrict } from '../utils/roster';
-import { DAILY_READ_ADVANCE_LIMIT, getDailyAdvanceState } from '../utils/readPolicy';
 import { updateRosterTalents } from '../utils/talentWallet';
-import { previewReadCompletion } from '../utils/platformApi';
-import { compareReadCompletionShadow } from '../utils/readCompletionShadow';
-import { resolveTalentProgram } from '../utils/talentProgram';
-import { loadTalentProgramsStrict } from '../utils/talentProgramStore';
+import { completeRead } from '../utils/platformApi';
+import {
+    clearActivityRequest,
+    getOrCreateReadActivityRequest,
+} from '../utils/userActivityRequests';
 
 export const useUserBibleActions = (
     currentUser,
@@ -73,318 +71,165 @@ export const useUserBibleActions = (
         readSubmittingRef.current = true;
         setReadSubmitting(true);
         const uid = currentUser.uid;
-        const todayStr = new Date().toDateString();
         const vDay = viewingDay || currentUser.currentDay || 1;
         const submittedReadCount = currentUser.readCount || 1;
+        let activityRequest = null;
+        let response = null;
 
         try {
-            // Firestore Transaction: 동시 다중 클릭/멀티 디바이스 race condition 방지
-            // 문서에서 최신 값을 읽어 계산하므로 점수/진도 손실 없음
-            // 로그인 때의 quiet 명부 조회가 일시 실패하면 extraOrgs가 빈 배열일 수 있다.
-            // 그 캐시로 개인 계정 보상을 처리하면 users 지갑에도 roster 지갑에도
-            // 달란트가 남지 않으므로, 읽기 진행을 기록하기 전에 실제 명부를 확인한다.
-            let refreshedExtraOrgs = (await loadUserExtraOrgsStrict(uid)).slice(0, 3);
-            const baseChurchId = currentUser.baseChurchId
-                || (currentUser.accountType === 'personal' ? null : currentUser.churchId);
-            let talentPrograms = await loadTalentProgramsStrict([
-                baseChurchId,
-                ...refreshedExtraOrgs.map(org => org.orgId),
-            ]);
-            let readShadowPreview = null;
-            if (import.meta.env.DEV) {
-                try {
-                    readShadowPreview = await previewReadCompletion(submittedReadCount, vDay, { timeoutMs: 4000 });
-                } catch {
-                    // shadow 확인 실패는 기존 읽기 저장을 막지 않는다.
-                }
-            }
-
-            const commitRead = (rosterOrgs) => db.runTransaction(async (transaction) => {
-                const userRef = db.collection('users').doc(uid);
-                const userSnap = await transaction.get(userRef);
-                if (!userSnap.exists) throw new Error('USER_NOT_FOUND');
-
-                const data = userSnap.data();
-                const rosterRefs = rosterOrgs
-                    .filter(org => org?.orgId)
-                    .map(org => ({
-                        orgId: org.orgId,
-                        ref: db.collection('churches').doc(org.orgId).collection('roster').doc(uid),
-                    }));
-                const rosterSnaps = await Promise.all(rosterRefs.map(item => transaction.get(item.ref)));
-                const rosterWallets = rosterRefs.flatMap((item, index) => (
-                    rosterSnaps[index].exists ? [{ ...item, data: rosterSnaps[index].data() }] : []
-                ));
-                let currentProgressDay = data.currentDay || 1;
-                if (currentProgressDay > 365) {
-                    currentProgressDay = ((currentProgressDay - 1) % 365) + 1;
-                }
-                const storedReadCount = data.readCount || 1;
-
-                // 같은 화면에서 이미 반영된 오늘의 완료 요청이면 아무것도 갱신하지 않는다.
-                // (회차, Day) 진행 위치를 함께 비교해 365→1 순환 중복도 차단한다.
-                // 상태가 갱신된 뒤 다음 진행일을 누르는 "한 장 더 읽기"는 정상 허용한다.
-                const isRepeatedCompletion = data.lastReadDate === todayStr && (
-                    submittedReadCount < storedReadCount ||
-                    (submittedReadCount === storedReadCount && vDay < currentProgressDay)
-                );
-                if (isRepeatedCompletion) return null;
-
-                const quizTodayKey = getKstDateString();
-                const dailyState = getDailyAdvanceState(data, quizTodayKey, todayStr);
-                if (dailyState.count >= DAILY_READ_ADVANCE_LIMIT) {
-                    return { blockedReason: 'DAILY_ADVANCE_LIMIT' };
-                }
-                const nextDailyAdvanceCount = dailyState.count + 1;
-                const isFirstReadToday = dailyState.isFirstReadToday;
-
-                const oldScore = data.score || 0;
-                const oldLevel = Math.floor(oldScore / 100);
-                const streakBonus = isFirstReadToday ? Math.min(5, data.streak || 0) : 0;
-                const addedScore = isFirstReadToday ? 10 + streakBonus : 0;
-                const newScore = oldScore + addedScore;
-                const newLevel = Math.floor(newScore / 100);
-
-                const nextViewingDay = vDay >= 365 ? 1 : vDay + 1;
-                const completedRound = currentProgressDay >= 365;
-                const newProgressDay = completedRound ? 1 : currentProgressDay + 1;
-                const newReadCount = completedRound ? (data.readCount || 1) + 1 : (data.readCount || 1);
-
-                let newStreak = 1;
-                if (data.lastReadDate) {
-                    const diffDays = Math.floor(
-                        (new Date(todayStr) - new Date(data.lastReadDate)) / 86400000
-                    );
-                    if (diffDays === 1) newStreak = (data.streak || 0) + 1;
-                    else if (diffDays === 0) newStreak = data.streak || 0;
-                }
-                const talentEarned = isFirstReadToday ? 10 + Math.min(newStreak, 7) : 0;
-                const rewardsUserWallet = data.accountType !== 'personal';
-                const rewardsDirectProgram = rewardsUserWallet && resolveTalentProgram({
-                    user: data,
-                    talentShop: talentPrograms[baseChurchId] || null,
-                }).canEarnTalent;
-                const userTalentEarned = rewardsDirectProgram ? talentEarned : 0;
-                const newTalent = (data.talent || 0) + userTalentEarned;
-                const rewardedRosterWallets = rosterWallets.filter(wallet => resolveTalentProgram({
-                    user: wallet.data,
-                    talentShop: talentPrograms[wallet.orgId] || null,
-                }).canEarnTalent);
-                const effectiveTalentEarned = (userTalentEarned > 0 || rewardedRosterWallets.length > 0)
-                    ? talentEarned
-                    : 0;
-                const maxStreak = Math.max(data.maxStreak || data.streak || 0, newStreak);
-                const quizTalentEarned = data.quizRewardDate === quizTodayKey
-                    ? (data.quizRewardAmount || 0)
-                    : (data.quizDate === quizTodayKey && data.quizSolved === true
-                        ? (data.quizAttempts === 1 ? 10 : (data.quizAttempts === 2 ? 5 : 0))
-                        : 0);
-                const secretShopJustUnlocked = !data.secretShopUnlocked && newStreak >= 7;
-                const today = new Date(todayStr);
-                today.setHours(0, 0, 0, 0);
-                const recentCutoff = new Date(today);
-                recentCutoff.setDate(recentCutoff.getDate() - 13);
-                const normalizedRecentDates = (Array.isArray(data.recentReadDates) ? data.recentReadDates : [])
-                    .flatMap(value => {
-                        if (!value) return [];
-                        const date = value?.toDate ? value.toDate() : new Date(value);
-                        if (Number.isNaN(date.getTime())) return [];
-                        date.setHours(0, 0, 0, 0);
-                        return date >= recentCutoff && date <= today ? [date.toDateString()] : [];
-                    });
-                const recentReadDates = Array.from(new Set([
-                    ...normalizedRecentDates,
-                    todayStr
-                ]))
-                    .sort((a, b) => new Date(a) - new Date(b))
-                    .slice(-14);
-
-                const historyItem = {
-                    date: todayStr,
-                    day: vDay,
-                    score: addedScore,
-                    talent: effectiveTalentEarned,
-                    ts: firebase.firestore.FieldValue.serverTimestamp()
-                };
-                const updateData = {
-                    currentDay: newProgressDay,
-                    readCount: newReadCount,
-                    score: newScore,
-                    streak: newStreak,
-                    maxStreak,
-                    lastReadDate: todayStr,
-                    dailyAdvanceDate: quizTodayKey,
-                    dailyAdvanceCount: nextDailyAdvanceCount,
-                    recentReadDates,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                };
-                if (rewardsUserWallet && rewardsDirectProgram) updateData.talent = newTalent;
-                if (secretShopJustUnlocked) {
-                    updateData.secretShopUnlocked = true;
-                }
-
-                transaction.update(userRef, updateData);
-
-                const rosterProgress = {
-                    currentDay: newProgressDay,
-                    readCount: newReadCount,
-                    score: newScore,
-                    streak: newStreak,
-                    lastReadDate: todayStr,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                };
-                const rosterTalentByOrgId = {};
-                const rewardedRosterOrgIds = new Set(rewardedRosterWallets.map(wallet => wallet.orgId));
-                rosterWallets.forEach(wallet => {
-                    if (!rewardedRosterOrgIds.has(wallet.orgId)) {
-                        transaction.update(wallet.ref, rosterProgress);
-                        return;
-                    }
-                    const nextRosterTalent = (Number(wallet.data?.talent) || 0) + talentEarned;
-                    rosterTalentByOrgId[wallet.orgId] = nextRosterTalent;
-                    transaction.update(wallet.ref, { ...rosterProgress, talent: nextRosterTalent });
-                });
-
-                // history 서브컬렉션 쓰기 (배열 필드 대신 서브컬렉션만 사용 — 문서 크기 무한 증가 방지)
-                const histRef = db.collection('users').doc(uid).collection('history').doc();
-                transaction.set(histRef, historyItem);
-
-                return {
-                    updateData,
-                    newLevel,
-                    oldLevel,
-                    streakBonus,
-                    newStreak,
-                    newReadCount,
-                    nextViewingDay,
-                    historyItem,
-                    newProgressDay,
-                    talentEarned: effectiveTalentEarned,
-                    isFirstReadToday,
-                    scoreEarned: addedScore,
-                    quizTalentEarned,
-                    totalTalent: rewardsUserWallet
-                        ? newTalent
-                        : (rosterTalentByOrgId[currentUser.churchId] || 0),
-                    rosterTalentByOrgId,
-                    talentProgramEnabled: rewardsDirectProgram || rewardedRosterWallets.length > 0,
-                    secretShopJustUnlocked,
-                    completedRound
-                };
-            });
-
-            let resultData;
             try {
-                resultData = await commitRead(refreshedExtraOrgs);
-            } catch (firstError) {
-                if (refreshedExtraOrgs.length === 0) throw firstError;
-                // 명부 행이 첫 transaction 사이에 바뀐 경우 최신 목록으로 한 번만 재시도한다.
-                // 재조회 실패를 빈 목록으로 바꾸지 않는다. 그래야 보상 없는 완료가 커밋되지 않는다.
-                refreshedExtraOrgs = (await loadUserExtraOrgsStrict(uid)).slice(0, 3);
-                talentPrograms = await loadTalentProgramsStrict([
-                    baseChurchId,
-                    ...refreshedExtraOrgs.map(org => org.orgId),
-                ]);
-                resultData = await commitRead(refreshedExtraOrgs);
-            }
-
-            if (import.meta.env.DEV && readShadowPreview?.result) {
-                try {
-                    const comparison = compareReadCompletionShadow(readShadowPreview?.result, resultData);
-                    console.info('[read-shadow]', {
-                        match: comparison.match,
-                        serverStatus: comparison.serverStatus,
-                        clientStatus: comparison.clientStatus,
-                        mismatchKeys: comparison.mismatchKeys,
-                        cycle: submittedReadCount,
-                        day: vDay,
-                    });
-                } catch {
-                    // shadow 비교 자체가 기존 읽기 결과 처리에 영향을 주지 않게 한다.
+                activityRequest = getOrCreateReadActivityRequest({
+                    uid,
+                    cycle: submittedReadCount,
+                    day: vDay,
+                });
+                response = await completeRead(
+                    activityRequest.payload.cycle,
+                    activityRequest.payload.day,
+                    { requestId: activityRequest.requestId, expectedUid: uid },
+                );
+            } catch (error) {
+                const shouldPreserveRequest = error?.retryable === true
+                    || error?.status >= 500
+                    || error?.code === 'TIMEOUT'
+                    || error?.code === 'NETWORK_ERROR'
+                    || (error?.code === 'INVALID_RESPONSE'
+                        && error?.status >= 200 && error?.status < 300);
+                if (activityRequest && !shouldPreserveRequest) {
+                    clearActivityRequest(activityRequest);
                 }
-            }
-
-            if (!resultData) return;
-            if (resultData.blockedReason === 'DAILY_ADVANCE_LIMIT') {
-                setBonusToast('오늘 읽을 수 있는 분량을 모두 완료했어요. 내일 다시 만나요!');
-                setTimeout(() => setBonusToast(null), 4000);
-                return;
-            }
-            // 느린 roster 조회/transaction 사이 로그아웃·계정 전환이 일어나면
-            // 이미 커밋된 원래 계정의 결과를 새 화면 상태에 적용하지 않는다.
-            if (auth.currentUser?.uid !== uid) return;
-            const {
-                updateData,
-                newLevel,
-                oldLevel,
-                streakBonus,
-                newStreak,
-                nextViewingDay,
-                historyItem,
-                talentEarned,
-                quizTalentEarned,
-                totalTalent,
-                rosterTalentByOrgId,
-                completedRound
-            } = resultData;
-
-            // 플랫폼 통계 업데이트 (fire & forget) — 날짜가 바뀌면 readers_today 리셋
-            if (resultData.isFirstReadToday) db.collection('settings').doc('platformStats').get().then(snap => {
-                const prev = snap.exists ? snap.data() : {};
-                const statsUpdate = {
-                    readers_today: prev.today_date === todayStr
-                        ? firebase.firestore.FieldValue.increment(1)
-                        : 1,
-                    today_date: todayStr,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                };
-                if (completedRound) statsUpdate.finished_total = firebase.firestore.FieldValue.increment(1);
-                return db.collection('settings').doc('platformStats').set(statsUpdate, { merge: true });
-            }).catch(() => {});
-
-            const updatedUser = { ...currentUser, ...updateData };
-            setCurrentUser(previous => previous?.uid === uid
-                ? updateRosterTalents({
-                    ...previous,
-                    ...updateData,
-                    extraOrgs: refreshedExtraOrgs,
-                }, rosterTalentByOrgId)
-                : previous);
-            setViewingDay(nextViewingDay);
-            setHasReadToday(true);
-            setReadHistory(prev => [historyItem, ...prev]);
-
-            if (newLevel > oldLevel) {
-                setLevelUpToast(true);
-                setTimeout(() => setLevelUpToast(false), 5000);
-            }
-            setBonusToast(null);
-            setCompletionSummary({
-                scoreEarned: resultData.scoreEarned,
-                talentEarned: talentEarned > 0 ? talentEarned + quizTalentEarned : 0,
-                isFirstReadToday: resultData.isFirstReadToday,
-                quizRewardLimited: talentEarned === 0 && quizTalentEarned > 0,
-                talentProgramEnabled: resultData.talentProgramEnabled,
-            });
-
-            const allMembers = await loadAllMembers();
-            setAllMembersForRace(allMembers);
-            setSubgroupStats(calculateSubgroupStats(allMembers));
-
-            if (currentUser.departmentId) {
-                const myCommMembers = allMembers.filter(m => belongsToDepartment(m, currentUser.departmentId));
-                setDepartmentMembers(myCommMembers);
-            }
-
-            await checkAchievements(updatedUser, {}, newLevel > oldLevel);
-            if (onReadComplete) onReadComplete(resultData);
-        } catch (e) {
-            if (e.message !== 'USER_NOT_FOUND') {
-                console.error("읽기 처리 실패:", e);
+                console.error('읽기 처리 실패:', error);
                 if (auth.currentUser?.uid === uid) {
                     setBonusToast('읽기 저장에 실패했습니다. 잠시 후 다시 눌러주세요.');
                     setTimeout(() => setBonusToast(null), 4000);
                 }
+                return;
+            }
+
+            // 정상 2xx 응답은 ready/replay/제한·위치 불일치까지 결정적인 결과다.
+            // 응답 유실·재시도 가능 오류일 때만 위 catch에서 같은 요청 번호를 보존한다.
+            clearActivityRequest(activityRequest);
+            if (auth.currentUser?.uid !== uid) return;
+
+            try {
+                const rosterTalentByOrgId = Object.fromEntries(
+                    response.state.rosters.map(item => [item.orgId, item.talent]),
+                );
+                const updatedUser = updateRosterTalents(
+                    { ...currentUser, ...response.state.user },
+                    rosterTalentByOrgId,
+                    { authoritative: true },
+                );
+                setCurrentUser(previous => previous?.uid === uid
+                    ? updateRosterTalents(
+                        { ...previous, ...response.state.user },
+                        rosterTalentByOrgId,
+                        { authoritative: true },
+                    )
+                    : previous);
+                setHasReadToday(response.state.user.lastReadDate === response.calendarDate);
+
+                if (response.result.status === 'dailyLimit') {
+                    setViewingDay(response.state.user.currentDay);
+                    setBonusToast('오늘 읽을 수 있는 분량을 모두 완료했어요. 내일 다시 만나요!');
+                    setTimeout(() => setBonusToast(null), 4000);
+                    return;
+                }
+                if (response.result.status === 'positionMismatch') {
+                    setViewingDay(response.state.user.currentDay);
+                    setBonusToast('읽기 진행 상태가 바뀌어 최신 위치로 이동했어요. 다시 눌러주세요.');
+                    setTimeout(() => setBonusToast(null), 4000);
+                    return;
+                }
+
+                const summary = response.result.summary;
+                const isFirstReadToday = summary.scoreEarned > 0;
+                const quizTalentEarned = currentUser.quizRewardDate === response.calendarDate
+                    ? (Number(currentUser.quizRewardAmount) || 0)
+                    : (currentUser.quizDate === response.calendarDate && currentUser.quizSolved === true
+                        ? (currentUser.quizAttempts === 1 ? 10 : (currentUser.quizAttempts === 2 ? 5 : 0))
+                        : 0);
+                const preferredRosterOrgId = currentUser.churchId || currentUser.primaryOrgId;
+                const totalTalent = summary.rewardsUserWallet
+                    ? response.state.user.talent
+                    : (rosterTalentByOrgId[preferredRosterOrgId] || 0);
+                const historyItem = {
+                    action: 'completeRead',
+                    requestId: response.requestId,
+                    date: response.calendarDate,
+                    day: activityRequest.payload.day,
+                    score: summary.scoreEarned,
+                    talent: summary.talentEarned,
+                    ts: new Date(),
+                };
+                const completionResult = {
+                    ...summary,
+                    updateData: response.state.user,
+                    isFirstReadToday,
+                    quizTalentEarned,
+                    totalTalent,
+                    rosterTalentByOrgId,
+                    historyItem,
+                    alreadyCompleted: response.alreadyCompleted,
+                };
+
+                setViewingDay(response.state.user.currentDay);
+                setReadHistory(previous => previous.some(item => item?.requestId === response.requestId)
+                    ? previous
+                    : [historyItem, ...previous]);
+
+                if (summary.newLevel > summary.oldLevel) {
+                    setLevelUpToast(true);
+                    setTimeout(() => setLevelUpToast(false), 5000);
+                }
+                setBonusToast(null);
+                setCompletionSummary({
+                    scoreEarned: summary.scoreEarned,
+                    talentEarned: summary.talentEarned > 0
+                        ? summary.talentEarned + quizTalentEarned
+                        : 0,
+                    isFirstReadToday,
+                    quizRewardLimited: summary.talentEarned === 0 && quizTalentEarned > 0,
+                    talentProgramEnabled: summary.talentProgramEnabled,
+                });
+
+                // 아래 작업은 이미 성공한 읽기 저장과 분리한다.
+                // 실패해도 사용자에게 저장 실패로 표시하지 않는다.
+                try {
+                    const allMembers = await loadAllMembers();
+                    if (auth.currentUser?.uid === uid) {
+                        setAllMembersForRace(allMembers);
+                        setSubgroupStats(calculateSubgroupStats(allMembers));
+                        if (updatedUser.departmentId) {
+                            const myCommMembers = allMembers.filter(member => (
+                                belongsToDepartment(member, updatedUser.departmentId)
+                            ));
+                            setDepartmentMembers(myCommMembers);
+                        }
+                    }
+                } catch (refreshError) {
+                    console.warn('읽기 완료 후 회원 목록 새로고침 실패:', refreshError);
+                }
+                if (auth.currentUser?.uid === uid) {
+                    try {
+                        await checkAchievements(
+                            updatedUser,
+                            {},
+                            summary.newLevel > summary.oldLevel,
+                        );
+                    } catch (achievementError) {
+                        console.warn('읽기 완료 후 업적 확인 실패:', achievementError);
+                    }
+                }
+                if (auth.currentUser?.uid === uid) {
+                    try {
+                        if (onReadComplete) onReadComplete(completionResult);
+                    } catch (callbackError) {
+                        console.warn('읽기 완료 후 화면 효과 처리 실패:', callbackError);
+                    }
+                }
+            } catch (error) {
+                console.error('저장된 읽기 결과 반영 실패:', error);
             }
         } finally {
             readSubmittingRef.current = false;

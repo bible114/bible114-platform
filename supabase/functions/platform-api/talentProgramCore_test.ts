@@ -149,9 +149,29 @@ Deno.test("roster 원장은 인증 uid·정규 경로·고유 org를 검증한 �
   if (parsed.ok) {
     assert(parsed.wallets[0].orgId === "church-a", "rosters not sorted");
   }
+  const mixedCase = parseRosterTalentWallets([
+    document("aOrg"),
+    document("BOrg"),
+  ], "user-1");
+  assert(mixedCase.ok, "mixed-case roster rejected");
+  if (mixedCase.ok) {
+    assert(
+      mixedCase.wallets.map(({ orgId }) => orgId).join(",") === "BOrg,aOrg",
+      "roster order must use deterministic code-point comparison",
+    );
+  }
   assert(
     !parseRosterTalentWallets([document("church-a", "other")], "user-1").ok,
     "foreign uid accepted",
+  );
+  assert(
+    !parseRosterTalentWallets([document(" church-a")], "user-1").ok &&
+      !parseRosterTalentWallets([document("x".repeat(129))], "user-1").ok &&
+      !parseRosterTalentWallets([{
+        ...document("church-a"),
+        data: { uid: " user-1", departmentId: "kids" },
+      }], "user-1").ok,
+    "non-canonical roster identity accepted",
   );
   assert(
     !parseRosterTalentWallets(

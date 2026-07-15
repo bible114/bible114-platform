@@ -229,6 +229,80 @@ export const runCollectionGroupQuery = async <T = Record<string, unknown>>(
   });
 };
 
+/**
+ * Runs an equality query against one concrete subcollection. Unlike
+ * runCollectionGroupQuery, the parent path keeps the query scoped to a single
+ * owner (for example users/{uid}/activityActions).
+ */
+export const runCollectionQuery = async <T = Record<string, unknown>>(
+  token: string,
+  projectId: string,
+  parentPath: string,
+  collectionId: string,
+  field: string,
+  value: unknown,
+  options: { limit?: number; transaction?: string; fetcher?: typeof fetch } =
+    {},
+): Promise<FirestoreDocument<T>[]> => {
+  if (!parentPath.trim() || !collectionId.trim() || !field.trim()) {
+    throw new PlatformError("BAD_REQUEST", {
+      message: "부모 경로와 컬렉션, 검색 필드가 필요합니다.",
+    });
+  }
+  const limit = options.limit ?? 100;
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new PlatformError("BAD_REQUEST", {
+      message: "검색 개수는 양의 정수여야 합니다.",
+    });
+  }
+  const response = await authenticatedFetch(
+    `${firestoreBaseUrl(projectId)}/documents/${
+      encodeDocumentPath(parentPath)
+    }:runQuery`,
+    token,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: field },
+              op: "EQUAL",
+              value: encodeFirestoreValue(value),
+            },
+          },
+          limit,
+        },
+        ...(options.transaction ? { transaction: options.transaction } : {}),
+      }),
+    },
+    options.fetcher,
+  );
+  if (!response.ok) {
+    throw new PlatformError("FIRESTORE_READ_FAILED", {
+      details: {
+        status: response.status,
+        parentPath,
+        collectionId,
+        field,
+      },
+    });
+  }
+  const payload = await response.json() as Array<{
+    document?: Omit<FirestoreDocument<T>, "data">;
+  }>;
+  return payload.flatMap(({ document }) => {
+    if (!document) return [];
+    const fields = document.fields ?? {};
+    return [{
+      ...document,
+      fields,
+      data: decodeFirestoreFields(fields) as T,
+    }];
+  });
+};
+
 export const beginTransaction = async (
   token: string,
   projectId: string,

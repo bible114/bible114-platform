@@ -26,17 +26,30 @@ assert.deepEqual(mergeAchievementIds(['first_memo'], ['first_memo', 'score_100']
 assert.equal(ACHIEVEMENTS.length, 14);
 
 const actions = read('src/hooks/useUserBibleActions.js');
-assert(actions.includes("blockedReason: 'DAILY_ADVANCE_LIMIT'"));
-assert(actions.includes('addedScore = isFirstReadToday ? 10 + streakBonus : 0'));
-assert(actions.includes('dailyAdvanceCount: nextDailyAdvanceCount'));
+const handleReadSource = actions.slice(
+    actions.indexOf('const handleRead'),
+    actions.indexOf('const handleRestart'),
+);
+assert(actions.includes("import { completeRead } from '../utils/platformApi';"));
+assert(handleReadSource.includes('response = await completeRead('));
+assert(handleReadSource.includes("response.result.status === 'dailyLimit'"));
+assert(!handleReadSource.includes('db.runTransaction'));
 
 const reader = read('src/components/dashboard/BibleReader.jsx');
 assert(!/isCurrentProgressDay\s*&&\s*!hasReadToday\s*&&\s*!quizGateOpen/.test(reader));
 assert(!reader.includes('handleSpeak(verseData.text, currentIndex)'));
 
 const quizCard = read('src/components/dashboard/BibleQuizCard.jsx');
-assert(quizCard.includes('skipped: true'));
-assert(quizCard.includes('[`quizProgress.${progressKey}`]'));
+const skipTodaySource = quizCard.slice(
+    quizCard.indexOf('const skipToday'),
+    quizCard.indexOf('const submitAnswer'),
+);
+assert(quizCard.includes('getOrCreateQuizSkipActivityRequest'));
+assert(skipTodaySource.includes('await skipQuiz('));
+assert(!skipTodaySource.includes('db.runTransaction'));
+const quizSubmission = read('supabase/functions/platform-api/quizSubmission.ts');
+assert(quizSubmission.includes('skipped: true'));
+assert(quizSubmission.includes('`quizProgress.${input.progressKey}`'));
 
 const dashboard = read('src/components/DashboardView.jsx');
 assert(dashboard.includes('currentUser={currentUser}'));

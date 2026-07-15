@@ -15,6 +15,58 @@ const DAILY_VIDEO_ENTRY_KEYS = new Set(['url', 'chapters', 'title', 'publishedAt
 const DAILY_VIDEO_CHAPTER_KEYS = new Set(['label', 'sec']);
 const DAILY_VIDEO_CHAPTER_LABELS = new Set(['해설', '성경읽기', '기도']);
 const DAILY_VIDEO_YOUTUBE_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'youtu.be', 'www.youtu.be']);
+const SUBMIT_QUIZ_REQUEST_KEYS = new Set(['progressKey', 'quizKey', 'selectedIndex', 'attemptSlot']);
+const SKIP_QUIZ_REQUEST_KEYS = new Set(['progressKey', 'quizKey']);
+const SUBMIT_QUIZ_RESPONSE_KEYS = new Set([
+    'ok', 'action', 'requestId', 'calendarDate', 'alreadyCompleted', 'result', 'state',
+]);
+const SUBMIT_QUIZ_READY_RESULT_KEYS = new Set([
+    'status', 'attempts', 'solved', 'skipped', 'isCorrect', 'reward', 'quizKey', 'entry',
+    'rewardsUserWallet', 'rewardedRosterOrgIds',
+]);
+const SUBMIT_QUIZ_DONE_RESULT_KEYS = new Set([
+    'status', 'attempts', 'solved', 'skipped', 'reward', 'quizKey',
+]);
+const SUBMIT_QUIZ_STATE_KEYS = new Set([
+    'progressKey', 'progress', 'quizRewardDate', 'quizRewardAmount', 'userTalent', 'rosterTalents',
+]);
+const SKIP_QUIZ_RESPONSE_KEYS = new Set([
+    'ok', 'action', 'requestId', 'calendarDate', 'alreadyCompleted', 'committed', 'state',
+]);
+const SKIP_QUIZ_STATE_KEYS = new Set(['progressKey', 'progress']);
+const QUIZ_PROGRESS_ENTRY_KEYS = new Set([
+    'attempts', 'solved', 'skipped', 'quizKey', 'reward', 'updatedDate',
+]);
+const QUIZ_ROSTER_TALENT_KEYS = new Set(['orgId', 'talent']);
+const COMPLETE_READ_RESPONSE_KEYS = new Set([
+    'ok', 'action', 'requestId', 'alreadyCompleted', 'committed', 'calendarDate', 'result', 'state',
+]);
+const COMPLETE_READ_STATE_KEYS = new Set(['user', 'rosters']);
+const COMPLETE_READ_USER_KEYS = new Set([
+    'currentDay', 'readCount', 'score', 'talent', 'streak', 'maxStreak', 'lastReadDate',
+    'dailyAdvanceDate', 'dailyAdvanceCount', 'recentReadDates', 'secretShopUnlocked',
+]);
+const COMPLETE_READ_UPDATE_REQUIRED_KEYS = new Set([
+    'currentDay', 'readCount', 'score', 'streak', 'maxStreak', 'lastReadDate',
+    'dailyAdvanceDate', 'dailyAdvanceCount', 'recentReadDates',
+]);
+const COMPLETE_READ_UPDATE_ALLOWED_KEYS = new Set([
+    ...COMPLETE_READ_UPDATE_REQUIRED_KEYS, 'talent', 'secretShopUnlocked',
+]);
+const COMPLETE_READ_SUMMARY_KEYS = new Set([
+    'oldLevel', 'newLevel', 'scoreEarned', 'streakBonus', 'talentEarned', 'newStreak',
+    'newReadCount', 'newProgressDay', 'nextViewingDay', 'completedRound',
+    'secretShopJustUnlocked', 'rewardsUserWallet', 'talentProgramEnabled',
+]);
+const COMPLETE_READ_READY_KEYS = new Set(['status', 'updateData', 'summary']);
+const COMPLETE_READ_POSITION_KEYS = new Set(['status', 'expected', 'received']);
+const COMPLETE_READ_DAILY_LIMIT_KEYS = new Set(['status', 'limit', 'count']);
+const COMPLETE_READ_POSITION_VALUE_KEYS = new Set(['cycle', 'day']);
+const ACTIVITY_REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const QUIZ_PROGRESS_KEY_PATTERN = /^r([1-9]\d*)_d([1-9]\d*)$/;
+const QUIZ_KEY_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+const LEGACY_CALENDAR_DATE_PATTERN = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (0[1-9]|[12]\d|3[01]) (\d{4})$/;
+const MAX_TALENT_BALANCE = 1_000_000_000;
 const loadAuth = async () => (await import('./firebase.js')).auth;
 const isResponseRecord = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
@@ -81,7 +133,11 @@ const responseError = (response, body) => {
     });
 };
 
-const postOnce = async ({ action, payload, requestId, timeoutMs, forceRefresh }) => {
+const authChangedError = () => new PlatformApiError('로그인 계정이 바뀌었습니다. 다시 시도해주세요.', {
+    code: 'AUTH_CHANGED', status: 401, retryable: false,
+});
+
+const postOnce = async ({ action, payload, requestId, timeoutMs, forceRefresh, expectedUid }) => {
     let auth;
     try {
         auth = await loadAuth();
@@ -95,14 +151,20 @@ const postOnce = async ({ action, payload, requestId, timeoutMs, forceRefresh })
             code: 'AUTH_REQUIRED', status: 401, retryable: false,
         });
     }
+    const requestUser = auth.currentUser;
+    if (expectedUid && requestUser.uid !== expectedUid) throw authChangedError();
 
     let token;
     try {
-        token = await auth.currentUser.getIdToken(forceRefresh);
+        token = await requestUser.getIdToken(forceRefresh);
     } catch (cause) {
         throw new PlatformApiError('로그인 인증 정보를 확인하지 못했습니다.', {
             code: 'AUTH_TOKEN_ERROR', status: 401, retryable: true, cause,
         });
+    }
+    if (auth.currentUser?.uid !== requestUser.uid
+        || (expectedUid && auth.currentUser.uid !== expectedUid)) {
+        throw authChangedError();
     }
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -172,7 +234,12 @@ export const callPlatformApi = async (action, payload = {}, options = {}) => {
     const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
         ? options.timeoutMs
         : DEFAULT_TIMEOUT_MS;
-    const request = { action: action.trim(), payload, requestId, timeoutMs };
+    const expectedUid = typeof options.expectedUid === 'string' && options.expectedUid
+        ? options.expectedUid
+        : null;
+    const request = {
+        action: action.trim(), payload, requestId, timeoutMs, expectedUid,
+    };
 
     const first = await postOnce({ ...request, forceRefresh: false });
     if (first.response.status !== 401) {
@@ -243,6 +310,580 @@ export const previewQuizSubmission = (progressKey, quizKey, selectedIndex, optio
         });
     }
     return callPlatformApi('previewQuizSubmission', { progressKey, quizKey, selectedIndex }, options);
+};
+
+const invalidSubmitQuizResponse = () => {
+    throw new PlatformApiError('퀴즈 처리 결과를 안전하게 확인하지 못했습니다.', {
+        code: 'INVALID_RESPONSE', status: 200, retryable: true,
+    });
+};
+
+const hasExactKeys = (value, expectedKeys) => (
+    isResponseRecord(value)
+    && Object.keys(value).length === expectedKeys.size
+    && Object.keys(value).every(key => expectedKeys.has(key))
+);
+
+const isSafeIntegerInRange = (value, minimum, maximum) => (
+    Number.isSafeInteger(value) && value >= minimum && value <= maximum
+);
+
+const isValidQuizProgressKey = (value) => {
+    const match = typeof value === 'string' ? QUIZ_PROGRESS_KEY_PATTERN.exec(value) : null;
+    const cycle = match ? Number(match[1]) : NaN;
+    const day = match ? Number(match[2]) : NaN;
+    return Number.isSafeInteger(cycle) && cycle >= 1
+        && Number.isSafeInteger(day) && day >= 1 && day <= 365;
+};
+
+const isValidQuizKey = value => typeof value === 'string' && QUIZ_KEY_PATTERN.test(value);
+
+const isValidCanonicalOrgId = value => (
+    typeof value === 'string'
+    && value.length >= 1 && value.length <= 128
+    && value === value.trim()
+    && value !== '.' && value !== '..'
+    && !value.includes('/')
+    && !/[\u0000-\u001f\u007f]/.test(value)
+);
+
+const compareCanonicalIds = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
+
+const isValidLegacyCalendarDate = (value) => {
+    const match = typeof value === 'string' ? LEGACY_CALENDAR_DATE_PATTERN.exec(value) : null;
+    if (!match) return false;
+    const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months.indexOf(match[2]);
+    const day = Number(match[3]);
+    const year = Number(match[4]);
+    const parsed = new Date(Date.UTC(year, month, day));
+    return Number.isSafeInteger(year)
+        && parsed.getUTCFullYear() === year
+        && parsed.getUTCMonth() === month
+        && parsed.getUTCDate() === day
+        && weekdays[parsed.getUTCDay()] === match[1];
+};
+
+const normalizeQuizProgressEntry = (value) => {
+    const expectedReward = value?.attempts === 1 ? 10 : value?.attempts === 2 ? 5 : 0;
+    if (!hasExactKeys(value, QUIZ_PROGRESS_ENTRY_KEYS)
+        || !isSafeIntegerInRange(value.attempts, 0, 2)
+        || typeof value.solved !== 'boolean'
+        || typeof value.skipped !== 'boolean'
+        || !isValidQuizKey(value.quizKey)
+        || ![0, 5, 10].includes(value.reward)
+        || !isValidLegacyCalendarDate(value.updatedDate)
+        || (value.solved && (value.skipped || value.attempts < 1
+            || ![0, expectedReward].includes(value.reward)))
+        || (!value.solved && value.reward !== 0)
+        || (value.skipped && value.attempts > 1)) {
+        return invalidSubmitQuizResponse();
+    }
+    return {
+        attempts: value.attempts,
+        solved: value.solved,
+        skipped: value.skipped,
+        quizKey: value.quizKey,
+        reward: value.reward,
+        updatedDate: value.updatedDate,
+    };
+};
+
+const normalizeQuizRosterTalents = (value) => {
+    if (!Array.isArray(value) || value.length > 3) return invalidSubmitQuizResponse();
+    const normalized = value.map((row) => {
+        if (!hasExactKeys(row, QUIZ_ROSTER_TALENT_KEYS)
+            || !isValidCanonicalOrgId(row.orgId)
+            || !isSafeIntegerInRange(row.talent, 0, MAX_TALENT_BALANCE)) {
+            return invalidSubmitQuizResponse();
+        }
+        return { orgId: row.orgId, talent: row.talent };
+    });
+    if (normalized.some((row, index) => (
+        index > 0 && compareCanonicalIds(normalized[index - 1].orgId, row.orgId) >= 0
+    ))) return invalidSubmitQuizResponse();
+    return normalized;
+};
+
+const entriesMatch = (left, right) => (
+    QUIZ_PROGRESS_ENTRY_KEYS.size === Object.keys(left).length
+    && Object.keys(left).every(key => Object.is(left[key], right[key]))
+);
+
+const legacyDateTimestamp = (value) => {
+    const match = LEGACY_CALENDAR_DATE_PATTERN.exec(value);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return match ? Date.UTC(Number(match[4]), months.indexOf(match[2]), Number(match[3])) : NaN;
+};
+
+const progressCanFollowSubmission = (entry, progress) => {
+    if (entriesMatch(entry, progress)) return true;
+    if (entry.quizKey !== progress.quizKey || entry.solved || entry.skipped
+        || entry.attempts !== 1 || entry.reward !== 0
+        || legacyDateTimestamp(progress.updatedDate) < legacyDateTimestamp(entry.updatedDate)) return false;
+    if (progress.solved) {
+        return !progress.skipped && progress.attempts === 2 && [0, 5].includes(progress.reward);
+    }
+    if (progress.skipped) return progress.attempts === 1 && progress.reward === 0;
+    return progress.attempts === 2 && progress.reward === 0;
+};
+
+export const validateSubmitQuizResponse = (payload, result, expectedRequestId) => {
+    if (!hasExactKeys(payload, SUBMIT_QUIZ_REQUEST_KEYS)
+        || !isValidQuizProgressKey(payload.progressKey)
+        || !isValidQuizKey(payload.quizKey)
+        || !isSafeIntegerInRange(payload.selectedIndex, 0, 3)
+        || ![1, 2].includes(payload.attemptSlot)
+        || !ACTIVITY_REQUEST_ID_PATTERN.test(expectedRequestId)
+        || !hasExactKeys(result, SUBMIT_QUIZ_RESPONSE_KEYS)
+        || result.ok !== true || result.action !== 'submitQuiz'
+        || result.requestId !== expectedRequestId
+        || !isValidLegacyCalendarDate(result.calendarDate)
+        || typeof result.alreadyCompleted !== 'boolean'
+        || !hasExactKeys(result.state, SUBMIT_QUIZ_STATE_KEYS)
+        || result.state.progressKey !== payload.progressKey
+        || ![0, 5, 10].includes(result.state.quizRewardAmount)
+        || !isSafeIntegerInRange(result.state.userTalent, 0, MAX_TALENT_BALANCE)
+        || (result.state.quizRewardDate !== null
+            && !isValidLegacyCalendarDate(result.state.quizRewardDate))
+        || ((result.state.quizRewardDate === null)
+            !== (result.state.quizRewardAmount === 0))) {
+        return invalidSubmitQuizResponse();
+    }
+
+    const progress = normalizeQuizProgressEntry(result.state.progress);
+    const rosterTalents = normalizeQuizRosterTalents(result.state.rosterTalents);
+    if (progress.quizKey !== payload.quizKey) return invalidSubmitQuizResponse();
+
+    let normalizedResult;
+    if (hasExactKeys(result.result, SUBMIT_QUIZ_READY_RESULT_KEYS)
+        && result.result.status === 'ready') {
+        const ready = result.result;
+        const entry = normalizeQuizProgressEntry(ready.entry);
+        const expectedCorrectReward = ready.attempts === 1 ? 10 : 5;
+        if (!isSafeIntegerInRange(ready.attempts, 1, 2)
+            || ready.attempts !== payload.attemptSlot
+            || typeof ready.solved !== 'boolean' || ready.skipped !== false
+            || typeof ready.isCorrect !== 'boolean' || ready.solved !== ready.isCorrect
+            || ![0, expectedCorrectReward].includes(ready.reward)
+            || (!ready.isCorrect && ready.reward !== 0)
+            || !isValidQuizKey(ready.quizKey) || ready.quizKey !== payload.quizKey
+            || typeof ready.rewardsUserWallet !== 'boolean'
+            || !Array.isArray(ready.rewardedRosterOrgIds)
+            || ready.rewardedRosterOrgIds.length > 3
+            || ready.rewardedRosterOrgIds.some((orgId, index, orgIds) => (
+                typeof orgId !== 'string' || !orgId || orgId.length > 128 || orgId.includes('/')
+                || /[\u0000-\u001f\u007f]/.test(orgId)
+                || (index > 0 && compareCanonicalIds(orgIds[index - 1], orgId) >= 0)
+            ))
+            || entry.attempts !== ready.attempts
+            || entry.solved !== ready.solved || entry.skipped !== false
+            || entry.quizKey !== ready.quizKey || entry.reward !== ready.reward
+            || entry.updatedDate !== result.calendarDate
+            || (ready.reward === 0
+                && (ready.rewardsUserWallet || ready.rewardedRosterOrgIds.length > 0))
+            || (ready.reward > 0
+                && !ready.rewardsUserWallet && ready.rewardedRosterOrgIds.length === 0)
+            || (!result.alreadyCompleted && ready.reward > 0
+                && (result.state.quizRewardDate !== result.calendarDate
+                    || result.state.quizRewardAmount !== ready.reward))
+            || (!entriesMatch(entry, progress)
+                && (!result.alreadyCompleted || !progressCanFollowSubmission(entry, progress)))) {
+            return invalidSubmitQuizResponse();
+        }
+        normalizedResult = {
+            status: 'ready', attempts: ready.attempts, solved: ready.solved, skipped: false,
+            isCorrect: ready.isCorrect, reward: ready.reward, quizKey: ready.quizKey, entry,
+            rewardsUserWallet: ready.rewardsUserWallet,
+            rewardedRosterOrgIds: [...ready.rewardedRosterOrgIds],
+        };
+    } else if (hasExactKeys(result.result, SUBMIT_QUIZ_DONE_RESULT_KEYS)
+        && result.result.status === 'alreadyDone') {
+        const done = result.result;
+        if (result.alreadyCompleted
+            || !isSafeIntegerInRange(done.attempts, 0, 2)
+            || typeof done.solved !== 'boolean' || typeof done.skipped !== 'boolean'
+            || (!done.solved && !done.skipped && done.attempts < 2)
+            || ![0, done.attempts === 1 ? 10 : 5].includes(done.reward)
+            || (!done.solved && done.reward !== 0)
+            || !isValidQuizKey(done.quizKey) || done.quizKey !== payload.quizKey
+            || progress.attempts !== done.attempts
+            || progress.solved !== done.solved || progress.skipped !== done.skipped
+            || progress.reward !== done.reward || progress.quizKey !== done.quizKey) {
+            return invalidSubmitQuizResponse();
+        }
+        normalizedResult = {
+            status: 'alreadyDone', attempts: done.attempts, solved: done.solved,
+            skipped: done.skipped, reward: done.reward, quizKey: done.quizKey,
+        };
+    } else {
+        return invalidSubmitQuizResponse();
+    }
+
+    return {
+        ok: true,
+        action: 'submitQuiz',
+        requestId: expectedRequestId,
+        calendarDate: result.calendarDate,
+        alreadyCompleted: result.alreadyCompleted,
+        result: normalizedResult,
+        state: {
+            progressKey: payload.progressKey,
+            progress,
+            quizRewardDate: result.state.quizRewardDate,
+            quizRewardAmount: result.state.quizRewardAmount,
+            userTalent: result.state.userTalent,
+            rosterTalents,
+        },
+    };
+};
+
+export const submitQuiz = (progressKey, quizKey, selectedIndex, attemptSlot, options = {}) => {
+    const payload = { progressKey, quizKey, selectedIndex, attemptSlot };
+    if (!isValidQuizProgressKey(progressKey)
+        || !isValidQuizKey(quizKey)
+        || !isSafeIntegerInRange(selectedIndex, 0, 3)
+        || ![1, 2].includes(attemptSlot)) {
+        throw new PlatformApiError('퀴즈 제출 정보가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const requestId = options.requestId || createRequestId();
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(requestId)) {
+        throw new PlatformApiError('퀴즈 요청 번호가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('submitQuiz', payload, { ...options, requestId })
+        .then(result => validateSubmitQuizResponse(payload, result, requestId));
+};
+
+export const validateSkipQuizResponse = (payload, result, expectedRequestId) => {
+    if (!hasExactKeys(payload, SKIP_QUIZ_REQUEST_KEYS)
+        || !isValidQuizProgressKey(payload.progressKey)
+        || !isValidQuizKey(payload.quizKey)
+        || !ACTIVITY_REQUEST_ID_PATTERN.test(expectedRequestId)
+        || !hasExactKeys(result, SKIP_QUIZ_RESPONSE_KEYS)
+        || result.ok !== true || result.action !== 'skipQuiz'
+        || result.requestId !== expectedRequestId
+        || !isValidLegacyCalendarDate(result.calendarDate)
+        || typeof result.alreadyCompleted !== 'boolean'
+        || typeof result.committed !== 'boolean'
+        || (result.alreadyCompleted && !result.committed)
+        || !hasExactKeys(result.state, SKIP_QUIZ_STATE_KEYS)
+        || result.state.progressKey !== payload.progressKey) {
+        return invalidSubmitQuizResponse();
+    }
+    const progress = normalizeQuizProgressEntry(result.state.progress);
+    if (progress.quizKey !== payload.quizKey) return invalidSubmitQuizResponse();
+    if (result.committed
+        && (!progress.skipped || progress.solved || progress.reward !== 0
+            || progress.attempts > 1 || progress.updatedDate !== result.calendarDate)) {
+        return invalidSubmitQuizResponse();
+    }
+    if (!result.committed
+        && !(progress.solved || progress.skipped || progress.attempts >= 2)) {
+        return invalidSubmitQuizResponse();
+    }
+    return {
+        ok: true,
+        action: 'skipQuiz',
+        requestId: expectedRequestId,
+        calendarDate: result.calendarDate,
+        alreadyCompleted: result.alreadyCompleted,
+        committed: result.committed,
+        state: { progressKey: payload.progressKey, progress },
+    };
+};
+
+export const skipQuiz = (progressKey, quizKey, options = {}) => {
+    const payload = { progressKey, quizKey };
+    if (!isValidQuizProgressKey(progressKey) || !isValidQuizKey(quizKey)) {
+        throw new PlatformApiError('퀴즈 건너뛰기 정보가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const requestId = options.requestId || createRequestId();
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(requestId)) {
+        throw new PlatformApiError('퀴즈 건너뛰기 요청 번호가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('skipQuiz', payload, { ...options, requestId })
+        .then(result => validateSkipQuizResponse(payload, result, requestId));
+};
+
+const invalidCompleteReadResponse = () => {
+    throw new PlatformApiError('읽기 저장 결과를 안전하게 확인하지 못했습니다.', {
+        code: 'INVALID_RESPONSE', status: 200, retryable: true,
+    });
+};
+
+const normalizeReadRosterTalents = (value) => {
+    if (!Array.isArray(value) || value.length > 3) return invalidCompleteReadResponse();
+    const normalized = value.map((row) => {
+        if (!hasExactKeys(row, QUIZ_ROSTER_TALENT_KEYS)
+            || !isValidCanonicalOrgId(row.orgId)
+            || !isSafeIntegerInRange(row.talent, 0, MAX_TALENT_BALANCE)) {
+            return invalidCompleteReadResponse();
+        }
+        return { orgId: row.orgId, talent: row.talent };
+    });
+    if (normalized.some((row, index) => (
+        index > 0 && compareCanonicalIds(normalized[index - 1].orgId, row.orgId) >= 0
+    ))) return invalidCompleteReadResponse();
+    return normalized;
+};
+
+const hasRequiredAndAllowedKeys = (value, requiredKeys, allowedKeys) => (
+    isResponseRecord(value)
+    && [...requiredKeys].every(key => Object.prototype.hasOwnProperty.call(value, key))
+    && Object.keys(value).every(key => allowedKeys.has(key))
+);
+
+const isValidStoredDate = (value) => {
+    if (typeof value !== 'string' || value.length > 64) return false;
+    if (isValidLegacyCalendarDate(value)) return true;
+    const match = /^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/.exec(value);
+    if (!match || !Number.isFinite(Date.parse(value))) return false;
+    const year = Number(match[1]);
+    const month = Number(match[2]) - 1;
+    const day = Number(match[3]);
+    const parsed = new Date(Date.UTC(year, month, day));
+    return parsed.getUTCFullYear() === year
+        && parsed.getUTCMonth() === month
+        && parsed.getUTCDate() === day;
+};
+
+const normalizeReadDates = (value) => {
+    if (!Array.isArray(value) || value.length > 14 || value.some(item => !isValidStoredDate(item))) {
+        return invalidCompleteReadResponse();
+    }
+    return [...value];
+};
+
+const normalizeReadStateUser = (value) => {
+    if (!hasExactKeys(value, COMPLETE_READ_USER_KEYS)
+        || !isSafeIntegerInRange(value.currentDay, 1, 365)
+        || !isSafeIntegerInRange(value.readCount, 1, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.score, 0, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.talent, 0, MAX_TALENT_BALANCE)
+        || !isSafeIntegerInRange(value.streak, 0, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.maxStreak, 0, Number.MAX_SAFE_INTEGER)
+        || (value.lastReadDate !== null && !isValidLegacyCalendarDate(value.lastReadDate))
+        || (value.dailyAdvanceDate !== null && !isValidLegacyCalendarDate(value.dailyAdvanceDate))
+        || !isSafeIntegerInRange(value.dailyAdvanceCount, 0, Number.MAX_SAFE_INTEGER)
+        || typeof value.secretShopUnlocked !== 'boolean') {
+        return invalidCompleteReadResponse();
+    }
+    return {
+        currentDay: value.currentDay,
+        readCount: value.readCount,
+        score: value.score,
+        talent: value.talent,
+        streak: value.streak,
+        maxStreak: value.maxStreak,
+        lastReadDate: value.lastReadDate,
+        dailyAdvanceDate: value.dailyAdvanceDate,
+        dailyAdvanceCount: value.dailyAdvanceCount,
+        recentReadDates: normalizeReadDates(value.recentReadDates),
+        secretShopUnlocked: value.secretShopUnlocked,
+    };
+};
+
+const normalizeReadUpdate = (value) => {
+    if (!hasRequiredAndAllowedKeys(
+        value,
+        COMPLETE_READ_UPDATE_REQUIRED_KEYS,
+        COMPLETE_READ_UPDATE_ALLOWED_KEYS,
+    )
+        || !isSafeIntegerInRange(value.currentDay, 1, 365)
+        || !isSafeIntegerInRange(value.readCount, 1, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.score, 0, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.streak, 0, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.maxStreak, 0, Number.MAX_SAFE_INTEGER)
+        || !isValidLegacyCalendarDate(value.lastReadDate)
+        || !isValidLegacyCalendarDate(value.dailyAdvanceDate)
+        || !isSafeIntegerInRange(value.dailyAdvanceCount, 1, 3)
+        || (Object.prototype.hasOwnProperty.call(value, 'talent')
+            && !isSafeIntegerInRange(value.talent, 0, MAX_TALENT_BALANCE))
+        || (Object.prototype.hasOwnProperty.call(value, 'secretShopUnlocked')
+            && value.secretShopUnlocked !== true)) {
+        return invalidCompleteReadResponse();
+    }
+    return {
+        currentDay: value.currentDay,
+        readCount: value.readCount,
+        score: value.score,
+        streak: value.streak,
+        maxStreak: value.maxStreak,
+        lastReadDate: value.lastReadDate,
+        dailyAdvanceDate: value.dailyAdvanceDate,
+        dailyAdvanceCount: value.dailyAdvanceCount,
+        recentReadDates: normalizeReadDates(value.recentReadDates),
+        ...(Object.prototype.hasOwnProperty.call(value, 'talent') ? { talent: value.talent } : {}),
+        ...(Object.prototype.hasOwnProperty.call(value, 'secretShopUnlocked')
+            ? { secretShopUnlocked: true }
+            : {}),
+    };
+};
+
+const normalizeReadSummary = (value) => {
+    if (!hasExactKeys(value, COMPLETE_READ_SUMMARY_KEYS)
+        || !isSafeIntegerInRange(value.oldLevel, 0, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.newLevel, value.oldLevel, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.scoreEarned, 0, 15)
+        || !isSafeIntegerInRange(value.streakBonus, 0, 5)
+        || !isSafeIntegerInRange(value.talentEarned, 0, 17)
+        || !isSafeIntegerInRange(value.newStreak, 0, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.newReadCount, 1, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.newProgressDay, 1, 365)
+        || !isSafeIntegerInRange(value.nextViewingDay, 1, 365)
+        || typeof value.completedRound !== 'boolean'
+        || typeof value.secretShopJustUnlocked !== 'boolean'
+        || typeof value.rewardsUserWallet !== 'boolean'
+        || typeof value.talentProgramEnabled !== 'boolean'
+        || (value.scoreEarned !== 0 && value.scoreEarned !== 10 + value.streakBonus)
+        || (value.scoreEarned === 0 && value.streakBonus !== 0)
+        || value.talentEarned !== (value.scoreEarned > 0 && value.talentProgramEnabled
+            ? 10 + Math.min(value.newStreak, 7)
+            : 0)
+        || (value.rewardsUserWallet && !value.talentProgramEnabled)
+        || (value.secretShopJustUnlocked && value.newStreak < 7)
+        || value.nextViewingDay !== value.newProgressDay
+        || (value.completedRound !== (value.newProgressDay === 1))) {
+        return invalidCompleteReadResponse();
+    }
+    return { ...value };
+};
+
+const sameReadUpdateState = (update, stateUser) => (
+    [...COMPLETE_READ_UPDATE_REQUIRED_KEYS].every(key => (
+        key === 'recentReadDates'
+            ? JSON.stringify(update[key]) === JSON.stringify(stateUser[key])
+            : Object.is(update[key], stateUser[key])
+    ))
+    && (!Object.prototype.hasOwnProperty.call(update, 'talent')
+        || update.talent === stateUser.talent)
+    && (!Object.prototype.hasOwnProperty.call(update, 'secretShopUnlocked')
+        || stateUser.secretShopUnlocked === true)
+);
+
+export const validateCompleteReadResponse = (payload, result, expectedRequestId) => {
+    if (!hasExactKeys(payload, COMPLETE_READ_POSITION_VALUE_KEYS)
+        || !isSafeIntegerInRange(payload.cycle, 1, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(payload.day, 1, 365)
+        || !ACTIVITY_REQUEST_ID_PATTERN.test(expectedRequestId)
+        || !hasExactKeys(result, COMPLETE_READ_RESPONSE_KEYS)
+        || result.ok !== true || result.action !== 'completeRead'
+        || result.requestId !== expectedRequestId
+        || typeof result.alreadyCompleted !== 'boolean'
+        || typeof result.committed !== 'boolean'
+        || !isValidLegacyCalendarDate(result.calendarDate)
+        || !hasExactKeys(result.state, COMPLETE_READ_STATE_KEYS)) {
+        return invalidCompleteReadResponse();
+    }
+    const user = normalizeReadStateUser(result.state.user);
+    const rosters = normalizeReadRosterTalents(result.state.rosters);
+
+    let normalizedResult;
+    if (hasExactKeys(result.result, COMPLETE_READ_READY_KEYS)
+        && result.result.status === 'ready') {
+        const updateData = normalizeReadUpdate(result.result.updateData);
+        const summary = normalizeReadSummary(result.result.summary);
+        const completedRound = payload.day === 365;
+        const expectedProgressDay = completedRound ? 1 : payload.day + 1;
+        const expectedReadCount = completedRound ? payload.cycle + 1 : payload.cycle;
+        const previousScore = updateData.score - summary.scoreEarned;
+        if (!result.committed
+            || updateData.lastReadDate !== result.calendarDate
+            || updateData.dailyAdvanceDate !== result.calendarDate
+            || !updateData.recentReadDates.includes(result.calendarDate)
+            || updateData.readCount !== summary.newReadCount
+            || updateData.currentDay !== summary.newProgressDay
+            || updateData.streak !== summary.newStreak
+            || updateData.maxStreak < updateData.streak
+            || !Number.isSafeInteger(expectedReadCount)
+            || summary.completedRound !== completedRound
+            || summary.newProgressDay !== expectedProgressDay
+            || summary.nextViewingDay !== expectedProgressDay
+            || summary.newReadCount !== expectedReadCount
+            || !Number.isSafeInteger(previousScore) || previousScore < 0
+            || Math.floor(previousScore / 100) !== summary.oldLevel
+            || Math.floor(updateData.score / 100) !== summary.newLevel
+            || (Object.prototype.hasOwnProperty.call(updateData, 'talent')
+                !== summary.rewardsUserWallet)
+            || (Object.prototype.hasOwnProperty.call(updateData, 'secretShopUnlocked')
+                !== summary.secretShopJustUnlocked)
+            || (!result.alreadyCompleted && !sameReadUpdateState(updateData, user))) {
+            return invalidCompleteReadResponse();
+        }
+        normalizedResult = { status: 'ready', updateData, summary };
+    } else if (hasExactKeys(result.result, COMPLETE_READ_POSITION_KEYS)
+        && result.result.status === 'positionMismatch') {
+        if (result.alreadyCompleted || result.committed
+            || !hasExactKeys(result.result.expected, COMPLETE_READ_POSITION_VALUE_KEYS)
+            || !hasExactKeys(result.result.received, COMPLETE_READ_POSITION_VALUE_KEYS)
+            || !isSafeIntegerInRange(result.result.expected.cycle, 1, Number.MAX_SAFE_INTEGER)
+            || !isSafeIntegerInRange(result.result.expected.day, 1, 365)
+            || result.result.received.cycle !== payload.cycle
+            || result.result.received.day !== payload.day
+            || user.readCount !== result.result.expected.cycle
+            || user.currentDay !== result.result.expected.day
+            || (result.result.expected.cycle === payload.cycle
+                && result.result.expected.day === payload.day)) {
+            return invalidCompleteReadResponse();
+        }
+        normalizedResult = {
+            status: 'positionMismatch',
+            expected: { ...result.result.expected },
+            received: { ...result.result.received },
+        };
+    } else if (hasExactKeys(result.result, COMPLETE_READ_DAILY_LIMIT_KEYS)
+        && result.result.status === 'dailyLimit') {
+        if (result.alreadyCompleted || result.committed
+            || result.result.limit !== 3
+            || !isSafeIntegerInRange(result.result.count, 3, Number.MAX_SAFE_INTEGER)
+            || user.dailyAdvanceCount !== result.result.count
+            || user.dailyAdvanceDate !== result.calendarDate
+            || user.readCount !== payload.cycle
+            || user.currentDay !== payload.day) {
+            return invalidCompleteReadResponse();
+        }
+        normalizedResult = { status: 'dailyLimit', limit: 3, count: result.result.count };
+    } else {
+        return invalidCompleteReadResponse();
+    }
+
+    return {
+        ok: true,
+        action: 'completeRead',
+        requestId: expectedRequestId,
+        alreadyCompleted: result.alreadyCompleted,
+        committed: result.committed,
+        calendarDate: result.calendarDate,
+        result: normalizedResult,
+        state: { user, rosters },
+    };
+};
+
+export const completeRead = (cycle, day, options = {}) => {
+    const payload = { cycle, day };
+    if (!isSafeIntegerInRange(cycle, 1, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(day, 1, 365)) {
+        throw new PlatformApiError('읽기 완료 위치가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const requestId = options.requestId || createRequestId();
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(requestId)) {
+        throw new PlatformApiError('읽기 완료 요청 번호가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('completeRead', payload, { ...options, requestId })
+        .then(result => validateCompleteReadResponse(payload, result, requestId));
 };
 
 const invalidDailyVideoResponse = () => {

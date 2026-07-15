@@ -192,6 +192,39 @@ Deno.test("읽기 완료 미리보기 요청의 회차와 날짜를 검증한다
   }
 });
 
+Deno.test("읽기 완료 실제 쓰기 요청은 위치 외 필드를 거부한다", () => {
+  const requestId = "123e4567-e89b-42d3-a456-426614174000";
+  const parsed = parsePlatformApiRequest({
+    action: "completeRead",
+    requestId,
+    cycle: 2,
+    day: 365,
+  });
+  assert(parsed.action === "completeRead", "complete read action mismatch");
+  if (parsed.action !== "completeRead") return;
+  assert(parsed.cycle === 2 && parsed.day === 365, "read position mismatch");
+  for (
+    const extra of [
+      { score: 10 },
+      { talent: 17 },
+      { churchId: "client-org" },
+      { rosterIds: ["client-org"] },
+    ]
+  ) {
+    assertRequestError(
+      () =>
+        parsePlatformApiRequest({
+          action: "completeRead",
+          requestId,
+          cycle: 2,
+          day: 365,
+          ...extra,
+        }),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
 Deno.test("퀴즈 제출 미리보기 요청을 정규화한다", () => {
   const parsed = parsePlatformApiRequest({
     action: "previewQuizSubmission",
@@ -232,6 +265,72 @@ Deno.test("퀴즈 제출 미리보기의 진도, 문항, 답안을 엄격히 검
   for (const selectedIndex of [-1, 4, 1.5, "1"]) {
     assertRequestError(
       () => parsePlatformApiRequest({ ...valid, selectedIndex }),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
+Deno.test("퀴즈 실제 제출은 표시 답 외 보상 입력을 거부한다", () => {
+  const requestId = "123e4567-e89b-42d3-a456-426614174000";
+  const valid = {
+    action: "submitQuiz",
+    requestId,
+    progressKey: "r2_d10",
+    quizKey: "genesis-3-8",
+    selectedIndex: 1,
+    attemptSlot: 1,
+  };
+  const parsed = parsePlatformApiRequest(valid);
+  assert(parsed.action === "submitQuiz", "submit quiz action mismatch");
+  if (parsed.action !== "submitQuiz") return;
+  assert(parsed.selectedIndex === 1, "selected answer mismatch");
+  assert(parsed.attemptSlot === 1, "attempt slot mismatch");
+  for (const attemptSlot of [0, 3, 1.5, "1"]) {
+    assertRequestError(
+      () => parsePlatformApiRequest({ ...valid, attemptSlot }),
+      "INVALID_PAYLOAD",
+    );
+  }
+  for (
+    const extra of [
+      { answerIndex: 1 },
+      { isCorrect: true },
+      { reward: 10 },
+      { talent: 10 },
+    ]
+  ) {
+    assertRequestError(
+      () => parsePlatformApiRequest({ ...valid, ...extra }),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
+Deno.test("퀴즈 건너뛰기는 위치와 문항 외 클라이언트 상태를 거부한다", () => {
+  const requestId = "123e4567-e89b-42d3-a456-426614174000";
+  const valid = {
+    action: "skipQuiz",
+    requestId,
+    progressKey: "r2_d10",
+    quizKey: "genesis-3-8",
+  };
+  const parsed = parsePlatformApiRequest(valid);
+  assert(parsed.action === "skipQuiz", "skip quiz action mismatch");
+  for (const extra of [{ skipped: true }, { reward: 0 }, { attempts: 1 }]) {
+    assertRequestError(
+      () => parsePlatformApiRequest({ ...valid, ...extra }),
+      "INVALID_PAYLOAD",
+    );
+  }
+  for (
+    const invalid of [
+      { progressKey: "r1_d366" },
+      { progressKey: "r01_d1" },
+      { quizKey: "bad key" },
+    ]
+  ) {
+    assertRequestError(
+      () => parsePlatformApiRequest({ ...valid, ...invalid }),
       "INVALID_PAYLOAD",
     );
   }
