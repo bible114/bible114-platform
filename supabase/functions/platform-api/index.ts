@@ -89,6 +89,9 @@ import {
 import { completeReadTransaction } from "./readCompletionService.ts";
 import { restartReading } from "./restartReadingService.ts";
 import { syncAchievements } from "./achievementSyncService.ts";
+import { migratePersonalTalentWallet } from "./personalTalentWalletMigrationService.ts";
+import { normalizeLegacyReadingPosition } from "./normalizeLegacyReadingPositionService.ts";
+import { completeMemberOnboarding } from "./ownMembershipService.ts";
 import { skipQuiz, submitQuiz } from "./quizSubmission.ts";
 import { rebuildPublicChurches } from "./publicDirectoryService.ts";
 
@@ -1113,6 +1116,48 @@ Deno.serve(async (request) => {
         requestId: parsed.requestId,
         trigger: parsed.trigger,
       });
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        ...result,
+      });
+    }
+
+    if (parsed.action === "completeMemberOnboarding") {
+      const result = await completeMemberOnboarding(service, verifiedUser, {
+        requestId: parsed.requestId,
+        orgId: parsed.orgId,
+        planId: parsed.planId,
+        departmentId: parsed.departmentId,
+        subgroupId: parsed.subgroupId,
+      });
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        ...result,
+      });
+    }
+
+    if (parsed.action === "migratePersonalTalentWallet") {
+      const result = await migratePersonalTalentWallet(service, verifiedUser, {
+        requestId: parsed.requestId,
+      });
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        ...result,
+      });
+    }
+
+    if (parsed.action === "normalizeLegacyReadingPosition") {
+      const result = await normalizeLegacyReadingPosition(
+        service,
+        verifiedUser,
+        { requestId: parsed.requestId },
+      );
       return jsonResponse(origin, 200, {
         ok: true,
         action: parsed.action,

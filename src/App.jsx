@@ -3,6 +3,7 @@ import { db, auth, firebase } from './utils/firebase';
 import { DEFAULT_DEPARTMENTS } from './data/departments';
 import { BIBLE_VERSIONS, isBibleVersionVisibleForUser } from './data/bible_options';
 import { userDocToState, dateToOffset } from './utils/helpers';
+import { completeMemberOnboarding } from './utils/platformApi';
 import { setMemberPasswordByAdmin } from './utils/adminPassword';
 import { calculateSubgroupStats, getWeeklyMVP, formatSubgroupRanking, formatProgressRanking, getAdminStats } from './utils/statsUtils';
 import { getSubgroupDisplay } from './utils/dashboardUtils';
@@ -20,12 +21,25 @@ import PlatformPopupAd from './components/PlatformPopupAd';
 import SocialOnboardingView from './components/SocialOnboardingView';
 import { CommunityMembershipCard } from './components/dashboard';
 import { getPendingPersonalMigration, migrateChurchMemberToPersonal } from './utils/personalAccountMigration';
+import { normalizeOnboardingOrganizations } from './utils/onboardingOrganizations';
 import { ToastContainer, useToast } from './components/admin';
 import { useTTS } from './hooks/useTTS';
-import { ADMIN_ENTRY_SESSION_KEY } from './data/constants';
+import { ADMIN_ENTRY_SESSION_KEY, UNAFFILIATED_CHURCH_ID } from './data/constants';
 
 const ChurchAdminView = lazy(() => import('./components/ChurchAdminView'));
 const PlatformAdminView = lazy(() => import('./components/PlatformAdminView'));
+
+const UNAFFILIATED_FALLBACK_DEPARTMENTS = [{
+    id: 'personal',
+    name: '개인 성도',
+    subgroups: ['성경읽기 동행'],
+}];
+
+const needsInitialOnboarding = user => (
+    user?.role === 'churchAdmin'
+        ? user.onboardingPending === true
+        : (!user?.departmentId || typeof user?.subgroupId !== 'string')
+);
 
 const AdminLoadingFallback = () => (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center pb-20">
@@ -182,7 +196,6 @@ const App = () => {
 
         handleRead,
         saveMemo,
-        changeSubgroup,
         handleRestart,
         changeStartDate,
 
@@ -209,7 +222,6 @@ const App = () => {
     const [showCalendar, setShowCalendar] = useState(false);
     const [showFullRanking, setShowFullRanking] = useState(false);
     const [showDateSettings, setShowDateSettings] = useState(false);
-    const [showSubgroupChange, setShowSubgroupChange] = useState(false);
     const [showRestartConfirm, setShowRestartConfirm] = useState(false);
     const [selectedSubgroupDetail, setSelectedSubgroupDetail] = useState(null);
     const [calendarDate, setCalendarDate] = useState(new Date());
@@ -239,6 +251,7 @@ const App = () => {
 
     const [editingUser, setEditingUser] = useState(null);     // 편집 중인 사용자
     const [changingPassword, setChangingPassword] = useState(null); // 비밀번호 변경 대상
+    const memberOnboardingRequestRef = useRef(null);
     const [newPassword, setNewPassword] = useState('');       // 새 비밀번호
     const [adminSortBy, setAdminSortBy] = useState('name'); // 'name', 'day', 'score', 'subgroup'
     const [kakaoLinkInput, setKakaoLinkInput] = useState(''); // 카카오 링크 입력
@@ -269,17 +282,29 @@ const App = () => {
                 if (currentUser.role === 'superAdmin' || currentUser.role === 'platformAdmin') {
                     loadSuperAdminData();
                 } else if (currentUser.role === 'churchAdmin') {
-                    // 교회 관리자는 세션 첫 진입 때 읽기/관리 화면을 직접 고른다.
-                    if (dashboardUser?.churchId) loadChurchCommunities(dashboardUser.churchId);
-                    const savedAdminEntry = sessionStorage.getItem(ADMIN_ENTRY_SESSION_KEY);
-                    setView(['dashboard', 'church_admin'].includes(savedAdminEntry) ? savedAdminEntry : 'admin_entry');
+                    if (needsInitialOnboarding(currentUser)) {
+                        if (currentUser.churchId) {
+                            loadChurchCommunities(currentUser.churchId, { requireServer: true });
+                        }
+                        setTempUser(currentUser);
+                        setView('plan_type_select');
+                    } else {
+                        // 교회 관리자는 세션 첫 진입 때 읽기/관리 화면을 직접 고른다.
+                        if (dashboardUser?.churchId) loadChurchCommunities(dashboardUser.churchId);
+                        const savedAdminEntry = sessionStorage.getItem(ADMIN_ENTRY_SESSION_KEY);
+                        setView(['dashboard', 'church_admin'].includes(savedAdminEntry) ? savedAdminEntry : 'admin_entry');
+                    }
                 } else {
-                    if (dashboardUser?.churchId) loadChurchCommunities(dashboardUser.churchId);
                     if (currentUser.accountType === 'personal' && currentUser.planId) {
+                        if (dashboardUser?.churchId) loadChurchCommunities(dashboardUser.churchId);
                         setView('dashboard');
-                    } else if (currentUser.departmentId && currentUser.subgroupId) {
+                    } else if (!needsInitialOnboarding(currentUser)) {
+                        if (dashboardUser?.churchId) loadChurchCommunities(dashboardUser.churchId);
                         setView('dashboard');
                     } else {
+                        if (currentUser.churchId) {
+                            loadChurchCommunities(currentUser.churchId, { requireServer: true });
+                        }
                         setTempUser(currentUser);
                         setView('plan_type_select');
                     }
@@ -410,18 +435,31 @@ const App = () => {
      회원가입, 로그인, 로그아웃 등 사용자 인증 관련 비즈니스 로직입니다.
     */
 
-    const loadChurchCommunities = async (churchId) => {
+    const loadChurchCommunities = async (churchId, { requireServer = false } = {}) => {
         const requestId = ++churchCommunitiesRequestRef.current;
         setChurchCommunities([]);
         if (!churchId) return;
         try {
-            const doc = await db.collection('churches').doc(churchId).get();
+            const churchRef = db.collection('churches').doc(churchId);
+            const doc = requireServer
+                ? await churchRef.get({ source: 'server' })
+                : await churchRef.get();
             if (churchCommunitiesRequestRef.current !== requestId) return;
             const data = doc.exists ? (doc.data() || {}) : {};
-            setChurchCommunities(data.departments || data.communities || []);
+            const storedDepartments = Array.isArray(data.departments)
+                ? data.departments
+                : (Array.isArray(data.communities) ? data.communities : []);
+            const sourceDepartments = doc.exists
+                ? storedDepartments
+                : (churchId === UNAFFILIATED_CHURCH_ID
+                    ? UNAFFILIATED_FALLBACK_DEPARTMENTS
+                    : []);
+            setChurchCommunities(normalizeOnboardingOrganizations(sourceDepartments));
         } catch (e) {
             if (churchCommunitiesRequestRef.current !== requestId) return;
-            setChurchCommunities([]);
+            setChurchCommunities(churchId === UNAFFILIATED_CHURCH_ID
+                ? normalizeOnboardingOrganizations(UNAFFILIATED_FALLBACK_DEPARTMENTS)
+                : []);
             console.error(e);
         }
     };
@@ -511,18 +549,56 @@ const App = () => {
 
     const handleSubgroupSelect = async (subgroup) => {
         // Support both legacy string and new { id, name } object
-        const subgroupId = typeof subgroup === 'string' ? subgroup : subgroup.id;
-        const subgroupName = typeof subgroup === 'string' ? subgroup : subgroup.name;
-        const finalUser = { ...tempUser, subgroupId, subgroupName };
-        const runtimeExtraOrgs = Array.isArray(finalUser.extraOrgs) ? finalUser.extraOrgs : [];
-        const { extraOrgs: _transientExtraOrgs, ...persistedUser } = finalUser;
-        setCurrentUser({ ...persistedUser, extraOrgs: runtimeExtraOrgs });
-        setTempUser(null);
-        setView(finalUser.role === 'churchAdmin' ? 'admin_signup_complete' : 'dashboard');
+        const subgroupId = typeof subgroup === 'string'
+            ? subgroup
+            : (subgroup?.id || subgroup?.name || '');
+        const requestUser = tempUser;
+        const requestUid = requestUser?.uid;
+        const orgId = requestUser?.churchId;
+        const planId = requestUser?.planId;
+        const departmentId = requestUser?.departmentId;
+        if (!requestUid || auth.currentUser?.uid !== requestUid
+            || memberOnboardingRequestRef.current) return;
+        memberOnboardingRequestRef.current = requestUid;
         try {
-            const uid = (auth.currentUser ? auth.currentUser.uid : null) || finalUser.uid;
-            if (uid) await db.collection('users').doc(uid).set({ ...persistedUser, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
-        } catch (e) { console.error(e); alert("서버 저장 실패"); }
+            const response = await completeMemberOnboarding({
+                orgId,
+                planId,
+                departmentId,
+                subgroupId,
+            }, { expectedUid: requestUid });
+            if (auth.currentUser?.uid !== requestUid) return;
+            const userSnap = await db.collection('users').doc(requestUid).get({ source: 'server' });
+            if (auth.currentUser?.uid !== requestUid || !userSnap.exists) {
+                throw new Error('MEMBER_ONBOARDING_AUTH_CHANGED');
+            }
+            const stored = userSnap.data() || {};
+            const membership = response.result;
+            if (stored.isDeleted === true
+                || stored.planId !== membership.planId
+                || stored.churchId !== membership.orgId
+                || stored.departmentId !== membership.departmentId
+                || stored.departmentName !== membership.departmentName
+                || stored.subgroupId !== membership.subgroupId
+                || stored.subgroupName !== membership.subgroupName
+                || (requestUser.role === 'churchAdmin' && stored.onboardingPending !== false)) {
+                throw new Error('MEMBER_ONBOARDING_STATE_INVALID');
+            }
+            const runtimeExtraOrgs = Array.isArray(requestUser.extraOrgs)
+                ? requestUser.extraOrgs
+                : [];
+            const canonicalUser = userDocToState(userSnap);
+            setCurrentUser({ ...canonicalUser, extraOrgs: runtimeExtraOrgs });
+            setTempUser(null);
+            setView(canonicalUser.role === 'churchAdmin' ? 'admin_signup_complete' : 'dashboard');
+        } catch (e) {
+            console.error('최초 플랜·소속 설정 실패:', e);
+            alert('플랜과 소속을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
+        } finally {
+            if (memberOnboardingRequestRef.current === requestUid) {
+                memberOnboardingRequestRef.current = null;
+            }
+        }
     };
 
     const finishPersonalOnboarding = async (runtimeOrg = null) => {
@@ -828,7 +904,6 @@ const App = () => {
                 handleLogout={handleLogout}
                 handleChangeVersionStart={handleChangeVersionStart}
                 handleRestart={handleRestart}
-                changeSubgroup={changeSubgroup}
                 changeStartDate={changeStartDate}
                 dateToOffset={dateToOffset}
                 showConfetti={showConfetti}
@@ -843,7 +918,6 @@ const App = () => {
                 showCalendar={showCalendar} setShowCalendar={setShowCalendar}
                 showFullRanking={showFullRanking} setShowFullRanking={setShowFullRanking}
                 showDateSettings={showDateSettings} setShowDateSettings={setShowDateSettings}
-                showSubgroupChange={showSubgroupChange} setShowSubgroupChange={setShowSubgroupChange}
                 showRestartConfirm={showRestartConfirm} setShowRestartConfirm={setShowRestartConfirm}
                 showMonthlyContestInfo={showMonthlyContestInfo} setShowMonthlyContestInfo={setShowMonthlyContestInfo}
                 calendarDate={calendarDate} setCalendarDate={setCalendarDate}

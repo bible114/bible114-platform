@@ -19,7 +19,6 @@ import {
     DateSettingsModal,
     RankingModal,
     MemoListModal,
-    SubgroupChangeModal
 } from './modals';
 
 // Dashboard Components
@@ -88,7 +87,6 @@ const DashboardView = ({
     handleLogout,
     handleChangeVersionStart,
     handleRestart,
-    changeSubgroup,
     changeStartDate,
     dateToOffset,
     // UI State
@@ -104,7 +102,6 @@ const DashboardView = ({
     showCalendar, setShowCalendar,
     showFullRanking, setShowFullRanking,
     showDateSettings, setShowDateSettings,
-    showSubgroupChange, setShowSubgroupChange,
     showRestartConfirm, setShowRestartConfirm,
     showMonthlyContestInfo, setShowMonthlyContestInfo,
     calendarDate, setCalendarDate,
@@ -418,7 +415,6 @@ const DashboardView = ({
                 currentUser={currentUser}
                 generateMemosHTML={generateMemosHTML}
             />
-            <SubgroupChangeModal show={showSubgroupChange} onClose={() => setShowSubgroupChange(false)} currentUser={currentUser} changeSubgroup={changeSubgroup} churchCommunities={churchCommunities} />
             {showTutorial && (
                 <TutorialOverlay
                     onClose={() => setShowTutorial(false)}

@@ -19,8 +19,30 @@ export const ADMIN_PREVIEW_DAILY_VIDEO_ACTION =
   "adminPreviewDailyVideo" as const;
 export const REBUILD_PUBLIC_CHURCHES_ACTION = "rebuildPublicChurches" as const;
 export const SYNC_ACHIEVEMENTS_ACTION = "syncAchievements" as const;
+export const MIGRATE_PERSONAL_TALENT_WALLET_ACTION =
+  "migratePersonalTalentWallet" as const;
+export const NORMALIZE_LEGACY_READING_POSITION_ACTION =
+  "normalizeLegacyReadingPosition" as const;
+export const COMPLETE_MEMBER_ONBOARDING_ACTION =
+  "completeMemberOnboarding" as const;
 
 export type PlatformApiRequest =
+  | {
+    action: typeof COMPLETE_MEMBER_ONBOARDING_ACTION;
+    requestId: string;
+    orgId: string;
+    planId: "1year_sequential" | "1year_revised" | "1year_new" | "nt_new";
+    departmentId: string;
+    subgroupId: string;
+  }
+  | {
+    action: typeof NORMALIZE_LEGACY_READING_POSITION_ACTION;
+    requestId: string;
+  }
+  | {
+    action: typeof MIGRATE_PERSONAL_TALENT_WALLET_ACTION;
+    requestId: string;
+  }
   | {
     action: typeof SYNC_ACHIEVEMENTS_ACTION;
     requestId: string;
@@ -224,6 +246,8 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     quizKey,
     selectedIndex,
     attemptSlot,
+    orgId,
+    planId,
     churchId,
     entryCode,
     joinTicket,
@@ -252,6 +276,63 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
   }
 
   if (action === PREFLIGHT_ACTION) return { action, requestId };
+  if (action === COMPLETE_MEMBER_ONBOARDING_ACTION) {
+    const allowedKeys = new Set([
+      "action",
+      "requestId",
+      "orgId",
+      "planId",
+      "departmentId",
+      "subgroupId",
+    ]);
+    const normalizedOrgId = safeDocumentId(orgId);
+    const normalizedDepartmentId = safeDocumentId(departmentId);
+    const normalizedSubgroupId = safeDocumentId(subgroupId, { optional: true });
+    const allowedPlans = new Set([
+      "1year_sequential",
+      "1year_revised",
+      "1year_new",
+      "nt_new",
+    ]);
+    if (
+      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+      !normalizedOrgId || normalizedOrgId !== orgId ||
+      normalizedOrgId === "." || normalizedOrgId === ".." ||
+      !normalizedDepartmentId || normalizedDepartmentId !== departmentId ||
+      normalizedDepartmentId === "." || normalizedDepartmentId === ".." ||
+      normalizedSubgroupId === null || normalizedSubgroupId !== subgroupId ||
+      normalizedSubgroupId === "." || normalizedSubgroupId === ".." ||
+      typeof planId !== "string" || !allowedPlans.has(planId)
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return {
+      action,
+      requestId,
+      orgId: normalizedOrgId,
+      planId: planId as
+        | "1year_sequential"
+        | "1year_revised"
+        | "1year_new"
+        | "nt_new",
+      departmentId: normalizedDepartmentId,
+      subgroupId: normalizedSubgroupId,
+    };
+  }
+  if (action === NORMALIZE_LEGACY_READING_POSITION_ACTION) {
+    const allowedKeys = new Set(["action", "requestId"]);
+    if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return { action, requestId };
+  }
+  if (action === MIGRATE_PERSONAL_TALENT_WALLET_ACTION) {
+    const allowedKeys = new Set(["action", "requestId"]);
+    if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return { action, requestId };
+  }
   if (action === SYNC_ACHIEVEMENTS_ACTION) {
     const allowedKeys = new Set(["action", "requestId", "trigger"]);
     if (

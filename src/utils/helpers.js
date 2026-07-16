@@ -1,6 +1,10 @@
-import { db } from './firebase';
+import { auth, db } from './firebase';
 import { SHOP_ITEMS } from '../data/shop_items';
 import { titleMatchesDate } from './dailyVideoPolicy';
+import {
+    migratePersonalTalentWallet as migratePersonalTalentWalletViaApi,
+    PlatformApiError,
+} from './platformApi';
 
 export { titleMatchesDate };
 export { parseChapters, mapToStandardLabel, parseAndMapChapters } from './dailyVideoChapters.js';
@@ -68,50 +72,107 @@ export const migrateTalentIfNeeded = async (uid, data) => {
     });
 };
 
-// 개인 계정이 공동체별 지갑 모델을 사용할 때 users.talent를 기준 공동체 roster로 옮긴다.
-// 최초 이관 뒤 과거 구매 환불이 원래 users 지갑에 늦게 들어올 수 있으므로,
-// talentWalletMigrated가 true여도 users.talent가 다시 생기면 같은 트랜잭션으로 재이관한다.
-// users와 roster의 증감은 반드시 한 트랜잭션 안에서 같은 금액으로 처리한다.
+const MAX_TALENT_BALANCE = 1_000_000_000;
+const isCanonicalOrgId = value => (
+    typeof value === 'string'
+    && value.length >= 1 && value.length <= 128
+    && value === value.trim()
+    && value !== '.' && value !== '..'
+    && !value.includes('/')
+    && !/[\u0000-\u001f\u007f]/.test(value)
+);
+const walletMigrationStateError = () => new PlatformApiError(
+    '개인 달란트 지갑 이관 상태를 안전하게 확인하지 못했습니다.',
+    { code: 'INVALID_RESPONSE', status: 200, retryable: true },
+);
+const walletMigrationAuthChangedError = () => new PlatformApiError(
+    '로그인 계정이 바뀌었습니다. 다시 시도해주세요.',
+    { code: 'AUTH_CHANGED', status: 401, retryable: false },
+);
+
+// 개인 계정 지갑 이관은 서버 action만 쓴다. 성공 응답 뒤에도 응답 본문을
+// 사용자 상태로 신뢰하지 않는다. primary roster가 있으면 users와 roster를
+// 같은 read-only transaction으로 확인하고, 과거 제명으로 primary roster만
+// 없는 계정은 source-server users를 엄격히 확인한 뒤 로그인만 계속한다.
 
 export const migratePersonalTalentWalletIfNeeded = async (uid, primaryOrgId, knownUserData = null) => {
-    if (knownUserData && (
-        knownUserData.accountType !== 'personal' ||
-        (knownUserData.talentWalletMigrated === true && (Number(knownUserData.talent) || 0) <= 0)
-    )) return null;
-    const normalizedOrgId = String(primaryOrgId || '').trim();
-    if (!uid || !normalizedOrgId) return null;
-    const userRef = db.collection('users').doc(uid);
-    const rosterRef = db.collection('churches').doc(normalizedOrgId).collection('roster').doc(uid);
+    const requestUid = String(uid || '').trim();
+    if (!requestUid || auth?.currentUser?.uid !== requestUid) {
+        throw walletMigrationAuthChangedError();
+    }
 
-    return db.runTransaction(async transaction => {
-        const [userSnap, rosterSnap] = await Promise.all([
-            transaction.get(userRef),
-            transaction.get(rosterRef),
-        ]);
-        if (!userSnap.exists || !rosterSnap.exists) return null;
-        const user = userSnap.data();
-        const outstandingTalent = Math.max(0, Number(user.talent) || 0);
-        if (
-            user.accountType !== 'personal'
-            || (user.talentWalletMigrated === true && outstandingTalent <= 0)
-        ) return null;
+    // 로그인 직전 읽은 힌트는 확실한 비대상만 생략한다. 완료·0 잔액처럼 보여도
+    // 서버가 primary roster와 최신 상태를 다시 확인해야 손상·직후 환불 경합을 놓치지 않는다.
+    if (knownUserData && knownUserData.accountType !== 'personal') return null;
+    if (knownUserData?.accountType === 'personal') {
+        const hasKnownPrimaryOrg = Boolean(
+            String(knownUserData.primaryOrgId || primaryOrgId || '').trim(),
+        );
+        if (!hasKnownPrimaryOrg) return null;
+    }
 
-        const rosterTalent = Number(rosterSnap.data()?.talent) || 0;
-        if (outstandingTalent <= 0) {
-            transaction.update(userRef, { talent: 0, talentWalletMigrated: true });
-            return { orgId: normalizedOrgId, talent: rosterTalent, movedTalent: 0, remainingTalent: 0 };
+    const migrationResponse = await migratePersonalTalentWalletViaApi({ expectedUid: requestUid });
+    if (auth?.currentUser?.uid !== requestUid) throw walletMigrationAuthChangedError();
+
+    const userRef = db.collection('users').doc(requestUid);
+    if (migrationResponse.result.status === 'primaryMissing') {
+        const userSnap = await userRef.get({ source: 'server' });
+        if (!userSnap.exists || auth?.currentUser?.uid !== requestUid) {
+            throw walletMigrationStateError();
+        }
+        const user = userSnap.data() || {};
+        const validDeletedState = user.isDeleted === undefined
+            || typeof user.isDeleted === 'boolean';
+        const validMigrationFlag = user.talentWalletMigrated === undefined
+            || typeof user.talentWalletMigrated === 'boolean';
+        if (user.role !== 'member'
+            || user.accountType !== 'personal'
+            || !validDeletedState
+            || user.isDeleted === true
+            || !validMigrationFlag
+            || !isCanonicalOrgId(user.primaryOrgId)
+            || !Number.isSafeInteger(user.talent)
+            || user.talent < 0
+            || user.talent > MAX_TALENT_BALANCE) {
+            throw walletMigrationStateError();
+        }
+        if (auth?.currentUser?.uid !== requestUid) throw walletMigrationAuthChangedError();
+        return null;
+    }
+
+    const canonicalState = await db.runTransaction(async transaction => {
+        if (auth?.currentUser?.uid !== requestUid) throw walletMigrationAuthChangedError();
+        const userSnap = await transaction.get(userRef);
+        if (!userSnap.exists || auth?.currentUser?.uid !== requestUid) {
+            throw walletMigrationStateError();
+        }
+        const user = userSnap.data() || {};
+        const orgId = user.primaryOrgId;
+        if (user.accountType !== 'personal'
+            || user.isDeleted === true
+            || user.talentWalletMigrated !== true
+            || user.talent !== 0
+            || !isCanonicalOrgId(orgId)) {
+            throw walletMigrationStateError();
         }
 
-        const nextRosterTalent = rosterTalent + outstandingTalent;
-        transaction.update(userRef, { talent: 0, talentWalletMigrated: true });
-        transaction.update(rosterRef, { talent: nextRosterTalent });
-        return {
-            orgId: normalizedOrgId,
-            talent: nextRosterTalent,
-            movedTalent: outstandingTalent,
-            remainingTalent: 0,
-        };
+        const rosterRef = db.collection('churches').doc(orgId).collection('roster').doc(requestUid);
+        const rosterSnap = await transaction.get(rosterRef);
+        if (!rosterSnap.exists || auth?.currentUser?.uid !== requestUid) {
+            throw walletMigrationStateError();
+        }
+        const roster = rosterSnap.data() || {};
+        if (roster.uid !== requestUid
+            || !Number.isSafeInteger(roster.talent)
+            || roster.talent < 0
+            || roster.talent > MAX_TALENT_BALANCE) {
+            throw walletMigrationStateError();
+        }
+        return { orgId, talent: roster.talent };
     });
+
+    if (auth?.currentUser?.uid !== requestUid) throw walletMigrationAuthChangedError();
+    return canonicalState;
 };
 
 // Firestore 문서 → 사용자 상태 객체 변환
@@ -131,6 +192,7 @@ export const userDocToState = (doc) => {
         birthdate: d.birthdate || null,
         password: d.password,
         role: d.role || 'member',
+        onboardingPending: d.onboardingPending === true,
         accountType: d.accountType || null,
         authProvider: d.authProvider || null,
         authProviders: Array.isArray(d.authProviders) ? d.authProviders : [],

@@ -175,7 +175,7 @@ assert.match(shop, /purchaseItemViaApi\(\{[\s\S]*churchId:[\s\S]*itemId:[\s\S]*d
 assert.match(shop, /result\.walletKind === 'roster'/);
 assert.match(churchAdmin, /collection\('roster'\)\.doc\(member\.uid\)/);
 assert.match(platformAdmin, /collectionGroup\('roster'\)/);
-assert.match(helpers, /transaction\.update\(userRef, \{ talent: 0, talentWalletMigrated: true \}\)/);
+assert.match(helpers, /await migratePersonalTalentWalletViaApi\(\{ expectedUid: requestUid \}\)/);
 assert.match(shop, /공동체별 내 달란트/);
 assert.match(shop, /onOrganizationChange/);
 assert.match(app, /talentOrganizations/);
@@ -196,8 +196,41 @@ assert.match(authFlow, /isPlanIdAllowedForUser\(guest\.planId, null\)/);
 assert.match(authFlow, /isPlanIdAllowedForUser\(planId, newUser\)/);
 assert.match(rules, /hasAny\(\['role', 'churchId', 'accountType', 'isDeleted', 'extraMemberships',[\s\S]*'talentWalletMigrated', 'departmentId', 'departmentName',[\s\S]*'subgroupId', 'subgroupName'\]\)/);
 assert.match(rules, /existsAfter\([\s\S]*primaryOrgId[\s\S]*roster/);
-assert.match(rules, /get\('talent', 0\) <= resource\.data\.get\('talent', 0\) \+ 17/);
-assert.match(rules, /isExactPersonalTalentTransfer[\s\S]*userAfter\.diff\(userBefore\)[\s\S]*rosterAfter\.diff\(rosterBefore\)[\s\S]*rosterAfter\.get\('talent', 0\) - rosterBefore\.get\('talent', 0\) ==[\s\S]*userBefore\.get\('talent', 0\) - userAfter\.get\('talent', 0\)/);
+assert.match(rules, /function isPersonalPrimaryRoster\(churchId, memberUid\)[\s\S]*get\('accountType', null\) == 'personal'[\s\S]*get\('primaryOrgId', null\) == churchId/);
+assert.match(rules, /function isPersonalPrimaryRoster\(churchId, memberUid\)[\s\S]*let before = get\([\s\S]*let after = getAfter\([\s\S]*before\.get\('primaryOrgId', null\) == churchId[\s\S]*after\.get\('primaryOrgId', null\) == churchId/);
+assert.match(rules, /allow delete: if !isPersonalPrimaryRoster\(churchId, memberUid\)[\s\S]*request\.auth\.uid == memberUid[\s\S]*isChurchAdmin\(churchId\)[\s\S]*isPlatformAdmin\(\)/);
+assert.match(rules, /allow delete: if !isPersonalPrimaryRoster\(churchId, memberUid\)[\s\S]*resource\.data\.get\('talent', 0\) == 0[\s\S]*request\.auth\.uid == memberUid/);
+assert.match(membershipCard, /transaction\.get\(rosterRef\)[\s\S]*latestTalent > 0[\s\S]*남아 있어 탈퇴할 수 없어요/);
+assert.match(churchAdmin, /executeExpelRosterMember[\s\S]*transaction\.get\(rosterRef\)[\s\S]*latestTalent > 0[\s\S]*남아 있어 제명할 수 없습니다/);
+assert.match(churchAdmin, /executeExpelRosterMember[\s\S]*error\?\.code === 'permission-denied'[\s\S]*기본 공동체이거나 달란트 잔액이 남은 명부에서는 제명할 수 없습니다/);
+assert.match(rules, /function isSafeSelfScoreTalentUpdate\(before, after\)[\s\S]*!wasMigrated && !isMigrated[\s\S]*afterScore == beforeScore && afterTalent == beforeTalent/,
+    '미이관 상태에서는 일반 users 쓰기로 score/talent를 먼저 부풀릴 수 없어야 한다.');
+assert.match(rules, /!wasMigrated && isMigrated[\s\S]*afterTalent == beforeScore && afterScore >= beforeScore/,
+    '최초 legacy 이관의 spendable talent는 이관 전 score와 정확히 같아야 한다.');
+assert.match(rules, /wasMigrated && isMigrated[\s\S]*before\.get\('accountType', null\) == 'personal'[\s\S]*afterTalent == beforeTalent[\s\S]*afterScore == beforeScore/,
+    '이관 완료 personal users는 본인 브라우저에서 score/talent를 더 이상 바꾸지 못해야 한다.');
+assert.match(rules, /before\.get\('accountType', null\) != 'personal'[\s\S]*afterTalent <= beforeTalent \+ 17[\s\S]*afterScore <= beforeScore \+ 15/,
+    '일반 공동체 계정의 이관 완료 브라우저 보상 호환 상한은 유지해야 한다.');
+const rosterRules = rules.match(/match \/roster\/\{memberUid\} \{([\s\S]*?)\n        allow delete/)?.[1] || '';
+assert.match(rosterRules, /getAfter\([\s\S]*users\/\$\(request\.auth\.uid\)[\s\S]*get\('accountType', null\) == 'personal'[\s\S]*get\('score', 0\) == resource\.data\.get\('score', 0\)[\s\S]*get\('talent', 0\) == resource\.data\.get\('talent', 0\)/,
+    'personal의 모든 roster 지갑은 브라우저 self-update에서도 동결해야 한다.');
+const usersRules = rules.match(/match \/users\/\{uid\} \{([\s\S]*?)\n      match \/private\/consent/)?.[1] || '';
+const primaryUserUpdateRule = usersRules.slice(
+    usersRules.indexOf('allow update: if'),
+    usersRules.indexOf('// users.talent'),
+);
+assert.match(usersRules, /resource\.data\.role == 'member'[\s\S]*request\.resource\.data\.role == 'member'[\s\S]*isChurchAdmin\(resource\.data\.churchId\)[\s\S]*affectedKeys\(\)\.hasOnly\(\[[\s\S]*'isDeleted'[\s\S]*'extraMemberships'[\s\S]*'updatedAt'/,
+    '교회 관리자의 same-church users 수정은 일반 교인 삭제·복원·소속 필드만 허용해야 한다.');
+assert.match(usersRules, /deletedAt == request\.time[\s\S]*deletedBy == request\.auth\.uid/,
+    '교회 관리자 삭제 감사값은 현재 요청에 결속해야 한다.');
+assert.doesNotMatch(primaryUserUpdateRule, /\(isSignedIn\(\) && isChurchAdmin\(resource\.data\.churchId\)\) \|\|/,
+    '교회 관리자에게 same-church users 전체 update 권한을 주면 역할 상승이 가능하다.');
+assert.doesNotMatch(rules, /isExactPersonalTalentTransfer|isZeroPersonalTalentFinalization/,
+    '개인 지갑 이전용 브라우저 규칙 예외가 남으면 안 된다.');
+assert.doesNotMatch(usersRules, /users\.talent → primary roster|resource\.data\.primaryOrgId, uid/,
+    'users 개인 지갑 감소는 서버 action 외 규칙 분기로 열면 안 된다.');
+assert.doesNotMatch(rules, /request\.resource\.data\.get\('talent', 0\) <= resource\.data\.get\('talent', 0\) \+ 17 \|\|/,
+    'roster 본인 보상 상한에 개인 지갑 이관 우회 조건이 남으면 안 된다.');
 assert.match(rules, /get\('score', 0\) <= resource\.data\.get\('score', 0\) \+ 15/);
 assert.match(rules, /match \/churches\/\{churchId\} \{[\s\S]*allow read: if isRealUser\(\)/);
 assert.match(rules, /match \/private\/\{privateId\} \{[\s\S]*isChurchAdminAfter\(churchId\)/);
@@ -214,8 +247,23 @@ for (const header of ['X-Content-Type-Options', 'Referrer-Policy', 'Permissions-
     assert.match(firebaseConfig, new RegExp(header));
 }
 assert.match(helperSource, /migratePersonalTalentWalletIfNeeded = async \(uid, primaryOrgId, knownUserData = null\)/);
-assert.match(helperSource, /knownUserData\.talentWalletMigrated === true/);
+assert.match(helperSource, /await migratePersonalTalentWalletViaApi\(\{ expectedUid: requestUid \}\)/);
+const personalWalletMigrationStart = helperSource.indexOf('export const migratePersonalTalentWalletIfNeeded');
+const personalWalletMigrationEnd = helperSource.indexOf('\n};', personalWalletMigrationStart) + 3;
+const personalWalletMigration = helperSource.slice(personalWalletMigrationStart, personalWalletMigrationEnd);
+assert.ok(personalWalletMigration.indexOf('auth?.currentUser?.uid !== requestUid')
+    < personalWalletMigration.indexOf("knownUserData && knownUserData.accountType !== 'personal'"));
+assert.match(personalWalletMigration, /migrationResponse\.result\.status === 'primaryMissing'[\s\S]*userRef\.get\(\{ source: 'server' \}\)/);
+assert.match(personalWalletMigration, /user\.role !== 'member'[\s\S]*user\.accountType !== 'personal'[\s\S]*!validDeletedState[\s\S]*!validMigrationFlag[\s\S]*!isCanonicalOrgId\(user\.primaryOrgId\)[\s\S]*!Number\.isSafeInteger\(user\.talent\)/);
+assert.doesNotMatch(personalWalletMigration, /migrationResponse\.result\.(?:orgId|primaryOrgId|talent|balance)/);
+assert.match(personalWalletMigration, /const userSnap = await transaction\.get\(userRef\)[\s\S]*const orgId = user\.primaryOrgId[\s\S]*const rosterSnap = await transaction\.get\(rosterRef\)/);
+assert.match(personalWalletMigration, /user\.talentWalletMigrated !== true[\s\S]*user\.talent !== 0/);
+assert.match(personalWalletMigration, /roster\.uid !== requestUid[\s\S]*Number\.isSafeInteger\(roster\.talent\)/);
+assert.match(personalWalletMigration, /if \(!hasKnownPrimaryOrg\) return null/);
+assert.doesNotMatch(personalWalletMigration, /talentWalletMigrated === true[\s\S]{0,200}return null/);
+assert.doesNotMatch(personalWalletMigration, /transaction\.(?:set|update|delete)\(/);
 assert.match(authFlow, /migratePersonalTalentWalletIfNeeded\(user\.uid, user\.primaryOrgId, user\)/);
+assert.match(authFlow, /talent: 0,[\s\S]*talentWalletMigrated: true/);
 assert.match(userAuth, /user\.primaryOrgId,[\s\S]*user[\s\S]*\);/);
 assert.doesNotMatch(authFlow, /await loadChurchCommunities\(user\.churchId\)/);
 assert.match(authFlow, /const extraOrgsPromise = loadUserExtraOrgs\(firebaseUser\.uid\)/);

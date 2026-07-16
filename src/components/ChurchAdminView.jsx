@@ -389,12 +389,31 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const executeExpelRosterMember = async (member) => {
         if (!member?.isExternalOrgMember || !currentUser?.churchId || !member.uid) return;
         try {
-            await db.collection('churches').doc(currentUser.churchId).collection('roster').doc(member.uid).delete();
+            const rosterRef = db.collection('churches').doc(currentUser.churchId).collection('roster').doc(member.uid);
+            const deleteResult = await db.runTransaction(async transaction => {
+                const rosterDoc = await transaction.get(rosterRef);
+                if (!rosterDoc.exists) return { status: 'already-expelled' };
+                const latestTalent = rosterDoc.data()?.talent ?? 0;
+                if (!Number.isSafeInteger(latestTalent) || latestTalent < 0) {
+                    throw new Error('ROSTER_WALLET_INVALID');
+                }
+                if (latestTalent > 0) return { status: 'balance', talent: latestTalent };
+                transaction.delete(rosterRef);
+                return { status: 'expelled' };
+            });
+            if (deleteResult.status === 'balance') {
+                toast.warning(`${member.name}님의 이 공동체 달란트 ⭐${deleteResult.talent}개가 남아 있어 제명할 수 없습니다.`);
+                return;
+            }
             setMembers(prev => prev.filter(item => item.uid !== member.uid));
             if (selectedMember?.uid === member.uid) closeMemberDetail();
             toast.success(`${member.name}님을 공동체에서 제명했습니다.`);
         } catch (error) {
             console.error('외부 공동체 멤버 제명 실패:', error);
+            if (error?.code === 'permission-denied') {
+                toast.warning('기본 공동체이거나 달란트 잔액이 남은 명부에서는 제명할 수 없습니다. 성도의 기본 공동체와 잔액을 확인해주세요.');
+                return;
+            }
             toast.error('공동체 제명에 실패했습니다.');
         }
     };

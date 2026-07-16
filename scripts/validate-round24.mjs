@@ -9,6 +9,15 @@ const envExample = read('.env.example');
 const client = read('src/utils/platformApi.js');
 const userBibleActions = read('src/hooks/useUserBibleActions.js');
 const useMemosSource = read('src/hooks/useMemos.js');
+const helpersSource = read('src/utils/helpers.js');
+const useAuthSource = read('src/hooks/useAuth.js');
+const useUserAuthSource = read('src/hooks/useUserAuth.js');
+const appSource = read('src/App.jsx');
+const useDepartmentSource = read('src/hooks/useDepartment.js');
+const planSelectionSource = read('src/components/PlanSelectionView.jsx');
+const membershipCardSource = read('src/components/dashboard/CommunityMembershipCard.jsx');
+const churchAdminSource = read('src/components/ChurchAdminView.jsx');
+const firestoreRules = read('firestore.rules');
 const quizCard = read('src/components/dashboard/BibleQuizCard.jsx');
 const userStateSync = read('src/utils/userStateSync.js');
 const rosterClient = read('src/utils/roster.js');
@@ -40,6 +49,12 @@ for (const pattern of [
     /export const validateSkipQuizResponse = \(payload, result, expectedRequestId\)/,
     /export const syncAchievements = \(trigger, options = \{\}\)/,
     /export const validateSyncAchievementsResponse = \(payload, result, expectedRequestId\)/,
+    /export const migratePersonalTalentWallet = \(options = \{\}\)/,
+    /export const validateMigratePersonalTalentWalletResponse = \(result, expectedRequestId\)/,
+    /export const normalizeLegacyReadingPosition = \(options = \{\}\)/,
+    /export const validateNormalizeLegacyReadingPositionResponse = \(result, expectedRequestId\)/,
+    /export const completeMemberOnboarding = \(input, options = \{\}\)/,
+    /export const validateCompleteMemberOnboardingResponse = \(\s*payload,\s*result,\s*expectedRequestId,?\s*\)/,
     /export const resolveDailyVideo = \(options = \{\}\)/,
     /export const validateDailyVideoResolveResponse = \(result, expectedRequestId\)/,
     /export const adminPreviewDailyVideo = \(input, options = \{\}\)/,
@@ -82,6 +97,7 @@ const { ACHIEVEMENTS } = await import('../src/data/achievements.js');
 const quizProgressRuntime = await import('../src/utils/quizProgress.js');
 const { strictCanonicalRosterEntries } = await import('../src/utils/rosterSnapshot.js');
 const { updateRosterTalents } = await import('../src/utils/talentWallet.js');
+const { normalizeOnboardingOrganizations } = await import('../src/utils/onboardingOrganizations.js');
 const { reconcileStoredRequestIds } = await import('../src/utils/adminTalentRequests.js');
 const {
     __resetActivityRequestFallbackForTests,
@@ -430,6 +446,413 @@ for (const trigger of [undefined, null, '', 'quiz', 'READ', 1, {}]) {
         `허용되지 않은 업적 trigger는 네트워크 전에 거부해야 한다: ${String(trigger)}`,
     );
 }
+
+// 개인 달란트 지갑 이관은 인증 uid·조직·금액을 payload로 받지 않으며,
+// 명부 누락 no-write를 포함한 네 가지 canonical 멱등 결과 외의
+// 2xx 본문은 모두 fail-closed한다.
+assert.match(
+    client,
+    /callPlatformApi\('migratePersonalTalentWallet', \{\}, \{ \.\.\.options, requestId \}\)[\s\S]*validateMigratePersonalTalentWalletResponse\(result, requestId\)/,
+    '개인 지갑 이관 payload는 정확히 빈 객체여야 한다.',
+);
+const walletMigrationRequestId = 'b23e4567-e89b-42d3-a456-426614174000';
+const validWalletMigrationResponse = {
+    ok: true,
+    action: 'migratePersonalTalentWallet',
+    requestId: walletMigrationRequestId,
+    alreadyCompleted: false,
+    committed: true,
+    result: { status: 'migrated' },
+};
+for (const validOutcome of [
+    validWalletMigrationResponse,
+    { ...validWalletMigrationResponse, alreadyCompleted: true },
+    {
+        ...validWalletMigrationResponse,
+        committed: false,
+        result: { status: 'alreadyMigrated' },
+    },
+    {
+        ...validWalletMigrationResponse,
+        committed: false,
+        result: { status: 'primaryMissing' },
+    },
+]) {
+    assert.deepEqual(
+        platformApi.validateMigratePersonalTalentWalletResponse(
+            validOutcome,
+            walletMigrationRequestId,
+        ),
+        validOutcome,
+        '신규 이관·replay·이미 이관됨·기본 명부 누락의 canonical 조합만 허용해야 한다.',
+    );
+}
+const expectInvalidWalletMigrationResponse = (mutate, label) => {
+    const response = structuredClone(validWalletMigrationResponse);
+    mutate(response);
+    assert.throws(
+        () => platformApi.validateMigratePersonalTalentWalletResponse(
+            response,
+            walletMigrationRequestId,
+        ),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_RESPONSE'
+            && error.status === 200
+            && error.retryable === true,
+        label,
+    );
+};
+for (const [label, mutate] of [
+    ['extra top-level', response => { response.uid = 'user-1'; }],
+    ['extra result', response => { response.result.orgId = 'church-1'; }],
+    ['wrong action', response => { response.action = 'syncAchievements'; }],
+    ['wrong requestId echo', response => { response.requestId = achievementRequestId; }],
+    ['unknown status', response => { response.result.status = 'pending'; }],
+    ['migrated without commit', response => { response.committed = false; }],
+    ['alreadyMigrated with commit', response => { response.result.status = 'alreadyMigrated'; }],
+    ['alreadyMigrated replay', response => {
+        response.result.status = 'alreadyMigrated';
+        response.alreadyCompleted = true;
+        response.committed = false;
+    }],
+    ['primaryMissing with commit', response => {
+        response.result.status = 'primaryMissing';
+    }],
+    ['primaryMissing replay', response => {
+        response.result.status = 'primaryMissing';
+        response.alreadyCompleted = true;
+        response.committed = false;
+    }],
+]) expectInvalidWalletMigrationResponse(mutate, label);
+
+const walletMigrationHelperStart = helpersSource.indexOf(
+    'export const migratePersonalTalentWalletIfNeeded = async (uid, primaryOrgId, knownUserData = null) => {',
+);
+const walletMigrationHelperEnd = helpersSource.indexOf('\n};', walletMigrationHelperStart) + 3;
+assert.ok(walletMigrationHelperStart >= 0 && walletMigrationHelperEnd > walletMigrationHelperStart,
+    '개인 지갑 이관 helper 구간이 필요하다.');
+const walletMigrationHelper = helpersSource.slice(walletMigrationHelperStart, walletMigrationHelperEnd);
+assert.ok(
+    walletMigrationHelper.indexOf("auth?.currentUser?.uid !== requestUid")
+        < walletMigrationHelper.indexOf("knownUserData && knownUserData.accountType !== 'personal'"),
+    '계정 UID 검증은 모든 지갑 이관 early return보다 먼저 실행해야 한다.',
+);
+assert.match(walletMigrationHelper, /knownUserData && knownUserData\.accountType !== 'personal'/,
+    '확실한 비개인 계정만 서버 호출을 생략해야 한다.');
+assert.match(walletMigrationHelper, /knownUserData\?\.accountType === 'personal'[\s\S]*String\(knownUserData\.primaryOrgId \|\| primaryOrgId \|\| ''\)\.trim\(\)[\s\S]*if \(!hasKnownPrimaryOrg\) return null/,
+    '공동체가 없는 혼자 읽기 개인 계정은 로그인 중 잘못된 이관 요청을 보내면 안 된다.');
+assert.doesNotMatch(walletMigrationHelper, /talentWalletMigrated === true[\s\S]{0,200}return null/,
+    '완료·0 잔액 힌트도 서버가 roster와 최신 환불 경합을 확인해야 한다.');
+assert.match(walletMigrationHelper, /await migratePersonalTalentWalletViaApi\(\{\s*expectedUid: requestUid,?\s*\}\)/,
+    'API 옵션으로 현재 인증 uid를 고정하되 payload 권위 값으로 보내면 안 된다.');
+assert.match(
+    walletMigrationHelper,
+    /migrationResponse\.result\.status === 'primaryMissing'[\s\S]*userRef\.get\(\{ source: 'server' \}\)/,
+    '기본 명부 누락은 API 응답을 상태 분기로만 쓰고 users를 source-server로 다시 확인해야 한다.',
+);
+for (const pattern of [
+    /user\.role !== 'member'/,
+    /user\.accountType !== 'personal'/,
+    /!validDeletedState/,
+    /user\.isDeleted === true/,
+    /!validMigrationFlag/,
+    /!isCanonicalOrgId\(user\.primaryOrgId\)/,
+    /!Number\.isSafeInteger\(user\.talent\)/,
+    /user\.talent < 0/,
+    /user\.talent > MAX_TALENT_BALANCE/,
+]) assert.match(walletMigrationHelper, pattern);
+assert.doesNotMatch(
+    walletMigrationHelper,
+    /migrationResponse\.result\.(?:orgId|primaryOrgId|talent|balance)/,
+    '명부 누락 로그인이 API 응답의 조직·잔액을 사용하면 안 된다.',
+);
+assert.match(walletMigrationHelper, /const userSnap = await transaction\.get\(userRef\)[\s\S]*const orgId = user\.primaryOrgId[\s\S]*const rosterSnap = await transaction\.get\(rosterRef\)/,
+    'users와 그 문서의 primary roster를 같은 read-only transaction에서 읽어야 한다.');
+for (const pattern of [
+    /auth\?\.currentUser\?\.uid !== requestUid/,
+    /user\.accountType !== 'personal'/,
+    /user\.isDeleted === true/,
+    /user\.talentWalletMigrated !== true/,
+    /user\.talent !== 0/,
+    /isCanonicalOrgId\(orgId\)/,
+    /roster\.uid !== requestUid/,
+    /Number\.isSafeInteger\(roster\.talent\)/,
+    /return \{ orgId, talent: roster\.talent \}/,
+]) assert.match(walletMigrationHelper, pattern);
+assert.doesNotMatch(walletMigrationHelper, /transaction\.(?:set|update|delete)\(/,
+    '브라우저 helper가 개인 지갑 이관 쓰기를 직접 수행하면 안 된다.');
+assert.doesNotMatch(walletMigrationHelper, /migratePersonalTalentWalletViaApi\(\{[^}]+(?:uid|orgId|talent|primaryOrgId)/,
+    '브라우저 힌트의 지갑·조직 상태를 API payload 권위로 보내면 안 된다.');
+assert.match(useAuthSource, /talent: 0,[\s\S]*talentWalletMigrated: true/,
+    '이관 후 users 지갑 상태는 검증된 canonical 결과에 맞춰 적용해야 한다.');
+assert.doesNotMatch(useUserAuthSource, /진정희|user\.name\s*===\s*['"][^'"]+['"][\s\S]{0,300}readCount/,
+    '특정 이름만으로 운영 진도·완독 횟수를 자동 보정하는 writer가 남으면 안 된다.');
+assert.doesNotMatch(useDepartmentSource, /changeSubgroup|collection\('users'\)[\s\S]{0,200}subgroupId/,
+    '진입점 없는 레거시 소그룹 직접 users writer가 남으면 안 된다.');
+assert.doesNotMatch(appSource, /showSubgroupChange|changeSubgroup=/,
+    '죽은 소그룹 변경 모달 상태·prop을 다시 연결하면 안 된다.');
+assert.equal(exists('src/components/modals/SubgroupChangeModal.jsx'), false,
+    '고정 기본 조직을 쓰는 죽은 소그룹 변경 모달은 제거되어야 한다.');
+
+// 최초 교인 온보딩은 plan과 선택 ID만 서버에 보내고 조직명은 서버가 파생한다.
+assert.match(client, /callPlatformApi\('completeMemberOnboarding', payload, \{ \.\.\.options, requestId \}\)[\s\S]*validateCompleteMemberOnboardingResponse\(payload, result, requestId\)/,
+    '최초 온보딩은 strict 서버 action과 응답 검증을 거쳐야 한다.');
+const onboardingRequestId = 'd23e4567-e89b-42d3-a456-426614174000';
+const onboardingPayload = {
+    orgId: 'church-1',
+    planId: '1year_revised',
+    departmentId: 'adult',
+    subgroupId: 'cell-1',
+};
+const validOnboardingResponse = {
+    ok: true,
+    action: 'completeMemberOnboarding',
+    requestId: onboardingRequestId,
+    alreadyCompleted: false,
+    committed: true,
+    result: {
+        status: 'completed',
+        ...onboardingPayload,
+        departmentName: '장년부',
+        subgroupName: '1구역',
+    },
+};
+for (const validOutcome of [
+    validOnboardingResponse,
+    { ...validOnboardingResponse, alreadyCompleted: true },
+    {
+        ...validOnboardingResponse,
+        committed: false,
+        result: { ...validOnboardingResponse.result, status: 'alreadyCompleted' },
+    },
+]) {
+    assert.deepEqual(
+        platformApi.validateCompleteMemberOnboardingResponse(
+            onboardingPayload,
+            validOutcome,
+            onboardingRequestId,
+        ),
+        validOutcome,
+    );
+}
+const expectInvalidOnboardingResponse = (mutate, label) => {
+    const response = structuredClone(validOnboardingResponse);
+    mutate(response);
+    assert.throws(
+        () => platformApi.validateCompleteMemberOnboardingResponse(
+            onboardingPayload,
+            response,
+            onboardingRequestId,
+        ),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_RESPONSE'
+            && error.status === 200
+            && error.retryable === true,
+        label,
+    );
+};
+for (const [label, mutate] of [
+    ['extra top-level', response => { response.uid = 'forged'; }],
+    ['extra result', response => { response.result.role = 'churchAdmin'; }],
+    ['wrong org', response => { response.result.orgId = 'other'; }],
+    ['wrong plan', response => { response.result.planId = 'nt_new'; }],
+    ['wrong department', response => { response.result.departmentId = 'kids'; }],
+    ['wrong subgroup', response => { response.result.subgroupId = 'cell-2'; }],
+    ['unsafe name', response => { response.result.departmentName = ' 장년부'; }],
+    ['empty department name', response => { response.result.departmentName = ''; }],
+    ['empty subgroup mismatch', response => { response.result.subgroupName = ''; }],
+    ['completed without commit', response => { response.committed = false; }],
+    ['no-op replay', response => {
+        response.result.status = 'alreadyCompleted';
+        response.alreadyCompleted = true;
+        response.committed = false;
+    }],
+]) expectInvalidOnboardingResponse(mutate, label);
+assert.match(appSource, /await completeMemberOnboarding\(\{[\s\S]*orgId,[\s\S]*planId,[\s\S]*departmentId,[\s\S]*subgroupId,[\s\S]*\}, \{ expectedUid: requestUid \}\)/,
+    '온보딩 UI는 서버 action에 인증 UID를 결속해야 한다.');
+assert.match(appSource, /completeMemberOnboarding[\s\S]*\.get\(\{ source: 'server' \}\)[\s\S]*stored\.planId !== membership\.planId[\s\S]*stored\.subgroupName !== membership\.subgroupName/,
+    '성공 뒤 users source-server 상태를 exact membership과 대조해야 한다.');
+const onboardingHandlerStart = appSource.indexOf('const handleSubgroupSelect = async');
+const onboardingHandlerEnd = appSource.indexOf('\n    };', onboardingHandlerStart) + 7;
+const onboardingHandler = appSource.slice(onboardingHandlerStart, onboardingHandlerEnd);
+assert.doesNotMatch(onboardingHandler, /\.set\(|\.update\(|runTransaction/,
+    '최초 온보딩 UI가 users 소속을 직접 쓰면 안 된다.');
+assert.match(planSelectionSource, /handleSubgroupSelect\(''\)/,
+    '소그룹이 없는 부서는 서버 canonical 빈 subgroup ID로 완료해야 한다.');
+for (const source of [appSource, useAuthSource]) {
+    assert.match(source, /role === 'churchAdmin'[\s\S]*onboardingPending === true[\s\S]*!user\?\.departmentId \|\| typeof user\?\.subgroupId !== 'string'/,
+        '신규 관리자 marker와 일반 회원의 빈 subgroup 완료 상태를 분리해야 한다.');
+}
+assert.match(useAuthSource, /onboardingPending: true/,
+    '신규 공동체 관리자 문서에는 재개 가능한 온보딩 marker가 필요하다.');
+assert.equal(
+    (useAuthSource.match(/lastReadDate: null, gender: 'male', planId: null,\s*onboardingPending: true,\s*departmentId: null, departmentName: null, subgroupId: null/g) || []).length,
+    2,
+    '이메일·Google 신규 관리자는 plan과 소속을 비운 pending 문서로 시작해야 한다.',
+);
+const usersCreateStart = firestoreRules.indexOf("allow create: if isRealUser() && request.auth.uid == uid && (");
+const usersCreateEnd = firestoreRules.indexOf('// 본인 수정은', usersCreateStart);
+assert.ok(usersCreateStart >= 0 && usersCreateEnd > usersCreateStart,
+    'users 최초 생성 rules 구간이 필요하다.');
+const usersCreateRules = firestoreRules.slice(usersCreateStart, usersCreateEnd);
+const unaffiliatedCreateStart = usersCreateRules.indexOf("(request.resource.data.role == 'member'");
+const churchAdminCreateStart = usersCreateRules.indexOf("(request.resource.data.role == 'churchAdmin'");
+assert.ok(unaffiliatedCreateStart >= 0 && churchAdminCreateStart > unaffiliatedCreateStart,
+    '무소속 성도와 신규 공동체 관리자 create 분기가 분리되어야 한다.');
+const unaffiliatedCreateRules = usersCreateRules.slice(unaffiliatedCreateStart, churchAdminCreateStart);
+const churchAdminCreateRules = usersCreateRules.slice(churchAdminCreateStart);
+for (const field of ['departmentId', 'departmentName', 'subgroupId', 'subgroupName']) {
+    const emptyField = new RegExp(`request\\.resource\\.data\\.get\\('${field}', null\\) == null`);
+    assert.match(unaffiliatedCreateRules, emptyField,
+        `무소속 성도 create는 ${field}를 직접 seed할 수 없어야 한다.`);
+    assert.match(churchAdminCreateRules, emptyField,
+        `신규 공동체 관리자 create는 ${field}를 직접 seed할 수 없어야 한다.`);
+}
+for (const createRules of [unaffiliatedCreateRules, churchAdminCreateRules]) {
+    assert.match(createRules, /request\.resource\.data\.get\('score', 0\) == 0/,
+        '브라우저 users create는 초기 score를 seed할 수 없어야 한다.');
+    assert.match(createRules, /request\.resource\.data\.get\('talent', 0\) == 0/,
+        '브라우저 users create는 초기 talent를 seed할 수 없어야 한다.');
+    assert.match(createRules, /request\.resource\.data\.get\('talentMigrated', false\) == true/,
+        '신규 users는 legacy false→true 이관 예외를 재사용할 수 없게 시작해야 한다.');
+    assert.match(createRules, /request\.resource\.data\.extraMemberships is list[\s\S]*extraMemberships\.size\(\) == 0/,
+        '신규 users는 추가 소속을 create payload로 seed할 수 없어야 한다.');
+}
+assert.match(churchAdminCreateRules, /get\('accountType', null\) == null[\s\S]*get\('primaryOrgId', null\) == null/,
+    '신규 공동체 관리자는 personal 정체성이나 임의 primary roster를 seed할 수 없어야 한다.');
+assert.match(churchAdminCreateRules, /request\.resource\.data\.onboardingPending == true/,
+    '신규 공동체 관리자는 pending marker를 임의로 생략하거나 닫을 수 없어야 한다.');
+assert.match(churchAdminCreateRules, /request\.resource\.data\.get\('planId', null\) == null/,
+    '신규 공동체 관리자의 plan은 서버 온보딩 완료 전 직접 seed할 수 없어야 한다.');
+assert.match(appSource, /requestUser\.role === 'churchAdmin' && stored\.onboardingPending !== false/,
+    '관리자 온보딩 성공은 서버가 pending marker를 닫은 상태까지 확인해야 한다.');
+assert.match(appSource, /memberOnboardingRequestRef\.current[\s\S]*finally[\s\S]*memberOnboardingRequestRef\.current = null/,
+    '최초 소속 제출은 한 번에 하나만 진행해야 한다.');
+assert.doesNotMatch(planSelectionSource, /DEFAULT_DEPARTMENTS/,
+    '조직 로드 실패를 임의 기본 부서로 대체하면 서버와 선택지가 어긋난다.');
+assert.deepEqual(normalizeOnboardingOrganizations([
+    '청년부',
+    { name: '장년부', subgroups: ['1구역', { name: '2구역' }] },
+    { id: 'kids', name: '어린이부' },
+]), [
+    { id: '청년부', name: '청년부', subgroups: [] },
+    {
+        id: '장년부', name: '장년부',
+        subgroups: [{ id: '1구역', name: '1구역' }, { id: '2구역', name: '2구역' }],
+    },
+    { id: 'kids', name: '어린이부', subgroups: [] },
+]);
+assert.throws(() => normalizeOnboardingOrganizations(['a/b']));
+assert.throws(() => normalizeOnboardingOrganizations(['중복', { name: '중복' }]));
+
+// currentDay > 365 legacy 보정은 빈 payload의 서버 action만 호출하고,
+// source-server users 문서 확인 전에는 로컬 진도를 바꾸지 않는다.
+assert.match(
+    client,
+    /callPlatformApi\('normalizeLegacyReadingPosition', \{\}, \{ \.\.\.options, requestId \}\)[\s\S]*validateNormalizeLegacyReadingPositionResponse\(result, requestId\)/,
+    'legacy 진도 보정 payload는 정확히 빈 객체여야 한다.',
+);
+const normalizePositionRequestId = 'c23e4567-e89b-42d3-a456-426614174000';
+const validNormalizePositionResponse = {
+    ok: true,
+    action: 'normalizeLegacyReadingPosition',
+    requestId: normalizePositionRequestId,
+    alreadyCompleted: false,
+    committed: true,
+    result: { status: 'normalized', currentDay: 1, readCount: 4 },
+};
+for (const validOutcome of [
+    validNormalizePositionResponse,
+    { ...validNormalizePositionResponse, alreadyCompleted: true },
+    {
+        ...validNormalizePositionResponse,
+        committed: false,
+        result: { status: 'alreadyNormalized', currentDay: 365, readCount: 3 },
+    },
+]) {
+    assert.deepEqual(
+        platformApi.validateNormalizeLegacyReadingPositionResponse(
+            validOutcome,
+            normalizePositionRequestId,
+        ),
+        validOutcome,
+        '신규 보정·replay·fresh no-op의 canonical 조합만 허용해야 한다.',
+    );
+}
+const expectInvalidNormalizePositionResponse = (mutate, label) => {
+    const response = structuredClone(validNormalizePositionResponse);
+    mutate(response);
+    assert.throws(
+        () => platformApi.validateNormalizeLegacyReadingPositionResponse(
+            response,
+            normalizePositionRequestId,
+        ),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_RESPONSE'
+            && error.status === 200
+            && error.retryable === true,
+        label,
+    );
+};
+for (const [label, mutate] of [
+    ['extra top-level', response => { response.uid = 'user-1'; }],
+    ['extra result', response => { response.result.orgId = 'church-1'; }],
+    ['wrong action', response => { response.action = 'completeRead'; }],
+    ['wrong requestId echo', response => { response.requestId = walletMigrationRequestId; }],
+    ['unknown status', response => { response.result.status = 'pending'; }],
+    ['normalized without commit', response => { response.committed = false; }],
+    ['no-op with commit', response => { response.result.status = 'alreadyNormalized'; }],
+    ['no-op replay', response => {
+        response.result.status = 'alreadyNormalized';
+        response.alreadyCompleted = true;
+        response.committed = false;
+    }],
+    ['day zero', response => { response.result.currentDay = 0; }],
+    ['day overflow', response => { response.result.currentDay = 366; }],
+    ['unsafe readCount', response => { response.result.readCount = Number.MAX_SAFE_INTEGER + 1; }],
+]) expectInvalidNormalizePositionResponse(mutate, label);
+
+const normalizePositionStart = useUserAuthSource.indexOf(
+    'const localUserNeedsNormalization = Boolean(',
+);
+const normalizePositionEnd = useUserAuthSource.indexOf(
+    '\n                            user.extraOrgs =',
+    normalizePositionStart,
+);
+assert.ok(
+    normalizePositionStart >= 0 && normalizePositionEnd > normalizePositionStart,
+    'useUserAuth legacy 진도 보정 구간이 필요하다.',
+);
+const normalizePositionClient = useUserAuthSource.slice(normalizePositionStart, normalizePositionEnd);
+for (const pattern of [
+    /const localUserNeedsNormalization = Boolean\([\s\S]*user\.currentDay > 365/,
+    /positionAudit = await normalizeLegacyReadingPosition\(\{[\s\S]*expectedUid: firebaseUser\.uid/,
+    /if \(discardStaleEvent\(\)\) return/,
+    /localUserNeedsNormalization[\s\S]*!isRecoverableReadingPositionAuditError\(positionAuditError\)[\s\S]*throw positionAuditError/,
+    /console\.error\('canonical roster 진도 감사 실패:', positionAuditError\)/,
+    /positionAudit[\s\S]*localUserNeedsNormalization \|\| positionAudit\.committed/,
+    /\.get\(\{ source: 'server' \}\)/,
+    /Number\.isSafeInteger\(normalizedData\.currentDay\)/,
+    /normalizedData\.currentDay > 365/,
+    /Number\.isSafeInteger\(normalizedData\.readCount\)/,
+    /user\.currentDay = normalizedData\.currentDay/,
+    /user\.readCount = normalizedData\.readCount/,
+]) assert.match(normalizePositionClient, pattern);
+assert.match(
+    useUserAuthSource,
+    /const isRecoverableReadingPositionAuditError = error => \{[\s\S]*error\?\.code === 'CONFLICT'[\s\S]*error\?\.retryable === true[\s\S]*status === 0 \|\| status >= 500/,
+    '정상 users의 roster 감사는 경합과 retryable 네트워크·5xx 실패를 로그인과 분리해야 한다.',
+);
+assert.ok(
+    normalizePositionClient.indexOf('await normalizeLegacyReadingPosition')
+        < normalizePositionClient.indexOf('user.currentDay = normalizedData.currentDay'),
+    '서버 보정과 source-server 검증 전에 로컬 currentDay를 선반영하면 안 된다.',
+);
+assert.doesNotMatch(
+    normalizePositionClient,
+    /\.update\(|\.set\(|runTransaction|Math\.floor|extraDays|extraRounds|needsUpdate/,
+    'useUserAuth가 legacy 진도를 직접 계산하거나 Firestore에 쓰면 안 된다.',
+);
 
 // 매일 영상은 익명 Firebase 게스트도 인증형 API를 사용하고, 브라우저가 2xx 본문을
 // 그대로 신뢰하지 않도록 식별자·날짜·URL·중첩 필드를 모두 fail-closed 검증한다.
@@ -1240,6 +1663,106 @@ assert.equal(exists(indexPath), true, `${indexPath}가 필요하다.`);
 const serverCore = read(corePath);
 const serverIndex = read(indexPath);
 
+// T127e: legacy 읽기 위치 보정은 인증 UID만으로 서버가 users와 canonical
+// roster를 원자 갱신하며, no-op에는 원장을 만들지 않는다.
+const normalizePositionServicePath = 'supabase/functions/platform-api/normalizeLegacyReadingPositionService.ts';
+const normalizePositionServiceTestPath = 'supabase/functions/platform-api/normalizeLegacyReadingPositionService_test.ts';
+for (const path of [normalizePositionServicePath, normalizePositionServiceTestPath]) {
+    assert.equal(exists(path), true, `${path}가 필요하다.`);
+}
+const normalizePositionService = read(normalizePositionServicePath);
+const normalizePositionServiceTest = read(normalizePositionServiceTestPath);
+assert.match(serverCore, /NORMALIZE_LEGACY_READING_POSITION_ACTION\s*=\s*[\s\S]{0,80}"normalizeLegacyReadingPosition"/);
+const normalizePositionParserStart = serverCore.indexOf(
+    'if (action === NORMALIZE_LEGACY_READING_POSITION_ACTION)',
+);
+const normalizePositionParserEnd = serverCore.indexOf(
+    'if (action === MIGRATE_PERSONAL_TALENT_WALLET_ACTION)',
+    normalizePositionParserStart,
+);
+assert.ok(
+    normalizePositionParserStart >= 0 && normalizePositionParserEnd > normalizePositionParserStart,
+    'normalizeLegacyReadingPosition exact parser 구간이 필요하다.',
+);
+const normalizePositionParser = serverCore.slice(normalizePositionParserStart, normalizePositionParserEnd);
+assert.match(normalizePositionParser, /new Set\(\["action", "requestId"\]\)/);
+assert.doesNotMatch(normalizePositionParser, /\b(?:uid|currentDay|readCount|churchId|orgId)\b\s*:/);
+for (const pattern of [
+    /beginTransaction\(/,
+    /runCollectionGroupQuery<LegacyReadingRoster>/,
+    /"roster",[\s\S]*"uid",[\s\S]*uid,[\s\S]*\{ limit: 4, transaction \}/,
+    /parseRosterTalentWallets\(documents, uid\)/,
+    /Math\.floor\(\(currentDay - 1\) \/ 365\)/,
+    /const nextReadCount = readCount \+ extraRounds/,
+    /Number\.isSafeInteger\(nextReadCount\)/,
+    /const userNeedsNormalization = user\.currentDay > 365/,
+    /rosters\.filter\(\(roster\) => roster\.needsRepair\)/,
+    /!userNeedsNormalization && rosterTargets\.length === 0/,
+    /roster\.currentDay === undefined/,
+    /roster\.readCount === undefined/,
+    /status: "alreadyNormalized"/,
+    /committed: false/,
+    /activityActions\/\$\{input\.requestId\}/,
+    /updateMask: \["currentDay", "readCount"\]/,
+    /input: \{\}/,
+    /MAX_TRANSACTION_ATTEMPTS = 3/,
+    /alreadyCompleted: true/,
+]) assert.match(normalizePositionService, pattern);
+assert.match(normalizePositionService, /readCount:[\s\S]{0,120}fallback: 1/,
+    'legacy users.readCount 누락은 기존 1회차 의미로 호환해야 한다.');
+const normalizeLedgerStart = normalizePositionService.indexOf(
+    'dependencies.updateWrite(service.projectId, ledgerPath',
+);
+const normalizeLedgerEnd = normalizePositionService.indexOf(
+    'await dependencies.commitWrites(',
+    normalizeLedgerStart,
+);
+assert.ok(normalizeLedgerStart >= 0 && normalizeLedgerEnd > normalizeLedgerStart,
+    'legacy 진도 보정 최소 ledger 쓰기가 필요하다.');
+assert.doesNotMatch(
+    normalizePositionService.slice(normalizeLedgerStart, normalizeLedgerEnd),
+    /\b(?:uid|user|email|name|password|churchId|orgId|roster)\b\s*:/,
+    'legacy 진도 보정 ledger에 식별자·조직·PII를 복제하면 안 된다.',
+);
+for (const pattern of [
+    /fresh no-op/,
+    /roster currentDay가 365를 넘으면 roster만 복구/,
+    /roster readCount는 canonical users 값으로 복구/,
+    /roster currentDay\/readCount 누락도/,
+    /apply-then-409/,
+    /readCount가 없는 legacy users/,
+    /malformed deleted marker/,
+    /canonical roster/,
+    /지속 409/,
+]) assert.match(normalizePositionServiceTest, pattern);
+assert.match(
+    serverIndex,
+    /import \{ normalizeLegacyReadingPosition \} from "\.\/normalizeLegacyReadingPositionService\.ts";/,
+);
+const normalizePositionBranchStart = serverIndex.indexOf(
+    'if (parsed.action === "normalizeLegacyReadingPosition")',
+);
+const firstAuthenticatedUserRead = serverIndex.indexOf(
+    'const userDocument = await getDocument<UserDocument>',
+    normalizePositionBranchStart,
+);
+assert.ok(
+    normalizePositionBranchStart > serverIndex.indexOf('const [verifiedUser, service] = await Promise.all([')
+        && firstAuthenticatedUserRead > normalizePositionBranchStart,
+    'legacy 진도 보정은 nonanonymous verifiedUser 인증 뒤 공용 user read 전에 실행해야 한다.',
+);
+const normalizePositionBranch = serverIndex.slice(normalizePositionBranchStart, firstAuthenticatedUserRead);
+assert.match(
+    normalizePositionBranch,
+    /normalizeLegacyReadingPosition\([\s\S]*service,[\s\S]*verifiedUser,[\s\S]*requestId: parsed\.requestId/,
+);
+assert.match(normalizePositionBranch, /ok: true[\s\S]*action: parsed\.action[\s\S]*requestId: parsed\.requestId[\s\S]*\.\.\.result/);
+assert.doesNotMatch(
+    normalizePositionBranch,
+    /\b(?:uid|currentDay|readCount|churchId|orgId|roster|user)\b\s*:/,
+    'legacy 진도 보정 HTTP 응답에서 상태 외 식별자·조직 snapshot을 직접 추가하면 안 된다.',
+);
+
 // 서버 업적 계산기는 클라이언트의 14개 ID·순서·경계값과 정확히 같아야 하며,
 // 외부 I/O 없이 서버가 읽은 사용자 상태만 계산한다.
 const achievementCorePath = 'supabase/functions/platform-api/achievementCore.ts';
@@ -1970,8 +2493,6 @@ for (const path of [
 const readCompletionService = read(readCompletionServicePath);
 const restartReadingService = read(restartReadingServicePath);
 const quizSubmission = read(quizSubmissionPath);
-const firestoreRules = read('firestore.rules');
-
 assert.match(serverCore, /COMPLETE_READ_ACTION\s*=\s*['"]completeRead['"]/);
 assert.match(serverCore, /RESTART_READING_ACTION\s*=\s*['"]restartReading['"]/);
 for (const field of ['cycle', 'day']) {
@@ -2059,6 +2580,54 @@ assert.match(
     firestoreRules,
     /match \/quizAttemptSlots\/\{slotId\}\s*\{\s*allow read, write: if false;\s*\}/,
     'quizAttemptSlots 의미 기반 ledger는 브라우저 사용자·관리자 모두 직접 접근할 수 없어야 한다.',
+);
+assert.match(
+    firestoreRules,
+    /function isPersonalPrimaryRoster\(churchId, memberUid\)[\s\S]*let before = get\([\s\S]*let after = getAfter\([\s\S]*before\.get\('accountType', null\) == 'personal'[\s\S]*before\.get\('primaryOrgId', null\) == churchId[\s\S]*after\.get\('accountType', null\) == 'personal'[\s\S]*after\.get\('primaryOrgId', null\) == churchId/,
+    '개인 계정의 기본 명부를 users 원장으로 판별해야 한다.',
+);
+assert.match(
+    firestoreRules,
+    /allow delete: if !isPersonalPrimaryRoster\(churchId, memberUid\)[\s\S]*resource\.data\.get\('talent', 0\) == 0[\s\S]*request\.auth\.uid == memberUid[\s\S]*isChurchAdmin\(churchId\)[\s\S]*isPlatformAdmin\(\)/,
+    '개인 계정의 기본 명부는 본인·공동체 관리자·플랫폼 관리자 브라우저 삭제를 모두 막아야 한다.',
+);
+assert.match(
+    membershipCardSource,
+    /transaction\.get\(rosterRef\)[\s\S]*latestTalent > 0[\s\S]*달란트[^\n]*남아 있어 탈퇴할 수 없어요/,
+    '본인 탈퇴는 source transaction의 최신 secondary roster 잔액이 0일 때만 삭제해야 한다.',
+);
+assert.match(
+    churchAdminSource,
+    /executeExpelRosterMember[\s\S]*transaction\.get\(rosterRef\)[\s\S]*latestTalent > 0[\s\S]*남아 있어 제명할 수 없습니다/,
+    '관리자 제명도 source transaction의 최신 secondary roster 잔액이 0일 때만 삭제해야 한다.',
+);
+assert.match(
+    firestoreRules,
+    /wasMigrated && isMigrated[\s\S]*before\.get\('accountType', null\) == 'personal'[\s\S]*afterTalent == beforeTalent[\s\S]*afterScore == beforeScore/,
+    'personal users의 이관 완료 self 쓰기는 users.score/talent를 완전히 동결해야 한다.',
+);
+assert.match(
+    firestoreRules,
+    /!wasMigrated && isMigrated[\s\S]*afterTalent == beforeScore[\s\S]*afterScore >= beforeScore/,
+    '최초 legacy false→true 이관 분기는 유지해야 한다.',
+);
+assert.match(
+    firestoreRules,
+    /before\.get\('accountType', null\) != 'personal'[\s\S]*afterTalent <= beforeTalent \+ 17[\s\S]*afterScore <= beforeScore \+ 15/,
+    '일반 공동체 users의 true→true 호환 보상 상한은 유지해야 한다.',
+);
+const t127RosterUpdateRules = firestoreRules.match(
+    /match \/roster\/\{memberUid\} \{([\s\S]*?)\n        allow delete/,
+)?.[1] || '';
+assert.match(
+    t127RosterUpdateRules,
+    /getAfter\([\s\S]*users\/\$\(request\.auth\.uid\)[\s\S]*get\('accountType', null\) == 'personal'[\s\S]*get\('score', 0\) == resource\.data\.get\('score', 0\)[\s\S]*get\('talent', 0\) == resource\.data\.get\('talent', 0\)/,
+    'personal의 primary·secondary roster score/talent를 브라우저에서 모두 exact-freeze해야 한다.',
+);
+assert.match(
+    t127RosterUpdateRules,
+    /get\('accountType', null\) != 'personal'[\s\S]*get\('score', 0\) <= resource\.data\.get\('score', 0\) \+ 15[\s\S]*get\('talent', 0\) <= resource\.data\.get\('talent', 0\) \+ 17/,
+    '일반 공동체 roster의 구버전 호환 상한은 유지해야 한다.',
 );
 assert.match(quizSubmission, /quizAttemptSlots\/\$\{input\.progressKey\}_a1/);
 assert.match(quizSubmission, /quizAttemptSlots\/\$\{input\.progressKey\}_a2/);
@@ -2274,6 +2843,11 @@ const genericConflictIndex = purchaseStatusBranch.indexOf("error?.code === 'CONF
 assert.ok(migratedRefundIndex >= 0 && genericConflictIndex > migratedRefundIndex,
     '개인 전환 환불 2차 확인은 일반 충돌 안내보다 먼저 처리해야 한다.');
 assert.match(churchAdminView, /refundMigratedPurchase[\s\S]*migratedWalletConfirmed/);
+assert.match(
+    churchAdminView,
+    /executeExpelRosterMember[\s\S]*error\?\.code === 'permission-denied'[\s\S]*기본 공동체이거나 달란트 잔액이 남은 명부에서는 제명할 수 없습니다/,
+    '기본 또는 양수 잔액 명부 제명이 규칙에 막히면 관리자에게 사유를 안내해야 한다.',
+);
 assert.doesNotMatch(
     churchAdminView,
     /collection\('talentPurchases'\)\.doc\(\)[\s\S]*transaction\.set\(/,

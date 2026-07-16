@@ -243,7 +243,24 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
                     });
                 });
             } else {
-                await rosterRef.delete();
+                const deleteResult = await db.runTransaction(async transaction => {
+                    const rosterSnap = await transaction.get(rosterRef);
+                    if (!rosterSnap.exists) return { status: 'already-left' };
+                    const latestTalent = rosterSnap.data()?.talent ?? 0;
+                    if (!Number.isSafeInteger(latestTalent) || latestTalent < 0) {
+                        throw new Error('ROSTER_WALLET_INVALID');
+                    }
+                    if (latestTalent > 0) return { status: 'balance', talent: latestTalent };
+                    transaction.delete(rosterRef);
+                    return { status: 'deleted' };
+                });
+                if (deleteResult.status === 'balance') {
+                    setNotice({
+                        type: 'error',
+                        text: `이 공동체에 달란트 ⭐${deleteResult.talent}개가 남아 있어 탈퇴할 수 없어요. 먼저 사용하거나 관리자에게 문의해주세요.`,
+                    });
+                    return;
+                }
             }
             setCurrentUser(user => user?.uid === currentUser.uid
                 ? {

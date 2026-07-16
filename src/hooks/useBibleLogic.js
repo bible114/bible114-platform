@@ -26,8 +26,8 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
         subgroupStats, setSubgroupStats, departmentMembers, setDepartmentMembers,
         allMembersForRace, setAllMembersForRace, announcement, loadAnnouncement,
         kakaoLink, loadKakaoLink, setKakaoLink,
-        loadAllMembers, changeSubgroup
-    } = useDepartment(currentUser, setCurrentUser);
+        loadAllMembers
+    } = useDepartment(currentUser);
 
     // 3. User Actions Hook
     const {
@@ -170,7 +170,6 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
         handleRead,
         saveMemo: (readCount, day, memoText, onComplete) =>
             saveMemo(readCount, day, memoText, verseData?.subtitle, checkAchievements, onComplete),
-        changeSubgroup,
         handleRestart,
         changeStartDate,
 

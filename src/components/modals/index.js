@@ -7,4 +7,3 @@ export { default as RestartConfirmModal } from './RestartConfirmModal';
 export { default as DateSettingsModal } from './DateSettingsModal';
 export { default as RankingModal } from './RankingModal';
 export { default as MemoListModal } from './MemoListModal';
-export { default as SubgroupChangeModal } from './SubgroupChangeModal';

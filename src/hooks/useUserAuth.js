@@ -6,6 +6,13 @@ import { migrateCredentialsIfNeeded } from '../utils/memberCredentials';
 import { isInteractiveAuthFlowActive } from '../utils/authFlowGuard';
 import { loadUserExtraOrgs } from '../utils/roster';
 import { updateRosterTalents } from '../utils/talentWallet';
+import { normalizeLegacyReadingPosition } from '../utils/platformApi';
+
+const isRecoverableReadingPositionAuditError = error => {
+    const status = Number(error?.status);
+    return error?.code === 'CONFLICT'
+        || (error?.retryable === true && (status === 0 || status >= 500));
+};
 
 export const useUserAuth = () => {
     const [currentUser, setCurrentUser] = useState(null);
@@ -112,25 +119,51 @@ export const useUserAuth = () => {
                                 user.talentMigrated = true;
                             }
 
-                            // [안전장치] currentDay > 365 자동 보정 (모든 사용자)
-                            var needsUpdate = {};
-                            if (user.currentDay && user.currentDay > 365) {
-                                var extraDays = user.currentDay - 1;
-                                var extraRounds = Math.floor(extraDays / 365);
-                                user.currentDay = (extraDays % 365) + 1;
-                                user.readCount = (user.readCount || 1) + extraRounds;
-                                needsUpdate.currentDay = user.currentDay;
-                                needsUpdate.readCount = user.readCount;
+                            // [안전장치] 매 로그인마다 users와 canonical roster의 진도 미러를
+                            // 서버에서 감사한다. 로컬 users 자체가 365를 넘은 경우에는 실패를
+                            // 숨기지 않으며, 정상 users의 roster 감사 중 경합·네트워크 실패만
+                            // 로그인과 분리한다.
+                            const localUserNeedsNormalization = Boolean(
+                                user.currentDay && user.currentDay > 365
+                            );
+                            let positionAudit = null;
+                            try {
+                                positionAudit = await normalizeLegacyReadingPosition({
+                                    expectedUid: firebaseUser.uid,
+                                });
+                                if (discardStaleEvent()) return;
+                            } catch (positionAuditError) {
+                                if (discardStaleEvent()) return;
+                                if (localUserNeedsNormalization
+                                    || !isRecoverableReadingPositionAuditError(positionAuditError)) {
+                                    throw positionAuditError;
+                                }
+                                console.error('canonical roster 진도 감사 실패:', positionAuditError);
                             }
-                            // 진정희 권사 데이터 보정 (1회성)
-                            if (user.name === '진정희' && (user.readCount || 0) < 4) {
-                                user.currentDay = 91;
-                                user.readCount = 4;
-                                needsUpdate.currentDay = 91;
-                                needsUpdate.readCount = 4;
-                            }
-                            if (Object.keys(needsUpdate).length > 0) {
-                                db.collection('users').doc(firebaseUser.uid).update(needsUpdate);
+
+                            // users가 실제로 보정되었거나 roster repair 원장이 생긴 경우에는
+                            // stale 응답을 로컬에 적용하지 않고 source-server users만 확인한다.
+                            // 로컬 users가 365 초과였다면 concurrent no-op 응답이어도 재조회한다.
+                            if (positionAudit
+                                && (localUserNeedsNormalization || positionAudit.committed)) {
+                                const normalizedUserDoc = await db.collection('users')
+                                    .doc(firebaseUser.uid)
+                                    .get({ source: 'server' });
+                                if (discardStaleEvent()) return;
+                                const normalizedData = normalizedUserDoc.exists
+                                    ? normalizedUserDoc.data() || {}
+                                    : null;
+                                if (!normalizedData
+                                    || normalizedData.isDeleted === true
+                                    || !Number.isSafeInteger(normalizedData.currentDay)
+                                    || normalizedData.currentDay < 1
+                                    || normalizedData.currentDay > 365
+                                    || !Number.isSafeInteger(normalizedData.readCount)
+                                    || normalizedData.readCount < 1) {
+                                    throw new Error('invalid normalized reading position');
+                                }
+                                user.currentDay = normalizedData.currentDay;
+                                user.readCount = normalizedData.readCount;
                             }
 
                             user.extraOrgs = await extraOrgsPromise;

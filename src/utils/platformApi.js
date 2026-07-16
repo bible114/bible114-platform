@@ -105,6 +105,26 @@ const SYNC_ACHIEVEMENT_IDS = [
 const SYNC_ACHIEVEMENT_INDEX = new Map(
     SYNC_ACHIEVEMENT_IDS.map((achievementId, index) => [achievementId, index]),
 );
+const MIGRATE_PERSONAL_TALENT_WALLET_RESPONSE_KEYS = new Set([
+    'ok', 'action', 'requestId', 'alreadyCompleted', 'committed', 'result',
+]);
+const MIGRATE_PERSONAL_TALENT_WALLET_RESULT_KEYS = new Set(['status']);
+const NORMALIZE_LEGACY_READING_POSITION_RESPONSE_KEYS = new Set([
+    'ok', 'action', 'requestId', 'alreadyCompleted', 'committed', 'result',
+]);
+const NORMALIZE_LEGACY_READING_POSITION_RESULT_KEYS = new Set([
+    'status', 'currentDay', 'readCount',
+]);
+const COMPLETE_MEMBER_ONBOARDING_RESPONSE_KEYS = new Set([
+    'ok', 'action', 'requestId', 'alreadyCompleted', 'committed', 'result',
+]);
+const COMPLETE_MEMBER_ONBOARDING_RESULT_KEYS = new Set([
+    'status', 'orgId', 'planId', 'departmentId', 'departmentName',
+    'subgroupId', 'subgroupName',
+]);
+const MEMBER_ONBOARDING_PLAN_IDS = new Set([
+    '1year_sequential', '1year_revised', '1year_new', 'nt_new',
+]);
 const ACTIVITY_REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const QUIZ_PROGRESS_KEY_PATTERN = /^(?:e([1-9]\d*)_)?r([1-9]\d*)_d([1-9]\d*)$/;
 const QUIZ_KEY_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
@@ -1235,6 +1255,215 @@ export const syncAchievements = (trigger, options = {}) => {
     const payload = { trigger };
     return callPlatformApi('syncAchievements', payload, { ...options, requestId })
         .then(result => validateSyncAchievementsResponse(payload, result, requestId));
+};
+
+const invalidMigratePersonalTalentWalletResponse = () => {
+    throw new PlatformApiError('개인 달란트 지갑 이관 결과를 안전하게 확인하지 못했습니다.', {
+        code: 'INVALID_RESPONSE', status: 200, retryable: true,
+    });
+};
+
+export const validateMigratePersonalTalentWalletResponse = (result, expectedRequestId) => {
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(expectedRequestId)
+        || !hasExactKeys(result, MIGRATE_PERSONAL_TALENT_WALLET_RESPONSE_KEYS)
+        || result.ok !== true
+        || result.action !== 'migratePersonalTalentWallet'
+        || result.requestId !== expectedRequestId
+        || typeof result.alreadyCompleted !== 'boolean'
+        || typeof result.committed !== 'boolean'
+        || !hasExactKeys(result.result, MIGRATE_PERSONAL_TALENT_WALLET_RESULT_KEYS)) {
+        return invalidMigratePersonalTalentWalletResponse();
+    }
+
+    const status = result.result.status;
+    const validOutcome = (
+        (status === 'migrated'
+            && !result.alreadyCompleted
+            && result.committed)
+        || (status === 'migrated'
+            && result.alreadyCompleted
+            && result.committed)
+        || (status === 'alreadyMigrated'
+            && !result.alreadyCompleted
+            && !result.committed)
+        || (status === 'primaryMissing'
+            && !result.alreadyCompleted
+            && !result.committed)
+    );
+    if (!validOutcome) return invalidMigratePersonalTalentWalletResponse();
+
+    return {
+        ok: true,
+        action: 'migratePersonalTalentWallet',
+        requestId: expectedRequestId,
+        alreadyCompleted: result.alreadyCompleted,
+        committed: result.committed,
+        result: { status },
+    };
+};
+
+// 지갑의 조직·금액·uid는 모두 서버가 인증 사용자 문서에서 결정한다.
+// 브라우저는 멱등 requestId 외에는 어떤 이관 상태도 보내지 않는다.
+export const migratePersonalTalentWallet = (options = {}) => {
+    const requestId = options.requestId || createRequestId();
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(requestId)) {
+        throw new PlatformApiError('개인 달란트 지갑 이관 요청 번호가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('migratePersonalTalentWallet', {}, { ...options, requestId })
+        .then(result => validateMigratePersonalTalentWalletResponse(result, requestId));
+};
+
+const invalidNormalizeLegacyReadingPositionResponse = () => {
+    throw new PlatformApiError('읽기 진도 보정 결과를 안전하게 확인하지 못했습니다.', {
+        code: 'INVALID_RESPONSE', status: 200, retryable: true,
+    });
+};
+
+export const validateNormalizeLegacyReadingPositionResponse = (result, expectedRequestId) => {
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(expectedRequestId)
+        || !hasExactKeys(result, NORMALIZE_LEGACY_READING_POSITION_RESPONSE_KEYS)
+        || result.ok !== true
+        || result.action !== 'normalizeLegacyReadingPosition'
+        || result.requestId !== expectedRequestId
+        || typeof result.alreadyCompleted !== 'boolean'
+        || typeof result.committed !== 'boolean'
+        || !hasExactKeys(result.result, NORMALIZE_LEGACY_READING_POSITION_RESULT_KEYS)
+        || !isSafeIntegerInRange(result.result.currentDay, 1, 365)
+        || !isSafeIntegerInRange(result.result.readCount, 1, Number.MAX_SAFE_INTEGER)) {
+        return invalidNormalizeLegacyReadingPositionResponse();
+    }
+
+    const { status, currentDay, readCount } = result.result;
+    const validOutcome = (
+        (status === 'normalized' && result.committed)
+        || (status === 'alreadyNormalized'
+            && !result.alreadyCompleted
+            && !result.committed)
+    );
+    if (!validOutcome || (result.alreadyCompleted && status !== 'normalized')) {
+        return invalidNormalizeLegacyReadingPositionResponse();
+    }
+
+    return {
+        ok: true,
+        action: 'normalizeLegacyReadingPosition',
+        requestId: expectedRequestId,
+        alreadyCompleted: result.alreadyCompleted,
+        committed: result.committed,
+        result: { status, currentDay, readCount },
+    };
+};
+
+// uid·진도·회차는 인증 사용자 문서에서만 읽는다. 브라우저는 멱등 키 외에
+// 어떤 진도 값도 서버에 보내지 않는다.
+export const normalizeLegacyReadingPosition = (options = {}) => {
+    const requestId = options.requestId || createRequestId();
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(requestId)) {
+        throw new PlatformApiError('읽기 진도 보정 요청 번호가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('normalizeLegacyReadingPosition', {}, { ...options, requestId })
+        .then(result => validateNormalizeLegacyReadingPositionResponse(result, requestId));
+};
+
+const invalidCompleteMemberOnboardingResponse = () => {
+    throw new PlatformApiError('최초 소속 설정 결과를 안전하게 확인하지 못했습니다.', {
+        code: 'INVALID_RESPONSE', status: 200, retryable: true,
+    });
+};
+
+const isSafeMembershipName = (value, { optional = false } = {}) => (
+    typeof value === 'string'
+    && (optional ? value.length <= 200 : value.length >= 1 && value.length <= 200)
+    && value === value.trim()
+    && !/[\u0000-\u001f\u007f]/.test(value)
+);
+
+export const validateCompleteMemberOnboardingResponse = (
+    payload,
+    result,
+    expectedRequestId,
+) => {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)
+        || !ACTIVITY_REQUEST_ID_PATTERN.test(expectedRequestId)
+        || !hasExactKeys(result, COMPLETE_MEMBER_ONBOARDING_RESPONSE_KEYS)
+        || result.ok !== true
+        || result.action !== 'completeMemberOnboarding'
+        || result.requestId !== expectedRequestId
+        || typeof result.alreadyCompleted !== 'boolean'
+        || typeof result.committed !== 'boolean'
+        || !hasExactKeys(result.result, COMPLETE_MEMBER_ONBOARDING_RESULT_KEYS)) {
+        return invalidCompleteMemberOnboardingResponse();
+    }
+
+    const membership = result.result;
+    const exactEcho = membership.orgId === payload.orgId
+        && membership.planId === payload.planId
+        && membership.departmentId === payload.departmentId
+        && membership.subgroupId === payload.subgroupId;
+    const validIds = isValidCanonicalOrgId(membership.orgId)
+        && isValidCanonicalOrgId(membership.departmentId)
+        && (membership.subgroupId === '' || isValidCanonicalOrgId(membership.subgroupId));
+    const validNames = isSafeMembershipName(membership.departmentName)
+        && isSafeMembershipName(membership.subgroupName, { optional: true })
+        && ((membership.subgroupId === '') === (membership.subgroupName === ''));
+    const validOutcome = (
+        (membership.status === 'completed' && result.committed)
+        || (membership.status === 'alreadyCompleted'
+            && !result.alreadyCompleted
+            && !result.committed)
+    );
+    if (!exactEcho || !validIds || !validNames
+        || !MEMBER_ONBOARDING_PLAN_IDS.has(membership.planId)
+        || !validOutcome
+        || (result.alreadyCompleted && membership.status !== 'completed')) {
+        return invalidCompleteMemberOnboardingResponse();
+    }
+
+    return {
+        ok: true,
+        action: 'completeMemberOnboarding',
+        requestId: expectedRequestId,
+        alreadyCompleted: result.alreadyCompleted,
+        committed: result.committed,
+        result: {
+            status: membership.status,
+            orgId: membership.orgId,
+            planId: membership.planId,
+            departmentId: membership.departmentId,
+            departmentName: membership.departmentName,
+            subgroupId: membership.subgroupId,
+            subgroupName: membership.subgroupName,
+        },
+    };
+};
+
+export const completeMemberOnboarding = (input, options = {}) => {
+    const payload = {
+        orgId: input?.orgId,
+        planId: input?.planId,
+        departmentId: input?.departmentId,
+        subgroupId: input?.subgroupId ?? '',
+    };
+    if (!isValidCanonicalOrgId(payload.orgId)
+        || !MEMBER_ONBOARDING_PLAN_IDS.has(payload.planId)
+        || !isValidCanonicalOrgId(payload.departmentId)
+        || !(payload.subgroupId === '' || isValidCanonicalOrgId(payload.subgroupId))) {
+        throw new PlatformApiError('최초 소속 설정 요청이 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const requestId = options.requestId || createRequestId();
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(requestId)) {
+        throw new PlatformApiError('최초 소속 설정 요청 번호가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('completeMemberOnboarding', payload, { ...options, requestId })
+        .then(result => validateCompleteMemberOnboardingResponse(payload, result, requestId));
 };
 
 const invalidDailyVideoResponse = () => {

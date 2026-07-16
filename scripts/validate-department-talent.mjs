@@ -189,6 +189,8 @@ const adminTalentTab = read('src/components/churchAdmin/TalentShopTab.jsx');
 const helpers = read('src/utils/helpers.js');
 const firestoreIndexes = read('firestore.indexes.json');
 const rules = read('firestore.rules');
+const membership = read('src/components/dashboard/CommunityMembershipCard.jsx');
+const churchAdmin = read('src/components/ChurchAdminView.jsx');
 const platformApi = read('src/utils/platformApi.js');
 const platformApiServer = read('supabase/functions/platform-api/index.ts');
 const purchaseCore = read('supabase/functions/platform-api/purchaseCore.ts');
@@ -293,10 +295,34 @@ assert.doesNotMatch(adminView, /transaction\.get\(migratedUserRef\)|collection\(
     '개인 전환 여부와 환불 지갑은 관리자 브라우저가 users를 직접 읽어 추정하면 안 된다.');
 assert.match(rules, /match \/talentAdminActions\/\{requestId\} \{[\s\S]*allow read, write: if false;/,
     '관리자 action ledger는 브라우저 역할과 무관하게 읽기·쓰기를 모두 거부해야 한다.');
-assert.match(helpers, /talentWalletMigrated === true && \(Number\(knownUserData\.talent\) \|\| 0\) <= 0/,
-    '이관 완료 뒤 users 지갑에 늦은 환불 잔액이 생기면 재이관을 건너뛰면 안 된다.');
-assert.match(helpers, /return db\.runTransaction\(async transaction =>[\s\S]*transaction\.get\(userRef\)[\s\S]*transaction\.get\(rosterRef\)[\s\S]*transaction\.update\(userRef, \{ talent: 0, talentWalletMigrated: true \}\);[\s\S]*transaction\.update\(rosterRef, \{ talent: nextRosterTalent \}\)/,
-    '재이관은 최신 두 지갑을 읽고 단일 트랜잭션으로 전액 이동해야 한다.');
+const walletMigrationStart = helpers.indexOf('export const migratePersonalTalentWalletIfNeeded');
+const walletMigrationEnd = helpers.indexOf('\n};', walletMigrationStart) + 3;
+const walletMigrationHelper = helpers.slice(walletMigrationStart, walletMigrationEnd);
+assert.ok(walletMigrationHelper.indexOf('auth?.currentUser?.uid !== requestUid')
+    < walletMigrationHelper.indexOf("knownUserData && knownUserData.accountType !== 'personal'"),
+    '계정 UID 검증은 지갑 이관의 모든 early return보다 먼저 실행해야 한다.');
+assert.match(platformApi, /callPlatformApi\('migratePersonalTalentWallet', \{\}, \{ \.\.\.options, requestId \}\)[\s\S]*validateMigratePersonalTalentWalletResponse/,
+    '개인 지갑 이관 API는 uid·조직·금액 없이 빈 payload만 보내야 한다.');
+assert.match(walletMigrationHelper, /await migratePersonalTalentWalletViaApi\(\{ expectedUid: requestUid \}\)/,
+    '개인 지갑 이관 쓰기는 인증된 서버 action에서만 수행해야 한다.');
+assert.match(walletMigrationHelper, /if \(!hasKnownPrimaryOrg\) return null/,
+    '공동체가 없는 혼자 읽기 개인 계정만 지갑 이관 호출을 생략해야 한다.');
+assert.doesNotMatch(walletMigrationHelper, /talentWalletMigrated === true[\s\S]{0,200}return null/,
+    '완료 힌트도 서버가 canonical roster와 최신 환불 경합을 확인해야 한다.');
+assert.match(walletMigrationHelper, /migrationResponse\.result\.status === 'primaryMissing'[\s\S]*userRef\.get\(\{ source: 'server' \}\)/,
+    '기본 명부 누락은 users source-server 스냅샷으로 다시 확인해야 한다.');
+assert.match(walletMigrationHelper, /user\.role !== 'member'[\s\S]*user\.accountType !== 'personal'[\s\S]*!validDeletedState[\s\S]*!validMigrationFlag[\s\S]*!isCanonicalOrgId\(user\.primaryOrgId\)[\s\S]*!Number\.isSafeInteger\(user\.talent\)/,
+    '명부 누락 계정도 역할·삭제·이관·조직·잔액 형식을 fail-closed 검증해야 한다.');
+assert.doesNotMatch(walletMigrationHelper, /migrationResponse\.result\.(?:orgId|primaryOrgId|talent|balance)/,
+    '브라우저는 지갑 이관 API 응답의 조직·잔액을 권위 값으로 쓰면 안 된다.');
+assert.match(walletMigrationHelper, /const userSnap = await transaction\.get\(userRef\)[\s\S]*const orgId = user\.primaryOrgId[\s\S]*const rosterSnap = await transaction\.get\(rosterRef\)/,
+    '서버 성공 뒤 users와 저장된 primary roster를 한 read-only transaction에서 확인해야 한다.');
+assert.match(walletMigrationHelper, /user\.talentWalletMigrated !== true[\s\S]*user\.talent !== 0[\s\S]*roster\.uid !== requestUid[\s\S]*Number\.isSafeInteger\(roster\.talent\)/,
+    '반영 상태와 roster uid·잔액을 source-server snapshot에서 fail-closed 검증해야 한다.');
+assert.doesNotMatch(walletMigrationHelper, /transaction\.(?:set|update|delete)\(/,
+    '개인 지갑 이관 helper에 브라우저 직접 쓰기가 남으면 안 된다.');
+assert.doesNotMatch(walletMigrationHelper, /migratePersonalTalentWalletViaApi\(\{[^}]+(?:uid|orgId|talent|primaryOrgId)/,
+    'knownUserData와 인자 primaryOrgId를 API payload 권위로 보내면 안 된다.');
 assert.match(firestoreIndexes, /"collectionGroup": "talentPurchases"[\s\S]*"fieldPath": "status"[\s\S]*"fieldPath": "createdAt"/,
     '상태별 최근 이력 조회에 필요한 복합 인덱스를 선언해야 한다.');
 const purchaseRules = rules.match(/match \/talentPurchases\/\{purchaseId\} \{([\s\S]*?)\n      \}/)?.[1] || '';
@@ -306,6 +332,45 @@ assert.match(purchaseRules, /allow create: if \(isChurchAdmin\(churchId\) \|\| i
     '관리자 창구 판매는 유지해야 한다.');
 assert.match(rules, /hasAny\(\['role', 'churchId', 'accountType', 'isDeleted', 'extraMemberships',[\s\S]*'departmentId', 'departmentName',[\s\S]*'subgroupId', 'subgroupName'\]\)/,
     'users 소속 필드는 최초 설정도 본인이 직접 바꾸지 못해야 한다.');
+assert.match(rules, /resource\.data\.role == 'member'[\s\S]*isChurchAdmin\(resource\.data\.churchId\)[\s\S]*affectedKeys\(\)\.hasOnly\(\[[\s\S]*'departmentId', 'departmentName', 'subgroupId', 'subgroupName'[\s\S]*'extraMemberships', 'updatedAt'/,
+    '공동체 관리자의 users 쓰기는 삭제·소속 필드 allowlist를 벗어나면 안 된다.');
+assert.match(rules, /deletedAt == request\.time[\s\S]*deletedBy == request\.auth\.uid[\s\S]*hasAll\(\['isDeleted', 'deletedAt', 'deletedBy'\]\)/,
+    '교인 삭제 감사 시각·행위자는 삭제 전이와 함께 서버 시각·현재 관리자에 결속해야 한다.');
+assert.match(rules, /isDeleted == false[\s\S]*deletedAt == null[\s\S]*deletedBy == null[\s\S]*hasAll\(\['isDeleted', 'deletedAt', 'deletedBy'\]\)/,
+    '교인 복원은 삭제 감사 필드를 함께 비워야 한다.');
+assert.match(rules, /function isSafeSelfScoreTalentUpdate\(before, after\)[\s\S]*wasMigrated && isMigrated/,
+    'talentMigrated true 표식은 본인이 false로 되돌려 이관 예외를 재사용할 수 없어야 한다.');
+assert.match(rules, /request\.resource\.data\.role == 'churchAdmin'[\s\S]*get\('accountType', null\) == null[\s\S]*get\('score', 0\) == 0[\s\S]*get\('talent', 0\) == 0[\s\S]*get\('talentMigrated', false\) == true[\s\S]*extraMemberships\.size\(\) == 0/,
+    '신규 공동체 관리자 create가 개인 정체성·점수·지갑·추가소속을 seed하면 안 된다.');
+assert.match(rules, /wasMigrated && isMigrated[\s\S]*before\.get\('accountType', null\) == 'personal'[\s\S]*afterTalent == beforeTalent[\s\S]*afterScore == beforeScore/,
+    'personal users의 true→true 본인 쓰기는 score/talent를 완전히 동결해야 한다.');
+assert.match(rules, /before\.get\('accountType', null\) != 'personal'[\s\S]*afterTalent <= beforeTalent \+ 17[\s\S]*afterScore <= beforeScore \+ 15/,
+    '일반 공동체 users의 기존 +17/+15 호환 상한은 유지해야 한다.');
+assert.doesNotMatch(rules, /resource\.data\.accountType == 'personal'[\s\S]{0,300}isChurchAdmin\(resource\.data\.get\('primaryOrgId', null\)\)[\s\S]{0,300}hasOnly\(\['talent', 'updatedAt'\]\)/,
+    '공동체 관리자가 개인 users.talent를 임의 양수로 직접 설정할 수 없어야 한다.');
+const rosterUpdateRule = rules.match(/match \/roster\/\{memberUid\} \{([\s\S]*?)\n        allow delete/)?.[1] || '';
+assert.match(rosterUpdateRule, /isChurchAdmin\(churchId\)[\s\S]*affectedKeys\(\)\.hasOnly\(\[[\s\S]*'departmentId', 'departmentName', 'subgroupId', 'subgroupName'[\s\S]*'extraMemberships', 'updatedAt'/,
+    '공동체 관리자의 roster update는 소속 배정 필드만 허용해야 한다.');
+assert.doesNotMatch(rosterUpdateRule, /\(\(isChurchAdmin\(churchId\) \|\| isPlatformAdmin\(\)\) &&/,
+    '공동체 관리자에게 roster 전체 update 권한을 열면 진도·달란트를 임의 조작할 수 있다.');
+assert.match(rules, /function isPersonalPrimaryRoster\(churchId, memberUid\)[\s\S]*get\('accountType', null\) == 'personal'[\s\S]*get\('primaryOrgId', null\) == churchId/,
+    '개인 계정의 기본 roster를 users 원장으로 판별해야 한다.');
+assert.match(rules, /function isPersonalPrimaryRoster\(churchId, memberUid\)[\s\S]*let before = get\([\s\S]*let after = getAfter\([\s\S]*before\.get\('primaryOrgId', null\) == churchId[\s\S]*after\.get\('primaryOrgId', null\) == churchId/,
+    '개인계정 전환·기본 변경과 같은 transaction에서도 전후 primary roster 삭제를 모두 막아야 한다.');
+assert.match(rules, /allow delete: if !isPersonalPrimaryRoster\(churchId, memberUid\)[\s\S]*request\.auth\.uid == memberUid[\s\S]*isChurchAdmin\(churchId\)[\s\S]*isPlatformAdmin\(\)/,
+    '기본 roster는 본인·공동체 관리자·플랫폼 관리자 브라우저에서 삭제할 수 없어야 한다.');
+assert.match(rules, /allow delete: if !isPersonalPrimaryRoster\(churchId, memberUid\)[\s\S]*resource\.data\.get\('talent', 0\) == 0[\s\S]*request\.auth\.uid == memberUid/,
+    '양수 달란트가 남은 secondary roster도 브라우저 탈퇴·제명으로 삭제할 수 없어야 한다.');
+assert.match(membership, /transaction\.get\(rosterRef\)[\s\S]*latestTalent > 0[\s\S]*달란트[^\n]*남아 있어 탈퇴할 수 없어요/,
+    '본인 탈퇴 UI는 source transaction의 최신 roster 잔액을 확인해야 한다.');
+assert.match(churchAdmin, /executeExpelRosterMember[\s\S]*transaction\.get\(rosterRef\)[\s\S]*latestTalent > 0[\s\S]*남아 있어 제명할 수 없습니다/,
+    '관리자 제명 UI는 source transaction의 최신 roster 잔액을 확인해야 한다.');
+assert.match(rosterUpdateRule, /getAfter\([\s\S]*users\/\$\(request\.auth\.uid\)[\s\S]*get\('accountType', null\) == 'personal'[\s\S]*get\('score', 0\) == resource\.data\.get\('score', 0\)[\s\S]*get\('talent', 0\) == resource\.data\.get\('talent', 0\)/,
+    'personal의 primary·secondary roster score/talent는 브라우저에서 모두 exact-freeze해야 한다.');
+assert.match(rosterUpdateRule, /getAfter\([\s\S]*get\('accountType', null\) != 'personal'[\s\S]*get\('score', 0\) <= resource\.data\.get\('score', 0\) \+ 15[\s\S]*get\('talent', 0\) <= resource\.data\.get\('talent', 0\) \+ 17/,
+    '일반 공동체 계정 roster의 구버전 +15/+17 호환 경계는 유지해야 한다.');
+assert.match(adminView, /executeExpelRosterMember[\s\S]*error\?\.code === 'permission-denied'[\s\S]*기본 공동체이거나 달란트 잔액이 남은 명부에서는 제명할 수 없습니다/,
+    '기본 또는 양수 잔액 roster 삭제 거부는 관리자에게 별도로 안내해야 한다.');
 assert.match(rules, /match \/roster\/\{memberUid\}[\s\S]*allow update: if \(isRealUser\(\)[\s\S]*affectedKeys\(\)[\s\S]*hasAny\(\['departmentId', 'departmentName', 'subgroupId', 'subgroupName'\]\)/,
     'roster 본인 update는 조직이 배정한 소속 4필드를 보존해야 한다.');
 assert.match(rules, /data\.churchId == churchId[\s\S]*request\.resource\.data\.name == get\([\s\S]*request\.resource\.data\.score == get\([\s\S]*request\.resource\.data\.get\('departmentId', null\) == get\(/,

@@ -1,12 +1,10 @@
 import { useState, useCallback, useRef } from 'react';
-import { db, firebase } from '../utils/firebase';
-import { calculateSubgroupStats } from '../utils/statsUtils';
+import { db } from '../utils/firebase';
 import { userDocToState } from '../utils/helpers';
-import { belongsToDepartment } from '../utils/memberships';
 import { UNAFFILIATED_CHURCH_ID } from '../data/constants';
 import { mergePrimaryAndRosterMembers, rosterSnapshotToMembers } from '../utils/rosterMembers';
 
-export const useDepartment = (currentUser, setCurrentUser) => {
+export const useDepartment = currentUser => {
     const [subgroupStats, setSubgroupStats] = useState({});
     const [departmentMembers, setDepartmentMembers] = useState([]);
     const [allMembersForRace, setAllMembersForRace] = useState([]);
@@ -87,41 +85,12 @@ export const useDepartment = (currentUser, setCurrentUser) => {
         }
     }, [currentUser?.churchId]);
 
-    const changeSubgroup = useCallback(async (newSubgroup) => {
-        const uid = currentUser?.uid;
-        if (!uid) return;
-        // Support both legacy string and new { id, name } object
-        const subgroupId = typeof newSubgroup === 'string' ? newSubgroup : newSubgroup.id;
-        const subgroupName = typeof newSubgroup === 'string' ? newSubgroup : newSubgroup.name;
-        try {
-            await db.collection('users').doc(uid).set({
-                subgroupId,
-                subgroupName,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-            setCurrentUser(prev => ({ ...prev, subgroupId, subgroupName }));
-            alert(`소그룹이 "${subgroupName}"(으)로 변경되었습니다!`);
-
-            const allMembers = await loadAllMembers();
-            setAllMembersForRace(allMembers);
-            // useBibleLogic의 [Effect 3]에서 communities와 함께 다시 계산되므로 임시로만 업데이트
-            setSubgroupStats(calculateSubgroupStats(allMembers));
-            if (currentUser.departmentId) {
-                setDepartmentMembers(allMembers.filter(m => belongsToDepartment(m, currentUser.departmentId)));
-            }
-        } catch (e) {
-            console.error("소그룹 변경 실패:", e);
-            alert('변경 실패');
-        }
-    }, [currentUser, setCurrentUser, loadAllMembers]);
-
     return {
         subgroupStats, setSubgroupStats,
         departmentMembers, setDepartmentMembers,
         allMembersForRace, setAllMembersForRace,
         announcement, setAnnouncement,
         kakaoLink, setKakaoLink,
-        loadAllMembers, loadAnnouncement, loadKakaoLink,
-        changeSubgroup
+        loadAllMembers, loadAnnouncement, loadKakaoLink
     };
 };

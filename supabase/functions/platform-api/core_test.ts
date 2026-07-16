@@ -103,6 +103,119 @@ Deno.test("업적 동기화는 requestId와 exact trigger만 받는다", () => {
   }
 });
 
+Deno.test("개인 달란트 지갑 이전은 requestId 외 입력을 거부한다", () => {
+  const requestId = "123e4567-e89b-42d3-a456-426614174000";
+  const parsed = parsePlatformApiRequest({
+    action: "migratePersonalTalentWallet",
+    requestId,
+  });
+  assert(parsed.action === "migratePersonalTalentWallet", "action mismatch");
+  assert(parsed.requestId === requestId, "requestId mismatch");
+
+  for (
+    const extra of [
+      { uid: "forged-user" },
+      { primaryOrgId: "forged-org" },
+      { churchId: "forged-org" },
+      { talent: 100 },
+      { amount: 100 },
+      { rosterTalent: 0 },
+      { talentWalletMigrated: false },
+      { input: {} },
+    ]
+  ) {
+    assertRequestError(
+      () =>
+        parsePlatformApiRequest({
+          action: "migratePersonalTalentWallet",
+          requestId,
+          ...extra,
+        }),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
+Deno.test("legacy 읽기 진도 보정은 requestId 외 입력을 거부한다", () => {
+  const requestId = "123e4567-e89b-42d3-a456-426614174000";
+  const parsed = parsePlatformApiRequest({
+    action: "normalizeLegacyReadingPosition",
+    requestId,
+  });
+  assert(
+    parsed.action === "normalizeLegacyReadingPosition",
+    "action mismatch",
+  );
+  assert(parsed.requestId === requestId, "requestId mismatch");
+
+  for (
+    const extra of [
+      { uid: "forged-user" },
+      { currentDay: 731 },
+      { readCount: 2 },
+      { churchId: "forged-org" },
+      { roster: { currentDay: 731, readCount: 2 } },
+      { input: {} },
+    ]
+  ) {
+    assertRequestError(
+      () =>
+        parsePlatformApiRequest({
+          action: "normalizeLegacyReadingPosition",
+          requestId,
+          ...extra,
+        }),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
+Deno.test("최초 교인 온보딩은 plan과 소속 ID의 exact 입력만 받는다", () => {
+  const requestId = "123e4567-e89b-42d3-a456-426614174000";
+  const valid = {
+    action: "completeMemberOnboarding",
+    requestId,
+    orgId: "church-1",
+    planId: "1year_revised",
+    departmentId: "adult",
+    subgroupId: "cell-1",
+  };
+  const parsed = parsePlatformApiRequest(valid);
+  assert(parsed.action === "completeMemberOnboarding", "action mismatch");
+  if (parsed.action !== "completeMemberOnboarding") return;
+  assert(parsed.orgId === "church-1", "org mismatch");
+  assert(parsed.planId === "1year_revised", "plan mismatch");
+  assert(parsed.departmentId === "adult", "department mismatch");
+  assert(parsed.subgroupId === "cell-1", "subgroup mismatch");
+
+  for (
+    const invalid of [
+      { ...valid, uid: "forged-user" },
+      { ...valid, orgId: " other" },
+      { ...valid, orgId: "a/b" },
+      { ...valid, orgId: "." },
+      { ...valid, planId: "1year_easy" },
+      { ...valid, departmentId: "" },
+      { ...valid, departmentId: ".." },
+      { ...valid, subgroupId: "a/b" },
+      { ...valid, departmentName: "위조 이름" },
+      { ...valid, subgroupName: "위조 이름" },
+    ]
+  ) {
+    assertRequestError(
+      () => parsePlatformApiRequest(invalid),
+      "INVALID_PAYLOAD",
+    );
+  }
+
+  const noSubgroup = parsePlatformApiRequest({ ...valid, subgroupId: "" });
+  assert(
+    noSubgroup.action === "completeMemberOnboarding" &&
+      noSubgroup.subgroupId === "",
+    "empty subgroup should remain canonical",
+  );
+});
+
 Deno.test("매일 영상 resolve는 requestId 외 클라이언트 입력을 거부한다", () => {
   const requestId = "123e4567-e89b-12d3-a456-426614174000";
   const parsed = parsePlatformApiRequest({

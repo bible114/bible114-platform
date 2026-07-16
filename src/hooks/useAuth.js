@@ -43,6 +43,12 @@ const GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE = '이미 등록된 계정입니�
 const KAKAO_GOOGLE_AUTH_MESSAGE = "카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 우측 하단 ⋯ 메뉴에서 '다른 브라우저로 열기'를 눌러주세요.";
 const KAKAO_SIGNUP_DRAFT_KEY = 'b114_kakao_signup_consent_v1';
 
+const needsInitialOnboarding = user => (
+    user?.role === 'churchAdmin'
+        ? user.onboardingPending === true
+        : (!user?.departmentId || typeof user?.subgroupId !== 'string')
+);
+
 const beginLoginTiming = label => import.meta.env.DEV && typeof performance !== 'undefined'
     ? { label, startedAt: performance.now() }
     : null;
@@ -78,8 +84,8 @@ export const useAuth = ({
         if (!result) return user;
         return updateRosterTalents({
             ...user,
-            talent: result.remainingTalent || 0,
-            talentWalletMigrated: result.remainingTalent <= 0,
+            talent: 0,
+            talentWalletMigrated: true,
         }, { [result.orgId]: result.talent });
     };
     const googleAdminSignupFlowRef = useRef(null);
@@ -224,7 +230,8 @@ export const useAuth = ({
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             }, { merge: true }).catch(() => {});
         }
-        await loadChurchCommunities(churchId);
+        await loadChurchCommunities(churchId, { requireServer: true });
+        if (auth.currentUser?.uid !== user.uid) return;
         setTempUser({ ...runtimeUser, uid: user.uid });
         if (migrateGuest) {
             saveGuestState({ migratedAt: new Date().toISOString() });
@@ -768,15 +775,24 @@ export const useAuth = ({
             if (auth.currentUser?.uid !== cred.user.uid) return;
             setCurrentUser(user);
             setHasReadToday(user.lastReadDate === new Date().toDateString());
-            if (user.churchId) loadChurchCommunities(user.churchId);
+            const requiresOnboarding = user.accountType !== 'personal'
+                && needsInitialOnboarding(user);
+            if (user.churchId) {
+                if (requiresOnboarding) {
+                    await loadChurchCommunities(user.churchId, { requireServer: true });
+                    if (auth.currentUser?.uid !== cred.user.uid) return;
+                } else {
+                    loadChurchCommunities(user.churchId);
+                }
+            }
             // [Phase 3] 로그인 성공 → 다음 방문에서 교회 자동 선택되도록 최근 교회 기억
             if (user.churchId && user.churchName) {
                 saveLastChurch({ id: user.churchId, name: user.churchName });
             }
             let targetView = 'dashboard';
-            if (user.role === 'churchAdmin') {
+            if (user.role === 'churchAdmin' && !requiresOnboarding) {
                 targetView = getChurchAdminEntryView();
-            } else if (!user.departmentId || !user.subgroupId) {
+            } else if (requiresOnboarding) {
                 setTempUser(user);
                 targetView = 'plan_type_select';
             }
@@ -853,8 +869,19 @@ export const useAuth = ({
 
         setCurrentUser(user);
         setHasReadToday(user.lastReadDate === new Date().toDateString());
-        if (user.churchId) loadChurchCommunities(user.churchId);
-        const targetView = getChurchAdminEntryView();
+        const requiresOnboarding = needsInitialOnboarding(user);
+        if (user.churchId) {
+            if (requiresOnboarding) {
+                await loadChurchCommunities(user.churchId, { requireServer: true });
+                if (auth.currentUser?.uid !== cred.user.uid) return false;
+            } else {
+                loadChurchCommunities(user.churchId);
+            }
+        }
+        const targetView = requiresOnboarding
+            ? 'plan_type_select'
+            : getChurchAdminEntryView();
+        if (requiresOnboarding) setTempUser(user);
         setView(targetView);
         finishLoginTiming(loginTiming, targetView);
         return true;
@@ -1179,7 +1206,8 @@ export const useAuth = ({
                         extraMemberships: [],
                         startDate: new Date().toDateString(),
                         currentDay: 1, streak: 0, score: 0, talent: 0, talentMigrated: true, readCount: 1,
-                        lastReadDate: null, gender: 'male', planId: '1year_revised',
+                        lastReadDate: null, gender: 'male', planId: null,
+                        onboardingPending: true,
                         departmentId: null, departmentName: null, subgroupId: null,
                         consentSummary: buildSignupConsentSummary(signupConsent),
                         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -1272,7 +1300,8 @@ export const useAuth = ({
                     // 정답으로 삼아 새 공동체를 중복 생성하지 않고 가입 완료 화면으로 복구한다.
                     const recoveredUser = existingUserData;
                     invalidateChurchDirectoryCache();
-                    await loadChurchCommunities(recoveredUser.churchId);
+                    await loadChurchCommunities(recoveredUser.churchId, { requireServer: true });
+                    if (auth.currentUser?.uid !== currentAuthUser.uid) return finalResult;
                     setTempUser({ ...recoveredUser, uid: currentAuthUser.uid });
                     setView('plan_type_select');
                     finalResult = { ok: true, recovered: true };
@@ -1306,7 +1335,8 @@ export const useAuth = ({
                 extraMemberships: [],
                 startDate: new Date().toDateString(),
                 currentDay: 1, streak: 0, score: 0, talent: 0, talentMigrated: true, readCount: 1,
-                lastReadDate: null, gender: 'male', planId: '1year_revised',
+                lastReadDate: null, gender: 'male', planId: null,
+                onboardingPending: true,
                 departmentId: null, departmentName: null, subgroupId: null,
                 consentSummary: buildSignupConsentSummary(signupConsent),
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),

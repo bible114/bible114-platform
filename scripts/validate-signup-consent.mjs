@@ -218,7 +218,7 @@ assert.match(
 );
 assert.match(
     authHook,
-    /const existingUserData = existingUserDoc\.exists \? existingUserDoc\.data\(\) : null;[\s\S]*if \(existingUserData\?\.role === 'churchAdmin'\)[\s\S]*loadChurchCommunities\(recoveredUser\.churchId\)[\s\S]*recovered: true/,
+    /const existingUserData = existingUserDoc\.exists \? existingUserDoc\.data\(\) : null;[\s\S]*if \(existingUserData\?\.role === 'churchAdmin'\)[\s\S]*loadChurchCommunities\(recoveredUser\.churchId,\s*\{\s*requireServer:\s*true\s*\}\)[\s\S]*auth\.currentUser\?\.uid !== currentAuthUser\.uid[\s\S]*recovered: true/,
     'commit 응답 유실 시 이미 생성된 관리자 문서를 복구하고 공동체를 중복 생성하면 안 된다.',
 );
 assert.match(

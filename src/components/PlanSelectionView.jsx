@@ -1,7 +1,6 @@
 import React from 'react';
 import Icon from './Icon';
 import { PLAN_TYPES, BIBLE_VERSIONS, isBibleVersionVisibleForUser } from '../data/bible_options';
-import { DEFAULT_DEPARTMENTS } from '../data/departments';
 import ReadingGuideModal from './modals/ReadingGuideModal';
 
 
@@ -39,9 +38,7 @@ const PlanSelectionView = ({
     handleSubgroupSelect,
     churchCommunities,
 }) => {
-    const communities = (churchCommunities && churchCommunities.length > 0)
-        ? churchCommunities
-        : DEFAULT_DEPARTMENTS;
+    const communities = Array.isArray(churchCommunities) ? churchCommunities : [];
 
     if (view === 'plan_type_select') {
         return (
@@ -168,10 +165,11 @@ const PlanSelectionView = ({
                     <h2 className="text-xl font-bold text-slate-800">소그룹 선택</h2>
                     <p className="text-slate-500 text-sm">{tempUser?.departmentName} 내의 소그룹을 선택해주세요.</p>
                 </div>
-                {(!selectedComm || selectedComm.subgroups.length === 0) ? (
+                {(!selectedComm || !Array.isArray(selectedComm.subgroups)
+                    || selectedComm.subgroups.length === 0) ? (
                     <div className="w-full max-w-2xl text-center py-12 bg-white rounded-2xl border border-slate-200 shadow-sm">
                         <p className="font-bold text-slate-600">이 부서에 소그룹이 없습니다.</p>
-                        <button onClick={() => handleSubgroupSelect('-')}
+                        <button onClick={() => handleSubgroupSelect('')}
                             className="mt-4 bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-blue-700 text-sm">
                             소그룹 없이 계속하기
                         </button>
