@@ -73,6 +73,7 @@ assert.equal(isPlanIdAllowedForUser('1year_revised', null), true);
 const login = read('src/components/LoginView.jsx');
 const reader = read('src/components/dashboard/BibleReader.jsx');
 const dashboard = read('src/components/DashboardView.jsx');
+const churchAdminReaderGuide = read('src/components/dashboard/ChurchAdminReaderGuide.jsx');
 const quiz = read('src/components/dashboard/BibleQuizCard.jsx');
 const quizSubmission = read('supabase/functions/platform-api/quizSubmission.ts');
 const header = read('src/components/dashboard/DashboardHeader.jsx');
@@ -273,9 +274,60 @@ assert.match(userAuth, /user\.primaryOrgId,[\s\S]*user[\s\S]*\);/);
 assert.doesNotMatch(authFlow, /await loadChurchCommunities\(user\.churchId\)/);
 assert.match(authFlow, /const extraOrgsPromise = loadUserExtraOrgs\(firebaseUser\.uid\)/);
 assert.match(authFlow, /\[로그인 속도\]/);
-assert.match(app, /view === 'admin_entry'[\s\S]*📖 성경 읽기[\s\S]*⚙️ 공동체 관리/);
 assert.match(app, /sessionStorage\.removeItem\(ADMIN_ENTRY_SESSION_KEY\)/);
-assert.match(app, /\['dashboard', 'church_admin'\]\.includes\(savedAdminEntry\)/);
+assert.doesNotMatch(app, /view === 'admin_entry'/);
+assert.match(app, /savedAdminEntry === 'church_admin' \? 'church_admin' : 'dashboard'/);
+assert.match(app, /currentUser\.role === 'superAdmin' \|\| currentUser\.role === 'platformAdmin'[\s\S]*loadSuperAdminData\(\{ expectedUid: currentUser\.uid \}\)/);
+assert.match(app, /const loadSuperAdminData = async \(\{ expectedUid = null \} = \{\}\) => \{\s*if \(expectedUid && auth\.currentUser\?\.uid !== expectedUid\) return false;[\s\S]*if \(expectedUid && auth\.currentUser\?\.uid !== expectedUid\) return false;[\s\S]*if \(expectedUid && auth\.currentUser\?\.uid !== expectedUid\) return false;[\s\S]*setAllUsers/);
+assert.doesNotMatch(authFlow, /getChurchAdminEntryView|['"]admin_entry['"]/);
+assert.match(authFlow, /const targetView = requiresOnboarding[\s\S]*\? 'plan_type_select'[\s\S]*: 'dashboard'/);
+const existingPersonalStart = authFlow.indexOf('const openExistingPersonalUser = async');
+const existingSocialStart = authFlow.indexOf('const openExistingSocialUser = async');
+const existingSocialEnd = authFlow.indexOf('const openSocialOnboarding =', existingSocialStart);
+const existingPersonalFlow = authFlow.slice(existingPersonalStart, existingSocialStart);
+const existingSocialFlow = authFlow.slice(existingSocialStart, existingSocialEnd);
+assert.match(existingPersonalFlow, /const openExistingPersonalUser = async \(firebaseUser, doc, loginTiming = null\) => \{\s*if \(auth\.currentUser\?\.uid !== firebaseUser\.uid\) throw new Error\('SOCIAL_AUTH_CHANGED'\);\s*const data = doc\.data\(\)/);
+assert.match(existingSocialFlow, /const openExistingSocialUser = async \(firebaseUser, doc, loginTiming = null\) => \{\s*if \(auth\.currentUser\?\.uid !== firebaseUser\.uid\) throw new Error\('SOCIAL_AUTH_CHANGED'\);\s*const data = doc\.data\(\)/);
+assert.match(existingPersonalFlow, /migratePersonalWallet\(user\)[\s\S]*auth\.currentUser\?\.uid !== firebaseUser\.uid[\s\S]*throw new Error\('SOCIAL_AUTH_CHANGED'\)[\s\S]*setCurrentUser\(user\)/);
+assert.match(existingSocialFlow, /migratePersonalWallet\(user\)[\s\S]*auth\.currentUser\?\.uid !== firebaseUser\.uid[\s\S]*throw new Error\('SOCIAL_AUTH_CHANGED'\)[\s\S]*setCurrentUser\(user\)/);
+
+const googlePersonalStart = authFlow.slice(
+    authFlow.indexOf('const handleGooglePersonalSignup = async'),
+    authFlow.indexOf('const handleGoogleLink = async'),
+);
+assert.match(googlePersonalStart, /existingDoc = await userRef\.get\(\{ source: 'server' \}\)/);
+assert.match(googlePersonalStart, /existingDoc = await userRef\.get\(\{ source: 'server' \}\);\s*if \(auth\.currentUser\?\.uid !== cred\.user\.uid\) throw new Error\('SOCIAL_AUTH_CHANGED'\);\s*if \(existingDoc\.exists\)/);
+assert.match(googlePersonalStart, /let popupUid = null[\s\S]*popupUid = cred\?\.user\?\.uid \|\| null/);
+assert.match(googlePersonalStart, /if \(GOOGLE_ADMIN_ROLES\.has\(existingDoc\.data\(\)\?\.role\)\) \{\s*await finishAdminLogin\(cred, \{ requireRegisteredAdmin: true, loginTiming \}\);\s*return;\s*\}\s*await openExistingSocialUser/);
+assert.match(googlePersonalStart, /popupUid && auth\.currentUser\?\.uid === popupUid[\s\S]*setCurrentUser\(null\)[\s\S]*setTempUser\(null\)[\s\S]*await auth\.signOut/);
+assert.ok(
+    googlePersonalStart.indexOf('finishAdminLogin(cred') < googlePersonalStart.indexOf('openExistingSocialUser(cred.user'),
+    '첫 화면 Google 로그인은 저장된 관리자 역할을 일반 사용자 처리보다 먼저 판정해야 한다.',
+);
+
+const finishAdminLoginStart = authFlow.indexOf('const finishAdminLogin = async');
+const finishAdminLoginEnd = authFlow.indexOf('// ── 교회 관리자 / 슈퍼 관리자 로그인', finishAdminLoginStart);
+const finishAdminLogin = authFlow.slice(finishAdminLoginStart, finishAdminLoginEnd);
+assert.match(finishAdminLogin, /doc\(cred\.user\.uid\)\.get\(\{ source: 'server' \}\)/);
+assert.match(finishAdminLogin, /user\.role === 'superAdmin' \|\| user\.role === 'platformAdmin'[\s\S]*await loadSuperAdminData\(\{ expectedUid: cred\.user\.uid \}\)[\s\S]*auth\.currentUser\?\.uid !== cred\.user\.uid[\s\S]*setCurrentUser\(user\)/);
+assert.match(finishAdminLogin, /const targetView = requiresOnboarding\s*\? 'plan_type_select'\s*: 'dashboard';\s*if \(requiresOnboarding\) setTempUser\(user\);\s*setView\(targetView\)/);
+assert.match(authFlow, /const handleChurchAdminLogin = async[\s\S]*await finishAdminLogin\(cred, \{ loginTiming \}\)/);
+assert.match(authFlow, /const handleGoogleAdminLogin = async[\s\S]*await finishAdminLogin\(cred, \{ requireRegisteredAdmin: true, loginTiming \}\)/);
+
+assert.match(dashboard, /CHURCH_ADMIN_READER_GUIDE_KEY_PREFIX = 'b114_church_admin_reader_guide_v1'/);
+const adminReaderGuideEffectStart = dashboard.indexOf('useEffect(() => {\n        if (!isChurchAdmin || !currentUser?.uid)');
+const adminReaderGuideEffectEnd = dashboard.indexOf('    }, [currentUser?.uid, isChurchAdmin]);', adminReaderGuideEffectStart);
+const adminReaderGuideEffect = dashboard.slice(adminReaderGuideEffectStart, adminReaderGuideEffectEnd);
+assert.ok(adminReaderGuideEffectStart >= 0 && adminReaderGuideEffectEnd > adminReaderGuideEffectStart, '관리자 읽기 안내 effect가 필요하다.');
+assert.match(adminReaderGuideEffect, /if \(!isChurchAdmin \|\| !currentUser\?\.uid\)[\s\S]*const storageKey = `\$\{CHURCH_ADMIN_READER_GUIDE_KEY_PREFIX\}:\$\{currentUser\.uid\}`[\s\S]*setShowChurchAdminReaderGuide\(localStorage\.getItem\(storageKey\) !== 'seen'\)/);
+const dismissAdminGuideStart = dashboard.indexOf('const dismissChurchAdminReaderGuide = () =>');
+const openAdminGuideEnd = dashboard.indexOf('const handleQuizTerminal =', dismissAdminGuideStart);
+const adminGuideHandlers = dashboard.slice(dismissAdminGuideStart, openAdminGuideEnd);
+assert.match(adminGuideHandlers, /localStorage\.setItem\(`\$\{CHURCH_ADMIN_READER_GUIDE_KEY_PREFIX\}:\$\{uid\}`, 'seen'\)[\s\S]*setShowChurchAdminReaderGuide\(false\)[\s\S]*const openAdminFromReaderGuide[\s\S]*dismissChurchAdminReaderGuide\(\);\s*setView\('church_admin'\)/);
+assert.match(dashboard, /<ChurchAdminReaderGuide\s*show=\{showChurchAdminReaderGuide\}\s*onClose=\{dismissChurchAdminReaderGuide\}\s*onOpenAdmin=\{openAdminFromReaderGuide\}/);
+assert.match(churchAdminReaderGuide, /관리자도 성경 읽기부터 시작해요[\s\S]*⚙️ 관리[\s\S]*지금 관리 화면 열기/);
+assert.match(churchAdminReaderGuide, /onClick=\{onClose\}[\s\S]*onClick=\{onOpenAdmin\}/);
+assert.match(app, /setCurrentUser\(null\); setTempUser\(null\); setChurchCommunities\(\[\]\);\s*setAllUsers\(\[\]\); setAllChurches\(\[\]\)/);
 const dailyVideoCandidates = [
     { snippet: { title: '7월 14일 매일성경' }, contentDetails: { videoPublishedAt: '2026-07-14T03:00:00Z', videoId: 'todayVideo1' } },
     { snippet: { title: '7월 13일 매일성경' }, contentDetails: { videoPublishedAt: '2026-07-13T03:00:00Z', videoId: 'pastVideo01' } },

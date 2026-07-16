@@ -6,7 +6,7 @@ import {
     invalidateChurchDirectoryCache,
     saveLastChurch,
 } from '../utils/churchDirectory';
-import { ADMIN_ENTRY_SESSION_KEY, UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
+import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
 import { isPlanIdAllowedForUser } from '../data/bible_options';
 import {
     KAKAO_RETURNING_KEY,
@@ -60,13 +60,6 @@ const beginLoginTiming = label => import.meta.env.DEV && typeof performance !== 
 const finishLoginTiming = (timing, targetView) => {
     if (!timing || typeof performance === 'undefined') return;
     console.info(`[로그인 속도] ${timing.label}: ${Math.round(performance.now() - timing.startedAt)}ms → ${targetView}`);
-};
-
-const getChurchAdminEntryView = () => {
-    const saved = typeof sessionStorage !== 'undefined'
-        ? sessionStorage.getItem(ADMIN_ENTRY_SESSION_KEY)
-        : null;
-    return ['dashboard', 'church_admin'].includes(saved) ? saved : 'admin_entry';
 };
 
 export const useAuth = ({
@@ -294,6 +287,7 @@ export const useAuth = ({
     };
 
     const openExistingPersonalUser = async (firebaseUser, doc, loginTiming = null) => {
+        if (auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
         const data = doc.data();
         if (data.isDeleted === true) {
             await rejectDeletedUser();
@@ -312,6 +306,7 @@ export const useAuth = ({
         }
         user.extraOrgs = await extraOrgsPromise;
         user = await migratePersonalWallet(user);
+        if (auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
         setCurrentUser(user);
         setTempUser(null);
         setView('dashboard');
@@ -320,6 +315,7 @@ export const useAuth = ({
     };
 
     const openExistingSocialUser = async (firebaseUser, doc, loginTiming = null) => {
+        if (auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
         const data = doc.data();
         if (data.isDeleted === true) {
             await rejectDeletedUser();
@@ -342,9 +338,10 @@ export const useAuth = ({
         }
         user.extraOrgs = await extraOrgsPromise;
         user = await migratePersonalWallet(user);
+        if (auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
         setCurrentUser(user);
         setTempUser(null);
-        const targetView = user.role === 'churchAdmin' ? getChurchAdminEntryView() : 'dashboard';
+        const targetView = 'dashboard';
         setView(targetView);
         finishLoginTiming(loginTiming, targetView);
         return true;
@@ -440,19 +437,28 @@ export const useAuth = ({
         const request = (async () => {
             const loginTiming = beginLoginTiming('Google 개인/소셜');
             const flowName = 'googlePersonalSignup';
+            let popupUid = null;
             beginInteractiveAuthFlow(flowName);
             try {
                 await authReady;
                 if (isKakaoTalkBrowser()) { setErrorMsg(KAKAO_GOOGLE_AUTH_MESSAGE); return; }
                 const provider = new firebase.auth.GoogleAuthProvider();
                 const cred = await auth.signInWithPopup(provider);
+                popupUid = cred?.user?.uid || null;
                 const hasGoogleProvider = (cred.user.providerData || []).some(item => item?.providerId === 'google.com');
                 if (!cred.user.uid || !cred.user.email || !hasGoogleProvider || auth.currentUser?.uid !== cred.user.uid) {
                     throw new Error('INVALID_GOOGLE_PERSONAL_PROFILE');
                 }
                 const userRef = db.collection('users').doc(cred.user.uid);
-                const existingDoc = await userRef.get();
+                const existingDoc = await userRef.get({ source: 'server' });
+                if (auth.currentUser?.uid !== cred.user.uid) throw new Error('SOCIAL_AUTH_CHANGED');
                 if (existingDoc.exists) {
+                    // 첫 화면의 큰 Google 버튼으로 들어와도 저장된 관리자 역할을 먼저
+                    // 판정한다. 이메일 추측 없이 인증 uid의 서버 원본 역할만 신뢰한다.
+                    if (GOOGLE_ADMIN_ROLES.has(existingDoc.data()?.role)) {
+                        await finishAdminLogin(cred, { requireRegisteredAdmin: true, loginTiming });
+                        return;
+                    }
                     await openExistingSocialUser(cred.user, existingDoc, loginTiming);
                     return;
                 }
@@ -467,10 +473,18 @@ export const useAuth = ({
             } catch (error) {
                 if (error?.message === 'NOT_PERSONAL_ACCOUNT') {
                     setErrorMsg('이미 다른 방식으로 등록된 계정입니다. 기존 로그인 방법을 이용해주세요.');
-                    await auth.signOut().catch(() => {});
+                    if (popupUid && auth.currentUser?.uid === popupUid) {
+                        setCurrentUser(null);
+                        setTempUser(null);
+                        await auth.signOut().catch(() => {});
+                    }
                 } else {
                     applyGooglePopupError(error);
-                    if (!['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(error?.code)) {
+                    if (popupUid
+                        && auth.currentUser?.uid === popupUid
+                        && !['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(error?.code)) {
+                        setCurrentUser(null);
+                        setTempUser(null);
                         await auth.signOut().catch(() => {});
                     }
                 }
@@ -798,9 +812,7 @@ export const useAuth = ({
                 saveLastChurch({ id: user.churchId, name: user.churchName });
             }
             let targetView = 'dashboard';
-            if (user.role === 'churchAdmin' && !requiresOnboarding) {
-                targetView = getChurchAdminEntryView();
-            } else if (requiresOnboarding) {
+            if (requiresOnboarding) {
                 setTempUser(user);
                 targetView = 'plan_type_select';
             }
@@ -830,7 +842,8 @@ export const useAuth = ({
     // 이메일/비밀번호와 Google 관리자가 공유하는 문서 로드·마이그레이션·화면 전환 경로.
     // requireRegisteredAdmin은 Google 로그인에만 적용해 기존 이메일 로그인 동작을 보존한다.
     const finishAdminLogin = async (cred, { requireRegisteredAdmin = false, loginTiming = null } = {}) => {
-        const doc = await db.collection('users').doc(cred.user.uid).get();
+        const doc = await db.collection('users').doc(cred.user.uid).get({ source: 'server' });
+        if (auth.currentUser?.uid !== cred.user.uid) throw new Error('ADMIN_AUTH_CHANGED');
         if (!doc.exists) {
             if (requireRegisteredAdmin) {
                 await rejectUnregisteredGoogleAdmin();
@@ -870,8 +883,11 @@ export const useAuth = ({
         if (auth.currentUser?.uid !== cred.user.uid) return false;
 
         if (user.role === 'superAdmin' || user.role === 'platformAdmin') {
+            const loaded = await loadSuperAdminData({ expectedUid: cred.user.uid });
+            if (loaded === false || auth.currentUser?.uid !== cred.user.uid) {
+                throw new Error('ADMIN_AUTH_CHANGED');
+            }
             setCurrentUser(user);
-            await loadSuperAdminData();
             return true;
         }
 
@@ -888,7 +904,7 @@ export const useAuth = ({
         }
         const targetView = requiresOnboarding
             ? 'plan_type_select'
-            : getChurchAdminEntryView();
+            : 'dashboard';
         if (requiresOnboarding) setTempUser(user);
         setView(targetView);
         finishLoginTiming(loginTiming, targetView);
@@ -927,6 +943,7 @@ export const useAuth = ({
             return;
         }
         const authFlowName = 'googleAdminLogin';
+        let popupUid = null;
         beginInteractiveAuthFlow(authFlowName);
         try {
             await authReady;
@@ -936,6 +953,7 @@ export const useAuth = ({
                 setErrorMsg('구글 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.');
                 return;
             }
+            popupUid = cred.user.uid;
 
             const didLogin = await finishAdminLogin(cred, { requireRegisteredAdmin: true, loginTiming });
             if (!didLogin) return;
@@ -951,6 +969,13 @@ export const useAuth = ({
             }
         } catch (err) {
             applyGooglePopupError(err);
+            if (popupUid && auth.currentUser?.uid === popupUid) {
+                setCurrentUser(null);
+                setTempUser(null);
+                await auth.signOut().catch(signOutError => {
+                    console.error('관리자 Google 로그인 실패 후 로그아웃 실패:', signOutError);
+                });
+            }
         } finally {
             endInteractiveAuthFlow(authFlowName);
         }

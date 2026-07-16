@@ -280,7 +280,11 @@ const App = () => {
             }
             if (view === 'login') {
                 if (currentUser.role === 'superAdmin' || currentUser.role === 'platformAdmin') {
-                    loadSuperAdminData();
+                    loadSuperAdminData({ expectedUid: currentUser.uid }).catch(error => {
+                        if (auth.currentUser?.uid === currentUser.uid) {
+                            console.error('슈퍼 관리자 데이터 로드 실패:', error);
+                        }
+                    });
                 } else if (currentUser.role === 'churchAdmin') {
                     if (needsInitialOnboarding(currentUser)) {
                         if (currentUser.churchId) {
@@ -289,10 +293,11 @@ const App = () => {
                         setTempUser(currentUser);
                         setView('plan_type_select');
                     } else {
-                        // 교회 관리자는 세션 첫 진입 때 읽기/관리 화면을 직접 고른다.
+                        // 공동체 관리자는 로그인하면 성도와 같은 읽기 화면이 기본이다.
+                        // 단, 관리 화면에서 새로고침한 경우에만 같은 화면을 복원한다.
                         if (dashboardUser?.churchId) loadChurchCommunities(dashboardUser.churchId);
                         const savedAdminEntry = sessionStorage.getItem(ADMIN_ENTRY_SESSION_KEY);
-                        setView(['dashboard', 'church_admin'].includes(savedAdminEntry) ? savedAdminEntry : 'admin_entry');
+                        setView(savedAdminEntry === 'church_admin' ? 'church_admin' : 'dashboard');
                     }
                 } else {
                     if (currentUser.accountType === 'personal' && currentUser.planId) {
@@ -317,8 +322,8 @@ const App = () => {
         }
     }, [currentUser, authLoading, resetReaderSessionState, view, tempUser?.uid]);
 
-    // 관리자가 선택 화면 이후 읽기/관리 화면을 오가면 현재 화면을 세션 기준으로 갱신한다.
-    // 그래야 관리 화면에서 새로고침했을 때 최초 선택 화면으로 되돌아가지 않는다.
+    // 관리자가 읽기/관리 화면을 오가면 현재 화면을 세션 기준으로 갱신한다.
+    // 그래야 관리 화면에서 새로고침해도 읽기 화면으로 튕기지 않는다.
     useEffect(() => {
         if (currentUser?.role !== 'churchAdmin') return;
         if (!['dashboard', 'church_admin'].includes(view)) return;
@@ -514,11 +519,13 @@ const App = () => {
         else loadChurchCommunities(null);
     }, [view, dashboardUser?.churchId]);
 
-    const loadSuperAdminData = async () => {
+    const loadSuperAdminData = async ({ expectedUid = null } = {}) => {
+        if (expectedUid && auth.currentUser?.uid !== expectedUid) return false;
         const [usersSnap, churchesSnap] = await Promise.all([
             db.collection('users').get(),
             db.collection('churches').get(),
         ]);
+        if (expectedUid && auth.currentUser?.uid !== expectedUid) return false;
         const churches = await Promise.all(churchesSnap.docs.map(async doc => {
             const church = { id: doc.id, ...doc.data() };
             try {
@@ -529,9 +536,11 @@ const App = () => {
                 return church;
             }
         }));
+        if (expectedUid && auth.currentUser?.uid !== expectedUid) return false;
         setAllUsers(usersSnap.docs.map(doc => userDocToState(doc)).filter(u => !u.isDeleted));
         // 기존 본문서 adminEmail/adminUid 값은 church에 남아 있어 자동 폴백된다.
         setAllChurches(churches.filter(c => !c.isDeleted));
+        return true;
     };
 
     const {
@@ -728,6 +737,7 @@ const App = () => {
         sessionStorage.removeItem(ADMIN_ENTRY_SESSION_KEY);
         resetReaderSessionState();
         setCurrentUser(null); setTempUser(null); setChurchCommunities([]);
+        setAllUsers([]); setAllChurches([]);
         setLoginInitialTab('member');
         setErrorMsg(''); setView('login'); setHasReadToday(false); setEditingUser(null); setDepartmentMembers([]);
     };
@@ -867,33 +877,6 @@ const App = () => {
                 handleSubgroupSelect={handleSubgroupSelect}
                 churchCommunities={churchCommunities}
             />
-        );
-    } else if (view === 'admin_entry' && currentUser?.role === 'churchAdmin') {
-        const chooseAdminEntry = target => {
-            sessionStorage.setItem(ADMIN_ENTRY_SESSION_KEY, target);
-            setView(target);
-        };
-        pageContent = (
-            <div className="min-h-screen bg-slate-50 px-5 py-10 flex items-center justify-center" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
-                <section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl border border-slate-100">
-                    <div className="text-center">
-                        <p className="text-4xl" aria-hidden="true">🙏</p>
-                        <h1 className="mt-3 text-2xl font-black text-slate-900">{currentUser.name}님, 어서 오세요</h1>
-                        <p className="mt-2 text-sm font-bold text-slate-500">{currentUser.churchName || '공동체 관리자'}</p>
-                    </div>
-                    <div className="mt-7 space-y-4">
-                        <button type="button" onClick={() => chooseAdminEntry('dashboard')} className="w-full rounded-2xl border-2 border-blue-200 bg-blue-50 px-5 py-5 text-left transition-colors hover:bg-blue-100">
-                            <span className="block text-xl font-black text-slate-900">📖 성경 읽기</span>
-                            <span className="mt-1 block text-sm font-bold text-slate-600">오늘의 말씀을 읽어요</span>
-                        </button>
-                        <button type="button" onClick={() => chooseAdminEntry('church_admin')} className="w-full rounded-2xl border-2 border-indigo-200 bg-indigo-50 px-5 py-5 text-left transition-colors hover:bg-indigo-100">
-                            <span className="block text-xl font-black text-slate-900">⚙️ 공동체 관리</span>
-                            <span className="mt-1 block text-sm font-bold text-slate-600">성도 현황·달란트 상점·설정</span>
-                        </button>
-                    </div>
-                    <button type="button" onClick={handleLogout} className="mt-6 w-full py-3 text-sm font-bold text-slate-500">로그아웃</button>
-                </section>
-            </div>
         );
     } else if (view === 'admin_signup_complete' && currentUser?.role === 'churchAdmin') {
         pageContent = (

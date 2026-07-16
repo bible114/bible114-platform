@@ -14,3 +14,4 @@ export { default as CompletionCelebration } from './CompletionCelebration';
 export { default as CommunityMembershipCard } from './CommunityMembershipCard';
 export { default as PersonalAccountMigrationCard } from './PersonalAccountMigrationCard';
 export { default as SocialLinkBanner } from './SocialLinkBanner';
+export { default as ChurchAdminReaderGuide } from './ChurchAdminReaderGuide';

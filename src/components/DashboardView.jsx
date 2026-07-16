@@ -43,9 +43,12 @@ import {
     CompletionCelebration,
     CommunityMembershipCard,
     PersonalAccountMigrationCard,
-    SocialLinkBanner
+    SocialLinkBanner,
+    ChurchAdminReaderGuide,
 } from './dashboard';
 import TutorialOverlay from './TutorialOverlay';
+
+const CHURCH_ADMIN_READER_GUIDE_KEY_PREFIX = 'b114_church_admin_reader_guide_v1';
 
 const sameMembershipPair = (left, right) => {
     if (!left || !right || left.departmentId !== right.departmentId) return false;
@@ -138,6 +141,7 @@ const DashboardView = ({
     onKakaoLink,
 }) => {
     const [showTutorial, setShowTutorial] = useState(false);
+    const [showChurchAdminReaderGuide, setShowChurchAdminReaderGuide] = useState(false);
     const [showMemberships, setShowMemberships] = useState(false);
     const [quizGate, setQuizGate] = useState({
         loading: true,
@@ -172,6 +176,38 @@ const DashboardView = ({
     ]);
     currentUserUidRef.current = currentUser?.uid || null;
     currentScrollContextRef.current = quizScrollContextKey;
+
+    useEffect(() => {
+        if (!isChurchAdmin || !currentUser?.uid) {
+            setShowChurchAdminReaderGuide(false);
+            return;
+        }
+
+        const storageKey = `${CHURCH_ADMIN_READER_GUIDE_KEY_PREFIX}:${currentUser.uid}`;
+        try {
+            setShowChurchAdminReaderGuide(localStorage.getItem(storageKey) !== 'seen');
+        } catch {
+            // 저장소가 차단된 브라우저에서도 이번 로그인 중에는 안내를 보여준다.
+            setShowChurchAdminReaderGuide(true);
+        }
+    }, [currentUser?.uid, isChurchAdmin]);
+
+    const dismissChurchAdminReaderGuide = () => {
+        const uid = currentUser?.uid;
+        if (uid) {
+            try {
+                localStorage.setItem(`${CHURCH_ADMIN_READER_GUIDE_KEY_PREFIX}:${uid}`, 'seen');
+            } catch {
+                // 저장 실패는 현재 화면에서 안내를 닫는 동작을 막지 않는다.
+            }
+        }
+        setShowChurchAdminReaderGuide(false);
+    };
+
+    const openAdminFromReaderGuide = () => {
+        dismissChurchAdminReaderGuide();
+        setView('church_admin');
+    };
 
     const handleQuizTerminal = (signal) => {
         const token = getQuizTerminalSignalToken(signal);
@@ -513,6 +549,11 @@ const DashboardView = ({
                     onComplete={() => { setShowTutorial(false); setShowReadingGuide(true); }}
                 />
             )}
+            <ChurchAdminReaderGuide
+                show={showChurchAdminReaderGuide}
+                onClose={dismissChurchAdminReaderGuide}
+                onOpenAdmin={openAdminFromReaderGuide}
+            />
 
             <DashboardHeader
                 handleLogout={handleLogout}
