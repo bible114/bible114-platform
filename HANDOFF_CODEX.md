@@ -7,7 +7,8 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: T125e-2c/d 교회 이름 변경·비활성화 정책 결정, T125e-3 통계 의미 확정, T127 최종 배포 전 직접 writer 감사**. T123 읽기·퀴즈, T125d `publicChurches`, T125e-1 검색 노출, T125e-2a/b 신규 관리자 교회 생성·입장코드·무소속 점검, T127a~h(재시작·업적·긴급 rules 축소·개인 지갑·레거시 진도 정규화·최초 소속 설정·혼자 읽기 참여·개인 계정 전환)는 2026-07-16 로컬 구현·검증까지 완료했지만 최신 묶음은 아직 배포하지 않았다. 따라서 T126 영상 경로의 기존 관찰 시계(2026-07-23 05:14 KST)는 유지하되, 읽기·퀴즈·T125·T127a~h를 포함한 **최종 T127 7일 시계는 최신 Edge·웹 배포 시점부터 다시 시작**한다. 그 전에는 일반 공동체 계정의 보호 필드 호환 상한, roster 직접 진도 writer, legacy `videoAutoConfig.apiKey`를 닫거나 정리하지 않는다.
+> **2026-07-16 저녁 갱신: 보류됐던 정책 결정이 전부 도착했다** — 문서 하단 "🧭 Claude 결정 회신" 참조. 이름 변경=점진 보정, 삭제=복원 가능한 비활성화(5개 세부 답 포함), platformStats 필드 의미 확정, isPlatformAdmin `isDeleted` 결속 수정 허용. **T125e-2c/d·T125e-3 구현 진행 가능.** 새 라운드 27(읽기 일정 결측 — T128a 표기 수정·T128b 커버리지 검사 즉시, T128c는 M-S1 대기)도 하단에 추가됐다.
+> **현재 활성 작업: T125e-2c/d·e-3 → 라운드 27 T128a/b → T127 최종 직접 writer 감사**. T123 읽기·퀴즈, T125d `publicChurches`, T125e-1 검색 노출, T125e-2a/b 신규 관리자 교회 생성·입장코드·무소속 점검, T127a~h(재시작·업적·긴급 rules 축소·개인 지갑·레거시 진도 정규화·최초 소속 설정·혼자 읽기 참여·개인 계정 전환)와 2026-07-16 Kakao 관리자 가입 묶음은 Edge·웹·Firestore rules까지 운영 배포했다. T126 영상 경로의 기존 관찰 시계(2026-07-23 05:14 KST)는 유지하고, 읽기·퀴즈·T125·T127a~h를 포함한 **최종 T127 7일 시계는 전체 릴리스 완료 시각인 2026-07-16 19:26 KST부터 다시 시작해 2026-07-23 19:26 KST 전에는 닫지 않는다**. 그 전에는 일반 공동체 계정의 보호 필드 호환 상한, roster 직접 진도 writer, legacy `videoAutoConfig.apiKey`를 닫거나 정리하지 않는다.
 > 사용자 개입이 필요한 잔여는 T124d 실제 공동체 관리자 소액 판매·수령·환불 스모크뿐이다. 안전한 자격증명·대상 구매 없이 운영 지갑과 불변 ledger를 만들 수 있어 Codex가 임의 실행하지 않는다. T123 shadow 확인용 일회용 계정은 생성·검증 직후 Auth와 모든 문서를 삭제했다.
 > T126 운영 관찰 잔여 2건: 오늘 서비스 날짜에 수동 영상 문서가 생길 때 URL·제목·게시일·`autoFilled` 불변 확인, 실제 platformAdmin 계정의 `adminPreviewDailyVideo` 200 확인. 배포 당일에는 오늘 문서가 없어서 자동 fill 문서가 생성됐고 운영 관리자 자격증명을 사용하지 않았으므로 조건부 미검증으로 남긴다.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
@@ -182,6 +183,7 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-16 | 누적 11커밋 운영 릴리스·최종 T127 관찰 재시작 | `HANDOFF_CODEX.md` (배포 대상은 `be2c86f`까지 전체 누적 변경) | `main`을 `25b85ad..be2c86f`로 먼저 push한 뒤 `kakao-auth` v6 → `platform-api` v9 → GitHub Pages 웹 → 공개 새 번들 확인 → Firestore rules 순서로 배포했다. Edge 무쓰기 스모크는 Kakao OPTIONS 204/빈 POST 400, platform-api OPTIONS 204/미인증 401/잘못된 origin 403이며 두 함수 모두 ACTIVE다. 공개 웹은 `assets/index-D7l-cYj7.js` HTTP 200이고 로컬과 SHA-256 `ddea1b8ec92d753d433f660bf7950e9880db1ecbe5213c4197439dade2f849ef`가 일치했다. 게스트 첫 화면, 로그인, 공동체 등록 화면의 Kakao·Google·필수 관리자 연락 이메일을 실제 공개 DOM에서 확인했다. Firebase CLI 자격증명 만료로 rules는 로그인된 콘솔 편집기에 로컬 519행을 정확히 대체 입력해 컴파일 후 게시했고, 새 활성 버전 `오늘 • 7:26 오후`, 미게시 변경·저장 오류 없음, 519행 본문을 재로드로 확인했다. 인덱스 변경은 없어 배포하지 않았다. 실제 Kakao OAuth 완료·신규 공동체 생성과 인증된 관리자 화면은 운영 데이터 생성을 피하려고 미실행이다. 최종 T127 7일 관찰은 2026-07-16 19:26 KST부터 2026-07-23 19:26 KST까지다. |
 | 2026-07-16 | 가상 공동체 관리자 로딩 복구·카카오 공동체 관리자 가입·운영 연락 수단 | `src/{App.jsx,components/{ChurchAdminView,LoginView,PlatformAdminView}.jsx,hooks/useAuth.js,utils/{kakaoAuth,platformApi}.js,data/servicePolicies.js}`, `supabase/functions/{kakao-auth,platform-api}/*`, `scripts/validate-{church-lifecycle,signup-consent}.mjs`, `HANDOFF_CODEX.md` | `unaffiliated_v1`은 실제 관리자·users가 없는 roster-only 가상 공동체라는 계약에 맞춰 users 조회를 건너뛰고 슈퍼관리자 목록의 관리자 미리보기를 비활성화했다. 관리자 화면의 필수 조회에는 15초 timeout·오류/재시도·항상 종료되는 loading 처리를 추가하고, 상점 구매 같은 선택 조회는 핵심 화면 렌더 뒤로 분리했다. 공동체 최초 등록은 기존 비밀번호·Google에 더해 Kakao OAuth도 지원하며, Kakao Edge가 서명한 provider/Kakao ID와 canonical `kakao:<id>` UID를 platform-api가 검증한 뒤 기존 단일 transaction 가입 action으로 생성한다. 개인 로그인·계정 연결·관리자 가입 redirect 표식은 시작 때 상호 배타적으로 초기화해 중단된 흐름이 다음 시도를 오분류하지 않는다. 모든 신규 관리자는 로그인 공급자와 독립적인 필수 연락 이메일을 제출하고 `churches/{id}/private/admin.adminEmail`에만 저장하며, 슈퍼관리자 교회 목록·상세에서 `mailto:`로 연락할 수 있다. 정책 버전은 `2026-07-16`으로 동기화했다. 전체 `npm run validate`(platform-api 426 tests), 최종 관련 검사·build·diff 검사와 로컬 비로그인 가입 UI 확인을 통과했다. 실제 Kakao OAuth·인증된 슈퍼관리자 화면은 운영 계정/데이터 조작 없이 미검증이며 Edge·웹 배포와 push는 하지 않았다. |
 | 2026-07-16 | T112b 관리자 기본 읽기·Google 슈퍼관리자 직행 (사용자 직접 개정) | `src/App.jsx`, `src/hooks/useAuth.js`, `src/components/DashboardView.jsx`, `src/components/dashboard/{ChurchAdminReaderGuide.jsx,index.js}`, `scripts/validate-round18.mjs`, `HANDOFF_CODEX.md` | T112 선택 화면을 제거하고 공동체 관리자의 이메일·Google·카카오·기존 회원 로그인은 온보딩 완료 후 모두 성경 읽기 대시보드로 진입하게 했다. 관리 화면 새로고침만 세션 마커로 유지하며 상단 `⚙️ 관리`와 `← 성경 읽기로` 왕복은 보존했다. 읽기 화면 첫 진입 때 계정·안내 버전별 localStorage 키로 한 번만 안내하고 읽기 계속/관리 화면 열기를 고를 수 있다. 첫 화면의 큰 Google 버튼도 인증 uid의 source-server users 역할을 먼저 확인해 churchAdmin은 위 흐름, platformAdmin/superAdmin은 즉시 슈퍼관리자 화면으로 보낸다. 이메일 allowlist는 두지 않았고 전체 관리자 데이터와 uid 확인이 성공한 뒤에만 역할 상태를 열며 실패 시 로그인 상태·관리자 캐시를 비운다. 전체 validate(platform-api 421 tests), build, diff 검사와 변경 범위 독립 재감사(P0~P2 잔여 0)를 통과했고 실 Google 팝업은 운영 계정 조작 없이 미검증이다. 기존 삭제 플랫폼 관리자 rules P1은 별도 규칙 세션 메모로 남겼으며 웹 배포·push는 하지 않았다. |
 | 2026-07-16 | T125e-2a/b 신규 관리자 교회 생성·입장코드·무소속 writer 서버 이관 | `supabase/functions/platform-api/{core,index,completeChurchAdminSignupCore,completeChurchAdminSignupService,rotateChurchAccessCodeCore,rotateChurchAccessCodeService,ensureUnaffiliatedChurchCore,ensureUnaffiliatedChurchService}*`, `src/{App.jsx,components/{ChurchAdminView,PlatformAdminView}.jsx,hooks/useAuth.js,utils/platformApi.js}`, `firestore.rules`, `scripts/validate-{church-lifecycle,department-talent,round11,round18,round24,signup-consent}.mjs`, `package.json`, `HANDOFF_CODEX.md` | 신규 공동체·관리자 users·동의·private admin/access·legacy/public 디렉토리·불변 원장을 검증된 token identity와 단일 서버 transaction으로 생성한다. 응답 유실·같은 UID의 동시 UUID·rebuild lease·409를 멱등 수렴시키고 공개 원문 비밀과 브라우저 생성 권한을 제거했다. 입장코드 회전은 서버 SHA-256·version CAS·관리자 소유 증명·비밀 없는 원장을 사용하며, 무소속 점검도 platform/super 전용 원자 action으로 바꿨다. `churches` create/private/directory 직접 write를 닫고 플랫폼 회원 편집의 churchAdmin 소속 이동을 fail-closed했다. 독립 재감사에서 Google 응답 유실, 공개 meta/rebuild 경합, 겹치는 Firestore match의 OR 우회, REST 0/3/6/9자리 timestamp, legacy directory 비밀 재투영, 관리자 편집·입장코드 stale-response 경합까지 보완했다. 의미가 정해지지 않은 기존 부분 삭제는 UI에서 중단했으며 이름 변경은 현행 UI가 없어 정책 질문으로 남겼다. 전체 validate(platform-api 421 tests), build, Deno check/fmt, diff 검사와 독립 재감사를 통과했다. 원격 rules dry-run은 Firebase CLI 자격증명 만료로 실행하지 못했고 Edge·웹·rules 배포와 push는 하지 않았다. |
@@ -365,6 +367,11 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-16 누적 운영 릴리스 완료·최종 T127 관찰 재시작:
+- 사용자 명시 지시로 `main` 누적 11커밋을 `be2c86f`까지 push하고 의존 순서대로 `kakao-auth` v6, `platform-api` v9, GitHub Pages 웹, 마지막에 Firestore rules를 배포했다. 인덱스 변경은 없었다. 공개 번들 `index-D7l-cYj7.js`는 HTTP 200이며 로컬과 SHA-256이 일치하고, Edge의 허용/거부 무쓰기 스모크도 기대 상태를 통과했다.
+- Firebase CLI 로그인은 만료 상태였으나 로그인된 Firebase 콘솔에서 로컬 `firestore.rules` 한 벌(519행)을 편집기에 정확히 대체 입력해 게시했다. 첫 입력이 기존 규칙 뒤에 붙은 상태는 컴파일러가 `Line 520: Unexpected 'rules_version'`으로 거부해 운영 미반영이었고, 전체 선택·삭제 후 다시 붙여 `rules_version` 1회/마지막 519행을 확인했다. 재게시 뒤 페이지 재로드에서 활성 버전 `오늘 • 7:26 오후`, 저장 오류·미게시 변경 없음으로 확인했다.
+- 공개 게스트·로그인·공동체 등록 UI에서 Kakao/Google 등록과 필수 관리자 연락 이메일은 확인했다. 실제 Kakao OAuth 완료, 신규 공동체 생성, 인증된 슈퍼/공동체 관리자 화면은 운영 데이터 생성을 피하려고 미실행이다. 전체 릴리스 완료 기준 최종 T127 관찰은 2026-07-16 19:26 KST부터 2026-07-23 19:26 KST까지이며 그 전에는 잔여 직접 writer/legacy secret 차단·정리를 하지 않는다.
 
 2026-07-16 가상 공동체 로딩·Kakao 관리자 가입·연락 이메일 로컬 완료:
 - 슈퍼관리자의 `성경 읽는 사람들`은 실제 공동체 관리자/users가 없는 `unaffiliated_v1` 가상 공동체다. `ChurchAdminView`에서 이 ID의 users query를 건너뛰고 roster만 읽으며, `PlatformAdminView`의 관리자 미리보기 버튼도 의도적으로 비활성화했다. 일반 공동체 화면은 핵심 조회 15초 timeout·오류 재시도·finally 해제를 적용했고 구매 조회가 지연돼도 회원/설정 화면은 먼저 열린다.
@@ -2300,3 +2307,57 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 - ~~firestore.rules의 `users` read 규칙 버그 — 건드리지 말 것~~ (해결됨 — 현행 규칙 49~62행에 랭킹 read 분기 반영 완료). 2026-07-14부터 규칙 수정은 **라운드 20 T108·T109 범위 안에서만** 허용, 로컬 수정까지만 하고 배포는 Claude 담당.
 - Firebase는 compat(v8 스타일) API만 쓴다. `import { doc, getDoc }` 같은 modular API를 섞지 마라.
 - 커밋은 로컬에서 진행한다. push·배포는 기본적으로 사용자 확인을 기다리되, 사용자가 현재 작업에서 명시적으로 요청하면 Codex가 직접 실행하고 공개 결과까지 확인한다.
+
+---
+
+## 🧭 Claude 결정 회신 — T125e-2c/d·T125e-3·isPlatformAdmin P1 (2026-07-16, 사용자 확정 반영)
+
+### T125e-2d. 교회 삭제 = **복원 가능한 비활성화** (Codex 제안 채택)
+
+Codex의 5개 질문에 대한 확정 답:
+1. **비활성화만 지원, purge 없음.** 최종 삭제(purge) 정책은 별도 결정 전까지 만들지 않는다.
+2. **비활성 대상**: 교회 문서·legacy/public 디렉토리 즉시 원자 비활성화(검색·가입 차단). 기존 **주 소속 users만** action generation 표식으로 재개 가능한 batch soft-delete. **개인/외부 roster 문서는 삭제·soft-delete하지 않고 보존**한다 — 비활성 공동체의 보상 적립·구매·설정 변경은 서버 action이 거부하므로 활동은 자연 차단된다. 개인 계정의 primaryOrgId가 비활성 교회를 가리키면 로그인은 유지하되 기준 공동체 전환 안내를 표시한다.
+3. **정산 주체 = 플랫폼 관리자, 자동 환불 금지.** 양수 roster 달란트와 pending 구매는 동결 보존하고, 플랫폼 관리자 읽기 전용 정산 조회(공동체별 잔액 합계·pending 목록)만 제공한다. 실물 정산은 오프라인 처리.
+4. **비활성화 이전에 이미 개별 삭제된 users는 복원 대상에서 제외** — generation 표식으로 구분 (Codex 제안 그대로).
+5. **보존 기간 무기한.** Auth·private access·구매·감사 원장 삭제 금지. 플랫폼 관리자 정산 조회는 비활성화 후에도 계속 가능.
+
+### T125e-2c. 교회 이름 변경 = **점진 보정**
+
+- 서버 action이 `churches.name` + legacy/public 디렉토리 + 불변 rename 원장을 한 transaction으로 변경한다.
+- 기존 users/roster의 `churchName` snapshot은 일괄 fanout하지 않는다. **로그인 시 보정** — 기존 로그인 감사 경로(`normalizeLegacyReadingPosition`류)에 편입하거나 로그인 후 1회 비교·갱신. 표시 로직은 가능하면 ID 기반 최신 조회를 우선한다.
+- 일시적으로 옛 이름이 보이는 것은 허용된 트레이드오프다 (사용자 확정).
+
+### T125e-3. `platformStats` 필드 의미 확정
+
+- **`total_readers` = 현재 비삭제 users 수** (게스트·익명 제외). 서버 가입 action이 증가, soft-delete action이 감소. rebuild = 비삭제 users count.
+- **`total_churches` = 현재 활성(비삭제·비활성 제외) 교회 수**, 무소속 가상 교회(`unaffiliated_v1`) 제외. 생성 action 증가, 비활성화 action 감소. rebuild = 조건 count.
+- **`readers_today` = 서버 KST 자정 기준 당일 첫 읽기 완료 고유 인원** (현행 completeRead 동작 유지, 게스트 제외).
+- **`finished_total` = 완독 이벤트 누적 합계** (readCount 증가 1회 = +1). rebuild = 비삭제 users의 `max(readCount−1, 0)` 합. 랜딩 라벨이 "올해 완독자"라면 연도 한정이 아니므로 **"누적 완독"으로 라벨을 고친다** (연도별 통계는 별도 결정 전 만들지 않는다).
+- 이 의미로 `rebuildPlatformStats({dryRun})`를 구현하고, dry-run 차이를 확인한 뒤에만 실제 덮어쓴다. 관리자 "통계 지금 갱신" 버튼은 이 서버 action 호출로 교체한다.
+
+### isPlatformAdmin() P1 — 수정 허용 (범위 한정)
+
+- T112b 감사에서 발견한 "삭제된 관리자의 `isPlatformAdmin()` 권한 잔존"은 **helper에 `isDeleted != true` 결속을 추가하는 방식으로 Codex가 수정해도 된다.** 이는 helper 수정이지 `users` read 규칙 구조 변경이 아니다 — read 규칙 자체(조건 분기·대상 범위)는 계속 건드리지 말 것. `isSuperAdmin`·`isChurchAdmin`도 같은 결속을 검토하되, get() 호출 수 증가로 인한 규칙 비용은 기존 myData() 패턴 재사용으로 억제한다. T127 rules 배포분에 포함한다.
+
+---
+
+## 🔁 라운드 27 — 읽기 일정 결측 3건 (2026-07-16 사용자 승인, Claude 설계)
+
+> 배경: 퀴즈 인덱스 생성(T123d1)에서 발견된 일정 결측을 2026-07-16 전수 스캔으로 확정했다. 66권 전장 커버리지 기준 아래 3건 외 결측 없음.
+> 사용자 결정: **T128a·T128b는 즉시 진행, T128c는 본문 텍스트(M-S1) 준비 후.**
+
+**확정된 사실 (재조사 불필요):**
+- `src/data/read_schedules.json`의 `whole_bible`은 1년일독 4플랜(sequential/revised/new/saehangul), `new_testament`는 신약 4플랜이 공유한다 (`src/data/schedules.js:3-13`).
+- 본문 캐시 `verses/{planType}_{version}_{day}`는 **Day 번호 키**다 — range 텍스트만 바꾸면 본문과 어긋난다. 캐시 재생성 도구는 리포에 없다 (노션 동기화 삭제됨).
+- 일정은 정확히 365개 하드 제약 (`generate-quiz-answer-index.mjs`가 throw). 일정 변경 시 `node scripts/generate-quiz-answer-index.mjs` 재생성 필수 (validate가 byte-for-byte 검사). **인덱스 재생성은 `platform-api/quiz-answer-index.json`을 바꾸므로 Edge 재배포가 필요하다.**
+- 결측: ① whole_bible Day 337(`렘 29:24-32`)→338(`렘 33-36장`) 사이 **렘 30~32장 누락** (고아 문항 `jeremiah-30-88`~`32-96` 9개) ② new_testament Day 135(`행 10:24-48`)→136(`행 12장`) 사이 **행 11장 누락** (`acts-11-235~239` 5문항이 nt에서 고아, whole은 Day 169로 정상) ③ whole_bible Day 363 `"요일 3-5장, 요이, 요삼"`이 장 번호 없는 표기라 `quizParsing.js`가 미인식 (`2john/3john` 10문항 whole 고아 — **실제 독서 누락은 아님**).
+
+- [ ] **T128a. 요이·요삼 표기 수정 (즉시, 무위험)** — `read_schedules.json` whole_bible Day 363의 range를 `"요일 3-5장, 요이 1장, 요삼 1장"`으로 변경. 독서 의미 불변이므로 verses 캐시 무관. `node scripts/generate-quiz-answer-index.mjs` 재생성 후 `2john-1-*`/`3john-1-*`의 `allowed.whole`에 363이 들어갔는지 확인. 전체 validate·build 통과로 완료.
+- [ ] **T128b. 66권 전장 커버리지 검사 신설** — 신규 `scripts/validate-schedule-coverage.mjs`: `src/utils/quizParsing.js`와 같은 파서 계약으로 whole_bible은 66권 전체 장, new_testament는 신약 27권 전체 장이 최소 1개 Day의 range에 포함되는지 검증한다. **알려진 결측 2건(렘 30~32, 행 11)은 T128c 완료 전까지 사유 주석이 달린 명시적 allowlist로 예외 처리**해 검사 자체는 즉시 활성화한다. `npm run validate`에 포함. allowlist에 새 항목 추가는 금지(신규 결측은 실패해야 함).
+- [ ] **T128c. 범위 확장 (M-S1 본문 준비 후 — 그 전 착수 금지)** —
+  1. `read_schedules.json`: whole_bible Day 338 `렘 33-36장` → `렘 30-36장`, new_testament Day 136 `행 12장` → `행 11-12장`.
+  2. **verses 캐시 주입 도구 신설**: 플랫폼 관리자 전용 서버 action 또는 서비스 계정 스크립트로, 대상 문서(1년일독 4버전 × Day 338, 신약 4버전 × Day 136 — easy 캐시 존재 여부는 실데이터로 확인)의 본문 텍스트를 **기존 본문 뒤가 아니라 새 range 순서에 맞게** 갱신한다. 기본 dry-run(대상 문서·길이만 출력, 본문 값 미출력), 실행 전 0600 로컬 백업, 실행 후 재감사.
+  3. 인덱스 재생성 + T128b allowlist 제거 + 전체 validate·build.
+  4. 배포 순서: Edge(인덱스 포함) → 웹. T127 관찰 기간과 겹치면 관찰 지표에 이 변경을 기록해 불일치 오탐을 막는다.
+
+**사용자 수동 작업 — M-S1** (T128c 전제): 렘 30·31·32장, 행 11장의 본문 텍스트를 버전별(개역개정 등 실제 서비스 중인 버전)로 준비해 전달. 형식은 기존 verses 문서와 동일 (Codex가 T128c 착수 시 기존 Day 337/338 문서 형식을 먼저 확인해 필요한 형식을 사용자에게 안내할 것).
