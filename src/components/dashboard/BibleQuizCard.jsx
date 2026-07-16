@@ -166,7 +166,16 @@ const projectFreshUserForQuizConfiguration = (freshUser, rosterOrgId) => {
     } : null;
 };
 
-const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateChange, sectionRef, highlight = false, talentProgramEnabled = true }) => {
+const BibleQuizCard = ({
+    currentUser,
+    setCurrentUser,
+    viewingDay,
+    onGateStateChange,
+    onQuizTerminal,
+    sectionRef,
+    highlight = false,
+    talentProgramEnabled = true,
+}) => {
     const todayKey = getKstDateString();
     const hasReadToday = currentUser?.lastReadDate === new Date().toDateString();
     const progressDay = Number(viewingDay || currentUser?.currentDay || 1);
@@ -338,6 +347,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                 activityRequest.payload.quizKey,
                 { requestId: activityRequest.requestId, expectedUid: submittedUid },
             );
+            const submittedRequestId = activityRequest.requestId;
             clearActivityRequest(activityRequest);
             if (auth?.currentUser?.uid !== submittedUid) return;
             let freshUser;
@@ -392,6 +402,14 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                 }
             }
             setSkipped(entry.skipped === true);
+            if (entry.skipped === true) {
+                onQuizTerminal?.({
+                    uid: submittedUid,
+                    progressKey: submittedProgressKey,
+                    requestId: submittedRequestId,
+                    outcome: 'skipped',
+                });
+            }
         } catch (error) {
             const outcomeUncertain = error instanceof PlatformApiError
                 && (error.retryable === true || (error.status >= 200 && error.status < 300));
@@ -445,6 +463,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                 payload.attemptSlot,
                 { requestId, expectedUid: submittedUid },
             );
+            const submittedRequestId = requestId;
             clearActivityRequest(activityRequest);
             if (auth?.currentUser?.uid !== submittedUid) return;
             let freshUser;
@@ -495,6 +514,12 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
             setSkipped(freshProgress.skipped === true);
 
             if (freshProgress.solved) {
+                onQuizTerminal?.({
+                    uid: submittedUid,
+                    progressKey: submittedProgressKey,
+                    requestId: submittedRequestId,
+                    outcome: 'solved',
+                });
                 setFeedback({
                     type: 'success',
                     message: freshProgress.reward > 0
@@ -502,6 +527,12 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                         : '정답이에요! 퀴즈 달란트는 하루 1번만 적립돼요.',
                 });
             } else if (freshProgress.skipped || freshProgress.attempts >= 2) {
+                onQuizTerminal?.({
+                    uid: submittedUid,
+                    progressKey: submittedProgressKey,
+                    requestId: submittedRequestId,
+                    outcome: freshProgress.skipped ? 'skipped' : 'attemptsExhausted',
+                });
                 setFeedback({ type: 'done', message: '아쉽지만 오늘의 시도는 끝났습니다. 정답을 확인해보세요.' });
             } else {
                 setFeedback({ type: 'retry', message: '아쉬워요. 한 번 더 도전할 수 있습니다.' });

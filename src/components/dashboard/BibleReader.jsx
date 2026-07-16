@@ -30,6 +30,8 @@ const BibleReader = ({
     onQuizGateLocked,
     quizContent,
     completionSummary,
+    bibleHeaderRef,
+    readActionRef,
 }) => {
     const hasContentError = !!verseData.error;
     const isCurrentProgressDay = viewingDay === currentUser.currentDay;
@@ -52,7 +54,7 @@ const BibleReader = ({
 
     return (
         <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
-            <div id="tut-bible-header" className="p-6 text-white relative bg-gradient-to-br from-indigo-600 to-blue-700">
+            <div ref={bibleHeaderRef} id="tut-bible-header" className="scroll-mt-28 p-6 text-white relative bg-gradient-to-br from-indigo-600 to-blue-700 md:scroll-mt-20">
                 <div className="flex items-center justify-between mb-2 px-2">
                     <button
                         onClick={() => setViewingDay(prev => Math.max(1, prev - 1))}
@@ -218,7 +220,7 @@ const BibleReader = ({
                 {!verseData.loading && !hasContentError && quizContent}
 
                 {!verseData.loading && !hasContentError && completionSummary ? (
-                    <div id="tut-read-btn" className="mt-8 rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-center">
+                    <div ref={readActionRef} id="tut-read-btn" className="scroll-mt-4 mt-8 rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-center">
                         <p className="text-xl font-black text-emerald-900">{completionSummary.isFirstReadToday ? '오늘 읽기 완료! 🎉' : '추가 읽기 완료! 🎉'}</p>
                         <p className="mt-2 text-lg font-bold text-emerald-700">
                             +{completionSummary.scoreEarned}점{completionSummary.talentProgramEnabled ? ` · 달란트 +${completionSummary.talentEarned}` : ''}
@@ -229,7 +231,7 @@ const BibleReader = ({
                         </button>
                     </div>
                 ) : !verseData.loading && !hasContentError && (
-                    <div id="tut-read-btn" className="mt-8 pt-6 border-t border-slate-100">
+                    <div ref={readActionRef} id="tut-read-btn" className="scroll-mt-4 mt-8 pt-6 border-t border-slate-100">
                         <div className="relative">
                             <button
                                 onClick={isQuizGateLocked ? onQuizGateLocked : handleRead}

@@ -290,6 +290,8 @@ export const useUserBibleActions = (
             }
             setBonusToast(null);
             setCompletionSummary({
+                uid,
+                requestId: response.requestId,
                 scoreEarned: summary.scoreEarned,
                 talentEarned: summary.talentEarned > 0
                     ? summary.talentEarned + quizTalentEarned

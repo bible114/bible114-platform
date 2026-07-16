@@ -7,6 +7,12 @@ import { belongsToDepartment, getMembershipList } from '../utils/memberships';
 import { getDaysRead } from '../utils/helpers';
 import { db } from '../utils/firebase';
 import { resolveTalentProgram } from '../utils/talentProgram';
+import {
+    getQuizTerminalSignalToken,
+    scheduleScrollIntoView,
+    shouldScrollToReadAction,
+    shouldScrollToReadingHeader,
+} from '../utils/readingFlowScroll';
 
 // Modals
 import {
@@ -140,7 +146,93 @@ const DashboardView = ({
     });
     const [highlightQuiz, setHighlightQuiz] = useState(false);
     const [talentProgramEnabled, setTalentProgramEnabled] = useState(true);
+    const [quizTerminalVersion, setQuizTerminalVersion] = useState(0);
     const quizSectionRef = useRef(null);
+    const bibleHeaderRef = useRef(null);
+    const readActionRef = useRef(null);
+    const pendingQuizTerminalRef = useRef(null);
+    const handledQuizTerminalTokenRef = useRef(null);
+    const observedCompletionRef = useRef({
+        uid: currentUser?.uid || null,
+        summary: completionSummary,
+    });
+    const currentUserUidRef = useRef(currentUser?.uid || null);
+    const currentScrollContextRef = useRef(null);
+
+    const quizScrollContextKey = JSON.stringify([
+        currentUser?.uid || '',
+        currentUser?.planId || '',
+        currentUser?.dayOffset || 0,
+        currentUser?.quizLevel || '',
+        currentUser?.readCount || 1,
+        currentUser?.readingEpoch || 0,
+        currentUser?.currentDay || 1,
+        viewingDay ?? '',
+        currentUser?.talentWalletOrgId || currentUser?.churchId || '',
+    ]);
+    currentUserUidRef.current = currentUser?.uid || null;
+    currentScrollContextRef.current = quizScrollContextKey;
+
+    const handleQuizTerminal = (signal) => {
+        const token = getQuizTerminalSignalToken(signal);
+        const uid = currentUserUidRef.current;
+        const contextKey = currentScrollContextRef.current;
+        if (!token || !uid || signal.uid !== uid || !contextKey) return;
+        pendingQuizTerminalRef.current = {
+            ...signal,
+            token,
+            contextKey,
+        };
+        setQuizTerminalVersion(version => version + 1);
+    };
+
+    useEffect(() => {
+        const pendingTerminal = pendingQuizTerminalRef.current;
+        const currentGate = {
+            uid: currentUser?.uid || null,
+            contextKey: quizScrollContextKey,
+            hasQuestion: quizGate.hasQuestion,
+            gateOpen: quizGate.gateOpen,
+        };
+        if (pendingTerminal && pendingTerminal.contextKey !== quizScrollContextKey) {
+            pendingQuizTerminalRef.current = null;
+            return;
+        }
+        if (!shouldScrollToReadAction(pendingTerminal, currentGate)
+            || handledQuizTerminalTokenRef.current === pendingTerminal.token) return;
+
+        const expectedContextKey = quizScrollContextKey;
+        pendingQuizTerminalRef.current = null;
+        handledQuizTerminalTokenRef.current = pendingTerminal.token;
+        scheduleScrollIntoView(() => readActionRef.current, {
+            block: 'center',
+            frameCount: 2,
+            isStillCurrent: () => currentScrollContextRef.current === expectedContextKey,
+        });
+    }, [
+        currentUser?.uid,
+        quizGate.gateOpen,
+        quizGate.hasQuestion,
+        quizScrollContextKey,
+        quizTerminalVersion,
+    ]);
+
+    useEffect(() => {
+        const uid = currentUser?.uid || null;
+        const previous = observedCompletionRef.current;
+        const next = { uid, summary: completionSummary };
+        observedCompletionRef.current = next;
+
+        if (!shouldScrollToReadingHeader(previous, next)) return undefined;
+
+        const expectedUid = uid;
+        const expectedContextKey = currentScrollContextRef.current;
+        return scheduleScrollIntoView(() => bibleHeaderRef.current, {
+            block: 'start',
+            isStillCurrent: () => currentUserUidRef.current === expectedUid
+                && currentScrollContextRef.current === expectedContextKey,
+        });
+    }, [completionSummary, currentUser?.uid]);
 
     useEffect(() => {
         if (!currentUser?.churchId || currentUser.role === 'guest') {
@@ -499,6 +591,8 @@ const DashboardView = ({
                         quizGateOpen={quizGate.gateOpen}
                         onQuizGateLocked={handleQuizGateLocked}
                         completionSummary={completionSummary}
+                        bibleHeaderRef={bibleHeaderRef}
+                        readActionRef={readActionRef}
                         quizContent={(
                             <BibleQuizCard
                                 currentUser={currentUser}
@@ -508,6 +602,7 @@ const DashboardView = ({
                                 sectionRef={quizSectionRef}
                                 highlight={highlightQuiz}
                                 talentProgramEnabled={talentProgramEnabled}
+                                onQuizTerminal={handleQuizTerminal}
                             />
                         )}
                     />
