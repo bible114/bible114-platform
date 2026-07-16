@@ -168,6 +168,97 @@ export const getDocument = async <T = Record<string, unknown>>(
   };
 };
 
+/**
+ * Lists every document directly under one collection, following Firestore REST
+ * page tokens until the collection is exhausted. The collection path must end
+ * at a collection (for example `churches` or `churches/{id}/roster`).
+ */
+export const listCollectionDocuments = async <
+  T = Record<string, unknown>,
+>(
+  token: string,
+  projectId: string,
+  collectionPath: string,
+  options: {
+    pageSize?: number;
+    maxPages?: number;
+    fetcher?: typeof fetch;
+  } = {},
+): Promise<FirestoreDocument<T>[]> => {
+  const segments = collectionPath.split("/");
+  if (
+    !collectionPath || segments.length % 2 !== 1 ||
+    segments.some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    throw new PlatformError("BAD_REQUEST", {
+      message: "컬렉션 경로가 올바르지 않습니다.",
+    });
+  }
+  const pageSize = options.pageSize ?? 300;
+  const maxPages = options.maxPages ?? 10_000;
+  if (
+    !Number.isInteger(pageSize) || pageSize <= 0 || pageSize > 1_000 ||
+    !Number.isInteger(maxPages) || maxPages <= 0
+  ) {
+    throw new PlatformError("BAD_REQUEST", {
+      message: "페이지 설정이 올바르지 않습니다.",
+    });
+  }
+
+  const documents: FirestoreDocument<T>[] = [];
+  const seenPageTokens = new Set<string>();
+  let pageToken = "";
+  for (let page = 0; page < maxPages; page += 1) {
+    const url = new URL(
+      `${firestoreBaseUrl(projectId)}/documents/${
+        encodeDocumentPath(collectionPath)
+      }`,
+    );
+    url.searchParams.set("pageSize", String(pageSize));
+    url.searchParams.set("orderBy", "__name__");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const response = await authenticatedFetch(
+      url.toString(),
+      token,
+      {},
+      options.fetcher,
+    );
+    if (!response.ok) {
+      throw new PlatformError("FIRESTORE_READ_FAILED", {
+        details: { status: response.status, collectionPath },
+      });
+    }
+    const payload = await response.json() as {
+      documents?: Array<Omit<FirestoreDocument<T>, "data">>;
+      nextPageToken?: string;
+    };
+    for (const document of payload.documents ?? []) {
+      const fields = document.fields ?? {};
+      documents.push({
+        ...document,
+        fields,
+        data: decodeFirestoreFields(fields) as T,
+      });
+    }
+    const nextPageToken = typeof payload.nextPageToken === "string"
+      ? payload.nextPageToken
+      : "";
+    if (!nextPageToken) return documents;
+    if (seenPageTokens.has(nextPageToken)) {
+      throw new PlatformError("FIRESTORE_READ_FAILED", {
+        message: "Firestore 페이지 토큰이 반복되었습니다.",
+        details: { collectionPath },
+      });
+    }
+    seenPageTokens.add(nextPageToken);
+    pageToken = nextPageToken;
+  }
+  throw new PlatformError("FIRESTORE_READ_FAILED", {
+    message: "Firestore 컬렉션 페이지 한도를 초과했습니다.",
+    details: { collectionPath },
+  });
+};
+
 export const runCollectionGroupQuery = async <T = Record<string, unknown>>(
   token: string,
   projectId: string,
@@ -349,10 +440,18 @@ export const commitWrites = async (
     },
     options.fetcher,
   );
-  const payload = await response.json();
+  const payload = await response.json() as {
+    error?: { status?: unknown };
+  };
   if (!response.ok) {
+    const canonicalStatus = typeof payload.error?.status === "string"
+      ? payload.error.status
+      : undefined;
     throw new PlatformError("FIRESTORE_WRITE_FAILED", {
-      details: { status: response.status },
+      details: {
+        status: response.status,
+        ...(canonicalStatus ? { canonicalStatus } : {}),
+      },
     });
   }
   return payload;
@@ -386,7 +485,11 @@ export const updateWrite = (
   projectId: string,
   path: string,
   data: Record<string, unknown>,
-  options: { updateMask?: string[]; exists?: boolean } = {},
+  options: {
+    updateMask?: string[];
+    exists?: boolean;
+    updateTime?: string;
+  } = {},
 ): FirestoreWrite => ({
   update: {
     name: documentName(projectId, path),
@@ -395,7 +498,9 @@ export const updateWrite = (
   ...(options.updateMask
     ? { updateMask: { fieldPaths: options.updateMask } }
     : {}),
-  ...(options.exists === undefined
+  ...(options.updateTime
+    ? { currentDocument: { updateTime: options.updateTime } }
+    : options.exists === undefined
     ? {}
     : { currentDocument: { exists: options.exists } }),
 });

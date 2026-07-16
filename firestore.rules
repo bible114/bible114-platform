@@ -84,6 +84,17 @@ service cloud.firestore {
       return e == null || !('url' in e) || e.url == '' ||
         e.url.matches('^https://(www[.])?(youtube[.]com|youtu[.]be)/.*');
     }
+    function isPublicDirectoryReady() {
+      let meta = get(/databases/$(database)/documents/publicDirectoryMeta/current).data;
+      return meta.keys().hasOnly(
+          ['ready', 'mode', 'schemaVersion', 'count', 'updatedAt']) &&
+        meta.keys().hasAll(['ready', 'mode', 'schemaVersion', 'count']) &&
+        meta.ready == true &&
+        meta.mode == 'public' &&
+        meta.schemaVersion == 1 &&
+        meta.count is int &&
+        meta.count >= 0;
+    }
 
     // 사용자 문서
     match /users/{uid} {
@@ -386,8 +397,35 @@ service cloud.firestore {
       allow write: if isPlatformAdmin();
     }
 
-    // 공개 교회 디렉토리 — 로그인 화면(미인증)에서 교회 검색/입장코드 검증에 사용.
-    // {id, name, codeHash}만 담아 관리자 이메일 등 민감 정보 노출을 막는다.
+    // 차세대 공개 교회 디렉토리. 공개 화면에는 교회 ID, 이름, 숨김 여부만
+    // 노출하며 브라우저 역할과 무관하게 모든 쓰기를 서비스 계정으로 제한한다.
+    match /publicChurches/{churchId} {
+      allow read: if isPublicDirectoryReady();
+      allow write: if false;
+    }
+
+    // publicChurches 백필·전환 상태. mode가 public으로 확정되기 전 새 앱은
+    // 기존 settings/churchDirectory를 계속 사용한다.
+    match /publicDirectoryMeta/current {
+      allow read: if resource.data.keys().hasOnly(
+          ['ready', 'mode', 'schemaVersion', 'count', 'updatedAt'])
+        && resource.data.keys().hasAll(['ready', 'mode', 'schemaVersion'])
+        && resource.data.ready is bool
+        && resource.data.mode in ['legacy', 'public']
+        && resource.data.schemaVersion == 1
+        && (!('count' in resource.data) ||
+          (resource.data.count is int && resource.data.count >= 0))
+        && (!('updatedAt' in resource.data) || resource.data.updatedAt is timestamp);
+      allow write: if false;
+    }
+
+    // 공개 디렉토리 재생성 lease·소유권 fence. 서비스 계정 전용 내부 상태다.
+    match /platformInternal/{documentId} {
+      allow read, write: if false;
+    }
+
+    // 호환용 공개 교회 디렉토리 — 로그인 화면(미인증)의 교회 검색에 사용한다.
+    // 신규 앱은 입장코드를 서버에서 검증하며 이 문서는 {id, name, hidden}만 유지한다.
     // 이 특정 경로 매치는 아래의 포괄적 settings/{settingId} 규칙보다 먼저 평가되며,
     // Firestore 규칙은 매치되는 규칙 중 하나라도 허용하면 허용되므로 항상 우선 적용된다.
     match /settings/churchDirectory {

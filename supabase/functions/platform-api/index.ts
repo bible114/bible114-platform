@@ -88,6 +88,7 @@ import {
 } from "./dailyVideoResolve.ts";
 import { completeReadTransaction } from "./readCompletionService.ts";
 import { skipQuiz, submitQuiz } from "./quizSubmission.ts";
+import { rebuildPublicChurches } from "./publicDirectoryService.ts";
 
 // preview action은 계속 무쓰기 계산만 수행하고, 실제 읽기·퀴즈 변경은 아래의
 // 전용 서비스 transaction 모듈에만 위임한다.
@@ -1152,6 +1153,20 @@ Deno.serve(async (request) => {
     }
 
     const role = normalizeRole(userDocument.data.role);
+
+    if (parsed.action === "rebuildPublicChurches") {
+      requireRole(userDocument.data, ["platformAdmin", "superAdmin"]);
+      const result = await rebuildPublicChurches(service, {
+        requestId: parsed.requestId,
+        dryRun: parsed.dryRun,
+      });
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        ...result,
+      });
+    }
 
     if (parsed.action === "adminPreviewDailyVideo") {
       requireRole(userDocument.data, ["platformAdmin", "superAdmin"]);

@@ -16,7 +16,7 @@ assert.match(envExample, /^VITE_PLATFORM_API_URL=$/m);
 assert.equal(packageJson.scripts['validate:round24'], 'node scripts/validate-round24.mjs');
 assert.match(
     packageJson.scripts.validate,
-    /npm run validate:round24 && npm run validate:daily-video-server && npm run validate:platform-api$/,
+    /npm run validate:round24 && npm run validate:daily-video-server && npm run validate:public-directory && npm run validate:platform-api$/,
 );
 assert.match(packageJson.scripts['validate:platform-api'], /deno test[\s\S]*deno check[\s\S]*deno fmt --check/);
 

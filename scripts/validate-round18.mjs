@@ -473,7 +473,10 @@ assert.match(dailyVideo, /return \(\) => \{[\s\S]*cancelRefreshTimer\(\)/);
 assert.match(dailyVideo, /reevaluateAfterResponse && !cancelled[\s\S]*resolveWhenAllowed\(latestCachedVideo\)/);
 assert.match(dailyVideo, /document\.addEventListener\('visibilitychange', retryOnReturn\)/);
 assert.match(dailyVideo, /window\.addEventListener\('focus', retryOnReturn\)/);
-assert.match(platformAdmin, /import \{ adminPreviewDailyVideo \} from '\.\.\/utils\/platformApi'/);
+assert.match(
+    platformAdmin,
+    /import \{[^}]*\badminPreviewDailyVideo\b[^}]*\} from '\.\.\/utils\/platformApi'/,
+);
 assert.equal(
     exists('src/utils/adminDailyVideoPreview.js'),
     false,

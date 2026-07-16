@@ -2,9 +2,18 @@ import { PLATFORM_API_URL } from '../data/constants.js';
 
 const DEFAULT_TIMEOUT_MS = 12_000;
 const DAILY_VIDEO_TIMEOUT_MS = 70_000;
+const PUBLIC_DIRECTORY_TIMEOUT_MS = 120_000;
 const ADMIN_DAILY_VIDEO_PREVIEW_REQUEST_KEYS = new Set(['adultPlaylistId', 'kidsPlaylistId']);
 const ADMIN_DAILY_VIDEO_PREVIEW_RESPONSE_KEYS = new Set(['ok', 'action', 'requestId', 'serviceDate', 'previews']);
 const ADMIN_DAILY_VIDEO_PREVIEWS_KEYS = new Set(['adult', 'kids']);
+const REBUILD_PUBLIC_CHURCHES_REQUEST_KEYS = new Set(['dryRun']);
+const REBUILD_PUBLIC_CHURCHES_RESPONSE_KEYS = new Set([
+    'ok', 'action', 'requestId', 'dryRun', 'applied', 'mode', 'summary',
+]);
+const REBUILD_PUBLIC_CHURCHES_SUMMARY_KEYS = new Set([
+    'sourceCount', 'expectedCount', 'publicCount', 'legacyCount', 'upsertCount',
+    'deleteCount', 'legacyChanged', 'invalidCount',
+]);
 const DAILY_VIDEO_PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{1,200}$/;
 const RESERVED_PAYLOAD_KEYS = new Set(['action', 'requestId']);
 const DAILY_VIDEO_RESPONSE_KEYS = new Set([
@@ -1099,6 +1108,61 @@ export const adminPreviewDailyVideo = (input, options = {}) => {
         : DAILY_VIDEO_TIMEOUT_MS;
     return callPlatformApi('adminPreviewDailyVideo', payload, { ...options, requestId, timeoutMs })
         .then(result => validateAdminDailyVideoPreviewResponse(payload, result, requestId));
+};
+
+const invalidRebuildPublicChurchesResponse = () => {
+    throw new PlatformApiError('공개 교회 디렉토리 처리 결과를 안전하게 확인하지 못했습니다.', {
+        code: 'INVALID_RESPONSE', status: 200, retryable: true,
+    });
+};
+
+export const validateRebuildPublicChurchesResponse = (payload, result, expectedRequestId) => {
+    if (!hasExactKeys(payload, REBUILD_PUBLIC_CHURCHES_REQUEST_KEYS)
+        || typeof payload.dryRun !== 'boolean'
+        || !ACTIVITY_REQUEST_ID_PATTERN.test(expectedRequestId)
+        || !hasExactKeys(result, REBUILD_PUBLIC_CHURCHES_RESPONSE_KEYS)
+        || result.ok !== true || result.action !== 'rebuildPublicChurches'
+        || result.requestId !== expectedRequestId
+        || result.dryRun !== payload.dryRun
+        || typeof result.applied !== 'boolean'
+        || result.applied !== !payload.dryRun
+        || result.mode !== 'legacy'
+        || !hasExactKeys(result.summary, REBUILD_PUBLIC_CHURCHES_SUMMARY_KEYS)
+        || typeof result.summary.legacyChanged !== 'boolean'
+        || [...REBUILD_PUBLIC_CHURCHES_SUMMARY_KEYS]
+            .filter(key => key !== 'legacyChanged')
+            .some(key => !Number.isSafeInteger(result.summary[key]) || result.summary[key] < 0)) {
+        return invalidRebuildPublicChurchesResponse();
+    }
+    return {
+        ok: true,
+        action: 'rebuildPublicChurches',
+        requestId: expectedRequestId,
+        dryRun: result.dryRun,
+        applied: result.applied,
+        mode: 'legacy',
+        summary: { ...result.summary },
+    };
+};
+
+export const rebuildPublicChurches = (dryRun, options = {}) => {
+    if (typeof dryRun !== 'boolean') {
+        throw new PlatformApiError('공개 교회 디렉토리 요청 형식이 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const payload = { dryRun };
+    const requestId = options.requestId || createRequestId();
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(requestId)) {
+        throw new PlatformApiError('공개 교회 디렉토리 요청 번호가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+        ? options.timeoutMs
+        : PUBLIC_DIRECTORY_TIMEOUT_MS;
+    return callPlatformApi('rebuildPublicChurches', payload, { ...options, requestId, timeoutMs })
+        .then(result => validateRebuildPublicChurchesResponse(payload, result, requestId));
 };
 
 export const issueJoinTicket = ({ churchId, entryCode, purpose }, options = {}) => {

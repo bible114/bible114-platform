@@ -3,9 +3,9 @@ import Icon from './Icon';
 import GoogleLinkCard from './admin/GoogleLinkCard';
 import { firebase } from '../utils/firebase';
 import ChurchAdminView from './ChurchAdminView';
-import { adminPreviewDailyVideo } from '../utils/platformApi';
+import { adminPreviewDailyVideo, rebuildPublicChurches } from '../utils/platformApi';
 import { getDaysRead, getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
-import { migrateChurchAccessSecrets, rebuildChurchDirectory, removeChurchFromDirectory, syncChurchDirectoryEntry } from '../utils/churchDirectory';
+import { invalidateChurchDirectoryCache, migrateChurchAccessSecrets, removeChurchFromDirectory, syncChurchDirectoryEntry } from '../utils/churchDirectory';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
 import { migrateCredentialsIfNeeded, fetchMemberCredentials } from '../utils/memberCredentials';
 
@@ -48,6 +48,7 @@ const PlatformAdminView = ({
     const [popupInput, setPopupInput] = React.useState({ enabled: false, title: '', text: '', imageUrl: '', links: [] });
     const [popupSaving, setPopupSaving] = React.useState(false);
     const [directoryRebuilding, setDirectoryRebuilding] = React.useState(false);
+    const [directoryRebuildReport, setDirectoryRebuildReport] = React.useState(null);
     const [accessSecretsMigrating, setAccessSecretsMigrating] = React.useState(false);
     const [accessSecretsOperation, setAccessSecretsOperation] = React.useState(null);
     const [accessSecretsProgress, setAccessSecretsProgress] = React.useState({ done: 0, total: 0, phase: null });
@@ -339,11 +340,29 @@ const PlatformAdminView = ({
     };
 
     const handleRebuildDirectory = async () => {
-        if (!db) return;
+        if (!db || directoryRebuilding) return;
         setDirectoryRebuilding(true);
+        setDirectoryRebuildReport(null);
         try {
-            const count = await rebuildChurchDirectory();
-            alert(`✅ 교회 디렉토리 재생성 완료! (${count}개 교회)`);
+            const preview = await rebuildPublicChurches(true, { expectedUid: currentUser?.uid });
+            setDirectoryRebuildReport(preview);
+            const { summary } = preview;
+            const warning = [
+                `사전점검 완료: 원본 ${summary.sourceCount}개 / 공개 예정 ${summary.expectedCount}개`,
+                `새로 쓰거나 갱신 ${summary.upsertCount}개 / 삭제 ${summary.deleteCount}개`,
+                `기존 공개 ${summary.publicCount}개 / 레거시 ${summary.legacyCount}개`,
+                `잘못된 원본 ${summary.invalidCount}개`,
+                '',
+                summary.invalidCount > 0
+                    ? '잘못된 원본이 있어 실제 재생성을 실행할 수 없습니다.'
+                    : '이 결과대로 공개 디렉토리를 재생성할까요?',
+            ].join('\n');
+            if (summary.invalidCount > 0 || !confirm(warning)) return;
+
+            const result = await rebuildPublicChurches(false, { expectedUid: currentUser?.uid });
+            setDirectoryRebuildReport(result);
+            invalidateChurchDirectoryCache();
+            alert(`✅ 공개 교회 디렉토리 백필 완료! (${result.summary.expectedCount}개 교회)\n현재 앱은 안전 전환 전까지 기존 디렉토리를 계속 사용합니다.`);
         } catch (e) {
             alert('디렉토리 재생성 실패: ' + e.message);
         } finally {
@@ -1511,8 +1530,8 @@ const PlatformAdminView = ({
                         <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 mb-6">
                             <h3 className="text-sm font-bold text-sky-800 mb-1">🏠 교회 디렉토리 재생성</h3>
                             <p className="text-xs text-sky-700 mb-3">
-                                로그인 화면의 교회 검색은 <code className="bg-sky-100 px-1 rounded">settings/churchDirectory</code> 공개 문서를 사용합니다.
-                                교회 정보가 디렉토리와 어긋나거나(예: 기존 교회 백필) 최신화가 필요할 때 눌러주세요. churches 컬렉션 전체를 스캔해 다시 작성합니다.
+                                서버가 교회 원본을 사전점검한 뒤 <code className="bg-sky-100 px-1 rounded">publicChurches</code>와 호환용 기존 디렉토리를 함께 갱신합니다.
+                                실제 쓰기 전에 변경 건수를 보여주며, 남은 운영 쓰기를 모두 서버로 옮기기 전까지 화면은 기존 디렉토리를 계속 사용합니다.
                             </p>
                             <button
                                 onClick={handleRebuildDirectory}
@@ -1521,6 +1540,11 @@ const PlatformAdminView = ({
                             >
                                 {directoryRebuilding ? '재생성 중...' : '디렉토리 재생성'}
                             </button>
+                            {directoryRebuildReport && (
+                                <p className="text-xs text-sky-800 mt-3">
+                                    {directoryRebuildReport.dryRun ? '사전점검' : '실행'} 결과 · 원본 {directoryRebuildReport.summary.sourceCount}개 · 공개 {directoryRebuildReport.summary.expectedCount}개 · 갱신 {directoryRebuildReport.summary.upsertCount}개 · 삭제 {directoryRebuildReport.summary.deleteCount}개 · 오류 {directoryRebuildReport.summary.invalidCount}개
+                                </p>
+                            )}
                         </div>
 
                         {/* 공개 입장코드 보안 이전 */}

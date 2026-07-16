@@ -1,10 +1,12 @@
 import {
+  commitWrites,
   decodeDocumentFields,
   decodeValue,
   documentName,
   encodeDocumentPath,
   encodeFirestoreFields,
   encodeFirestoreValue,
+  listCollectionDocuments,
   runCollectionGroupQuery,
   runCollectionQuery,
   updateWrite,
@@ -55,6 +57,44 @@ Deno.test("document paths are encoded by segment and writes use full resource na
       currentDocument: { exists: true },
     },
   );
+  assertEquals(
+    updateWrite("fixture-project", "settings/churchDirectory", {
+      churches: [],
+    }, {
+      updateTime: "2026-07-16T00:00:00.000001Z",
+    }),
+    {
+      update: {
+        name: documentName(
+          "fixture-project",
+          "settings/churchDirectory",
+        ),
+        fields: { churches: { arrayValue: { values: [] } } },
+      },
+      currentDocument: { updateTime: "2026-07-16T00:00:00.000001Z" },
+    },
+  );
+});
+
+Deno.test("commit errors preserve the canonical Firestore status", async () => {
+  const fixtureFetch = (async () =>
+    Response.json(
+      { error: { status: "FAILED_PRECONDITION", message: "not exposed" } },
+      { status: 400 },
+    )) as typeof fetch;
+  try {
+    await commitWrites("token", "fixture-project", [], {
+      fetcher: fixtureFetch,
+    });
+    throw new Error("expected commit rejection");
+  } catch (error) {
+    if (!(error instanceof PlatformError)) throw error;
+    assertEquals(error.code, "FIRESTORE_WRITE_FAILED");
+    assertEquals(error.details, {
+      status: 400,
+      canonicalStatus: "FAILED_PRECONDITION",
+    });
+  }
 });
 
 Deno.test("nested update masks preserve Firestore map structure", () => {
@@ -159,6 +199,80 @@ Deno.test("collection group query sends an equality filter and decodes only docu
   });
   assertEquals(documents.length, 1);
   assertEquals(documents[0].data, { uid: "user-1", talent: 7 });
+});
+
+Deno.test("collection listing follows page tokens and decodes every page", async () => {
+  const requests: URL[] = [];
+  const fixtureFetch = (async (input: string | URL | Request) => {
+    const url = new URL(String(input));
+    requests.push(url);
+    const pageToken = url.searchParams.get("pageToken");
+    if (!pageToken) {
+      return Response.json({
+        documents: [{
+          name: "projects/fixture/databases/(default)/documents/churches/a",
+          fields: { name: { stringValue: "가 교회" } },
+        }],
+        nextPageToken: "second/page token",
+      });
+    }
+    return Response.json({
+      documents: [{
+        name: "projects/fixture/databases/(default)/documents/churches/b",
+        fields: {
+          name: { stringValue: "나 교회" },
+          hiddenFromDirectory: { booleanValue: true },
+        },
+      }],
+    });
+  }) as typeof fetch;
+
+  const documents = await listCollectionDocuments<{
+    name: string;
+    hiddenFromDirectory?: boolean;
+  }>("token", "fixture", "churches", {
+    pageSize: 1,
+    fetcher: fixtureFetch,
+  });
+
+  assertEquals(documents.map(({ data }) => data), [
+    { name: "가 교회" },
+    { name: "나 교회", hiddenFromDirectory: true },
+  ]);
+  assertEquals(requests.length, 2);
+  assertEquals(
+    requests[0].pathname,
+    "/v1/projects/fixture/databases/(default)/documents/churches",
+  );
+  assertEquals(requests[0].searchParams.get("pageSize"), "1");
+  assertEquals(requests[0].searchParams.get("orderBy"), "__name__");
+  assertEquals(requests[1].searchParams.get("pageToken"), "second/page token");
+});
+
+Deno.test("collection listing validates collection paths and pagination limits", async () => {
+  for (
+    const invoke of [
+      () => listCollectionDocuments("token", "project", ""),
+      () => listCollectionDocuments("token", "project", "churches/id"),
+      () =>
+        listCollectionDocuments("token", "project", "churches", {
+          pageSize: 1001,
+        }),
+      () =>
+        listCollectionDocuments("token", "project", "churches", {
+          maxPages: 0,
+        }),
+    ]
+  ) {
+    try {
+      await invoke();
+      throw new Error("expected rejection");
+    } catch (error) {
+      if (!(error instanceof PlatformError) || error.code !== "BAD_REQUEST") {
+        throw error;
+      }
+    }
+  }
 });
 
 Deno.test("collection group query rejects empty identifiers and non-positive limits", async () => {

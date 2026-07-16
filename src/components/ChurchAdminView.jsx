@@ -4,7 +4,6 @@ import ChurchAdminTutorial from './ChurchAdminTutorial';
 import { sha256 } from '../utils/crypto';
 import { fetchMemberCredentials } from '../utils/memberCredentials';
 import { setMemberPasswordByAdmin } from '../utils/adminPassword';
-import { syncChurchDirectoryEntry } from '../utils/churchDirectory';
 import { calculateSubgroupStats, computeAtRisk } from '../utils/statsUtils';
 import { belongsToDepartment, getMembershipList } from '../utils/memberships';
 import { downloadCSV } from '../utils/exportUtils';
@@ -906,8 +905,6 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 updatedAt: now,
             }, { merge: true });
             await batch.commit();
-            await syncChurchDirectoryEntry({ id: currentUser.churchId, name: churchInfo?.name || currentUser.churchName })
-                .catch(err => console.error('디렉토리 동기화 실패:', err));
             setChurchInfo(previous => {
                 if (!previous) return previous;
                 const { churchCode: _churchCode, churchCodeHash: _churchCodeHash, ...safe } = previous;

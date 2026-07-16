@@ -141,6 +141,41 @@ Deno.test("관리자 영상 미리보기는 playlist ID만 엄격히 정규화�
   }
 });
 
+Deno.test("공개 디렉터리 재생성은 dryRun 외 브라우저 값을 받지 않는다", () => {
+  const requestId = "123e4567-e89b-12d3-a456-426614174000";
+  for (const dryRun of [true, false]) {
+    const parsed = parsePlatformApiRequest({
+      action: "rebuildPublicChurches",
+      requestId,
+      dryRun,
+    });
+    assert(parsed.action === "rebuildPublicChurches", "action mismatch");
+    if (parsed.action !== "rebuildPublicChurches") return;
+    assert(parsed.dryRun === dryRun, "dryRun mismatch");
+  }
+
+  for (
+    const invalid of [
+      { dryRun: "true" },
+      {},
+      { dryRun: true, role: "platformAdmin" },
+      { dryRun: true, churchId: "client-church" },
+      { dryRun: true, churches: [{ id: "forged", name: "위조" }] },
+      { dryRun: false, count: 1 },
+    ]
+  ) {
+    assertRequestError(
+      () =>
+        parsePlatformApiRequest({
+          action: "rebuildPublicChurches",
+          requestId,
+          ...invalid,
+        }),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
 Deno.test("상품 구매 요청은 서버 식별자만 받는다", () => {
   const parsed = parsePlatformApiRequest({
     action: "purchaseItem",

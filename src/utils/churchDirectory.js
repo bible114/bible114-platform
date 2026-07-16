@@ -26,18 +26,93 @@ export const saveLastChurch = (church) => {
 // - 비로그인 로그인 화면에서 교회 목록에 필요한 최소 정보만 공개한다.
 // - 입장코드 검증은 platform-api의 issueJoinTicket이 담당한다.
 const DIRECTORY_DOC = () => db.collection('settings').doc('churchDirectory');
+const PUBLIC_DIRECTORY_META_DOC = () => db.collection('publicDirectoryMeta').doc('current');
+const PUBLIC_CHURCHES = () => db.collection('publicChurches');
 
 // 모듈 레벨 캐시: 세션(탭)당 1회만 read
 let cachePromise = null;
 
+const compareCodepoint = (left, right) => {
+    const leftPoints = Array.from(left, char => char.codePointAt(0));
+    const rightPoints = Array.from(right, char => char.codePointAt(0));
+    const length = Math.min(leftPoints.length, rightPoints.length);
+    for (let index = 0; index < length; index += 1) {
+        if (leftPoints[index] !== rightPoints[index]) return leftPoints[index] - rightPoints[index];
+    }
+    return leftPoints.length - rightPoints.length;
+};
+
+const sortDirectoryChurches = churches => [...churches].sort((left, right) => (
+    compareCodepoint(left.name, right.name) || compareCodepoint(left.id, right.id)
+));
+
+const isValidPublicChurchId = value => (
+    typeof value === 'string'
+    && value.length >= 1 && value.length <= 128
+    && value === value.trim()
+    && value !== UNAFFILIATED_CHURCH_ID
+    && !value.includes('/')
+    && !/[\u0000-\u001f\u007f]/.test(value)
+);
+
+const normalizePublicChurch = (doc) => {
+    const data = doc.data();
+    const keys = data && typeof data === 'object' && !Array.isArray(data)
+        ? Object.keys(data)
+        : [];
+    const hasExactSchema = keys.length >= 2 && keys.length <= 3
+        && keys.includes('id') && keys.includes('name')
+        && keys.every(key => ['id', 'name', 'hidden'].includes(key));
+    if (!hasExactSchema
+        || !isValidPublicChurchId(data.id)
+        || doc.id !== data.id
+        || typeof data.name !== 'string'
+        || data.name.length < 1 || data.name.length > 200
+        || data.name !== data.name.trim()
+        || /[\u0000-\u001f\u007f]/.test(data.name)
+        || (Object.prototype.hasOwnProperty.call(data, 'hidden')
+            && typeof data.hidden !== 'boolean')) {
+        throw new Error('공개 교회 디렉토리 문서 형식이 올바르지 않습니다.');
+    }
+    return {
+        id: data.id,
+        name: data.name,
+        ...(data.hidden === true ? { hidden: true } : {}),
+    };
+};
+
+const readLegacyDirectory = async () => {
+    const doc = await DIRECTORY_DOC().get();
+    const churches = doc.exists ? doc.data()?.churches : [];
+    return sanitizeDirectoryChurches(churches);
+};
+
+const readPreferredDirectory = async () => {
+    try {
+        const metaDoc = await PUBLIC_DIRECTORY_META_DOC().get();
+        const meta = metaDoc.exists ? metaDoc.data() : null;
+        if (meta?.ready !== true || meta?.schemaVersion !== 1 || meta?.mode !== 'public'
+            || !Number.isSafeInteger(meta?.count) || meta.count < 0) {
+            return readLegacyDirectory();
+        }
+        const snapshot = await PUBLIC_CHURCHES().get();
+        if (snapshot.size !== meta.count) {
+            throw new Error('공개 교회 디렉토리 개수가 일치하지 않습니다.');
+        }
+        return sortDirectoryChurches(snapshot.docs.map(normalizePublicChurch));
+    } catch {
+        // 공개 컬렉션이 준비되지 않았거나 검증에 실패하면 운영 중인 레거시 문서로
+        // 안전하게 되돌아간다. 레거시 읽기까지 실패하면 바깥 catch가 재시도를 연다.
+        return readLegacyDirectory();
+    }
+};
+
 export const getChurchDirectory = () => {
     if (!cachePromise) {
-        cachePromise = DIRECTORY_DOC().get()
-            .then(doc => (doc.exists ? (doc.data().churches || []) : []))
-            .catch(() => {
-                cachePromise = null; // 실패 시 재시도 허용
-                return [];
-            });
+        cachePromise = readPreferredDirectory().catch(() => {
+            cachePromise = null; // 실패 시 재시도 허용
+            return [];
+        });
     }
     return cachePromise;
 };

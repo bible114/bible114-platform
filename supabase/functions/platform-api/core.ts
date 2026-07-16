@@ -16,8 +16,14 @@ export const ADMIN_REFUND_PURCHASE_ACTION = "adminRefundPurchase" as const;
 export const RESOLVE_DAILY_VIDEO_ACTION = "resolveDailyVideo" as const;
 export const ADMIN_PREVIEW_DAILY_VIDEO_ACTION =
   "adminPreviewDailyVideo" as const;
+export const REBUILD_PUBLIC_CHURCHES_ACTION = "rebuildPublicChurches" as const;
 
 export type PlatformApiRequest =
+  | {
+    action: typeof REBUILD_PUBLIC_CHURCHES_ACTION;
+    requestId: string;
+    dryRun: boolean;
+  }
   | {
     action: typeof ADMIN_PREVIEW_DAILY_VIDEO_ACTION;
     requestId: string;
@@ -222,6 +228,7 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     migratedWalletConfirmed,
     adultPlaylistId,
     kidsPlaylistId,
+    dryRun,
   } = body as Record<string, unknown>;
   if (!isRequestId(requestId)) {
     throw new PlatformApiRequestError("INVALID_REQUEST_ID");
@@ -234,6 +241,16 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       throw new PlatformApiRequestError("INVALID_PAYLOAD");
     }
     return { action, requestId };
+  }
+  if (action === REBUILD_PUBLIC_CHURCHES_ACTION) {
+    const allowedKeys = new Set(["action", "requestId", "dryRun"]);
+    if (
+      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+      typeof dryRun !== "boolean"
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return { action, requestId, dryRun };
   }
   if (action === ADMIN_PREVIEW_DAILY_VIDEO_ACTION) {
     const allowedKeys = new Set([
