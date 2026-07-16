@@ -76,6 +76,29 @@ Deno.test("document paths are encoded by segment and writes use full resource na
   );
 });
 
+Deno.test("write resource names keep special-character uids raw", () => {
+  // kakao:<id> 같은 uid는 URL에서만 인코딩하고 commit 본문 이름은 원문이어야
+  // 트랜잭션 읽기와 같은 문서에 쓴다 (인코딩하면 exists 전제조건이 항상 실패).
+  assertEquals(
+    encodeDocumentPath("users/kakao:12345"),
+    "users/kakao%3A12345",
+  );
+  assertEquals(
+    documentName("fixture-project", "users/kakao:12345"),
+    "projects/fixture-project/databases/(default)/documents/users/kakao:12345",
+  );
+  assertEquals(
+    updateWrite("fixture-project", "users/kakao:12345/activityActions/req-1", {
+      schemaVersion: 1,
+    }, { exists: false }).update,
+    {
+      name:
+        "projects/fixture-project/databases/(default)/documents/users/kakao:12345/activityActions/req-1",
+      fields: { schemaVersion: { integerValue: "1" } },
+    },
+  );
+});
+
 Deno.test("commit errors preserve the canonical Firestore status", async () => {
   const fixtureFetch = (async () =>
     Response.json(

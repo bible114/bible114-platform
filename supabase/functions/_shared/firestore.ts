@@ -28,7 +28,7 @@ const databaseRoot = (projectId: string) =>
 const firestoreBaseUrl = (projectId: string) =>
   `https://firestore.googleapis.com/v1/${databaseRoot(projectId)}`;
 
-export const encodeDocumentPath = (path: string): string => {
+const validateDocumentPath = (path: string): string[] => {
   const segments = path.split("/");
   if (
     !path ||
@@ -38,8 +38,18 @@ export const encodeDocumentPath = (path: string): string => {
       message: "문서 경로가 올바르지 않습니다.",
     });
   }
-  return segments.map(encodeURIComponent).join("/");
+  return segments;
 };
+
+// URL 경로 전용 인코딩. 서버가 URL 디코딩을 거치므로 특수문자 uid도 원문으로 도달한다.
+export const encodeDocumentPath = (path: string): string =>
+  validateDocumentPath(path).map(encodeURIComponent).join("/");
+
+// commit 본문(update.name 등)의 리소스 이름은 URL 디코딩 없이 문자 그대로 비교된다.
+// 여기서 percent 인코딩하면 `kakao:123` 같은 uid가 별개 문서(`kakao%3A123`)를
+// 가리켜 exists 전제조건이 항상 실패한다 — 절대 인코딩하지 말 것.
+export const rawDocumentPath = (path: string): string =>
+  validateDocumentPath(path).join("/");
 
 export const encodeFirestoreValue = (value: unknown): FirestoreValue => {
   if (value === null || value === undefined) return { nullValue: null };
@@ -479,7 +489,7 @@ export const rollbackTransaction = async (
 };
 
 export const documentName = (projectId: string, path: string): string =>
-  `${databaseRoot(projectId)}/documents/${encodeDocumentPath(path)}`;
+  `${databaseRoot(projectId)}/documents/${rawDocumentPath(path)}`;
 
 export const updateWrite = (
   projectId: string,
