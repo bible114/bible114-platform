@@ -195,6 +195,7 @@ const platformApi = read('src/utils/platformApi.js');
 const platformApiServer = read('supabase/functions/platform-api/index.ts');
 const purchaseCore = read('supabase/functions/platform-api/purchaseCore.ts');
 const adminPurchaseCore = read('supabase/functions/platform-api/adminPurchaseCore.ts');
+const churchAdminSignupService = read('supabase/functions/platform-api/completeChurchAdminSignupService.ts');
 
 assert.match(readActions, /loadCanonicalUserStateFromServer\(uid\)[\s\S]*setCurrentUser\(freshUser\)[\s\S]*\(freshUser\.extraOrgs \|\| \[\]\)\.map\(org => \[org\.orgId, Number\(org\.talent\) \|\| 0\]\)[\s\S]*rosterTalentByOrgId/,
     '읽기 완료는 Firestore 서버에서 다시 읽은 최신 사용자·명부 지갑 상태를 적용해야 한다.');
@@ -340,8 +341,14 @@ assert.match(rules, /isDeleted == false[\s\S]*deletedAt == null[\s\S]*deletedBy 
     '교인 복원은 삭제 감사 필드를 함께 비워야 한다.');
 assert.match(rules, /function isSafeSelfScoreTalentUpdate\(before, after\)[\s\S]*wasMigrated && isMigrated/,
     'talentMigrated true 표식은 본인이 false로 되돌려 이관 예외를 재사용할 수 없어야 한다.');
-assert.match(rules, /request\.resource\.data\.role == 'churchAdmin'[\s\S]*get\('accountType', null\) == null[\s\S]*get\('score', 0\) == 0[\s\S]*get\('talent', 0\) == 0[\s\S]*get\('talentMigrated', false\) == true[\s\S]*extraMemberships\.size\(\) == 0/,
-    '신규 공동체 관리자 create가 개인 정체성·점수·지갑·추가소속을 seed하면 안 된다.');
+const usersCreateRule = rules.slice(
+    rules.indexOf('allow create:', rules.indexOf('match /users/{uid}')),
+    rules.indexOf('// 본인 수정', rules.indexOf('match /users/{uid}')),
+);
+assert.doesNotMatch(usersCreateRule, /churchAdmin/,
+    '브라우저는 신규 공동체 관리자 문서를 직접 만들 수 없어야 한다.');
+assert.match(churchAdminSignupService, /role: "churchAdmin",[\s\S]*extraMemberships: \[\],[\s\S]*score: 0,[\s\S]*talent: 0,[\s\S]*talentMigrated: true/,
+    '서버 신규 공동체 관리자 문서는 추가소속·점수·지갑을 canonical 초기값으로 만들어야 한다.');
 assert.match(rules, /wasMigrated && isMigrated[\s\S]*before\.get\('accountType', null\) == 'personal'[\s\S]*afterTalent == beforeTalent[\s\S]*afterScore == beforeScore/,
     'personal users의 true→true 본인 쓰기는 score/talent를 완전히 동결해야 한다.');
 assert.match(rules, /before\.get\('accountType', null\) != 'personal'[\s\S]*afterTalent <= beforeTalent \+ 17[\s\S]*afterScore <= beforeScore \+ 15/,

@@ -18,6 +18,26 @@ const ADMIN_SET_CHURCH_VISIBILITY_REQUEST_KEYS = new Set(['churchId', 'hidden'])
 const ADMIN_SET_CHURCH_VISIBILITY_RESPONSE_KEYS = new Set([
     'ok', 'action', 'requestId', 'status', 'hidden',
 ]);
+const COMPLETE_CHURCH_ADMIN_SIGNUP_REQUEST_KEYS = new Set([
+    'name', 'churchName', 'pastorName', 'denomination', 'entryCode',
+    'departments', 'password', 'consent',
+]);
+const COMPLETE_CHURCH_ADMIN_SIGNUP_RESPONSE_KEYS = new Set([
+    'ok', 'action', 'requestId', 'status', 'churchId',
+]);
+const ROTATE_CHURCH_ACCESS_CODE_REQUEST_KEYS = new Set([
+    'churchId', 'entryCode', 'expectedVersion',
+]);
+const ROTATE_CHURCH_ACCESS_CODE_RESPONSE_KEYS = new Set([
+    'ok', 'action', 'requestId', 'alreadyCompleted', 'committed', 'result',
+]);
+const ROTATE_CHURCH_ACCESS_CODE_RESULT_KEYS = new Set([
+    'status', 'churchId', 'version',
+]);
+const ENSURE_UNAFFILIATED_CHURCH_RESPONSE_KEYS = new Set([
+    'ok', 'action', 'requestId', 'alreadyCompleted', 'committed', 'result',
+]);
+const ENSURE_UNAFFILIATED_CHURCH_RESULT_KEYS = new Set(['status', 'churchId']);
 const DAILY_VIDEO_PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{1,200}$/;
 const RESERVED_PAYLOAD_KEYS = new Set(['action', 'requestId']);
 const DAILY_VIDEO_RESPONSE_KEYS = new Set([
@@ -1910,6 +1930,189 @@ export const adminSetChurchVisibility = (input, options = {}) => {
     }
     return callPlatformApi('adminSetChurchVisibility', payload, { ...options, requestId })
         .then(result => validateAdminSetChurchVisibilityResponse(payload, result, requestId));
+};
+
+const isCanonicalChurchAdminSignupText = (value, min, max) => (
+    typeof value === 'string' && value === value.trim()
+    && value.length >= min && value.length <= max
+    && !/[\u0000-\u001f\u007f]/.test(value)
+);
+
+const isCanonicalChurchAdminDepartments = value => {
+    if (!Array.isArray(value) || value.length < 1 || value.length > 50) return false;
+    let subgroupCount = 0;
+    const departmentIds = new Set();
+    return value.every(department => {
+        if (!isResponseRecord(department)
+            || !hasExactKeys(department, new Set(['id', 'name', 'subgroups']))
+            || !isCanonicalChurchAdminSignupText(department.id, 1, 128)
+            || department.id.includes('/') || department.id === '.' || department.id === '..'
+            || departmentIds.has(department.id)
+            || !isCanonicalChurchAdminSignupText(department.name, 1, 100)
+            || !Array.isArray(department.subgroups)
+            || department.subgroups.length < 1 || department.subgroups.length > 100) return false;
+        departmentIds.add(department.id);
+        const subgroupIds = new Set();
+        subgroupCount += department.subgroups.length;
+        if (subgroupCount > 300) return false;
+        return department.subgroups.every(subgroup => {
+            if (!isResponseRecord(subgroup)
+                || !hasExactKeys(subgroup, new Set(['id', 'name']))
+                || !isCanonicalChurchAdminSignupText(subgroup.id, 1, 128)
+                || subgroup.id.includes('/') || subgroup.id === '.' || subgroup.id === '..'
+                || subgroupIds.has(subgroup.id)
+                || !isCanonicalChurchAdminSignupText(subgroup.name, 1, 100)) return false;
+            subgroupIds.add(subgroup.id);
+            return true;
+        });
+    });
+};
+
+const validateCompleteChurchAdminSignupInput = input => {
+    if (!isResponseRecord(input)
+        || !hasExactKeys(input, COMPLETE_CHURCH_ADMIN_SIGNUP_REQUEST_KEYS)
+        || !isCanonicalChurchAdminSignupText(input.name, 1, 50)
+        || !isCanonicalChurchAdminSignupText(input.churchName, 1, 200)
+        || !isCanonicalChurchAdminSignupText(input.pastorName, 1, 100)
+        || !isCanonicalChurchAdminSignupText(input.denomination, 0, 100)
+        || !isCanonicalChurchAdminSignupText(input.entryCode, 4, 128)
+        || !isCanonicalChurchAdminDepartments(input.departments)
+        || !isResponseRecord(input.consent)
+        || !(input.password === null
+            || (typeof input.password === 'string' && input.password.length >= 6
+                && input.password.length <= 128
+                && !/[\u0000-\u001f\u007f]/.test(input.password)))) {
+        throw new PlatformApiError('교회 등록 요청 정보를 다시 확인해주세요.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return {
+        name: input.name,
+        churchName: input.churchName,
+        pastorName: input.pastorName,
+        denomination: input.denomination,
+        entryCode: input.entryCode,
+        departments: input.departments.map(department => ({
+            id: department.id,
+            name: department.name,
+            subgroups: department.subgroups.map(subgroup => ({ ...subgroup })),
+        })),
+        password: input.password,
+        consent: { ...input.consent },
+    };
+};
+
+export const completeChurchAdminSignup = (input, options = {}) => {
+    const payload = validateCompleteChurchAdminSignupInput(input);
+    const requestId = options.requestId || createRequestId();
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(requestId)) {
+        throw new PlatformApiError('교회 등록 요청 번호가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('completeChurchAdminSignup', payload, { ...options, requestId })
+        .then(result => {
+            if (!hasExactKeys(result, COMPLETE_CHURCH_ADMIN_SIGNUP_RESPONSE_KEYS)
+                || result.ok !== true || result.action !== 'completeChurchAdminSignup'
+                || result.requestId !== requestId
+                || !['created', 'alreadyCompleted'].includes(result.status)
+                || typeof result.churchId !== 'string'
+                || !/^church_[0-9a-f]{32}$/i.test(result.churchId)) {
+                throw new PlatformApiError('교회 등록 결과를 안전하게 확인하지 못했습니다.', {
+                    code: 'INVALID_RESPONSE', status: 200, retryable: true,
+                });
+            }
+            return {
+                ok: true,
+                action: 'completeChurchAdminSignup',
+                requestId,
+                status: result.status,
+                churchId: result.churchId,
+            };
+        });
+};
+
+export const rotateChurchAccessCode = (input, options = {}) => {
+    if (!isResponseRecord(input)
+        || !hasExactKeys(input, ROTATE_CHURCH_ACCESS_CODE_REQUEST_KEYS)
+        || !isCanonicalChurchAdminSignupText(input.churchId, 1, 128)
+        || input.churchId.includes('/') || input.churchId === '.' || input.churchId === '..'
+        || input.churchId === 'unaffiliated_v1'
+        || !isCanonicalChurchAdminSignupText(input.entryCode, 4, 128)
+        || !Number.isSafeInteger(input.expectedVersion)
+        || input.expectedVersion < 0 || input.expectedVersion >= 999_999_999) {
+        throw new PlatformApiError('입장코드 변경 요청 정보를 다시 확인해주세요.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const payload = { ...input };
+    const requestId = options.requestId || createRequestId();
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(requestId)) {
+        throw new PlatformApiError('입장코드 변경 요청 번호가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('rotateChurchAccessCode', payload, { ...options, requestId })
+        .then(result => {
+            if (!hasExactKeys(result, ROTATE_CHURCH_ACCESS_CODE_RESPONSE_KEYS)
+                || result.ok !== true || result.action !== 'rotateChurchAccessCode'
+                || result.requestId !== requestId
+                || typeof result.alreadyCompleted !== 'boolean'
+                || typeof result.committed !== 'boolean'
+                || !isResponseRecord(result.result)
+                || !hasExactKeys(result.result, ROTATE_CHURCH_ACCESS_CODE_RESULT_KEYS)
+                || result.result.status !== 'rotated'
+                || result.result.churchId !== payload.churchId
+                || !Number.isSafeInteger(result.result.version)
+                || result.result.version !== payload.expectedVersion + 1
+                || (result.alreadyCompleted === result.committed)) {
+                throw new PlatformApiError('입장코드 변경 결과를 안전하게 확인하지 못했습니다.', {
+                    code: 'INVALID_RESPONSE', status: 200, retryable: true,
+                });
+            }
+            return {
+                ok: true,
+                action: 'rotateChurchAccessCode',
+                requestId,
+                alreadyCompleted: result.alreadyCompleted,
+                committed: result.committed,
+                result: { ...result.result },
+            };
+        });
+};
+
+export const ensureUnaffiliatedChurch = (options = {}) => {
+    const requestId = options.requestId || createRequestId();
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(requestId)) {
+        throw new PlatformApiError('무소속 공동체 점검 요청 번호가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('ensureUnaffiliatedChurch', {}, { ...options, requestId })
+        .then(result => {
+            if (!hasExactKeys(result, ENSURE_UNAFFILIATED_CHURCH_RESPONSE_KEYS)
+                || result.ok !== true || result.action !== 'ensureUnaffiliatedChurch'
+                || result.requestId !== requestId
+                || typeof result.alreadyCompleted !== 'boolean'
+                || typeof result.committed !== 'boolean'
+                || !isResponseRecord(result.result)
+                || !hasExactKeys(result.result, ENSURE_UNAFFILIATED_CHURCH_RESULT_KEYS)
+                || result.result.status !== 'ensured'
+                || result.result.churchId !== 'unaffiliated_v1'
+                || (result.alreadyCompleted === result.committed)) {
+                throw new PlatformApiError('무소속 공동체 점검 결과를 안전하게 확인하지 못했습니다.', {
+                    code: 'INVALID_RESPONSE', status: 200, retryable: true,
+                });
+            }
+            return {
+                ok: true,
+                action: 'ensureUnaffiliatedChurch',
+                requestId,
+                alreadyCompleted: result.alreadyCompleted,
+                committed: result.committed,
+                result: { ...result.result },
+            };
+        });
 };
 
 export const issueJoinTicket = ({ churchId, entryCode, purpose }, options = {}) => {

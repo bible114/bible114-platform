@@ -95,6 +95,9 @@ import { completeMemberOnboarding } from "./ownMembershipService.ts";
 import { joinSoloCommunity } from "./joinSoloCommunityService.ts";
 import { adminSetChurchVisibility } from "./adminChurchVisibilityService.ts";
 import { convertToPersonalAccount } from "./convertToPersonalAccountService.ts";
+import { completeChurchAdminSignup } from "./completeChurchAdminSignupService.ts";
+import { rotateChurchAccessCode } from "./rotateChurchAccessCodeService.ts";
+import { ensureUnaffiliatedChurch } from "./ensureUnaffiliatedChurchService.ts";
 import { skipQuiz, submitQuiz } from "./quizSubmission.ts";
 import { rebuildPublicChurches } from "./publicDirectoryService.ts";
 
@@ -1147,6 +1150,70 @@ Deno.serve(async (request) => {
       const result = await joinSoloCommunity(service, verifiedUser, {
         requestId: parsed.requestId,
       });
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        ...result,
+      });
+    }
+
+    // 교회 관리자 최초 가입은 users 문서가 아직 없으므로 공통 사용자 조회보다
+    // 먼저 처리한다. uid/email/provider는 클라이언트 입력이 아니라 검증된 ID token
+    // claim에서만 가져온다.
+    if (parsed.action === "completeChurchAdminSignup") {
+      const tokenEmail = typeof verifiedUser.claims.email === "string"
+        ? verifiedUser.claims.email
+        : "";
+      const firebaseClaims = verifiedUser.claims.firebase;
+      const signInProvider =
+        firebaseClaims && typeof firebaseClaims === "object"
+          ? (firebaseClaims as Record<string, unknown>).sign_in_provider
+          : "";
+      const result = await completeChurchAdminSignup(
+        service,
+        { uid: verifiedUser.uid, tokenEmail, signInProvider },
+        {
+          requestId: parsed.requestId,
+          name: parsed.name,
+          churchName: parsed.churchName,
+          pastorName: parsed.pastorName,
+          denomination: parsed.denomination,
+          entryCode: parsed.entryCode,
+          departments: parsed.departments,
+          password: parsed.password,
+          consent: parsed.consent,
+        },
+      );
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        ...result,
+      });
+    }
+
+    if (parsed.action === "rotateChurchAccessCode") {
+      const result = await rotateChurchAccessCode(service, verifiedUser, {
+        requestId: parsed.requestId,
+        churchId: parsed.churchId,
+        entryCode: parsed.entryCode,
+        expectedVersion: parsed.expectedVersion,
+      });
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        ...result,
+      });
+    }
+
+    if (parsed.action === "ensureUnaffiliatedChurch") {
+      const result = await ensureUnaffiliatedChurch(
+        service,
+        verifiedUser,
+        { requestId: parsed.requestId },
+      );
       return jsonResponse(origin, 200, {
         ok: true,
         action: parsed.action,

@@ -84,6 +84,7 @@ const settings = read('src/components/churchAdmin/SettingsTab.jsx');
 const shop = read('src/components/dashboard/TalentShop.jsx');
 const churchAdmin = read('src/components/ChurchAdminView.jsx');
 const platformApiServer = read('supabase/functions/platform-api/index.ts');
+const churchAdminSignupService = read('supabase/functions/platform-api/completeChurchAdminSignupService.ts');
 const adminPurchaseCore = read('supabase/functions/platform-api/adminPurchaseCore.ts');
 const platformAdmin = read('src/components/PlatformAdminView.jsx');
 const helpers = read('src/utils/helpers.js');
@@ -233,13 +234,17 @@ assert.doesNotMatch(rules, /request\.resource\.data\.get\('talent', 0\) <= resou
     'roster 본인 보상 상한에 개인 지갑 이관 우회 조건이 남으면 안 된다.');
 assert.match(rules, /get\('score', 0\) <= resource\.data\.get\('score', 0\) \+ 15/);
 assert.match(rules, /match \/churches\/\{churchId\} \{[\s\S]*allow read: if isRealUser\(\)/);
-assert.match(rules, /match \/private\/\{privateId\} \{[\s\S]*isChurchAdminAfter\(churchId\)/);
+assert.match(rules, /match \/churches\/\{churchId\} \{[\s\S]*allow create: if false;/,
+    '공동체 생성은 completeChurchAdminSignup 서버만 수행해야 한다.');
+assert.match(rules, /match \/private\/\{privateId\} \{[\s\S]*allow write: if false;/,
+    '공동체 private 관리자·입장코드는 서버 action만 써야 한다.');
 assert.match(adminPurchaseCore, /text\(purchase\.status\) !== "pending"[\s\S]*PURCHASE_ALREADY_PROCESSED/);
 assert.match(platformApiServer, /parsed\.action === "adminRefundPurchase"[\s\S]*getDocument<AdminPurchaseRecord>[\s\S]*updateWrite\(service\.projectId, walletPath[\s\S]*updateWrite\(service\.projectId, purchasePath[\s\S]*\{ transaction \}/);
 assert.doesNotMatch(churchAdmin, /FieldValue\.increment\(refundAmount\)|transaction\.update\(purchaseRef/);
 assert.doesNotMatch(churchAdmin, /batch\.update\(walletRef[\s\S]*FieldValue\.increment\(purchase\.price/);
 assert.match(rules, /resource\.data\.status == 'pending'[\s\S]*request\.resource\.data\.status in \['delivered', 'cancelled'\]/);
-assert.match(authFlow, /churchRef\.collection\('private'\)\.doc\('admin'\)/);
+assert.match(churchAdminSignupService, /const adminPath = `\$\{churchPath\}\/private\/admin`[\s\S]*updateWrite\(service\.projectId, adminPath,[\s\S]*adminUid: signup\.uid/,
+    '공동체 관리자 소유 증명은 서버 가입 transaction이 만들어야 한다.');
 assert.match(constants, /KAKAO_CHANNEL_URL = "https:\/\/pf\.kakao\.com/);
 assert.match(viteConfig, /transformIndexHtml[\s\S]*%BUILD_ID%/);
 assert.match(manifest, /"start_url": "\/"/);

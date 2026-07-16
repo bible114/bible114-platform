@@ -17,7 +17,9 @@ const useDepartmentSource = read('src/hooks/useDepartment.js');
 const planSelectionSource = read('src/components/PlanSelectionView.jsx');
 const membershipCardSource = read('src/components/dashboard/CommunityMembershipCard.jsx');
 const churchAdminSource = read('src/components/ChurchAdminView.jsx');
+const platformAdminSource = read('src/components/PlatformAdminView.jsx');
 const firestoreRules = read('firestore.rules');
+const churchAdminSignupService = read('supabase/functions/platform-api/completeChurchAdminSignupService.ts');
 const quizCard = read('src/components/dashboard/BibleQuizCard.jsx');
 const userStateSync = read('src/utils/userStateSync.js');
 const rosterClient = read('src/utils/roster.js');
@@ -30,9 +32,53 @@ assert.match(envExample, /^VITE_PLATFORM_API_URL=$/m);
 assert.equal(packageJson.scripts['validate:round24'], 'node scripts/validate-round24.mjs');
 assert.match(
     packageJson.scripts.validate,
-    /npm run validate:round24 && npm run validate:daily-video-server && npm run validate:public-directory && npm run validate:platform-api$/,
+    /npm run validate:round24 && npm run validate:daily-video-server && npm run validate:public-directory && npm run validate:church-lifecycle && npm run validate:platform-api$/,
 );
 assert.match(packageJson.scripts['validate:platform-api'], /deno test[\s\S]*deno check[\s\S]*deno fmt --check/);
+
+// 플랫폼 관리자 회원 편집은 일반 비개인 회원의 조직만 바꿀 수 있다.
+const memberOrganizationGuard = /editingUser\.role === 'member' && editingUser\.accountType !== 'personal'/g;
+assert.equal(
+    (platformAdminSource.match(memberOrganizationGuard) || []).length,
+    3,
+    '교회·부서·소그룹 편집 UI는 일반 비개인 회원에게만 보여야 한다.',
+);
+assert.match(
+    platformAdminSource,
+    /editingUser\.role !== 'member'[\s\S]*관리자 계정의 소속 교회는 권한 범위를 결정하므로 이 화면에서 변경할 수 없습니다/,
+    '관리자 계정에는 정식 위임 절차 안내가 보여야 한다.',
+);
+const saveEditUserSource = appSource.slice(
+    appSource.indexOf('const saveEditUser = async'),
+    appSource.indexOf('/*', appSource.indexOf('const saveEditUser = async')),
+);
+assert.doesNotMatch(
+    saveEditUserSource,
+    /const originalUser = allUsers\.find/,
+    '회원 편집 권한 판정에 화면 allUsers 캐시를 authority로 사용하면 안 된다.',
+);
+assert.match(
+    saveEditUserSource,
+    /db\.runTransaction\(async transaction => \{[\s\S]*transaction\.get\(userRef\)[\s\S]*const latestUser = latestDoc\.data\(\)[\s\S]*latestUser\.churchId[\s\S]*editingUser\.churchId[\s\S]*latestUser\.churchName[\s\S]*editingUser\.churchName/,
+    '저장 transaction에서 최신 users 문서의 교회 ID·이름을 authority로 다시 읽어야 한다.',
+);
+const freshUserReadIndex = saveEditUserSource.indexOf('transaction.get(userRef)');
+const protectedAdminGuardIndex = saveEditUserSource.indexOf("if (latestUser.role !== 'member' && churchIdentityChanged)");
+const editUserWriteIndex = saveEditUserSource.indexOf('transaction.set(userRef, updateData, { merge: true })');
+assert.ok(
+    freshUserReadIndex >= 0 && protectedAdminGuardIndex > freshUserReadIndex && editUserWriteIndex > protectedAdminGuardIndex,
+    '최신 사용자 read, 관리자 소속 차단, 같은 transaction write 순서를 지켜야 한다.',
+);
+assert.match(
+    saveEditUserSource,
+    /latestUser\.role !== 'member' && churchIdentityChanged\)[\s\S]*EDIT_ADMIN_IDENTITY_CONFLICT[\s\S]*const canEditMemberOrganization = latestUser\.role === 'member'[\s\S]*latestUser\.accountType !== 'personal'[\s\S]*\.\.\.\(canEditMemberOrganization \? \{[\s\S]*churchId: editingUser\.churchId[\s\S]*\} : \{\}\)/,
+    '동시 member→admin 승격이나 personal 전환 뒤 stale 조직 payload를 쓰지 않아야 한다.',
+);
+assert.doesNotMatch(
+    saveEditUserSource,
+    /db\.collection\('users'\)\.doc\(editingUser\.uid\)\.set/,
+    '회원 편집을 transaction 밖에서 직접 저장하면 안 된다.',
+);
 
 // 브라우저 클라이언트 계약: 인증 토큰, 멱등 requestId, 12초 제한, 표준 오류.
 for (const pattern of [
@@ -804,47 +850,32 @@ for (const source of [appSource, useAuthSource]) {
     assert.match(source, /role === 'churchAdmin'[\s\S]*onboardingPending === true[\s\S]*!user\?\.departmentId \|\| typeof user\?\.subgroupId !== 'string'/,
         '신규 관리자 marker와 일반 회원의 빈 subgroup 완료 상태를 분리해야 한다.');
 }
-assert.match(useAuthSource, /onboardingPending: true/,
-    '신규 공동체 관리자 문서에는 재개 가능한 온보딩 marker가 필요하다.');
-assert.equal(
-    (useAuthSource.match(/lastReadDate: null, gender: 'male', planId: null,\s*onboardingPending: true,\s*departmentId: null, departmentName: null, subgroupId: null/g) || []).length,
-    2,
-    '이메일·Google 신규 관리자는 plan과 소속을 비운 pending 문서로 시작해야 한다.',
-);
-const usersCreateStart = firestoreRules.indexOf("allow create: if isRealUser() && request.auth.uid == uid && (");
+assert.match(useAuthSource, /completeChurchAdminSignupViaApi\(\{[\s\S]*password: signupPassword,[\s\S]*consent,[\s\S]*expectedUid: authUser\.uid/,
+    '이메일·Google 관리자 가입은 같은 서버 action을 사용해야 한다.');
+assert.match(churchAdminSignupService, /role: "churchAdmin",[\s\S]*planId: null,[\s\S]*onboardingPending: true,[\s\S]*departmentId: null,[\s\S]*departmentName: null,[\s\S]*subgroupId: null/,
+    '서버가 신규 공동체 관리자 문서를 재개 가능한 pending 상태로 만들어야 한다.');
+const usersCreateStart = firestoreRules.indexOf("allow create: if isRealUser() && request.auth.uid == uid &&");
 const usersCreateEnd = firestoreRules.indexOf('// 본인 수정은', usersCreateStart);
 assert.ok(usersCreateStart >= 0 && usersCreateEnd > usersCreateStart,
     'users 최초 생성 rules 구간이 필요하다.');
 const usersCreateRules = firestoreRules.slice(usersCreateStart, usersCreateEnd);
-const unaffiliatedCreateStart = usersCreateRules.indexOf("(request.resource.data.role == 'member'");
-const churchAdminCreateStart = usersCreateRules.indexOf("(request.resource.data.role == 'churchAdmin'");
-assert.ok(unaffiliatedCreateStart >= 0 && churchAdminCreateStart > unaffiliatedCreateStart,
-    '무소속 성도와 신규 공동체 관리자 create 분기가 분리되어야 한다.');
-const unaffiliatedCreateRules = usersCreateRules.slice(unaffiliatedCreateStart, churchAdminCreateStart);
-const churchAdminCreateRules = usersCreateRules.slice(churchAdminCreateStart);
+assert.match(usersCreateRules, /request\.resource\.data\.role == 'member'[\s\S]*request\.resource\.data\.churchId == 'unaffiliated_v1'/,
+    '브라우저 users create는 기존 무소속 성도 호환 경로로만 제한해야 한다.');
+assert.doesNotMatch(usersCreateRules, /role == 'churchAdmin'/,
+    '공동체 관리자 users 문서는 completeChurchAdminSignup 서버만 생성해야 한다.');
 for (const field of ['departmentId', 'departmentName', 'subgroupId', 'subgroupName']) {
     const emptyField = new RegExp(`request\\.resource\\.data\\.get\\('${field}', null\\) == null`);
-    assert.match(unaffiliatedCreateRules, emptyField,
+    assert.match(usersCreateRules, emptyField,
         `무소속 성도 create는 ${field}를 직접 seed할 수 없어야 한다.`);
-    assert.match(churchAdminCreateRules, emptyField,
-        `신규 공동체 관리자 create는 ${field}를 직접 seed할 수 없어야 한다.`);
 }
-for (const createRules of [unaffiliatedCreateRules, churchAdminCreateRules]) {
-    assert.match(createRules, /request\.resource\.data\.get\('score', 0\) == 0/,
-        '브라우저 users create는 초기 score를 seed할 수 없어야 한다.');
-    assert.match(createRules, /request\.resource\.data\.get\('talent', 0\) == 0/,
-        '브라우저 users create는 초기 talent를 seed할 수 없어야 한다.');
-    assert.match(createRules, /request\.resource\.data\.get\('talentMigrated', false\) == true/,
-        '신규 users는 legacy false→true 이관 예외를 재사용할 수 없게 시작해야 한다.');
-    assert.match(createRules, /request\.resource\.data\.extraMemberships is list[\s\S]*extraMemberships\.size\(\) == 0/,
-        '신규 users는 추가 소속을 create payload로 seed할 수 없어야 한다.');
-}
-assert.match(churchAdminCreateRules, /get\('accountType', null\) == null[\s\S]*get\('primaryOrgId', null\) == null/,
-    '신규 공동체 관리자는 personal 정체성이나 임의 primary roster를 seed할 수 없어야 한다.');
-assert.match(churchAdminCreateRules, /request\.resource\.data\.onboardingPending == true/,
-    '신규 공동체 관리자는 pending marker를 임의로 생략하거나 닫을 수 없어야 한다.');
-assert.match(churchAdminCreateRules, /request\.resource\.data\.get\('planId', null\) == null/,
-    '신규 공동체 관리자의 plan은 서버 온보딩 완료 전 직접 seed할 수 없어야 한다.');
+assert.match(usersCreateRules, /request\.resource\.data\.get\('score', 0\) == 0/,
+    '브라우저 users create는 초기 score를 seed할 수 없어야 한다.');
+assert.match(usersCreateRules, /request\.resource\.data\.get\('talent', 0\) == 0/,
+    '브라우저 users create는 초기 talent를 seed할 수 없어야 한다.');
+assert.match(usersCreateRules, /request\.resource\.data\.get\('talentMigrated', false\) == true/,
+    '신규 users는 legacy false→true 이관 예외를 재사용할 수 없게 시작해야 한다.');
+assert.match(usersCreateRules, /request\.resource\.data\.extraMemberships is list[\s\S]*extraMemberships\.size\(\) == 0/,
+    '신규 users는 추가 소속을 create payload로 seed할 수 없어야 한다.');
 assert.match(appSource, /requestUser\.role === 'churchAdmin' && stored\.onboardingPending !== false/,
     '관리자 온보딩 성공은 서버가 pending marker를 닫은 상태까지 확인해야 한다.');
 assert.match(appSource, /memberOnboardingRequestRef\.current[\s\S]*finally[\s\S]*memberOnboardingRequestRef\.current = null/,

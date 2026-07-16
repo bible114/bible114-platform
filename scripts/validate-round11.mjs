@@ -15,6 +15,11 @@ const header = read('src/components/dashboard/DashboardHeader.jsx');
 const churchAdmin = read('src/components/ChurchAdminView.jsx');
 const platformAdmin = read('src/components/PlatformAdminView.jsx');
 const churchDirectory = read('src/utils/churchDirectory.js');
+const platformApi = read('src/utils/platformApi.js');
+const platformApiCore = read('supabase/functions/platform-api/core.ts');
+const platformApiIndex = read('supabase/functions/platform-api/index.ts');
+const rotateChurchAccessCodeCore = read('supabase/functions/platform-api/rotateChurchAccessCodeCore.ts');
+const rotateChurchAccessCodeService = read('supabase/functions/platform-api/rotateChurchAccessCodeService.ts');
 
 assert.equal(normalizeChurchEntryCode('1234'), '1234');
 assert.equal(normalizeChurchEntryCode(' alpha-5 '), 'alpha-5');
@@ -53,19 +58,98 @@ assert.match(header, /flex flex-wrap items-center gap-1\.5 w-full py-1 md:order-
 assert.doesNotMatch(header, /overflow-x-auto|scrollbar-hide|justify-between md:justify-end/);
 assert.match(header, /hidden h-4 w-px shrink-0 bg-slate-200 md:block/);
 
-// 기존 공동체의 입장코드 변경도 private/access 저장과 공개 비밀 삭제를
-// 한 batch로 커밋해야 한다.
+// 기존 공동체의 입장코드 변경은 클라이언트 Firestore 쓰기가 아니라 서버
+// authority를 통해서만 수행해야 한다. 클라이언트는 서버 원본 version을 읽고,
+// 네트워크 재시도에는 동일 requestId와 expectedVersion을 재사용한다.
 const saveChurchCodeStart = churchAdmin.indexOf('const saveChurchCode = async () =>');
 const saveChurchCodeEnd = churchAdmin.indexOf('const saveOrg = async () =>', saveChurchCodeStart);
 assert.ok(saveChurchCodeStart >= 0 && saveChurchCodeEnd > saveChurchCodeStart, '공동체 입장코드 변경 함수가 필요하다.');
 const saveChurchCode = churchAdmin.slice(saveChurchCodeStart, saveChurchCodeEnd);
+assert.match(churchAdmin, /const pendingChurchCodeRequestRef = useRef\(null\)/);
 for (const pattern of [
-    /const batch = db\.batch\(\)/,
-    /batch\.set\(churchRef\.collection\('private'\)\.doc\('access'\),\s*\{[\s\S]*codeHash:\s*churchCodeHash/,
-    /churchCode:\s*firebase\.firestore\.FieldValue\.delete\(\)/,
-    /churchCodeHash:\s*firebase\.firestore\.FieldValue\.delete\(\)/,
-    /await batch\.commit\(\)/,
+    /collection\('private'\)\.doc\('access'\)\.get\(\{\s*source:\s*'server'\s*\}\)/,
+    /const expectedVersion = storedVersion === undefined \? 0 : storedVersion/,
+    /Number\.isSafeInteger\(expectedVersion\)[\s\S]*expectedVersion < 0/,
+    /requestId:\s*createRequestId\(\)/,
+    /uid:\s*requestUid[\s\S]*churchId:\s*requestChurchId/,
+    /pendingChurchCodeRequestRef\.current = pending/,
+    /await rotateChurchAccessCode\(\{[\s\S]*churchId:\s*pending\.churchId[\s\S]*entryCode:\s*pending\.entryCode[\s\S]*expectedVersion:\s*pending\.expectedVersion/,
+    /requestId:\s*pending\.requestId[\s\S]*expectedUid:\s*requestUid/,
+    /if \(!requestContextIsCurrent\(\)\)[\s\S]*clearPendingIfCurrent\(pending\)[\s\S]*return/,
+    /result\.result\.version !== pending\.expectedVersion \+ 1/,
+    /pendingChurchCodeRequestRef\.current = null/,
+    /if \(pending && e\?\.retryable !== true\) clearPendingIfCurrent\(pending\)/,
 ]) assert.match(saveChurchCode, pattern);
+assert.doesNotMatch(
+    saveChurchCode,
+    /\bdb\.(?:batch|runTransaction)\s*\(|\bbatch\.|firebase\.firestore\.FieldValue|\.(?:set|update|delete|add)\s*\(/,
+    '공동체 관리자 화면은 입장코드나 공개 비밀 필드를 Firestore에 직접 쓰면 안 된다.',
+);
+
+const rotateClientStart = platformApi.indexOf('export const rotateChurchAccessCode = (input, options = {}) =>');
+const rotateClientEnd = platformApi.indexOf('export const ensureUnaffiliatedChurch', rotateClientStart);
+assert.ok(rotateClientStart >= 0 && rotateClientEnd > rotateClientStart, '입장코드 변경 platform-api 래퍼가 필요하다.');
+const rotateClient = platformApi.slice(rotateClientStart, rotateClientEnd);
+for (const pattern of [
+    /hasExactKeys\(input, ROTATE_CHURCH_ACCESS_CODE_REQUEST_KEYS\)/,
+    /Number\.isSafeInteger\(input\.expectedVersion\)/,
+    /const requestId = options\.requestId \|\| createRequestId\(\)/,
+    /callPlatformApi\('rotateChurchAccessCode', payload, \{ \.\.\.options, requestId \}\)/,
+    /result\.requestId !== requestId/,
+    /result\.result\.version !== payload\.expectedVersion \+ 1/,
+    /result\.alreadyCompleted === result\.committed/,
+]) assert.match(rotateClient, pattern);
+assert.match(
+    platformApi,
+    /const ROTATE_CHURCH_ACCESS_CODE_REQUEST_KEYS = new Set\(\[\s*'churchId', 'entryCode', 'expectedVersion',\s*\]\)/,
+    '클라이언트 입장코드 변경 payload는 정확한 세 필드만 허용해야 한다.',
+);
+
+const rotateParserStart = platformApiCore.indexOf('if (action === ROTATE_CHURCH_ACCESS_CODE_ACTION)');
+const rotateParserEnd = platformApiCore.indexOf('if (action === COMPLETE_CHURCH_ADMIN_SIGNUP_ACTION)', rotateParserStart);
+assert.ok(rotateParserStart >= 0 && rotateParserEnd > rotateParserStart, '서버 입장코드 변경 payload 파서가 필요하다.');
+const rotateParser = platformApiCore.slice(rotateParserStart, rotateParserEnd);
+for (const pattern of [
+    /const allowedKeys = new Set\(\[\s*"action",\s*"requestId",\s*"churchId",\s*"entryCode",\s*"expectedVersion",\s*\]\)/,
+    /Object\.keys\(body\)\.some\(\(key\) => !allowedKeys\.has\(key\)\)/,
+    /normalizedChurchId === "unaffiliated_v1"/,
+    /normalizedEntryCode !== entryCode/,
+    /Number\.isSafeInteger\(expectedVersion\)/,
+]) assert.match(rotateParser, pattern);
+
+const rotateRouteStart = platformApiIndex.indexOf('if (parsed.action === "rotateChurchAccessCode")');
+const rotateRouteEnd = platformApiIndex.indexOf('if (parsed.action === "ensureUnaffiliatedChurch")', rotateRouteStart);
+assert.ok(rotateRouteStart >= 0 && rotateRouteEnd > rotateRouteStart, '서버 입장코드 변경 라우트가 필요하다.');
+const rotateRoute = platformApiIndex.slice(rotateRouteStart, rotateRouteEnd);
+assert.match(
+    rotateRoute,
+    /await rotateChurchAccessCode\(service, verifiedUser, \{[\s\S]*requestId:\s*parsed\.requestId[\s\S]*churchId:\s*parsed\.churchId[\s\S]*entryCode:\s*parsed\.entryCode[\s\S]*expectedVersion:\s*parsed\.expectedVersion/,
+);
+
+for (const pattern of [
+    /const currentVersion = access\.version === undefined \? 0 : access\.version/,
+    /inspection\.currentVersion !== input\.expectedVersion/,
+    /nextVersion:\s*inspection\.currentVersion \+ 1/,
+]) assert.match(rotateChurchAccessCodeCore, pattern);
+for (const pattern of [
+    /const MAX_TRANSACTION_ATTEMPTS = 3/,
+    /const accessPath = `\$\{churchPath\}\/private\/access`/,
+    /dependencies\.getDocument<RotateChurchAccessCodeAccess>\([\s\S]*accessPath,[\s\S]*\{ transaction \}/,
+    /const nextCodeHash = await dependencies\.hashText\(input\.entryCode\)/,
+    /decideRotateChurchAccessCode\(\{[\s\S]*expectedVersion:\s*input\.expectedVersion[\s\S]*nextCodeHash/,
+    /dependencies\.updateWrite\(service\.projectId, accessPath, \{[\s\S]*codeHash:\s*decision\.nextCodeHash[\s\S]*version:\s*decision\.nextVersion/,
+    /updateMask:\s*\["churchCode", "churchCodeHash", "code", "updatedAt"\]/,
+]) assert.match(rotateChurchAccessCodeService, pattern);
+const rotateLedgerStart = rotateChurchAccessCodeService.indexOf('dependencies.updateWrite(service.projectId, ledgerPath');
+const rotateLedgerEnd = rotateChurchAccessCodeService.indexOf('}, { exists: false })', rotateLedgerStart);
+assert.ok(rotateLedgerStart >= 0 && rotateLedgerEnd > rotateLedgerStart, '입장코드 변경 멱등 원장 쓰기가 필요하다.');
+const rotateLedgerWrite = rotateChurchAccessCodeService.slice(rotateLedgerStart, rotateLedgerEnd);
+assert.match(rotateLedgerWrite, /input:\s*\{[\s\S]*churchId:\s*input\.churchId[\s\S]*expectedVersion:\s*input\.expectedVersion[\s\S]*fingerprint:\s*inputFingerprint/);
+assert.doesNotMatch(
+    rotateLedgerWrite,
+    /\bentryCode\s*:|\bcodeHash\s*:/,
+    '멱등 원장에 입장코드 원문이나 해시를 저장하면 안 된다.',
+);
 assert.doesNotMatch(
     platformAdmin,
     /churchCodeHash:\s*null|churchCode:\s*null/,
@@ -128,15 +212,25 @@ assert.doesNotMatch(
 assert.match(securityMigration, /cleanupOnlyChurchDocs[\s\S]*UNAFFILIATED_CHURCH_ID/);
 assert.match(sanitizeDirectory, /id === UNAFFILIATED_CHURCH_ID/);
 assert.match(securityMigration, /latestAccessByChurchId[\s\S]*if \(codeHash && !latestHash\)/);
-const migrationHandlerStart = platformAdmin.indexOf('const handleMigrateChurchAccessSecrets = async () =>');
+const migrationHandlerStart = platformAdmin.indexOf('const handleCheckChurchAccessSecrets = async () =>');
 const migrationHandlerEnd = platformAdmin.indexOf('const handleEnsureUnaffiliatedChurch', migrationHandlerStart);
-assert.ok(migrationHandlerStart >= 0 && migrationHandlerEnd > migrationHandlerStart, '입장코드 이전 UI 핸들러가 필요하다.');
+assert.ok(migrationHandlerStart >= 0 && migrationHandlerEnd > migrationHandlerStart, '입장코드 보안 점검 UI 핸들러가 필요하다.');
 const migrationHandler = platformAdmin.slice(migrationHandlerStart, migrationHandlerEnd);
 const previewCall = migrationHandler.indexOf('dryRun: true');
 const executeCall = migrationHandler.indexOf('dryRun: false');
-assert.ok(previewCall >= 0, 'UI는 실제 이전 전에 dry-run 보고서를 먼저 생성해야 한다.');
-assert.ok(
-    executeCall > previewCall,
-    'UI는 dry-run 결과를 확인한 뒤에만 dryRun:false로 실제 이전해야 한다.',
+assert.ok(previewCall >= 0, 'UI는 쓰기 없는 dry-run 보고서만 생성해야 한다.');
+assert.equal(executeCall, -1, '운영 이전 완료 후 UI에서 dryRun:false를 실행하면 안 된다.');
+assert.doesNotMatch(
+    platformAdmin,
+    /handleMigrateChurchAccessSecrets|migrateChurchAccessSecrets\(\{[\s\S]{0,240}dryRun:\s*false/,
+    '플랫폼 관리자 UI에는 입장코드 실제 이전 실행 경로가 남으면 안 된다.',
 );
-console.log('라운드 11 계약 검증 통과: 첫 화면, 소셜, 3단계 온보딩, 소속 관리, roster-only, 입장코드 dry-run');
+assert.match(platformAdmin, /운영 이전은 완료되었습니다[\s\S]*쓰기 없이 점검합니다/);
+const accessSecurityUiStart = platformAdmin.indexOf('{/* 공개 입장코드 보안 이전 */}');
+const accessSecurityUiEnd = platformAdmin.indexOf('{/* 무소속 가상 교회 생성/점검 */}', accessSecurityUiStart);
+assert.ok(accessSecurityUiStart >= 0 && accessSecurityUiEnd > accessSecurityUiStart, '입장코드 보안 점검 UI가 필요하다.');
+const accessSecurityUi = platformAdmin.slice(accessSecurityUiStart, accessSecurityUiEnd);
+assert.match(accessSecurityUi, /onClick=\{handleCheckChurchAccessSecrets\}/);
+assert.match(accessSecurityUi, /'1\. 쓰기 없는 사전점검'/);
+assert.equal((accessSecurityUi.match(/<button\b/g) || []).length, 1, '입장코드 보안 UI에는 dry-run 점검 버튼 하나만 있어야 한다.');
+console.log('라운드 11 계약 검증 통과: 첫 화면, 소셜, 3단계 온보딩, 소속 관리, roster-only, 입장코드 서버 authority·dry-run');

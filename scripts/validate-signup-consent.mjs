@@ -132,9 +132,15 @@ const loginView = read('src/components/LoginView.jsx');
 const socialOnboarding = read('src/components/SocialOnboardingView.jsx');
 const authHook = read('src/hooks/useAuth.js');
 const userAuthHook = read('src/hooks/useUserAuth.js');
+const platformApiClient = read('src/utils/platformApi.js');
+const platformApiCore = read('supabase/functions/platform-api/core.ts');
+const platformApiIndex = read('supabase/functions/platform-api/index.ts');
+const adminSignupCore = read('supabase/functions/platform-api/completeChurchAdminSignupCore.ts');
+const adminSignupCoreTest = read('supabase/functions/platform-api/completeChurchAdminSignupCore_test.ts');
+const adminSignupService = read('supabase/functions/platform-api/completeChurchAdminSignupService.ts');
+const adminSignupServiceTest = read('supabase/functions/platform-api/completeChurchAdminSignupService_test.ts');
 const firestoreRules = read('firestore.rules');
 assert.match(firestoreRules, /function isChurchAdmin\(churchId\)[\s\S]*myData\(\)\.get\('isDeleted', false\) != true/);
-assert.match(firestoreRules, /function isChurchAdminAfter\(churchId\)[\s\S]*\.get\('isDeleted', false\) != true/);
 assert.match(guardianComponent, /getAgeAssessment\(normalizedBirthdate\)/, '보호자 UI는 공용 만14세 판정을 사용해야 한다.');
 assert.match(guardianComponent, /if \(!assessment\.under14\) return null;/, '만14세 이상에게 보호자 입력을 표시하면 안 된다.');
 assert.match(guardianComponent, /GUARDIAN_CONSENT_METHODS\.GUARDIAN_ASSERTION/, 'UI payload는 guardian_assertion 방식이어야 한다.');
@@ -152,33 +158,7 @@ assert.match(socialOnboarding, /<PolicyConsent/);
 assert.match(authHook, /writeSignupConsent\(/);
 assert.match(authHook, /consentSummary: buildSignupConsentSummary\(signupConsent\)/);
 
-// 신규 공동체 관리자 가입은 공개 churches 문서에 입장코드 원문·해시를 쓰지 않고,
-// 같은 transaction에서 private/access.codeHash까지 저장해야 한다.
-const churchCreateWrites = [...authHook.matchAll(
-    /transaction\.set\(churchRef,\s*(\{[\s\S]*?\})\);/g
-)];
-assert.equal(churchCreateWrites.length, 2, 'Google·이메일 관리자 가입의 공개 공동체 쓰기 두 곳을 모두 검증해야 한다.');
-for (const [, publicChurchPayload] of churchCreateWrites) {
-    assert.doesNotMatch(publicChurchPayload, /\bchurchCode(?:Hash)?\b/);
-}
-const googleAdminStart = authHook.indexOf('if (isGoogleSignup)');
-const emailAdminStart = authHook.indexOf("let cred = null", googleAdminStart);
-assert.ok(googleAdminStart >= 0 && emailAdminStart > googleAdminStart, 'Google 관리자 가입 분기가 필요하다.');
-const googleAdminSignup = authHook.slice(googleAdminStart, emailAdminStart);
-assert.match(
-    googleAdminSignup,
-    /db\.runTransaction\(async transaction =>[\s\S]*transaction\.set\(churchRef,[\s\S]*transaction\.set\(churchAccessRef,\s*\{[\s\S]*codeHash:\s*churchCodeHash/,
-    'Google 관리자 가입은 공개 공동체와 private/access를 같은 transaction에 저장해야 한다.',
-);
-const emailAdminTransactionStart = authHook.indexOf('await db.runTransaction(async transaction =>', emailAdminStart);
-const emailAdminTransactionEnd = authHook.indexOf('});', authHook.indexOf('transaction.set(directoryRef', emailAdminTransactionStart));
-assert.ok(emailAdminTransactionStart >= 0 && emailAdminTransactionEnd > emailAdminTransactionStart, '이메일 관리자 가입 transaction이 필요하다.');
-const emailAdminSignup = authHook.slice(emailAdminTransactionStart, emailAdminTransactionEnd + 3);
-assert.match(
-    emailAdminSignup,
-    /transaction\.set\(churchRef,[\s\S]*transaction\.set\(churchAccessRef,\s*\{[\s\S]*codeHash:\s*churchCodeHash/,
-    '이메일 관리자 가입도 공개 공동체와 private/access를 같은 transaction에 저장해야 한다.',
-);
+// 일반 교인·개인 계정 가입의 기존 서버 authority 계약도 계속 유지되어야 한다.
 assert.match(authHook, /completeMemberSignupViaApi\(\{[\s\S]*churchId,[\s\S]*entryCode:\s*joinTicket \? '' : churchCode,[\s\S]*joinTicket,[\s\S]*name:\s*newUser\.name,[\s\S]*birthdate:\s*newUser\.birthdate,[\s\S]*guestProgress:/);
 assert.match(authHook, /created = result\.created === true;[\s\S]*if \(created\)[\s\S]*total_readers/);
 assert.match(authHook, /const migrateGuest = shouldMigrateGuestState\(\);[\s\S]*if \(migrateGuest\)[\s\S]*migratedAt/);
@@ -191,11 +171,172 @@ assert.match(
 assert.doesNotMatch(firestoreRules, /request\.resource\.data\.accountType == 'personal'[\s\S]*request\.resource\.data\.churchId == null/);
 assert.match(authHook, /completePersonalSignupViaApi\(\{[\s\S]*authProvider:[\s\S]*guestProgress:/);
 assert.doesNotMatch(authHook, /transaction\.set\(rosterRef,[\s\S]*transaction\.set\(userRef, newUser\)/);
-assert.match(
-    firestoreRules,
-    /request\.resource\.data\.role == 'churchAdmin'[\s\S]*!exists\(\/databases\/\$\(database\)\/documents\/churches\/\$\(request\.resource\.data\.churchId\)\)[\s\S]*getAfter\(\/databases\/\$\(database\)\/documents\/churches\/\$\(request\.resource\.data\.churchId\)\/private\/admin\)\.data\.adminUid == uid/,
-    '이미 존재하는 공동체를 지정한 churchAdmin 자가 생성은 규칙에서 차단해야 한다.',
+
+// 공동체 관리자 가입은 브라우저 Firestore transaction이 아니라 검증된 ID token을
+// 사용하는 completeChurchAdminSignup 서버 action 하나만 authority로 삼는다.
+const adminSignupStart = authHook.indexOf('const handleChurchAdminSignup = async');
+const adminSignupEnd = authHook.indexOf('\n    return {', adminSignupStart);
+assert.ok(adminSignupStart >= 0 && adminSignupEnd > adminSignupStart, '공동체 관리자 가입 함수 범위를 찾을 수 있어야 한다.');
+const adminSignupFlow = authHook.slice(adminSignupStart, adminSignupEnd);
+assert.match(authHook, /completeChurchAdminSignup as completeChurchAdminSignupViaApi/);
+assert.equal(
+    [...adminSignupFlow.matchAll(/completeChurchAdminSignupViaApi\(/g)].length,
+    1,
+    '관리자 가입의 서버 action 호출 지점은 하나여야 한다.',
 );
+assert.doesNotMatch(adminSignupFlow, /db\.runTransaction\s*\(/, '관리자 가입 브라우저 transaction을 되살리면 안 된다.');
+assert.doesNotMatch(adminSignupFlow, /\b(?:transaction|batch)\.(?:set|create|update|delete)\s*\(/);
+assert.doesNotMatch(adminSignupFlow, /db\.collection\(['"]churches['"]\)/, '브라우저에서 churches를 직접 만들면 안 된다.');
+assert.doesNotMatch(
+    adminSignupFlow,
+    /db\.collection\(['"]users['"]\)\.doc\([\s\S]{0,120}?\)\.(?:set|update|delete)\s*\(/,
+    '브라우저에서 churchAdmin users 문서를 직접 만들거나 고치면 안 된다.',
+);
+assert.match(
+    adminSignupFlow,
+    /completeChurchAdminSignupViaApi\(\{[\s\S]*name,[\s\S]*churchName,[\s\S]*pastorName:[\s\S]*denomination:[\s\S]*entryCode:\s*churchCode,[\s\S]*departments:[\s\S]*password:\s*signupPassword,[\s\S]*consent,[\s\S]*\},\s*\{[\s\S]*expectedUid:\s*authUser\.uid[\s\S]*requestId/,
+    '브라우저는 서버 action에 조직 정보·비밀·동의와 기대 uid를 전달해야 한다.',
+);
+
+// Google·이메일 모두 같은 action을 사용하되, provider에 맞는 source/password를 보낸다.
+assert.match(
+    adminSignupFlow,
+    /buildSignupConsentSnapshot\([\s\S]*audience:\s*'communityAdmin',[\s\S]*ageConfirmed14Plus,[\s\S]*source:\s*googleProfile\s*\?\s*'google_community_admin_signup'\s*:\s*'email_community_admin_signup'/,
+);
+assert.match(
+    adminSignupFlow,
+    /if \(isGoogleSignup\)[\s\S]*existingDoc = await db\.collection\('users'\)\.doc\(profileUid\)\.get\(\{ source: 'server' \}\)[\s\S]*finishServerChurchAdminSignup\(googleUser, null, \{[\s\S]*requestId: googleSignupRequestId/,
+    'Google 경로는 서버 사용자 상태를 확인하고 null password로 action을 호출해야 한다.',
+);
+assert.match(
+    adminSignupFlow,
+    /googleAdminSignupPendingRef\.current[\s\S]*pending\?\.attemptKey === googleSignupAttemptKey[\s\S]*googleSignupRequestId = pending\.requestId[\s\S]*googleSignupConsent = pending\.consent[\s\S]*googleSignupRequestId = createRequestId\(\)/,
+    'Google 가입의 모호한 실패 재시도는 같은 payload에 같은 UUID와 동의 원문을 재사용해야 한다.',
+);
+const googleExistingStart = adminSignupFlow.indexOf("const existingDoc = await db.collection('users').doc(profileUid).get({ source: 'server' });");
+const googleExistingEnd = adminSignupFlow.indexOf('\n                const googleUser = auth.currentUser;', googleExistingStart);
+assert.ok(googleExistingStart >= 0 && googleExistingEnd > googleExistingStart, 'Google 기존 사용자 복구 범위를 찾을 수 없습니다.');
+const googleExistingRecovery = adminSignupFlow.slice(googleExistingStart, googleExistingEnd);
+assert.match(
+    googleExistingRecovery,
+    /existingUser\?\.role === 'churchAdmin'[\s\S]*existingUser\?\.isDeleted !== true[\s\S]*existingUser\?\.onboardingPending === true[\s\S]*\/\^church_\[0-9a-f\]\{32\}\$\/i[\s\S]*storedEmail === profileEmail/,
+    '응답 유실 복구는 새 action 교회에 묶인 활성·온보딩 대기 Google churchAdmin만 후보로 삼아야 한다.',
+);
+assert.match(
+    googleExistingRecovery,
+    /collection\('private'\)\.doc\('consent'\)\.get\(\{ source: 'server' \}\)[\s\S]*recordedAt:[\s\S]*consentWithoutRecordedAt[\s\S]*finishServerChurchAdminSignup\(auth\.currentUser, null,[\s\S]*requestId: googleSignupRequestId/,
+    '새 화면에서 복구할 때는 저장된 동의 원문을 source-server로 읽고 recordedAt만 제외한 뒤 서버 canonical 검증을 다시 거쳐야 한다.',
+);
+assert.match(
+    googleExistingRecovery,
+    /if \(!recoverableCommittedSignup\)[\s\S]*finishGoogleSignupTerminal[\s\S]*recoveryError instanceof PlatformApiError && recoveryError\.retryable !== true[\s\S]*finishGoogleSignupTerminal/,
+    '기존 정상·삭제·다른 역할 계정과 canonical 불일치는 새 가입으로 수용하지 말고 기존 로그인 안내로 닫아야 한다.',
+);
+assert.match(
+    adminSignupFlow,
+    /auth\.createUserWithEmailAndPassword\(email, password\)[\s\S]*finishServerChurchAdminSignup\(cred\.user, password\)/,
+    '이메일 경로는 password Auth 소유권을 확보한 뒤 같은 서버 action을 호출해야 한다.',
+);
+
+// action 응답만 믿지 않고 canonical users 문서와 공동체를 source-server로 다시 읽는다.
+assert.match(
+    adminSignupFlow,
+    /const userDoc = await db\.collection\('users'\)\.doc\(authUser\.uid\)\.get\(\{ source: 'server' \}\);[\s\S]*storedUser\.role !== 'churchAdmin'[\s\S]*storedUser\.churchId !== result\.churchId[\s\S]*loadChurchCommunities\(result\.churchId, \{ requireServer: true \}\)/,
+    'action 완료 뒤 서버 canonical 사용자·공동체를 확인해야 한다.',
+);
+assert.match(
+    adminSignupFlow,
+    /if \(canResumeEmailSignup\)[\s\S]*existingUserDoc = await db\.collection\('users'\)\.doc\(currentAuthUser\.uid\)\.get\(\{ source: 'server' \}\)[\s\S]*existingUserData\?\.role === 'churchAdmin'[\s\S]*loadChurchCommunities\(recoveredUser\.churchId, \{ requireServer: true \}\)[\s\S]*recovered: true/,
+    '같은 세션 응답 유실 복구도 캐시가 아닌 서버 상태만 정답으로 삼아야 한다.',
+);
+assert.match(
+    adminSignupFlow,
+    /createError\?\.code === 'auth\/email-already-in-use'[\s\S]*auth\.signInWithEmailAndPassword\(normalizedSignupEmail, password\)[\s\S]*resumedDoc = await db\.collection\('users'\)\.doc\(cred\.user\.uid\)\.get\(\{ source: 'server' \}\)[\s\S]*if \(resumedUser\?\.role === 'churchAdmin'\)[\s\S]*loadChurchCommunities\(resumedUser\.churchId, \{ requireServer: true \}\)[\s\S]*if \(resumedDoc\.exists\)[\s\S]*finishServerChurchAdminSignup\(cred\.user, password\)/,
+    '다른 기기의 고아 Auth도 비밀번호 재로그인·서버 문서 확인 뒤 복구하거나 action으로 이어가야 한다.',
+);
+assert.match(
+    adminSignupFlow,
+    /transactionError\.emailAdminSignupIncomplete = true;[\s\S]*transactionError\.emailAdminSignupResumable = authSessionPreserved;/,
+    '서버 action 실패 후 재개 가능 여부를 UI에 전달해야 한다.',
+);
+
+// 클라이언트 wrapper와 Edge route는 exact request/response 및 verified token identity를 강제한다.
+assert.match(platformApiClient, /const COMPLETE_CHURCH_ADMIN_SIGNUP_REQUEST_KEYS = new Set\(\[[\s\S]*'consent'[\s\S]*\]\)/);
+assert.match(
+    platformApiClient,
+    /const validateCompleteChurchAdminSignupInput = input => \{[\s\S]*hasExactKeys\(input, COMPLETE_CHURCH_ADMIN_SIGNUP_REQUEST_KEYS\)[\s\S]*return \{[\s\S]*consent: \{ \.\.\.input\.consent \}/,
+    '클라이언트 wrapper 입력은 exact payload여야 한다.',
+);
+assert.match(
+    platformApiClient,
+    /export const completeChurchAdminSignup = \(input, options = \{\}\) => \{[\s\S]*validateCompleteChurchAdminSignupInput\(input\)[\s\S]*callPlatformApi\('completeChurchAdminSignup', payload,[\s\S]*\['created', 'alreadyCompleted'\]\.includes\(result\.status\)[\s\S]*\/\^church_\[0-9a-f\]\{32\}\$\/i\.test\(result\.churchId\)/,
+    '클라이언트 wrapper는 exact payload와 canonical action 결과만 받아야 한다.',
+);
+assert.match(
+    platformApiCore,
+    /if \(action === COMPLETE_CHURCH_ADMIN_SIGNUP_ACTION\) \{[\s\S]*const allowedKeys = new Set\(\[[\s\S]*"consent"[\s\S]*Object\.keys\(body\)\.some\(\(key\) => !allowedKeys\.has\(key\)\)[\s\S]*consent: consent as Record<string, unknown>/,
+    'Edge parser도 관리자 가입 payload의 추가 필드를 거부해야 한다.',
+);
+const adminRouteStart = platformApiIndex.indexOf('if (parsed.action === "completeChurchAdminSignup")');
+const canonicalUserLookupStart = platformApiIndex.indexOf('const userDocument = await getDocument<UserDocument>');
+assert.ok(adminRouteStart >= 0 && adminRouteStart < canonicalUserLookupStart, '최초 가입 action은 기존 users 조회보다 먼저 처리돼야 한다.');
+const adminRoute = platformApiIndex.slice(adminRouteStart, platformApiIndex.indexOf('\n    if (parsed.action === "rotateChurchAccessCode")', adminRouteStart));
+assert.match(
+    adminRoute,
+    /verifiedUser\.claims\.email[\s\S]*claims\.firebase[\s\S]*sign_in_provider[\s\S]*\{ uid: verifiedUser\.uid, tokenEmail, signInProvider \}/,
+    'uid/email/provider는 요청 body가 아니라 검증된 ID token claim에서 가져와야 한다.',
+);
+
+// 서버 core는 provider-source와 성인 동의 원문을 strict 검증하고 공개 users에는 요약만 만든다.
+assert.match(
+    adminSignupCore,
+    /const validateConsent = \([\s\S]*exactKeys\(value, \[[\s\S]*"policyVersions"[\s\S]*"agreements"[\s\S]*value\.source !==[\s\S]*provider === "password"[\s\S]*"email_community_admin_signup"[\s\S]*"google_community_admin_signup"[\s\S]*confirmed14Plus !== true/,
+);
+assert.match(
+    adminSignupCore,
+    /provider !== "password" && provider !== "google\.com"[\s\S]*provider === "password"[\s\S]*provider === "google\.com" && password !== null[\s\S]*const \{ consent, summary \} = validateConsent/,
+    '검증된 provider와 password·동의 source가 서로 어긋나면 거부해야 한다.',
+);
+assert.match(adminSignupCore, /consentSummary: summary/);
+assert.match(
+    adminSignupService,
+    /updateWrite\(service\.projectId, userPath,[\s\S]*consentSummary: signup\.consentSummary[\s\S]*updateWrite\(service\.projectId, consentPath, \{[\s\S]*\.\.\.signup\.consent,[\s\S]*recordedAt: now/,
+    '동의 요약은 users에, 원문은 users/{uid}/private/consent에 저장해야 한다.',
+);
+assert.match(
+    adminSignupService,
+    /const writes = \[[\s\S]*churchPath[\s\S]*userPath[\s\S]*consentPath[\s\S]*adminPath[\s\S]*accessPath[\s\S]*LEGACY_DIRECTORY_PATH[\s\S]*publicChurchPath[\s\S]*ledgerPath[\s\S]*commitWrites\([\s\S]*writes,[\s\S]*\{ transaction \}/,
+    '공동체·관리자·동의·비밀·디렉토리·원장은 서버 transaction 하나로 생성해야 한다.',
+);
+assert.match(adminSignupCoreTest, /Google 가입은 google\.com token과 null password만 허용한다/);
+assert.match(adminSignupCoreTest, /동의 정책 버전·source·성인 확인·agreement exact schema를 검증한다/);
+assert.match(adminSignupServiceTest, /공동체·관리자·private·두 디렉토리·원장을 한 transaction으로 생성한다/);
+assert.match(adminSignupServiceTest, /응답 유실 뒤 새 UUID도 canonical 기존 churchAdmin으로 수렴한다/);
+
+// 브라우저 규칙에는 무소속 교인 호환 create만 남고 관리자·공동체·보호 문서는 닫혀 있어야 한다.
+const usersRuleStart = firestoreRules.indexOf('match /users/{uid}');
+const usersCreateStart = firestoreRules.indexOf('allow create:', usersRuleStart);
+const usersCreateEnd = firestoreRules.indexOf('// 본인 수정', usersCreateStart);
+assert.ok(usersRuleStart >= 0 && usersCreateStart > usersRuleStart && usersCreateEnd > usersCreateStart);
+const usersCreateRule = firestoreRules.slice(usersCreateStart, usersCreateEnd);
+assert.match(
+    usersCreateRule,
+    /request\.resource\.data\.role == 'member'[\s\S]*request\.resource\.data\.churchId == 'unaffiliated_v1'/,
+    '기존 무소속 교인 호환 create만 남아야 한다.',
+);
+assert.doesNotMatch(usersCreateRule, /churchAdmin/, '브라우저 churchAdmin users create 권한을 다시 열면 안 된다.');
+const churchRuleStart = firestoreRules.indexOf('match /churches/{churchId}');
+const churchPrivateRuleStart = firestoreRules.indexOf('match /private/{privateId}', churchRuleStart);
+assert.ok(churchRuleStart >= 0 && churchPrivateRuleStart > churchRuleStart);
+assert.match(firestoreRules.slice(churchRuleStart, churchPrivateRuleStart), /allow create: if false;[\s\S]*allow delete: if false;/);
+assert.match(
+    firestoreRules.slice(churchPrivateRuleStart, firestoreRules.indexOf('match /settings/{settingId}', churchPrivateRuleStart)),
+    /allow write: if false;/,
+    '브라우저가 private/admin 또는 private/access를 만들면 안 된다.',
+);
+assert.match(firestoreRules, /match \/publicChurches\/\{churchId\} \{[\s\S]*allow write: if false;/);
+assert.match(firestoreRules, /match \/platformInternal\/\{documentId\} \{[\s\S]*allow read, write: if false;/);
+assert.match(firestoreRules, /match \/settings\/churchDirectory \{[\s\S]*allow read: if true;[\s\S]*allow write: if false;/);
 assert.match(
     firestoreRules,
     /match \/private\/consent \{[\s\S]*allow read: if isRealUser\(\) && \(request\.auth\.uid == uid \|\| isPlatformAdmin\(\)\);[\s\S]*allow create, update: if isRealUser\(\) && request\.auth\.uid == uid;[\s\S]*allow delete: if false;/,
@@ -205,26 +346,6 @@ assert.match(
     firestoreRules,
     /match \/private\/\{privateId\} \{[\s\S]*allow read, write: if privateId != 'consent'/,
     '포괄 private 규칙이 consent 전용 제한을 우회하면 안 된다.',
-);
-assert.match(
-    authHook,
-    /이메일 가입도 Google 가입과 동일하게[\s\S]*db\.runTransaction\(async transaction =>[\s\S]*transaction\.set\(churchRef,[\s\S]*transaction\.set\(userRef, newUser\);[\s\S]*transaction\.set\(consentRef,[\s\S]*transaction\.set\(churchAdminRef,/,
-    '이메일 공동체 관리자 가입도 소유 증명과 계정을 원자적으로 생성해야 한다.',
-);
-assert.match(
-    authHook,
-    /canResumeEmailSignup[\s\S]*provider\?\.providerId === 'password'[\s\S]*if \(!existingUserDoc\.exists\)[\s\S]*cred = \{ user: currentAuthUser \}/,
-    'Auth 생성 뒤 Firestore 실패 시 같은 password 인증 세션으로 관리자 가입을 재개해야 한다.',
-);
-assert.match(
-    authHook,
-    /const existingUserData = existingUserDoc\.exists \? existingUserDoc\.data\(\) : null;[\s\S]*if \(existingUserData\?\.role === 'churchAdmin'\)[\s\S]*loadChurchCommunities\(recoveredUser\.churchId,\s*\{\s*requireServer:\s*true\s*\}\)[\s\S]*auth\.currentUser\?\.uid !== currentAuthUser\.uid[\s\S]*recovered: true/,
-    'commit 응답 유실 시 이미 생성된 관리자 문서를 복구하고 공동체를 중복 생성하면 안 된다.',
-);
-assert.match(
-    authHook,
-    /transactionError\.emailAdminSignupIncomplete = true;[\s\S]*transactionError\.emailAdminSignupResumable = authSessionPreserved;/,
-    '이메일 관리자 Firestore 실패는 인증 세션 보존 여부를 호출부에 전달해야 한다.',
 );
 assert.match(authHook, /인증 계정은 만들어졌지만 공동체 정보 저장이 완료되지 않았습니다/);
 assert.match(authHook, /로그인 상태가 변경되어 자동 재개할 수 없습니다/);

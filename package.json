@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "validate": "npm run validate:round11 && npm run validate:round15 && npm run validate:round18 && npm run validate:kakao-auth && npm run validate:personal-migration && npm run validate:quiz-answer-index && npm run validate:quiz && npm run validate:nt-easy && npm run validate:reading-flow-scroll && npm run validate:service-policies && npm run validate:signup-consent && npm run validate:roster-multimembership && npm run validate:department-talent && npm run validate:round24 && npm run validate:daily-video-server && npm run validate:public-directory && npm run validate:platform-api",
+    "validate": "npm run validate:round11 && npm run validate:round15 && npm run validate:round18 && npm run validate:kakao-auth && npm run validate:personal-migration && npm run validate:quiz-answer-index && npm run validate:quiz && npm run validate:nt-easy && npm run validate:reading-flow-scroll && npm run validate:service-policies && npm run validate:signup-consent && npm run validate:roster-multimembership && npm run validate:department-talent && npm run validate:round24 && npm run validate:daily-video-server && npm run validate:public-directory && npm run validate:church-lifecycle && npm run validate:platform-api",
     "validate:round11": "node scripts/validate-round11.mjs",
     "validate:round15": "node scripts/validate-round15.mjs",
     "validate:round18": "node scripts/validate-round18.mjs",
@@ -15,6 +15,7 @@
     "validate:round24": "node scripts/validate-round24.mjs",
     "validate:daily-video-server": "node scripts/validate-daily-video-server.mjs",
     "validate:public-directory": "node scripts/validate-public-directory.mjs",
+    "validate:church-lifecycle": "node scripts/validate-church-lifecycle.mjs",
     "validate:platform-api": "deno test supabase/functions/_shared supabase/functions/platform-api && deno check supabase/functions/platform-api/index.ts && deno fmt --check supabase/functions/_shared supabase/functions/platform-api",
     "validate:roster-multimembership": "node scripts/validate-roster-multimembership.mjs",
     "validate:department-talent": "node scripts/validate-department-talent.mjs",

@@ -412,20 +412,64 @@ const App = () => {
     const saveEditUser = async () => {
         if (!editingUser) return;
         try {
-            await db.collection('users').doc(editingUser.uid).set({
-                churchId: editingUser.churchId,
-                churchName: editingUser.churchName,
-                departmentId: editingUser.departmentId, departmentName: editingUser.departmentName,
-                subgroupId: editingUser.subgroupId, subgroupName: editingUser.subgroupName || null,
-                planId: editingUser.planId,
-                currentDay: editingUser.currentDay, readCount: editingUser.readCount || 1,
-                score: editingUser.score, streak: editingUser.streak,
-                lastReadDate: editingUser.lastReadDate || null,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true });
-            setAllUsers(prev => prev.map(u => u.uid === editingUser.uid ? editingUser : u));
+            const userRef = db.collection('users').doc(editingUser.uid);
+            const committed = await db.runTransaction(async transaction => {
+                // allUsers는 화면 캐시일 뿐이다. 모달이 열린 뒤 member가 관리자로 승격되거나
+                // 개인 계정으로 전환될 수 있으므로 쓰기와 같은 transaction에서 최신 정체성을 읽는다.
+                const latestDoc = await transaction.get(userRef);
+                if (!latestDoc.exists) {
+                    const error = new Error('최신 회원 정보를 확인할 수 없습니다.');
+                    error.code = 'EDIT_USER_NOT_FOUND';
+                    throw error;
+                }
+                const latestUser = latestDoc.data();
+                const churchIdentityChanged = String(latestUser.churchId || '') !== String(editingUser.churchId || '')
+                    || String(latestUser.churchName || '') !== String(editingUser.churchName || '');
+                if (latestUser.role !== 'member' && churchIdentityChanged) {
+                    const error = new Error('관리자 계정의 소속 교회는 이 화면에서 변경할 수 없습니다.');
+                    error.code = 'EDIT_ADMIN_IDENTITY_CONFLICT';
+                    throw error;
+                }
+
+                // 최신 문서가 여전히 일반 공동체 member일 때만 조직 payload를 허용한다.
+                // 동시 member→admin 승격이나 personal 전환 뒤에는 stale 모달의 조직값을 쓰지 않는다.
+                const canEditMemberOrganization = latestUser.role === 'member'
+                    && latestUser.accountType !== 'personal';
+                const updateData = {
+                    ...(canEditMemberOrganization ? {
+                        churchId: editingUser.churchId,
+                        churchName: editingUser.churchName,
+                        departmentId: editingUser.departmentId,
+                        departmentName: editingUser.departmentName,
+                        subgroupId: editingUser.subgroupId,
+                        subgroupName: editingUser.subgroupName || null,
+                    } : {}),
+                    planId: editingUser.planId,
+                    currentDay: editingUser.currentDay,
+                    readCount: editingUser.readCount || 1,
+                    score: editingUser.score,
+                    streak: editingUser.streak,
+                    lastReadDate: editingUser.lastReadDate || null,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                };
+                transaction.set(userRef, updateData, { merge: true });
+                const { updatedAt: _serverTimestamp, ...localUpdateData } = updateData;
+                return { latestUser, localUpdateData };
+            });
+            setAllUsers(prev => prev.map(u => u.uid === editingUser.uid
+                ? { ...u, ...committed.latestUser, ...committed.localUpdateData }
+                : u));
             setEditingUser(null); alert("수정되었습니다.");
-        } catch (e) { console.error(e); alert("수정 실패"); }
+        } catch (e) {
+            console.error(e);
+            if (e?.code === 'EDIT_ADMIN_IDENTITY_CONFLICT') {
+                alert('관리자 계정의 소속 교회는 이 화면에서 변경할 수 없습니다. 정식 관리자 위임 절차를 이용해주세요.');
+            } else if (e?.code === 'EDIT_USER_NOT_FOUND') {
+                alert('최신 회원 정보를 확인할 수 없습니다. 목록을 새로고침한 뒤 다시 시도해주세요.');
+            } else {
+                alert("수정 실패");
+            }
+        }
     };
 
     /*

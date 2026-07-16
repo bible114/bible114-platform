@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { auth, authReady, db, firebase } from '../utils/firebase';
 import { makePseudoEmail, makeUnaffiliatedIdentity, userDocToState, migrateTalentIfNeeded, migratePersonalTalentWalletIfNeeded } from '../utils/helpers';
-import { sha256 } from '../utils/crypto';
 import {
     getChurchDirectory,
     invalidateChurchDirectoryCache,
@@ -34,7 +33,9 @@ import { buildSignupConsentSnapshot, buildSignupConsentSummary } from '../utils/
 import { writeSignupConsent } from '../utils/signupConsentStore';
 import {
     completeMemberSignup as completeMemberSignupViaApi,
+    completeChurchAdminSignup as completeChurchAdminSignupViaApi,
     completePersonalSignup as completePersonalSignupViaApi,
+    createRequestId,
     issueJoinTicket,
     PlatformApiError,
 } from '../utils/platformApi';
@@ -95,6 +96,7 @@ export const useAuth = ({
     const googleAdminSignupAttemptRef = useRef(0);
     const googleAdminSignupStartingRef = useRef(false);
     const googleAdminSignupSubmittingRef = useRef(null);
+    const googleAdminSignupPendingRef = useRef(null);
     const personalSignupRef = useRef(null);
     const kakaoStartRef = useRef(null);
     const socialProviderRef = useRef(null);
@@ -110,6 +112,7 @@ export const useAuth = ({
         const flowName = googleAdminSignupFlowRef.current;
         if (!flowName) return;
         googleAdminSignupFlowRef.current = null;
+        googleAdminSignupPendingRef.current = null;
         endInteractiveAuthFlow(flowName);
     };
 
@@ -1176,6 +1179,78 @@ export const useAuth = ({
                 ageConfirmed14Plus,
             }, { source: googleProfile ? 'google_community_admin_signup' : 'email_community_admin_signup' });
 
+            let googleSignupRequestId = null;
+            let googleSignupConsent = signupConsent;
+            let resumedGoogleSignupAttempt = false;
+            let googleSignupAttemptKey = null;
+            if (isGoogleSignup) {
+                const { agreedAt: _agreedAt, ...stableConsent } = signupConsent;
+                googleSignupAttemptKey = JSON.stringify({
+                    uid: String(googleProfile?.uid || '').trim(),
+                    name,
+                    churchName,
+                    pastorName: pastorName || '',
+                    denomination: denomination || '',
+                    entryCode: churchCode,
+                    departments: departments || [],
+                    consent: stableConsent,
+                });
+                const pending = googleAdminSignupPendingRef.current;
+                if (pending?.attemptKey === googleSignupAttemptKey) {
+                    googleSignupRequestId = pending.requestId;
+                    googleSignupConsent = pending.consent;
+                    resumedGoogleSignupAttempt = true;
+                } else {
+                    googleSignupRequestId = createRequestId();
+                    googleAdminSignupPendingRef.current = {
+                        attemptKey: googleSignupAttemptKey,
+                        requestId: googleSignupRequestId,
+                        consent: signupConsent,
+                    };
+                }
+            }
+
+            const finishServerChurchAdminSignup = async (authUser, signupPassword, {
+                consent = signupConsent,
+                requestId = null,
+            } = {}) => {
+                if (!authUser?.uid || auth.currentUser?.uid !== authUser.uid) {
+                    throw new Error('교회 등록 중 로그인 계정이 변경되었습니다.');
+                }
+                const result = await completeChurchAdminSignupViaApi({
+                    name,
+                    churchName,
+                    pastorName: pastorName || '',
+                    denomination: denomination || '',
+                    entryCode: churchCode,
+                    departments: departments || [],
+                    password: signupPassword,
+                    consent,
+                }, {
+                    expectedUid: authUser.uid,
+                    ...(requestId ? { requestId } : {}),
+                });
+                if (auth.currentUser?.uid !== authUser.uid) {
+                    throw new Error('교회 등록 완료 전에 로그인 계정이 변경되었습니다.');
+                }
+                const userDoc = await db.collection('users').doc(authUser.uid).get({ source: 'server' });
+                const storedUser = userDoc.exists ? userDoc.data() : null;
+                if (!storedUser || storedUser.role !== 'churchAdmin'
+                    || storedUser.isDeleted === true
+                    || storedUser.churchId !== result.churchId) {
+                    throw new Error('서버의 교회 관리자 등록 상태를 확인할 수 없습니다.');
+                }
+                invalidateChurchDirectoryCache();
+                await loadChurchCommunities(result.churchId, { requireServer: true });
+                if (auth.currentUser?.uid !== authUser.uid) {
+                    throw new Error('교회 등록 확인 중 로그인 계정이 변경되었습니다.');
+                }
+                setTempUser({ ...storedUser, uid: authUser.uid });
+                setView('plan_type_select');
+                finalResult = { ok: true, recovered: result.status === 'alreadyCompleted' };
+                return finalResult;
+            };
+
             if (isGoogleSignup) {
                 const profileUid = String(googleProfile?.uid || '').trim();
                 if (!profileUid || !matchesGoogleAdminSignupProfile(auth.currentUser, googleProfile)) {
@@ -1185,100 +1260,75 @@ export const useAuth = ({
                     );
                 }
 
-                const userRef = db.collection('users').doc(profileUid);
-                const consentRef = userRef.collection('private').doc('consent');
-                const churchRef = db.collection('churches').doc();
-                const churchAdminRef = churchRef.collection('private').doc('admin');
-                const churchAccessRef = churchRef.collection('private').doc('access');
-                const directoryRef = db.collection('settings').doc('churchDirectory');
-                const churchCodeHash = await sha256(churchCode);
-
-                const transactionResult = await db.runTransaction(async transaction => {
-                    // 동시 제출이 같은 Google uid를 선점했는지 transaction 안에서 판정한다.
-                    const existingDoc = await transaction.get(userRef);
-                    if (existingDoc.exists) return { terminal: 'existing' };
-
-                    // transaction은 재시도될 수 있으므로 매 시도에서 read 직후 현재 Auth를 다시 검증한다.
-                    const googleUser = auth.currentUser;
-                    if (!matchesGoogleAdminSignupProfile(googleUser, googleProfile)) {
-                        return { terminal: 'invalid-profile' };
+                const existingDoc = await db.collection('users').doc(profileUid).get({ source: 'server' });
+                if (existingDoc.exists) {
+                    const existingUser = existingDoc.data();
+                    const profileEmail = String(googleProfile?.email || '').trim().toLowerCase();
+                    const storedEmail = String(existingUser?.email || '').trim().toLowerCase();
+                    const recoverableCommittedSignup = existingUser?.role === 'churchAdmin'
+                        && existingUser?.isDeleted !== true
+                        && existingUser?.onboardingPending === true
+                        && /^church_[0-9a-f]{32}$/i.test(String(existingUser?.churchId || ''))
+                        && profileEmail
+                        && storedEmail === profileEmail;
+                    if (!recoverableCommittedSignup) {
+                        return await finishGoogleSignupTerminal(
+                            GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE,
+                            '기존 구글 관리자 최종 가입'
+                        );
                     }
 
-                    const resolvedEmail = String(googleUser.email || '').trim();
-                    const newUser = {
-                        name, email: resolvedEmail, password: null, birthdate: null,
-                        role: 'churchAdmin', churchId: churchRef.id, churchName,
-                        extraMemberships: [],
-                        startDate: new Date().toDateString(),
-                        currentDay: 1, streak: 0, score: 0, talent: 0, talentMigrated: true, readCount: 1,
-                        lastReadDate: null, gender: 'male', planId: null,
-                        onboardingPending: true,
-                        departmentId: null, departmentName: null, subgroupId: null,
-                        consentSummary: buildSignupConsentSummary(signupConsent),
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    };
-
-                    transaction.set(churchRef, {
-                        name: churchName, pastorName: pastorName || '', denomination: denomination || '',
-                        departments: departments || [],
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    });
-                    transaction.set(userRef, newUser);
-                    transaction.set(consentRef, {
-                        ...signupConsent,
-                        recordedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    });
-                    transaction.set(churchAdminRef, {
-                        adminUid: googleUser.uid,
-                        adminEmail: resolvedEmail,
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    });
-                    transaction.set(churchAccessRef, {
-                        codeHash: churchCodeHash,
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    });
-                    transaction.set(directoryRef, {
-                        churches: firebase.firestore.FieldValue.arrayUnion({
-                            id: churchRef.id,
-                            name: churchName,
-                        }),
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    }, { merge: true });
-
-                    return { ok: true, newUser };
-                });
-
-                if (transactionResult?.terminal === 'existing') {
-                    return await finishGoogleSignupTerminal(
-                        GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE,
-                        '기존 구글 관리자 최종 가입'
-                    );
+                    let recoveryConsent = googleSignupConsent;
+                    if (!resumedGoogleSignupAttempt) {
+                        const consentDoc = await db.collection('users').doc(profileUid)
+                            .collection('private').doc('consent').get({ source: 'server' });
+                        const storedConsent = consentDoc.exists ? consentDoc.data() : null;
+                        if (!storedConsent || typeof storedConsent !== 'object' || Array.isArray(storedConsent)
+                            || !Object.prototype.hasOwnProperty.call(storedConsent, 'recordedAt')) {
+                            return await finishGoogleSignupTerminal(
+                                GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE,
+                                '기존 구글 관리자 동의 검증 실패 후'
+                            );
+                        }
+                        const { recordedAt: _recordedAt, ...consentWithoutRecordedAt } = storedConsent;
+                        recoveryConsent = consentWithoutRecordedAt;
+                        googleAdminSignupPendingRef.current = {
+                            attemptKey: googleSignupAttemptKey,
+                            requestId: googleSignupRequestId,
+                            consent: recoveryConsent,
+                        };
+                    }
+                    try {
+                        return await finishServerChurchAdminSignup(auth.currentUser, null, {
+                            consent: recoveryConsent,
+                            requestId: googleSignupRequestId,
+                        });
+                    } catch (recoveryError) {
+                        if (recoveryError instanceof PlatformApiError && recoveryError.retryable !== true) {
+                            return await finishGoogleSignupTerminal(
+                                GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE,
+                                '기존 구글 관리자 canonical 복구 거부 후'
+                            );
+                        }
+                        throw recoveryError;
+                    }
                 }
-                if (transactionResult?.terminal === 'invalid-profile') {
+                const googleUser = auth.currentUser;
+                if (!matchesGoogleAdminSignupProfile(googleUser, googleProfile)) {
                     return await finishGoogleSignupTerminal(
                         '구글 계정 정보를 확인할 수 없습니다. 다시 구글 계정으로 시작해주세요.',
                         '구글 관리자 최종 가입 계정 검증 실패 후'
                     );
                 }
-                if (!transactionResult?.ok) throw new Error('구글 관리자 가입 트랜잭션 결과가 올바르지 않습니다.');
-
-                // 세 문서 commit 뒤에만 캐시·통계·온보딩 상태를 갱신한다.
-                invalidateChurchDirectoryCache();
-                db.collection('settings').doc('platformStats').set({
-                    total_churches: firebase.firestore.FieldValue.increment(1),
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                }, { merge: true }).catch(() => {});
-                setChurchCommunities(departments || []);
-                setTempUser({ ...transactionResult.newUser, uid: profileUid });
-                setView('plan_type_select');
-                finalResult = { ok: true };
-                return finalResult;
+                return await finishServerChurchAdminSignup(googleUser, null, {
+                    consent: googleSignupConsent,
+                    requestId: googleSignupRequestId,
+                });
             }
 
             // 이메일 가입도 Google 가입과 동일하게 새 공동체·관리자 계정·소유 증명·동의를
-            // 한 트랜잭션에서 만든다. 규칙은 이 원자적 생성만 churchAdmin 최초 등록으로 인정한다.
-            // 직전 제출에서 Auth 생성 뒤 Firestore transaction만 실패했다면 현재 인증 세션이
+            // 서버 action의 단일 트랜잭션에서 만든다. 브라우저 직접 생성은 규칙에서 차단한다.
+            // 직전 제출에서 Auth 생성 뒤 서버 action만 실패했다면 현재 인증 세션이
             // 그대로 남아 있다. 같은 이메일의 password 세션만 재사용해 고아 Auth 계정 때문에
             // email-already-in-use에 영구히 막히지 않고 공동체 등록을 이어서 처리한다.
             const normalizedSignupEmail = String(email || '').trim().toLowerCase();
@@ -1291,7 +1341,7 @@ export const useAuth = ({
             let resumedEmailSignup = false;
             let cred = null;
             if (canResumeEmailSignup) {
-                const existingUserDoc = await db.collection('users').doc(currentAuthUser.uid).get();
+                const existingUserDoc = await db.collection('users').doc(currentAuthUser.uid).get({ source: 'server' });
                 const existingUserData = existingUserDoc.exists ? existingUserDoc.data() : null;
                 if (existingUserData?.isDeleted === true) {
                     await rejectDeletedUser(existingUserData.role === 'churchAdmin'
@@ -1318,65 +1368,54 @@ export const useAuth = ({
                 }
             }
             if (!cred) {
-                cred = await auth.createUserWithEmailAndPassword(email, password).catch(err => {
-                    if (err?.code === 'auth/email-already-in-use') setErrorMsg('이미 사용 중인 이메일입니다.');
-                    else if (err?.code === 'auth/weak-password') setErrorMsg('비밀번호는 6자리 이상이어야 합니다.');
-                    else setErrorMsg('가입 실패. 잠시 후 다시 시도해주세요.');
-                    return null;
-                });
+                try {
+                    cred = await auth.createUserWithEmailAndPassword(email, password);
+                } catch (createError) {
+                    if (createError?.code === 'auth/email-already-in-use') {
+                        // 다른 기기나 새 세션에서도 동일 비밀번호로 Auth 소유권을 증명하면
+                        // Firestore 등록이 없던 고아 Auth 가입을 서버 action으로 이어간다.
+                        try {
+                            cred = await auth.signInWithEmailAndPassword(normalizedSignupEmail, password);
+                            resumedEmailSignup = true;
+                            const resumedDoc = await db.collection('users').doc(cred.user.uid).get({ source: 'server' });
+                            const resumedUser = resumedDoc.exists ? resumedDoc.data() : null;
+                            if (resumedUser?.isDeleted === true) {
+                                await rejectDeletedUser(resumedUser.role === 'churchAdmin'
+                                    ? '삭제된 공동체 관리자 계정입니다. 플랫폼 관리자에게 문의해주세요.'
+                                    : undefined);
+                                finalResult = { ok: false, retryable: false };
+                                return finalResult;
+                            }
+                            if (resumedUser?.role === 'churchAdmin') {
+                                invalidateChurchDirectoryCache();
+                                await loadChurchCommunities(resumedUser.churchId, { requireServer: true });
+                                if (auth.currentUser?.uid !== cred.user.uid) return finalResult;
+                                setTempUser({ ...resumedUser, uid: cred.user.uid });
+                                setView('plan_type_select');
+                                finalResult = { ok: true, recovered: true };
+                                return finalResult;
+                            }
+                            if (resumedDoc.exists) {
+                                setErrorMsg('이미 다른 유형으로 등록된 이메일입니다. 기존 로그인 화면을 이용해주세요.');
+                                return finalResult;
+                            }
+                        } catch (resumeError) {
+                            console.error('기존 이메일 교회 등록 재개 실패:', resumeError);
+                            setErrorMsg('이미 사용 중인 이메일입니다. 비밀번호를 확인하거나 관리자 로그인에서 먼저 로그인해주세요.');
+                            return finalResult;
+                        }
+                    } else if (createError?.code === 'auth/weak-password') {
+                        setErrorMsg('비밀번호는 6자리 이상이어야 합니다.');
+                        return finalResult;
+                    } else {
+                        setErrorMsg('가입 실패. 잠시 후 다시 시도해주세요.');
+                        return finalResult;
+                    }
+                }
             }
             if (!cred) return finalResult;
-
-            const churchRef = db.collection('churches').doc();
-            const userRef = db.collection('users').doc(cred.user.uid);
-            const consentRef = userRef.collection('private').doc('consent');
-            const churchAdminRef = churchRef.collection('private').doc('admin');
-            const churchAccessRef = churchRef.collection('private').doc('access');
-            const directoryRef = db.collection('settings').doc('churchDirectory');
-            const churchCodeHash = await sha256(churchCode);
-            const newUser = {
-                name, email, password, birthdate: null,
-                role: 'churchAdmin', churchId: churchRef.id, churchName,
-                extraMemberships: [],
-                startDate: new Date().toDateString(),
-                currentDay: 1, streak: 0, score: 0, talent: 0, talentMigrated: true, readCount: 1,
-                lastReadDate: null, gender: 'male', planId: null,
-                onboardingPending: true,
-                departmentId: null, departmentName: null, subgroupId: null,
-                consentSummary: buildSignupConsentSummary(signupConsent),
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            };
             try {
-                await db.runTransaction(async transaction => {
-                    const existingUser = await transaction.get(userRef);
-                    if (existingUser.exists) throw new Error('이미 등록된 계정입니다. 다시 로그인해주세요.');
-
-                    const now = firebase.firestore.FieldValue.serverTimestamp();
-                    transaction.set(churchRef, {
-                        name: churchName, pastorName: pastorName || '', denomination: denomination || '',
-                        departments: departments || [],
-                        createdAt: now,
-                    });
-                    transaction.set(userRef, newUser);
-                    transaction.set(consentRef, { ...signupConsent, recordedAt: now });
-                    transaction.set(churchAdminRef, {
-                        adminUid: cred.user.uid,
-                        adminEmail: email,
-                        updatedAt: now,
-                    });
-                    transaction.set(churchAccessRef, {
-                        codeHash: churchCodeHash,
-                        updatedAt: now,
-                    });
-                    transaction.set(directoryRef, {
-                        churches: firebase.firestore.FieldValue.arrayUnion({
-                            id: churchRef.id,
-                            name: churchName,
-                        }),
-                        updatedAt: now,
-                    }, { merge: true });
-                });
+                return await finishServerChurchAdminSignup(cred.user, password);
             } catch (transactionError) {
                 const authSessionPreserved = auth.currentUser?.uid === cred.user.uid;
                 transactionError.emailAdminSignupIncomplete = true;
@@ -1384,17 +1423,6 @@ export const useAuth = ({
                 transactionError.emailAdminSignupWasResume = resumedEmailSignup;
                 throw transactionError;
             }
-            invalidateChurchDirectoryCache();
-            setChurchCommunities(departments || []);
-            // 신규 교회 + 관리자 → 통계 증가
-            db.collection('settings').doc('platformStats').set({
-                total_churches: firebase.firestore.FieldValue.increment(1),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true }).catch(() => {});
-            setTempUser({ ...newUser, uid: cred.user.uid });
-            setView('plan_type_select');
-            finalResult = { ok: true };
-            return finalResult;
         } catch (err) {
             console.error(err);
             if (err?.emailAdminSignupResumable) {

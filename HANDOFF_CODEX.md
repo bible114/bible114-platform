@@ -7,7 +7,7 @@
 
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
-> **현재 활성 작업: T125e 신규·삭제·변경 교회 writer와 통계 의미 확정, T127 최종 배포 전 직접 writer 감사**. T123 읽기·퀴즈, T125d `publicChurches`, T125e-1 검색 노출 변경, T127a~h(재시작·업적·긴급 rules 축소·개인 지갑·레거시 진도 정규화·최초 소속 설정·혼자 읽기 참여·개인 계정 전환)는 2026-07-16 로컬 구현·검증까지 완료했지만 최신 묶음은 아직 배포하지 않았다. 따라서 T126 영상 경로의 기존 관찰 시계(2026-07-23 05:14 KST)는 유지하되, 읽기·퀴즈·T125·T127a~h를 포함한 **최종 T127 7일 시계는 최신 Edge·웹 배포 시점부터 다시 시작**한다. 그 전에는 일반 공동체 계정의 보호 필드 호환 상한, roster 직접 진도 writer, legacy `videoAutoConfig.apiKey`를 닫거나 정리하지 않는다.
+> **현재 활성 작업: T125e-2c/d 교회 이름 변경·비활성화 정책 결정, T125e-3 통계 의미 확정, T127 최종 배포 전 직접 writer 감사**. T123 읽기·퀴즈, T125d `publicChurches`, T125e-1 검색 노출, T125e-2a/b 신규 관리자 교회 생성·입장코드·무소속 점검, T127a~h(재시작·업적·긴급 rules 축소·개인 지갑·레거시 진도 정규화·최초 소속 설정·혼자 읽기 참여·개인 계정 전환)는 2026-07-16 로컬 구현·검증까지 완료했지만 최신 묶음은 아직 배포하지 않았다. 따라서 T126 영상 경로의 기존 관찰 시계(2026-07-23 05:14 KST)는 유지하되, 읽기·퀴즈·T125·T127a~h를 포함한 **최종 T127 7일 시계는 최신 Edge·웹 배포 시점부터 다시 시작**한다. 그 전에는 일반 공동체 계정의 보호 필드 호환 상한, roster 직접 진도 writer, legacy `videoAutoConfig.apiKey`를 닫거나 정리하지 않는다.
 > 사용자 개입이 필요한 잔여는 T124d 실제 공동체 관리자 소액 판매·수령·환불 스모크뿐이다. 안전한 자격증명·대상 구매 없이 운영 지갑과 불변 ledger를 만들 수 있어 Codex가 임의 실행하지 않는다. T123 shadow 확인용 일회용 계정은 생성·검증 직후 Auth와 모든 문서를 삭제했다.
 > T126 운영 관찰 잔여 2건: 오늘 서비스 날짜에 수동 영상 문서가 생길 때 URL·제목·게시일·`autoFilled` 불변 확인, 실제 platformAdmin 계정의 `adminPreviewDailyVideo` 200 확인. 배포 당일에는 오늘 문서가 없어서 자동 fill 문서가 생성됐고 운영 관리자 자격증명을 사용하지 않았으므로 조건부 미검증으로 남긴다.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
@@ -48,7 +48,7 @@
 // 무소속(개인) 성도 가상 교회 — 문서 ID를 클라이언트 상수로 고정한다.
 // 입장코드 검증 스킵은 "이 상수와의 ID 일치"로만 판단한다 (churchDirectory의 어떤 필드도 신뢰 금지).
 export const UNAFFILIATED_CHURCH_ID = 'unaffiliated_v1';
-export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
+export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 ```
 
 게스트 localStorage 키: `b114_guest_v1`
@@ -182,6 +182,7 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-16 | T125e-2a/b 신규 관리자 교회 생성·입장코드·무소속 writer 서버 이관 | `supabase/functions/platform-api/{core,index,completeChurchAdminSignupCore,completeChurchAdminSignupService,rotateChurchAccessCodeCore,rotateChurchAccessCodeService,ensureUnaffiliatedChurchCore,ensureUnaffiliatedChurchService}*`, `src/{App.jsx,components/{ChurchAdminView,PlatformAdminView}.jsx,hooks/useAuth.js,utils/platformApi.js}`, `firestore.rules`, `scripts/validate-{church-lifecycle,department-talent,round11,round18,round24,signup-consent}.mjs`, `package.json`, `HANDOFF_CODEX.md` | 신규 공동체·관리자 users·동의·private admin/access·legacy/public 디렉토리·불변 원장을 검증된 token identity와 단일 서버 transaction으로 생성한다. 응답 유실·같은 UID의 동시 UUID·rebuild lease·409를 멱등 수렴시키고 공개 원문 비밀과 브라우저 생성 권한을 제거했다. 입장코드 회전은 서버 SHA-256·version CAS·관리자 소유 증명·비밀 없는 원장을 사용하며, 무소속 점검도 platform/super 전용 원자 action으로 바꿨다. `churches` create/private/directory 직접 write를 닫고 플랫폼 회원 편집의 churchAdmin 소속 이동을 fail-closed했다. 독립 재감사에서 Google 응답 유실, 공개 meta/rebuild 경합, 겹치는 Firestore match의 OR 우회, REST 0/3/6/9자리 timestamp, legacy directory 비밀 재투영, 관리자 편집·입장코드 stale-response 경합까지 보완했다. 의미가 정해지지 않은 기존 부분 삭제는 UI에서 중단했으며 이름 변경은 현행 UI가 없어 정책 질문으로 남겼다. 전체 validate(platform-api 421 tests), build, Deno check/fmt, diff 검사와 독립 재감사를 통과했다. 원격 rules dry-run은 Firebase CLI 자격증명 만료로 실행하지 못했고 Edge·웹·rules 배포와 push는 하지 않았다. |
 | 2026-07-16 | T125e-1 교회 검색 노출·T127h 개인 계정 전환 서버 이관 | `supabase/functions/platform-api/{core,index,adminChurchVisibilityCore,adminChurchVisibilityService,convertToPersonalAccountCore,convertToPersonalAccountService}*`, `src/{App.jsx,components/PlatformAdminView.jsx,hooks/{useAuth,useUserAuth}.js,utils/{personalAccountMigration,personalMigrationSteps,platformApi}.js}`, `scripts/validate-{personal-migration,public-directory,roster-multimembership}.mjs`, `HANDOFF_CODEX.md` | 플랫폼 관리자의 교회 숨김/노출을 교회 원본·legacy/public 디렉토리·불변 원장이 한 transaction에 반영되는 서버 action으로 옮겼다. 누락 public 문서도 `exists:false`로 복구하고 비밀 필드는 legacy 투영에서 제거한다. 개인 계정 전환은 새 Auth email claim, users·source church/roster·최대 3개 소속·사용자별 불변 원장을 서버에서 검증하고 원자 전환한다. 전원 초기화로 `talentWalletMigrated:true`인 교회 계정, late positive 잔액, 구 `roster` 단계와 응답 유실 재개를 보존하며 후속 지갑 action까지 source-server로 재확인한다. Auth email 변경 뒤 서버 전환이 실패하고 로컬 상태가 사라져도 실제 pseudo-email과 canonical users가 정확히 일치할 때 로그인·저장 세션에서 대기 상태를 재구성해 다른 기기에서도 수렴한다. 전체 validate(platform-api 354 tests), build, Deno fmt/check, diff 검사와 독립 재감사를 통과했으며 Edge·웹 배포와 push는 하지 않았다. |
 | 2026-07-16 | 읽기 흐름 자동 이동 UX | `src/components/{DashboardView,dashboard/{BibleQuizCard,BibleReader}}.jsx`, `src/hooks/useUserBibleActions.js`, `src/utils/readingFlowScroll.js`, `scripts/validate-reading-flow-scroll.mjs`, `package.json`, `HANDOFF_CODEX.md` | 사용자가 현재 퀴즈 클릭으로 정답·2회 소진·건너뛰기 terminal 상태를 서버 원본으로 확정한 뒤 실제 gate가 열리면 두 렌더 프레임을 기다려 `다음 읽기` 버튼으로 이동한다. 첫 오답·오류·초기 완료 복원·문항 없음·오래된 계정/본문 응답은 이동하지 않는다. 새 `uid+requestId` 읽기 완료가 확정되면 파란 `신약 일독 DAY N일` 헤더로 올리고 고정 메뉴 여백과 움직임 감소 설정을 존중한다. 같은 UID에서 DAY/계획이 바뀌는 RAF 경합도 문맥 키로 차단했다. 전용 검사, 전체 validate(platform-api 318 tests), build, 로컬 비로그인 화면 콘솔 검사를 통과했으며 배포·push는 하지 않았다. |
 | 2026-07-16 | T127g 혼자 읽기 참여 서버 이관·legacy roster 보정 | `supabase/functions/platform-api/{core,index,joinSoloCommunityCore,joinSoloCommunityService,personalTalentWalletMigrationCore,personalTalentWalletMigrationService}*`, `src/{components/dashboard/CommunityMembershipCard.jsx,hooks/useUserAuth.js,utils/{platformApi,joinSoloCommunityState}.js}`, `scripts/validate-{round24,roster-multimembership}.mjs`, `HANDOFF_CODEX.md` | personal 계정의 `unaffiliated_v1` 직접 roster create를 제거하고 exact 빈 payload·UUID 멱등 서버 action으로 옮겼다. 서버 transaction이 canonical users/roster, 최대 3개 소속, primary, 최소 원장을 검증·생성/복구한다. T97 이전 roster에서 실제 누락(`undefined`)인 `talent`/`extraMemberships`만 0/[]로 보정하고 명시적 손상 값은 거부한다. 로그인과 참여 완료는 action 뒤 source-server 명부를 재확인하며 최신 잔액 재덮어쓰기와 A→B→A 계정 경합을 차단했다. 관련 Deno 45개, 전체 validate(platform-api 318 tests), build와 독립 재감사를 통과했으며 Edge·웹 배포와 push는 하지 않았다. |
@@ -362,6 +363,19 @@ export const UNAFFILIATED_CHURCH_NAME = '개인 성도 (소속 교회 없음)';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-16 T125e-2 교회 삭제 정책 결정 필요(생성·코드 변경과 독립이므로 해당 구현은 계속 진행):
+- 현재 플랫폼 관리자 삭제는 `users.churchId == churchId`인 주 소속 사용자만 여러 client batch로 soft-delete한 뒤 교회와 legacy 디렉토리를 따로 갱신한다. 개인/외부 roster, 양수 달란트, pending 구매, Auth, 감사 원장과 하위 설정은 보존하며 복원 경로는 없다. 이 순서를 서버로 그대로 옮겨도 삭제된 교회의 roster 지갑·설정·상점 action이 계속 동작하는 의미 공백이 남는다.
+- 안전한 기본 제안은 **복원 가능한 공동체 비활성화**다. 교회와 legacy/public 디렉토리는 즉시 원자 비활성화하고, 기존 주 소속 users만 action generation 표식으로 재개 가능한 batch soft-delete한다. Auth·roster·잔액·구매·감사자료는 보존하되 inactive 공동체의 신규 가입·읽기/퀴즈 보상·구매·설정 변경은 막고 플랫폼 관리자만 정산을 볼 수 있게 한다.
+- Claude 결정이 필요한 항목: ① 삭제가 복원 가능한 비활성화인지 최종 purge인지 ② 주 소속 users 외 개인/외부 roster도 비활성 대상으로 볼지 ③ 양수 roster 달란트와 pending 구매 정산/환불 주체 ④ 기존에 개별 삭제된 users의 복원 제외 여부 ⑤ Auth·private access·구매/감사자료 보존 기간과 관리자 정산 유예. 이 결정 전에는 기존 의미를 임의 확장하는 삭제 cascade/action을 구현하지 않는다.
+- 독립 감사에서 `churches create`가 모든 실사용자에게 열리고 legacy directory도 직접 쓸 수 있어 가짜 공동체와 legacy hash를 만들 수 있는 P0/P1을 확인했다. 신규 관리자 가입·입장코드·무소속 점검을 서버 action으로 옮긴 뒤 `churches create`와 private access writer를 닫는 수정은 삭제 정책과 무관하므로 먼저 완료한다. 플랫폼 회원 편집이 churchAdmin의 `churchId`를 바꿔 권한을 새 교회로 이동시키던 경로도 즉시 fail-closed한다.
+
+2026-07-16 T125e-2a/b 로컬 완료, 이름 변경 정책 추가 결정 필요:
+- `completeChurchAdminSignup`, `rotateChurchAccessCode`, `ensureUnaffiliatedChurch`를 서버 authority로 연결했고 `churches` create, `churches/private`, `settings/churchDirectory` 브라우저 write를 닫았다. 신규 가입은 검증된 token uid/email/provider, strict 동의·조직 입력, private access hash, legacy/public 투영과 lifecycle 원장을 한 transaction에 쓴다. 코드 회전은 version CAS·관리자 소유 증명·비밀 없는 원장, 무소속 점검은 platform/super 권한과 exact canonical 교체를 사용한다. 플랫폼 회원 편집의 관리자 교회 이동도 UI와 저장 경계 양쪽에서 차단했다.
+- 삭제는 위 정책이 정해질 때까지 기존 multi-batch 부분 삭제 함수와 실행 버튼을 제거하고 `교회 비활성화 정책 확인 중` 안내만 남겼다. 데이터나 Auth를 임의로 삭제하지 않았다.
+- 현행 제품에는 정식 교회 이름 변경 UI가 없다. `churches.name`, `settings/churchDirectory`, `publicChurches` 외에 기존 일반/관리자 `users.churchName`이 화면·로그인 기억·성경 버전 허용에 사용되고, 개인 계정의 조직명도 별도 snapshot으로 남을 수 있다. 이름 변경 시 **원본/디렉토리만 즉시 변경하고 기존 snapshot은 로그인 때 점진 보정**할지, **모든 users/roster snapshot을 재개 가능한 batch로 fanout**할지 결정이 필요하다. 결정 전에는 불완전한 rename action을 만들지 않는다.
+- 독립 재감사 후 Google 가입 응답 유실 canonical 복구, `publicDirectoryMeta`·rebuild lock 원자 방어, `settings/{settingId}` 중복 match의 directory 쓰기 OR 우회 차단, Firestore REST timestamp 0/3/6/9자리 호환, legacy directory 전체 최소 투영·root 비밀 제거, 플랫폼 회원 편집의 최신 역할 transaction 검증, 입장코드 응답의 uid/church 문맥 fence까지 추가했다.
+- 전체 `npm run validate`(platform-api 421 tests), `npm run build`, Deno check/fmt, `git diff --check`를 통과했다. 원격 rules dry-run은 Firebase CLI 인증 만료로 막혔고 로컬 Java도 없어 컴파일을 대체하지 못했다. **Edge·웹·rules 배포와 push는 하지 않았다.** 배포 시 순서는 Edge → 웹 → rules로 유지한다.
 
 2026-07-16 T125e-1 교회 검색 노출·T127h 개인 계정 전환 서버 이관 로컬 완료:
 - `adminSetChurchVisibility`는 platformAdmin/superAdmin 본문 역할을 transaction에서 다시 확인하고 교회 `hiddenFromDirectory`, 최소 legacy 디렉토리, `publicChurches`, `platformAdminActions/{requestId}`를 원자 처리한다. public 문서 누락은 drift로 보고 `exists:false` 생성하며, legacy code/hash 필드는 재투영에서 제거한다. no-op은 원장을 만들지 않고 exact replay·UUID 충돌·최대 3회 409·apply-then-409를 검증한다.
@@ -2143,7 +2157,11 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 - [x] **T125d. `publicChurches` 안전 백필 기반** — 관리자 서버 action이 전체 원본을 dry-run/execute하고 service-only owner lease·레거시 updateTime fence로 동시 writer를 방어한다. 새 컬렉션과 meta rules는 서비스 계정만 쓰며 앱은 `mode:public` 전까지 legacy를 사용한다. 로컬 구현·검증만 완료했고 운영 백필·배포·활성화는 하지 않았다.
 - [ ] **T125e. 남은 운영 writer·통계 서버 권위** — 변경/숨김/삭제/신규 교회 writer를 서버 action으로 모은 뒤 `churchDirectory` 직접 write를 닫을 준비를 한다. `platformStats`는 필드 의미를 먼저 확정하고, 클라이언트 숫자 입력 없이 생성/읽기 ledger에서 한 번만 집계하며 platformAdmin `rebuildPlatformStats({dryRun})`로 전수 재계산·차이를 확인한다.
   - [x] **T125e-1. 검색 숨김/노출 writer** — 교회 원본·legacy/public 디렉토리·불변 관리자 원장을 서버 transaction으로 이관하고 누락 public 문서와 legacy 비밀 필드 drift도 함께 복구한다.
-  - [ ] **T125e-2. 신규/변경/삭제 교회 writer** — 관리자 생성·이름/코드 변경·삭제를 서버 권위 action으로 묶고 디렉토리·private access·관리자 계정의 경합/부분 실패를 제거한다.
+  - [ ] **T125e-2. 신규/변경/삭제 교회 writer** — 아래 독립 단위 중 이름 변경과 비활성화 정책만 남았다.
+    - [x] **T125e-2a. 신규 관리자 교회 생성** — 검증된 Auth uid/email/provider와 exact 가입·동의 입력으로 교회, 관리자 users/private, 입장코드, legacy/public 디렉토리, lifecycle 원장을 한 서버 transaction에서 만든다. 응답 유실·동시 생성·rebuild lock을 멱등 처리하고 브라우저 `churches`/churchAdmin users create를 닫았다.
+    - [x] **T125e-2b. 입장코드·무소속 점검·관리자 이동 방어** — 입장코드는 서버 hash/version CAS/소유 증명과 불변 원장으로 회전하고, 무소속 가상 교회 점검도 platform/super 전용 action으로 이관했다. private access·legacy directory 직접 write를 닫고 플랫폼 회원 편집으로 churchAdmin 소속을 옮기는 우회도 차단했다.
+    - [ ] **T125e-2c. 교회 이름 변경** — 현행 정식 이름 변경 UI는 없다. `churches.name`과 legacy/public 투영만 바꿀지, 기존 `users.churchName`·개인 계정의 저장된 조직명까지 fanout할지 아래 메모 결정 뒤 구현한다.
+    - [ ] **T125e-2d. 교회 삭제/비활성화** — 기존 부분 삭제 UI는 데이터 손상을 막기 위해 중단했다. roster 지갑·pending 구매·외부 멤버·복원·보존 기간 정책을 아래 메모에서 확정한 뒤 서버 action을 설계한다.
   - [ ] **T125e-3. `platformStats` 의미 확정·재계산** — 아래 Codex → Claude 질문의 필드 의미 결정 뒤에만 구현한다.
 
 ### [x] T126. 매일 영상·기도제목 서버 이관 (2026-07-15 Claude 상세 설계 — Codex 소작업 순서대로 진행)

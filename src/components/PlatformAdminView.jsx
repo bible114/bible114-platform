@@ -3,10 +3,9 @@ import Icon from './Icon';
 import GoogleLinkCard from './admin/GoogleLinkCard';
 import { firebase } from '../utils/firebase';
 import ChurchAdminView from './ChurchAdminView';
-import { adminPreviewDailyVideo, adminSetChurchVisibility, rebuildPublicChurches } from '../utils/platformApi';
+import { adminPreviewDailyVideo, adminSetChurchVisibility, ensureUnaffiliatedChurch, rebuildPublicChurches } from '../utils/platformApi';
 import { getDaysRead, getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
-import { invalidateChurchDirectoryCache, migrateChurchAccessSecrets, removeChurchFromDirectory } from '../utils/churchDirectory';
-import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
+import { invalidateChurchDirectoryCache, migrateChurchAccessSecrets } from '../utils/churchDirectory';
 import { migrateCredentialsIfNeeded, fetchMemberCredentials } from '../utils/memberCredentials';
 
 const PlatformAdminView = ({
@@ -36,7 +35,6 @@ const PlatformAdminView = ({
     const [announcementChurchId, setAnnouncementChurchId] = React.useState('');
     const [seedingData, setSeedingData] = React.useState(false);
     const [statsRefreshing, setStatsRefreshing] = React.useState(false);
-    const [confirmDelete, setConfirmDelete] = React.useState(null); // { type: 'church'|'user', target }
     const [deleteUserConfirm, setDeleteUserConfirm] = React.useState(null); // { uid, name }
     const [viewingChurchAsAdmin, setViewingChurchAsAdmin] = React.useState(false);
     // 검색 숨김 토글의 낙관적 반영 (allChurches는 prop이라 로컬 오버라이드로 관리)
@@ -396,76 +394,11 @@ const PlatformAdminView = ({
         }
     };
 
-    const handleMigrateChurchAccessSecrets = async () => {
-        if (!db || accessSecretsMigrating) return;
-        if (accessSecretsReport?.dryRun !== true) {
-            alert('먼저 사전점검을 성공적으로 완료해 주세요.');
-            return;
-        }
-        setAccessSecretsMigrating(true);
-        setAccessSecretsOperation('execute');
-        setAccessSecretsProgress({ done: 0, total: 0, phase: 'scan' });
-        try {
-            // 첫 점검 이후 데이터가 바뀌었을 수 있으므로 실제 쓰기 직전에도 다시 읽기 전용 점검한다.
-            const checkedReport = await migrateChurchAccessSecrets({
-                dryRun: true,
-                onProgress: progress => setAccessSecretsProgress({
-                    done: progress.done || 0,
-                    total: progress.total || 0,
-                    phase: progress.phase || 'scan',
-                }),
-            });
-            setAccessSecretsReport(checkedReport);
-            const warning = [
-                `최신 사전점검 결과: 총 ${checkedReport.scanned}개`,
-                `이전 대상 ${checkedReport.migrated}개`,
-                `원천 누락 ${checkedReport.missing.length}개`,
-                `디렉토리 고아 ${checkedReport.orphans.length}개`,
-                `중복 ${checkedReport.duplicates.length}개`,
-                '',
-                '비공개 저장소 백필 후 공개 필드를 삭제합니다. 실제 이전을 실행할까요?',
-            ].join('\n');
-            if (!confirm(warning)) return;
-            // 실제 실행이 실패하면 이전 사전점검 결과로 재시도하지 못하도록 즉시 무효화한다.
-            setAccessSecretsReport(null);
-            const report = await migrateChurchAccessSecrets({
-                dryRun: false,
-                onProgress: progress => setAccessSecretsProgress({
-                    done: progress.done || 0,
-                    total: progress.total || 0,
-                    phase: progress.phase || 'scan',
-                }),
-            });
-            setAccessSecretsReport(report);
-            alert(report.missing.length > 0
-                ? `이전 완료: ${report.migrated}개 이전, ${report.alreadyPrivate}개 기존 비공개. 원천이 없는 ${report.missing.length}개 교회는 관리자가 새 입장코드를 설정해야 합니다.`
-                : `입장코드 보안 이전 완료: ${report.migrated}개 이전, ${report.alreadyPrivate}개 기존 비공개.`);
-        } catch (error) {
-            console.error('입장코드 보안 이전 실패:', error);
-            alert('입장코드 보안 이전 실패: ' + error.message + '\n안전을 위해 사전점검부터 다시 실행해 주세요.');
-        } finally {
-            setAccessSecretsMigrating(false);
-            setAccessSecretsOperation(null);
-        }
-    };
-
     const handleEnsureUnaffiliatedChurch = async () => {
-        if (!db) return;
         setCheckingUnaffiliatedChurch(true);
         try {
-            await db.collection('churches').doc(UNAFFILIATED_CHURCH_ID).set({
-                name: UNAFFILIATED_CHURCH_NAME,
-                pastorName: '',
-                denomination: '',
-                isVirtual: true,
-                departments: [{
-                    id: 'personal',
-                    name: '개인 성도',
-                    color: 'bg-emerald-500',
-                    subgroups: ['성경읽기 동행'],
-                }],
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true });
+            await ensureUnaffiliatedChurch({ expectedUid: currentUser.uid });
+            invalidateChurchDirectoryCache();
             alert('무소속 가상 교회 생성/점검이 완료되었습니다.');
         } catch (e) {
             alert('무소속 가상 교회 생성/점검 실패: ' + e.message);
@@ -658,43 +591,8 @@ const PlatformAdminView = ({
         }
     };
 
-    const deleteChurch = async (church) => {
-        setConfirmDelete({ type: 'church', target: church });
-    };
-
-    const doDeleteChurch = async (church) => {
-        setConfirmDelete(null);
-        setSeedingData(true);
-        try {
-            const membersSnap = await db.collection('users').where('churchId', '==', church.id).get();
-            for (let i = 0; i < membersSnap.docs.length; i += 450) {
-                const batch = db.batch();
-                membersSnap.docs.slice(i, i + 450).forEach(d => {
-                    batch.set(d.ref, {
-                        isDeleted: true,
-                        deletedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    }, { merge: true });
-                });
-                await batch.commit();
-            }
-            const churchBatch = db.batch();
-            churchBatch.set(db.collection('churches').doc(church.id), {
-                isDeleted: true,
-                deletedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true });
-            await churchBatch.commit();
-            await removeChurchFromDirectory(church.id).catch(err => console.error('디렉토리 제거 실패:', err));
-            setSeedingData(false);
-            setSelectedChurchId(null);
-            alert(`✅ "${church.name}" 교회와 계정 ${membersSnap.size}개가 삭제 처리되었습니다.\n페이지를 새로고침합니다.`);
-            window.location.reload();
-        } catch (e) {
-            console.error(e);
-            alert('삭제 실패: ' + (e.message || '잠시 후 다시 시도해주세요.'));
-            setSeedingData(false);
-        }
+    const deleteChurch = church => {
+        alert(`"${church.name}" 교회 비활성화는 현재 안전한 서버 처리 정책을 확정 중입니다.\n교인·외부 소속·달란트·미처리 구매를 보호하기 위해 기존 부분 삭제 기능은 잠시 중단했습니다.`);
     };
 
     const users = Array.isArray(allUsers) ? allUsers : [];
@@ -761,22 +659,6 @@ const PlatformAdminView = ({
     return (
         // 하단 고정 광고(50px)가 콘텐츠를 가리지 않도록 광고 높이만큼 여백 확보
         <div className="min-h-screen bg-slate-100" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
-            {/* 교회 삭제 확인 모달 */}
-            {confirmDelete?.type === 'church' && (
-                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-4">
-                    <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full">
-                        <h3 className="font-black text-red-600 text-lg mb-2">🗑️ 교회 삭제 처리</h3>
-                        <p className="text-sm text-slate-700 mb-1">
-                            <b>"{confirmDelete.target.name}"</b> 교회와 소속 교인 전체를 삭제합니다.
-                        </p>
-                        <p className="text-xs text-red-500 font-bold mb-5">교회와 소속 교인을 목록에서 숨깁니다.</p>
-                        <div className="flex gap-2">
-                            <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50">취소</button>
-                            <button onClick={() => doDeleteChurch(confirmDelete.target)} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700">삭제 확인</button>
-                        </div>
-                    </div>
-                </div>
-            )}
             {/* 교인 삭제 확인 모달 */}
             {deleteUserConfirm && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-4">
@@ -1008,8 +890,8 @@ const PlatformAdminView = ({
                                         <button
                                             onClick={() => deleteChurch(selectedChurch)}
                                             disabled={seedingData}
-                                            className="w-full bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition-colors border border-red-700">
-                                            🗑️ 이 교회 삭제 처리 (교인 포함)
+                                            className="w-full bg-amber-100 hover:bg-amber-200 text-amber-800 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition-colors border border-amber-300">
+                                            ⚠️ 교회 비활성화 정책 확인 중
                                         </button>
                                     </div>
                                 </div>
@@ -1555,8 +1437,8 @@ const PlatformAdminView = ({
                         <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 mb-6">
                             <h3 className="text-sm font-bold text-rose-800 mb-1">🔐 입장코드 보안 이전·점검</h3>
                             <p className="text-xs text-rose-700 mb-3">
-                                기존 교회의 공개 코드·해시를 <code className="bg-rose-100 px-1 rounded">private/access</code>로 이전하고,
-                                교회 문서와 공개 디렉토리에서 비밀 필드를 제거합니다. 쓰기 없는 사전점검을 성공해야 실제 이전 버튼이 열립니다.
+                                운영 이전은 완료되었습니다. 이 화면은 공개 코드·해시가 다시 생기지 않았는지 쓰기 없이 점검합니다.
+                                새 입장코드가 필요한 교회는 해당 공동체 관리자 화면의 서버 변경 기능을 사용합니다.
                             </p>
                             <div className="flex flex-wrap gap-2">
                                 <button
@@ -1567,15 +1449,6 @@ const PlatformAdminView = ({
                                     {accessSecretsMigrating && accessSecretsOperation === 'dryRun'
                                         ? `사전점검 중... (${accessSecretsProgress.done}/${accessSecretsProgress.total || '?'})`
                                         : '1. 쓰기 없는 사전점검'}
-                                </button>
-                                <button
-                                    onClick={handleMigrateChurchAccessSecrets}
-                                    disabled={accessSecretsMigrating || accessSecretsReport?.dryRun !== true}
-                                    className="bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-                                >
-                                    {accessSecretsMigrating && accessSecretsOperation === 'execute'
-                                        ? `${accessSecretsProgress.phase === 'scan' ? '재점검' : accessSecretsProgress.phase === 'directory' ? '디렉토리 정리' : '이전'} 중... (${accessSecretsProgress.done}/${accessSecretsProgress.total || '?'})`
-                                        : '2. 확인 결과대로 실제 이전'}
                                 </button>
                             </div>
                             {accessSecretsReport && (
@@ -1683,7 +1556,7 @@ const PlatformAdminView = ({
                 <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
                         <h3 className="font-bold text-lg border-b pb-2">회원 정보 수정 ({editingUser.name})</h3>
-                        {editingUser.accountType !== 'personal' && <div>
+                        {editingUser.role === 'member' && editingUser.accountType !== 'personal' && <div>
                             <label className="block text-xs font-bold text-slate-500 mb-1">소속 교회</label>
                             <select value={editingUser.churchId || ''} onChange={e => {
                                 const church = churches.find(c => c.id === e.target.value);
@@ -1706,7 +1579,7 @@ const PlatformAdminView = ({
                             </select>
                             <p className="text-[11px] text-slate-400 mt-1">교회를 변경하면 부서와 소그룹은 다시 선택하도록 비워집니다.</p>
                         </div>}
-                        {editingUser.accountType !== 'personal' && <div>
+                        {editingUser.role === 'member' && editingUser.accountType !== 'personal' && <div>
                             <label className="block text-xs font-bold text-slate-500 mb-1">소속 공동체</label>
                             <select value={editingUser.departmentId || ''} onChange={e => {
                                 const comm = departments.find(c => c.id === e.target.value);
@@ -1715,7 +1588,7 @@ const PlatformAdminView = ({
                                 {departments.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
                         </div>}
-                        {editingUser.accountType !== 'personal' && <div>
+                        {editingUser.role === 'member' && editingUser.accountType !== 'personal' && <div>
                             <label className="block text-xs font-bold text-slate-500 mb-1">소그룹</label>
                             <select value={editingUser.subgroupId || ''} onChange={e => setEditingUser({ ...editingUser, subgroupId: e.target.value })} className="w-full border rounded p-2 text-sm">
                                 {(() => {
@@ -1724,7 +1597,8 @@ const PlatformAdminView = ({
                                 })()}
                             </select>
                         </div>}
-                        {editingUser.accountType === 'personal' && <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-700">개인 계정의 공동체 소속은 roster에서 관리됩니다. 이 화면에서는 읽기 진도만 수정합니다.</div>}
+                        {editingUser.role === 'member' && editingUser.accountType === 'personal' && <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-700">개인 계정의 공동체 소속은 roster에서 관리됩니다. 이 화면에서는 읽기 진도만 수정합니다.</div>}
+                        {editingUser.role !== 'member' && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">관리자 계정의 소속 교회는 권한 범위를 결정하므로 이 화면에서 변경할 수 없습니다. 정식 관리자 위임 절차를 이용해주세요.</div>}
                         <div className="grid grid-cols-2 gap-3">
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 mb-1">현재 Day</label>

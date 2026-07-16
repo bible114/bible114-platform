@@ -965,6 +965,107 @@ Deno.test("관리자 수령·환불 요청은 구매 ID와 레거시 지갑만 �
     }), "INVALID_PAYLOAD");
 });
 
+Deno.test("교회 관리자 가입은 서버 권위 생성에 필요한 exact 입력만 받는다", () => {
+  const requestId = "123e4567-e89b-42d3-a456-426614174000";
+  const valid = {
+    action: "completeChurchAdminSignup",
+    requestId,
+    name: "관리자",
+    churchName: "성서교회",
+    pastorName: "담임목사",
+    denomination: "대한예수교장로회",
+    entryCode: "safe-code",
+    departments: [{ id: "adult", name: "장년", subgroups: [] }],
+    password: "secret1",
+    consent: { schemaVersion: 1 },
+  };
+  const parsed = parsePlatformApiRequest(valid);
+  assert(parsed.action === "completeChurchAdminSignup", "signup rejected");
+  if (parsed.action !== "completeChurchAdminSignup") return;
+  assert(parsed.churchName === "성서교회", "church name mismatch");
+  assert(parsed.password === "secret1", "password mismatch");
+
+  const google = parsePlatformApiRequest({ ...valid, password: null });
+  assert(
+    google.action === "completeChurchAdminSignup" && google.password === null,
+    "google signup rejected",
+  );
+  for (
+    const invalid of [
+      { ...valid, uid: "forged" },
+      { ...valid, churchName: " 성서교회" },
+      { ...valid, pastorName: "bad\nname" },
+      { ...valid, entryCode: "123" },
+      { ...valid, departments: {} },
+      { ...valid, consent: [] },
+      { ...valid, password: "short" },
+    ]
+  ) {
+    assertRequestError(
+      () => parsePlatformApiRequest(invalid),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
+Deno.test("입장코드 회전과 무소속 점검은 버전 및 exact 입력만 받는다", () => {
+  const requestId = "123e4567-e89b-42d3-a456-426614174000";
+  const rotated = parsePlatformApiRequest({
+    action: "rotateChurchAccessCode",
+    requestId,
+    churchId: "church-1",
+    entryCode: "new-code",
+    expectedVersion: 0,
+  });
+  assert(
+    rotated.action === "rotateChurchAccessCode" &&
+      rotated.expectedVersion === 0,
+    "rotate rejected",
+  );
+  for (
+    const invalid of [
+      {
+        churchId: "unaffiliated_v1",
+        entryCode: "new-code",
+        expectedVersion: 0,
+      },
+      { churchId: " church-1", entryCode: "new-code", expectedVersion: 0 },
+      { churchId: "church-1", entryCode: " code", expectedVersion: 0 },
+      { churchId: "church-1", entryCode: "new-code", expectedVersion: -1 },
+      {
+        churchId: "church-1",
+        entryCode: "new-code",
+        expectedVersion: 0,
+        uid: "x",
+      },
+    ]
+  ) {
+    assertRequestError(
+      () =>
+        parsePlatformApiRequest({
+          action: "rotateChurchAccessCode",
+          requestId,
+          ...invalid,
+        }),
+      "INVALID_PAYLOAD",
+    );
+  }
+  const ensured = parsePlatformApiRequest({
+    action: "ensureUnaffiliatedChurch",
+    requestId,
+  });
+  assert(ensured.action === "ensureUnaffiliatedChurch", "ensure rejected");
+  assertRequestError(
+    () =>
+      parsePlatformApiRequest({
+        action: "ensureUnaffiliatedChurch",
+        requestId,
+        churchId: "unaffiliated_v1",
+      }),
+    "INVALID_PAYLOAD",
+  );
+});
+
 Deno.test("알 수 없는 action은 거부한다", () => {
   assertRequestError(
     () =>

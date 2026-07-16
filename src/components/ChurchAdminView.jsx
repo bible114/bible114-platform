@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { db, firebase } from '../utils/firebase';
+import { auth, db, firebase } from '../utils/firebase';
 import ChurchAdminTutorial from './ChurchAdminTutorial';
-import { sha256 } from '../utils/crypto';
 import { fetchMemberCredentials } from '../utils/memberCredentials';
 import { setMemberPasswordByAdmin } from '../utils/adminPassword';
 import { calculateSubgroupStats, computeAtRisk } from '../utils/statsUtils';
@@ -39,6 +38,7 @@ import {
     adminDeliverPurchase,
     adminRefundPurchase,
     createRequestId,
+    rotateChurchAccessCode,
 } from '../utils/platformApi';
 import { reconcileStoredRequestIds } from '../utils/adminTalentRequests';
 
@@ -207,6 +207,28 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [churchInfo, setChurchInfo] = useState(null);
     const [newChurchCode, setNewChurchCode] = useState('');
     const [savingCode, setSavingCode] = useState(false);
+    const pendingChurchCodeRequestRef = useRef(null);
+    const churchCodeActionRef = useRef(0);
+    const churchCodeMountedRef = useRef(true);
+    const currentUserRef = useRef(currentUser);
+    currentUserRef.current = currentUser;
+
+    useEffect(() => {
+        churchCodeMountedRef.current = true;
+        return () => {
+            churchCodeMountedRef.current = false;
+            churchCodeActionRef.current += 1;
+            pendingChurchCodeRequestRef.current = null;
+        };
+    }, []);
+
+    useEffect(() => {
+        // 같은 화면 인스턴스에서 계정/교회를 바꾸더라도 이전 요청과 입력을 넘기지 않는다.
+        churchCodeActionRef.current += 1;
+        pendingChurchCodeRequestRef.current = null;
+        setNewChurchCode('');
+        setSavingCode(false);
+    }, [currentUser?.uid, currentUser?.churchId]);
 
     // 조직 관리
     const [orgComms, setOrgComms] = useState([]);
@@ -904,36 +926,102 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     };
 
     const saveChurchCode = async () => {
+        const requestStartUser = currentUserRef.current;
+        const requestUid = requestStartUser?.uid;
+        const requestChurchId = requestStartUser?.churchId;
+        const requestContextIsCurrent = () => (
+            churchCodeMountedRef.current
+            && auth?.currentUser?.uid === requestUid
+            && currentUserRef.current?.uid === requestUid
+            && currentUserRef.current?.churchId === requestChurchId
+        );
+        if (!requestUid || !requestChurchId || !requestContextIsCurrent()) {
+            pendingChurchCodeRequestRef.current = null;
+            return;
+        }
         const normalizedChurchCode = normalizeChurchEntryCode(newChurchCode);
         if (!normalizedChurchCode) { alert('입장코드는 4~128자로 입력해주세요.'); return; }
+        const actionId = ++churchCodeActionRef.current;
+        const requestOwnsUi = () => (
+            requestContextIsCurrent() && churchCodeActionRef.current === actionId
+        );
+        const pendingMatchesRequest = candidate => (
+            candidate?.uid === requestUid
+            && candidate?.churchId === requestChurchId
+            && candidate?.entryCode === normalizedChurchCode
+        );
+        const pendingRequestIsCurrent = candidate => (
+            pendingMatchesRequest(candidate)
+            && pendingChurchCodeRequestRef.current?.requestId === candidate.requestId
+        );
+        const clearPendingIfCurrent = candidate => {
+            if (pendingRequestIsCurrent(candidate)) pendingChurchCodeRequestRef.current = null;
+        };
         setSavingCode(true);
+        let pending = pendingChurchCodeRequestRef.current;
+        if (pending && !pendingMatchesRequest(pending)) {
+            pendingChurchCodeRequestRef.current = null;
+            pending = null;
+        }
         try {
-            // private/access 갱신과 공개 문서의 레거시 비밀 삭제를 원자 처리한다.
-            const churchCodeHash = await sha256(normalizedChurchCode);
-            const churchRef = db.collection('churches').doc(currentUser.churchId);
-            const batch = db.batch();
-            const now = firebase.firestore.FieldValue.serverTimestamp();
-            batch.set(churchRef.collection('private').doc('access'), {
-                codeHash: churchCodeHash,
-                updatedAt: now,
-            }, { merge: true });
-            batch.set(churchRef, {
-                churchCode: firebase.firestore.FieldValue.delete(),
-                churchCodeHash: firebase.firestore.FieldValue.delete(),
-                code: firebase.firestore.FieldValue.delete(),
-                updatedAt: now,
-            }, { merge: true });
-            await batch.commit();
+            const churchRef = db.collection('churches').doc(requestChurchId);
+            if (!pending) {
+                const accessDoc = await churchRef.collection('private').doc('access').get({ source: 'server' });
+                if (!requestOwnsUi()) return;
+                const storedVersion = accessDoc.exists ? accessDoc.data()?.version : undefined;
+                const expectedVersion = storedVersion === undefined ? 0 : storedVersion;
+                if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) {
+                    throw new Error('현재 입장코드 버전을 확인할 수 없습니다.');
+                }
+                pending = {
+                    uid: requestUid,
+                    churchId: requestChurchId,
+                    entryCode: normalizedChurchCode,
+                    expectedVersion,
+                    requestId: createRequestId(),
+                };
+                pendingChurchCodeRequestRef.current = pending;
+            }
+            const result = await rotateChurchAccessCode({
+                churchId: pending.churchId,
+                entryCode: pending.entryCode,
+                expectedVersion: pending.expectedVersion,
+            }, {
+                requestId: pending.requestId,
+                expectedUid: requestUid,
+            });
+            if (!requestContextIsCurrent()) {
+                clearPendingIfCurrent(pending);
+                return;
+            }
+            if (!requestOwnsUi() || !pendingRequestIsCurrent(pending)) return;
+            if (result.result.version !== pending.expectedVersion + 1) {
+                throw new Error('입장코드 변경 버전을 확인할 수 없습니다.');
+            }
+            clearPendingIfCurrent(pending);
             setChurchInfo(previous => {
                 if (!previous) return previous;
-                const { churchCode: _churchCode, churchCodeHash: _churchCodeHash, ...safe } = previous;
+                const {
+                    churchCode: _churchCode,
+                    churchCodeHash: _churchCodeHash,
+                    code: _legacyCode,
+                    ...safe
+                } = previous;
                 return safe;
             });
+            setNewChurchCode('');
             alert('입장코드가 변경되었습니다!');
         } catch (e) {
-            alert('변경 실패');
+            if (!requestContextIsCurrent()) {
+                clearPendingIfCurrent(pending);
+                return;
+            }
+            if (!requestOwnsUi() || (pending && !pendingRequestIsCurrent(pending))) return;
+            if (pending && e?.retryable !== true) clearPendingIfCurrent(pending);
+            alert(e?.message || '변경 실패');
+        } finally {
+            if (requestOwnsUi()) setSavingCode(false);
         }
-        setSavingCode(false);
     };
 
     const saveOrg = async () => {

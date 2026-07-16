@@ -30,8 +30,37 @@ export const ADMIN_SET_CHURCH_VISIBILITY_ACTION =
   "adminSetChurchVisibility" as const;
 export const CONVERT_TO_PERSONAL_ACCOUNT_ACTION =
   "convertToPersonalAccount" as const;
+export const COMPLETE_CHURCH_ADMIN_SIGNUP_ACTION =
+  "completeChurchAdminSignup" as const;
+export const ROTATE_CHURCH_ACCESS_CODE_ACTION =
+  "rotateChurchAccessCode" as const;
+export const ENSURE_UNAFFILIATED_CHURCH_ACTION =
+  "ensureUnaffiliatedChurch" as const;
 
 export type PlatformApiRequest =
+  | {
+    action: typeof COMPLETE_CHURCH_ADMIN_SIGNUP_ACTION;
+    requestId: string;
+    name: string;
+    churchName: string;
+    pastorName: string;
+    denomination: string;
+    entryCode: string;
+    departments: unknown[];
+    password: string | null;
+    consent: Record<string, unknown>;
+  }
+  | {
+    action: typeof ROTATE_CHURCH_ACCESS_CODE_ACTION;
+    requestId: string;
+    churchId: string;
+    entryCode: string;
+    expectedVersion: number;
+  }
+  | {
+    action: typeof ENSURE_UNAFFILIATED_CHURCH_ACTION;
+    requestId: string;
+  }
   | {
     action: typeof CONVERT_TO_PERSONAL_ACCOUNT_ACTION;
     requestId: string;
@@ -290,12 +319,115 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     dryRun,
     trigger,
     hidden,
+    churchName,
+    pastorName,
+    denomination,
+    departments,
+    password,
+    consent,
+    expectedVersion,
   } = body as Record<string, unknown>;
   if (!isRequestId(requestId)) {
     throw new PlatformApiRequestError("INVALID_REQUEST_ID");
   }
 
   if (action === PREFLIGHT_ACTION) return { action, requestId };
+  if (action === ENSURE_UNAFFILIATED_CHURCH_ACTION) {
+    const allowedKeys = new Set(["action", "requestId"]);
+    if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return { action, requestId };
+  }
+  if (action === ROTATE_CHURCH_ACCESS_CODE_ACTION) {
+    const allowedKeys = new Set([
+      "action",
+      "requestId",
+      "churchId",
+      "entryCode",
+      "expectedVersion",
+    ]);
+    const normalizedChurchId = safeDocumentId(churchId);
+    const normalizedEntryCode = typeof entryCode === "string"
+      ? entryCode.trim()
+      : "";
+    if (
+      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+      !normalizedChurchId || normalizedChurchId !== churchId ||
+      normalizedChurchId === "." || normalizedChurchId === ".." ||
+      normalizedChurchId === "unaffiliated_v1" ||
+      normalizedEntryCode !== entryCode ||
+      normalizedEntryCode.length < 4 || normalizedEntryCode.length > 128 ||
+      /[\u0000-\u001f\u007f]/.test(normalizedEntryCode) ||
+      !Number.isSafeInteger(expectedVersion) || Number(expectedVersion) < 0 ||
+      Number(expectedVersion) >= 999_999_999
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return {
+      action,
+      requestId,
+      churchId: normalizedChurchId,
+      entryCode: normalizedEntryCode,
+      expectedVersion: Number(expectedVersion),
+    };
+  }
+  if (action === COMPLETE_CHURCH_ADMIN_SIGNUP_ACTION) {
+    const allowedKeys = new Set([
+      "action",
+      "requestId",
+      "name",
+      "churchName",
+      "pastorName",
+      "denomination",
+      "entryCode",
+      "departments",
+      "password",
+      "consent",
+    ]);
+    const strictText = (
+      value: unknown,
+      { min = 0, max }: { min?: number; max: number },
+    ) => {
+      if (typeof value !== "string" || value !== value.trim()) return null;
+      return value.length >= min && value.length <= max &&
+          !/[\u0000-\u001f\u007f]/.test(value)
+        ? value
+        : null;
+    };
+    const normalizedName = strictText(name, { min: 1, max: 50 });
+    const normalizedChurchName = strictText(churchName, { min: 1, max: 200 });
+    const normalizedPastorName = strictText(pastorName, { min: 1, max: 100 });
+    const normalizedDenomination = strictText(denomination, {
+      min: 0,
+      max: 100,
+    });
+    const normalizedEntryCode = strictText(entryCode, { min: 4, max: 128 });
+    if (
+      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+      normalizedName === null || normalizedChurchName === null ||
+      normalizedPastorName === null || normalizedDenomination === null ||
+      normalizedEntryCode === null || !Array.isArray(departments) ||
+      !consent || typeof consent !== "object" || Array.isArray(consent) ||
+      !(password === null ||
+        (typeof password === "string" && password.length >= 6 &&
+          password.length <= 128 && !/[\u0000-\u001f\u007f]/.test(password)))
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return {
+      action,
+      requestId,
+      name: normalizedName,
+      churchName: normalizedChurchName,
+      pastorName: normalizedPastorName,
+      denomination: normalizedDenomination,
+      entryCode: normalizedEntryCode,
+      departments,
+      password,
+      consent: consent as Record<string, unknown>,
+    };
+  }
   if (action === CONVERT_TO_PERSONAL_ACCOUNT_ACTION) {
     const allowedKeys = new Set(["action", "requestId"]);
     if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
