@@ -3,6 +3,8 @@ import { KAKAO_AUTH_URL, KAKAO_REST_KEY } from '../data/constants.js';
 export const KAKAO_STATE_KEY = 'b114_kakao_state_v1';
 export const KAKAO_RETURNING_KEY = 'b114_kakao_returning_v1';
 export const KAKAO_LINK_RETURNING_KEY = 'b114_kakao_link_returning_v1';
+export const KAKAO_ADMIN_SIGNUP_RETURNING_KEY = 'b114_kakao_admin_signup_returning_v1';
+export const KAKAO_ADMIN_SIGNUP_DRAFT_KEY = 'b114_kakao_admin_signup_draft_v1';
 
 export const createKakaoState = () => {
     const bytes = new Uint8Array(24);

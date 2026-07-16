@@ -59,6 +59,7 @@ const App = () => {
     const [view, setView] = useState('login');
     const [tempUser, setTempUser] = useState(null);
     const [loginInitialTab, setLoginInitialTab] = useState('member');
+    const [pendingKakaoAdminSignup, setPendingKakaoAdminSignup] = useState(null);
     const [showSecretShopUnlocked, setShowSecretShopUnlocked] = useState(false);
     const [completionCelebration, setCompletionCelebration] = useState(null);
     // [Phase 3] 교회 전용 링크(?church=ID) — 로그인 화면 교회 preselect용. 최초 마운트 시 1회만 읽는다.
@@ -560,6 +561,7 @@ const App = () => {
         handleChurchAdminSignup,
         handleGoogleAdminLogin,
         handleGoogleAdminSignupStart,
+        handleKakaoAdminSignupStart,
         cancelGoogleAdminSignup,
     } = useAuth({
         setCurrentUser,
@@ -570,6 +572,13 @@ const App = () => {
         loadChurchCommunities,
         loadSuperAdminData,
         onAdminProviderNotice: adminAuthToasts.info,
+        onKakaoAdminSignupReady: profile => {
+            setPendingKakaoAdminSignup(profile || null);
+            if (profile) {
+                setLoginInitialTab('adminSignup');
+                setView('login');
+            }
+        },
     });
 
     const handlePlanTypeSelect = (typeId) => { setSelectedPlanType(typeId); setView('bible_version_select'); };
@@ -738,6 +747,7 @@ const App = () => {
         resetReaderSessionState();
         setCurrentUser(null); setTempUser(null); setChurchCommunities([]);
         setAllUsers([]); setAllChurches([]);
+        setPendingKakaoAdminSignup(null);
         setLoginInitialTab('member');
         setErrorMsg(''); setView('login'); setHasReadToday(false); setEditingUser(null); setDepartmentMembers([]);
     };
@@ -747,6 +757,7 @@ const App = () => {
         if (auth) auth.signOut();
         resetReaderSessionState();
         setCurrentUser(null); setTempUser(null); setChurchCommunities([]);
+        setPendingKakaoAdminSignup(null);
         setErrorMsg(''); setView('login'); setHasReadToday(false); setEditingUser(null); setDepartmentMembers([]);
     };
 
@@ -843,7 +854,9 @@ const App = () => {
                 onChurchAdminLogin={handleChurchAdminLogin}
                 onGoogleAdminLogin={handleGoogleAdminLogin}
                 onGoogleAdminSignupStart={handleGoogleAdminSignupStart}
+                onKakaoAdminSignupStart={handleKakaoAdminSignupStart}
                 onGoogleAdminSignupCancel={cancelGoogleAdminSignup}
+                initialKakaoAdminSignup={pendingKakaoAdminSignup}
                 onMemberSignup={handleMemberSignup}
                 onPersonalSignup={handlePersonalSignup}
                 onGooglePersonalSignup={handleGooglePersonalSignup}

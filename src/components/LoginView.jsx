@@ -121,7 +121,9 @@ const LoginView = ({
     onKakaoStart,
     onChurchAdminSignup,
     onGoogleAdminSignupStart,
+    onKakaoAdminSignupStart,
     onGoogleAdminSignupCancel,
+    initialKakaoAdminSignup = null,
     errorMsg,
     setErrorMsg,
     presetChurchId,
@@ -215,6 +217,7 @@ const LoginView = ({
     const [loading, setLoading] = useState(false);
     const [googleAdminLoading, setGoogleAdminLoading] = useState(false);
     const [googleAdminSignupLoading, setGoogleAdminSignupLoading] = useState(false);
+    const [kakaoAdminSignupLoading, setKakaoAdminSignupLoading] = useState(false);
     const [googleAdminSignupProfile, setGoogleAdminSignupProfile] = useState(null);
     const [guestMigrationPreview, setGuestMigrationPreview] = useState(null);
 
@@ -235,6 +238,36 @@ const LoginView = ({
         activeTabRef.current = nextTab;
         setActiveTab(nextTab);
     }, [initialTab]);
+
+    useEffect(() => {
+        if (!initialKakaoAdminSignup || typeof initialKakaoAdminSignup !== 'object') return;
+        const draft = initialKakaoAdminSignup.draft && typeof initialKakaoAdminSignup.draft === 'object'
+            ? initialKakaoAdminSignup.draft
+            : {};
+        if (initialKakaoAdminSignup.uid && initialKakaoAdminSignup.provider === 'kakao.com') {
+            setGoogleAdminSignupProfile({
+                provider: 'kakao.com',
+                uid: String(initialKakaoAdminSignup.uid),
+                email: String(initialKakaoAdminSignup.email || ''),
+                name: String(initialKakaoAdminSignup.name || ''),
+            });
+        } else {
+            setGoogleAdminSignupProfile(null);
+        }
+        setActiveTab('adminSignup');
+        setSignupStep(1);
+        setAName(String(draft.name || initialKakaoAdminSignup.name || ''));
+        setAEmail(String(draft.contactEmail || initialKakaoAdminSignup.email || ''));
+        setAChurchName(String(draft.churchName || ''));
+        setAPastorName(String(draft.pastorName || ''));
+        setADenomination(String(draft.denomination || ''));
+        setAChurchCode(String(draft.churchCode || ''));
+        if (draft.policyConsents && typeof draft.policyConsents === 'object') {
+            setAPolicyConsents(draft.policyConsents);
+        }
+        setAAgeConfirmed14Plus(draft.ageConfirmed14Plus === true);
+        if (Array.isArray(draft.orgComms) && draft.orgComms.length > 0) setOrgComms(draft.orgComms);
+    }, [initialKakaoAdminSignup]);
 
     useEffect(() => {
         if (activeTab !== 'memberSignup' && activeTab !== 'personalSignup') return;
@@ -284,7 +317,7 @@ const LoginView = ({
         if (googleAdminSignupCancelRef.current) {
             return googleAdminSignupCancelRef.current;
         }
-        if (!allowWithoutProfile && !googleAdminSignupProfile) return;
+        if (!allowWithoutProfile && !googleAdminSignupProfile && !initialKakaoAdminSignup) return;
 
         const cancellation = (async () => {
             setLoading(true);
@@ -415,6 +448,7 @@ const LoginView = ({
                 return;
             }
             const normalizedProfile = {
+                provider: 'google.com',
                 uid: String(profile.uid),
                 email: String(profile.email),
                 name: String(profile.name || ''),
@@ -426,6 +460,28 @@ const LoginView = ({
             setAPwConfirm('');
         } finally {
             setGoogleAdminSignupLoading(false);
+            setLoading(false);
+        }
+    };
+
+    const handleKakaoAdminSignupStart = async () => {
+        clearError();
+        setLoading(true);
+        setKakaoAdminSignupLoading(true);
+        try {
+            await onKakaoAdminSignupStart?.({
+                name: aName,
+                contactEmail: aEmail,
+                churchName: aChurchName,
+                pastorName: aPastorName,
+                denomination: aDenomination,
+                churchCode: aChurchCode,
+                policyConsents: aPolicyConsents,
+                ageConfirmed14Plus: aAgeConfirmed14Plus,
+                orgComms,
+            });
+        } finally {
+            setKakaoAdminSignupLoading(false);
             setLoading(false);
         }
     };
@@ -522,14 +578,15 @@ const LoginView = ({
 
     const handleAdminStep1 = (e) => {
         e.preventDefault();
-        const isGoogleSignup = !!googleAdminSignupProfile;
-        if (!aName.trim() || !aChurchName.trim() || !aPastorName.trim() || !aChurchCode.trim()
-            || (isGoogleSignup ? (!googleAdminSignupProfile.uid || !googleAdminSignupProfile.email) : (!aEmail.trim() || !aPw))) {
+        const isSocialSignup = !!googleAdminSignupProfile;
+        if (!aName.trim() || !aEmail.trim() || !aChurchName.trim() || !aPastorName.trim() || !aChurchCode.trim()
+            || (isSocialSignup ? !googleAdminSignupProfile.uid : !aPw)) {
             setErrorMsg('모든 항목을 입력해주세요.');
             return;
         }
-        if (!isGoogleSignup && aPw !== aPwConfirm) { setErrorMsg('비밀번호가 일치하지 않습니다.'); return; }
-        if (!isGoogleSignup && aPw.length < 6) { setErrorMsg('비밀번호는 6자리 이상이어야 합니다.'); return; }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(aEmail.trim())) { setErrorMsg('연락받을 수 있는 이메일을 정확히 입력해주세요.'); return; }
+        if (!isSocialSignup && aPw !== aPwConfirm) { setErrorMsg('비밀번호가 일치하지 않습니다.'); return; }
+        if (!isSocialSignup && aPw.length < 6) { setErrorMsg('비밀번호는 6자리 이상이어야 합니다.'); return; }
         if (!normalizeChurchEntryCode(aChurchCode)) {
             setErrorMsg('교회 입장코드는 4~128자로 입력해주세요.');
             return;
@@ -559,6 +616,7 @@ const LoginView = ({
             const result = await onChurchAdminSignup({
                 name: aName.trim(),
                 email: googleAdminSignupProfile?.email || aEmail.trim(),
+                contactEmail: aEmail.trim().toLowerCase(),
                 password: googleAdminSignupProfile ? null : aPw,
                 churchName: aChurchName.trim(),
                 pastorName: aPastorName.trim(),
@@ -902,10 +960,19 @@ const LoginView = ({
                 </div>
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-center text-[12px] text-amber-900">
                     성도이신가요? 가입은 첫 화면의 카카오로 시작을 눌러주세요.
-                    <button type="button" onClick={() => { setActiveTab('member'); setMemberStep('entry'); clearError(); }} className="ml-1 font-black underline underline-offset-2">← 돌아가기</button>
+                    <button type="button" onClick={async () => { await cancelGoogleAdminSignupAndClear(); setActiveTab('member'); setMemberStep('entry'); clearError(); }} className="ml-1 font-black underline underline-offset-2">← 돌아가기</button>
                 </div>
                 {!googleAdminSignupProfile && (
                     <>
+                        <button
+                            type="button"
+                            onClick={handleKakaoAdminSignupStart}
+                            disabled={loading}
+                            aria-label="카카오 계정으로 공동체 등록 시작"
+                            className="w-full rounded-full bg-[#FEE500] py-3.5 text-sm font-black text-[#191919] transition-colors hover:bg-[#f5dc00] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {kakaoAdminSignupLoading ? '카카오 계정 확인 중...' : '카카오로 공동체 등록 시작'}
+                        </button>
                         {isKakaoTalkBrowser ? (
                             <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12px] leading-relaxed text-amber-800">
                                 카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 우측 하단 ⋯ 메뉴에서 '다른 브라우저로 열기'를 눌러주세요.
@@ -929,17 +996,23 @@ const LoginView = ({
                     </>
                 )}
                 {googleAdminSignupProfile && (
-                    <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                    <div className={`rounded-xl border px-4 py-3 ${googleAdminSignupProfile.provider === 'kakao.com'
+                        ? 'border-yellow-300 bg-yellow-50'
+                        : 'border-blue-200 bg-blue-50'}`}>
                         <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                                <p className="text-[11px] font-bold text-blue-700">G 구글 계정으로 시작</p>
-                                <p className="mt-1 truncate text-[13px] font-semibold text-ink">{googleAdminSignupProfile.email}</p>
+                                <p className="text-[11px] font-bold text-slate-700">
+                                    {googleAdminSignupProfile.provider === 'kakao.com' ? '카카오 계정으로 시작' : 'G 구글 계정으로 시작'}
+                                </p>
+                                <p className="mt-1 truncate text-[13px] font-semibold text-ink">
+                                    {googleAdminSignupProfile.email || googleAdminSignupProfile.name || '카카오 계정 확인 완료'}
+                                </p>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => { void cancelGoogleAdminSignupAndClear(); }}
                                 disabled={loading}
-                                className="shrink-0 text-[11px] font-semibold text-blue-700 underline underline-offset-2 disabled:opacity-50"
+                                className="shrink-0 text-[11px] font-semibold text-slate-700 underline underline-offset-2 disabled:opacity-50"
                             >
                                 {googleAdminSignupLoading ? '전환 중...' : '이메일 방식으로 변경'}
                             </button>
@@ -947,17 +1020,16 @@ const LoginView = ({
                     </div>
                 )}
                 <input type="text" value={aName} onChange={e => setAName(e.target.value)} placeholder="이름" className={inputCls} />
-                {googleAdminSignupProfile ? (
-                    <input
-                        type="email"
-                        readOnly
-                        value={googleAdminSignupProfile.email}
-                        aria-label="구글 계정 이메일"
-                        className={`${inputCls} cursor-not-allowed bg-slate-100 text-ink/60`}
-                    />
-                ) : (
+                <input
+                    type="email"
+                    value={aEmail}
+                    onChange={e => setAEmail(e.target.value)}
+                    placeholder="관리자 연락 이메일 (슈퍼관리자 연락용)"
+                    className={inputCls}
+                />
+                <p className="-mt-1 ml-1 text-[10px] text-ink/45">로그인 방식과 관계없이 운영 안내가 필요할 때 이 주소로 연락드립니다.</p>
+                {!googleAdminSignupProfile && (
                     <>
-                        <input type="email" value={aEmail} onChange={e => setAEmail(e.target.value)} placeholder="이메일" className={inputCls} />
                         <input type="password" value={aPw} onChange={e => setAPw(e.target.value)} placeholder="비밀번호 (6자리 이상)" className={inputCls} />
                         <input type="password" value={aPwConfirm} onChange={e => setAPwConfirm(e.target.value)} placeholder="비밀번호 확인"
                             className={`w-full bg-cream border rounded-lg px-3.5 py-3 text-sm placeholder-ink/40 focus:outline-none focus:ring-2 transition-all font-sans ${aPwConfirm && aPw !== aPwConfirm ? 'border-red-400 focus:ring-red-400/40' : 'border-hairline focus:ring-accent/40 focus:border-accent/60'}`} />

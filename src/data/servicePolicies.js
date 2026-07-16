@@ -1,4 +1,4 @@
-export const SERVICE_POLICY_VERSION = '2026-07-14';
+export const SERVICE_POLICY_VERSION = '2026-07-16';
 
 const termsSections = [
     {
@@ -56,7 +56,7 @@ const privacySections = [
             '본인 확인, 로그인, 비밀번호 지원과 계정 복구',
             '성경 읽기 진도·퀴즈·메모·보상 기능 제공',
             '공동체 소속 확인, 구성원 명부·통계·순위·공지 기능 제공',
-            '부정 이용 방지, 문의·분쟁 처리, 서비스 안정성 개선',
+            '공동체 관리자 운영 안내·연락, 부정 이용 방지, 문의·분쟁 처리, 서비스 안정성 개선',
         ],
     },
     {

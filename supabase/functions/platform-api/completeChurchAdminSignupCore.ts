@@ -1,7 +1,10 @@
 export const COMPLETE_CHURCH_ADMIN_SIGNUP_ACTION =
   "completeChurchAdminSignup" as const;
 
-export const COMMUNITY_ADMIN_POLICY_VERSION = "2026-07-14" as const;
+export const COMMUNITY_ADMIN_POLICY_VERSION = "2026-07-16" as const;
+
+export const KAKAO_ADMIN_PROVIDER_CLAIM = "bible114_auth_provider" as const;
+export const KAKAO_ADMIN_ID_CLAIM = "bible114_kakao_id" as const;
 
 const REQUEST_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -13,12 +16,17 @@ const ACTION_CHURCH_ID_PATTERN = /^church_[0-9a-f]{32}$/i;
 
 type UnknownRecord = Record<string, unknown>;
 
-export type ChurchAdminSignupProvider = "password" | "google.com";
+export type ChurchAdminSignupProvider =
+  | "password"
+  | "google.com"
+  | "kakao.com";
 
 export type CompleteChurchAdminSignupIdentity = {
   uid: unknown;
   tokenEmail: unknown;
   signInProvider: unknown;
+  kakaoProviderAttestation: unknown;
+  kakaoId: unknown;
 };
 
 export type ChurchAdminSignupSubgroup = {
@@ -53,7 +61,8 @@ export type ChurchAdminSignupConsent = {
   agreedAt: string;
   source:
     | "email_community_admin_signup"
-    | "google_community_admin_signup";
+    | "google_community_admin_signup"
+    | "kakao_community_admin_signup";
   locale: "ko-KR";
   audience: "communityAdmin";
   ageAssessment: {
@@ -87,6 +96,7 @@ export type CompleteChurchAdminSignupInput = {
   entryCode: unknown;
   departments: unknown;
   password: unknown;
+  contactEmail: unknown;
   consent: unknown;
 };
 
@@ -94,7 +104,8 @@ export type ValidatedChurchAdminSignup = {
   requestId: string;
   churchId: string;
   uid: string;
-  tokenEmail: string;
+  tokenEmail: string | null;
+  contactEmail: string;
   signInProvider: ChurchAdminSignupProvider;
   name: string;
   churchName: string;
@@ -117,6 +128,8 @@ export type CompleteChurchAdminSignupUser = {
   uid?: unknown;
   name?: unknown;
   email?: unknown;
+  authProvider?: unknown;
+  authProviders?: unknown;
   password?: unknown;
   role?: unknown;
   churchId?: unknown;
@@ -231,6 +244,30 @@ const canonicalEmail = (value: unknown): string | null => {
   return normalized;
 };
 
+const canonicalContactEmail = (value: unknown): string | null => {
+  const normalized = canonicalEmail(value);
+  return normalized && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)
+    ? normalized
+    : null;
+};
+
+const canonicalKakaoId = (value: unknown): string | null =>
+  typeof value === "string" && /^[1-9]\d{0,19}$/.test(value) ? value : null;
+
+export const churchAdminSignupIdentityFromVerifiedUser = (verifiedUser: {
+  uid: string;
+  signInProvider: string | null;
+  claims: Record<string, unknown>;
+}): CompleteChurchAdminSignupIdentity => ({
+  uid: verifiedUser.uid,
+  tokenEmail: typeof verifiedUser.claims.email === "string"
+    ? verifiedUser.claims.email
+    : null,
+  signInProvider: verifiedUser.signInProvider,
+  kakaoProviderAttestation: verifiedUser.claims[KAKAO_ADMIN_PROVIDER_CLAIM],
+  kakaoId: verifiedUser.claims[KAKAO_ADMIN_ID_CLAIM],
+});
+
 const validateAgreement = (value: unknown): value is { agreed: true } =>
   isRecord(value) && exactKeys(value, ["agreed"]) && value.agreed === true;
 
@@ -257,7 +294,9 @@ const validateConsent = (
     value.source !==
       (provider === "password"
         ? "email_community_admin_signup"
-        : "google_community_admin_signup") ||
+        : provider === "google.com"
+        ? "google_community_admin_signup"
+        : "kakao_community_admin_signup") ||
     !isCanonicalFirestoreTimestamp(value.agreedAt) ||
     !isRecord(value.policyVersions) ||
     !exactKeys(value.policyVersions, [
@@ -388,11 +427,27 @@ export const validateCompleteChurchAdminSignup = (
     throw new CompleteChurchAdminSignupValidationError("INVALID_IDENTITY");
   }
   const uid = normalizeChurchAdminSignupDocumentId(identityValue.uid);
-  const tokenEmail = canonicalEmail(identityValue.tokenEmail);
-  const provider = identityValue.signInProvider;
+  const rawTokenEmail = identityValue.tokenEmail;
+  const tokenEmail = rawTokenEmail === null || rawTokenEmail === undefined ||
+      rawTokenEmail === ""
+    ? null
+    : canonicalEmail(rawTokenEmail);
+  const rawProvider = identityValue.signInProvider;
+  const kakaoId = canonicalKakaoId(identityValue.kakaoId);
+  const provider: ChurchAdminSignupProvider | null = rawProvider === "password"
+    ? "password"
+    : rawProvider === "google.com"
+    ? "google.com"
+    : rawProvider === "custom" && kakaoId &&
+        identityValue.kakaoProviderAttestation === "kakao.com" &&
+        uid === `kakao:${kakaoId}`
+    ? "kakao.com"
+    : null;
   if (
-    !uid || !tokenEmail ||
-    (provider !== "password" && provider !== "google.com")
+    !uid || !provider ||
+    (rawTokenEmail !== null && rawTokenEmail !== undefined &&
+      rawTokenEmail !== "" && !tokenEmail) ||
+    (provider !== "kakao.com" && !tokenEmail)
   ) {
     throw new CompleteChurchAdminSignupValidationError("INVALID_IDENTITY");
   }
@@ -406,6 +461,7 @@ export const validateCompleteChurchAdminSignup = (
       "entryCode",
       "departments",
       "password",
+      "contactEmail",
       "consent",
     ])
   ) {
@@ -424,13 +480,23 @@ export const validateCompleteChurchAdminSignup = (
   });
   const entryCode = canonicalText(inputValue.entryCode, { min: 4, max: 128 });
   const password = inputValue.password;
+  const rawContactEmail = inputValue.contactEmail;
+  const suppliedContactEmail = rawContactEmail === null ||
+      rawContactEmail === undefined
+    ? null
+    : canonicalContactEmail(rawContactEmail);
+  const contactEmail = suppliedContactEmail ||
+    (provider === "kakao.com" ? null : tokenEmail);
   if (
     !requestId || !name || !churchName || !pastorName ||
     denomination === null || !entryCode ||
     (provider === "password" &&
       (typeof password !== "string" || password.length < 6 ||
         password.length > 128 || CONTROL_CHARACTER_PATTERN.test(password))) ||
-    (provider === "google.com" && password !== null)
+    (provider !== "password" && password !== null) ||
+    (rawContactEmail !== null && rawContactEmail !== undefined &&
+      !suppliedContactEmail) ||
+    !contactEmail
   ) {
     throw new CompleteChurchAdminSignupValidationError("INVALID_INPUT");
   }
@@ -441,6 +507,7 @@ export const validateCompleteChurchAdminSignup = (
     churchId: churchIdForAdminSignupRequest(requestId),
     uid,
     tokenEmail,
+    contactEmail,
     signInProvider: provider,
     name,
     churchName,
@@ -557,6 +624,8 @@ export const validateCanonicalChurchAdminSignupState = (input: {
     (input.user.uid !== undefined && input.user.uid !== signup.uid) ||
     input.user.role !== "churchAdmin" || input.user.churchId !== churchId ||
     input.user.name !== signup.name || input.user.email !== signup.tokenEmail ||
+    input.user.authProvider !== signup.signInProvider ||
+    !exactDeepEqual(input.user.authProviders, [signup.signInProvider]) ||
     input.user.churchName !== signup.churchName ||
     (input.user.isDeleted !== undefined && input.user.isDeleted !== false) ||
     (input.user.password !== signup.password && input.user.password !== null) ||
@@ -570,7 +639,7 @@ export const validateCanonicalChurchAdminSignupState = (input: {
       input.church.hiddenFromDirectory !== false) ||
     !isRecord(input.admin) || input.admin.adminUid !== signup.uid ||
     !exactKeys(input.admin, ["adminUid", "adminEmail", "updatedAt"]) ||
-    input.admin.adminEmail !== signup.tokenEmail ||
+    input.admin.adminEmail !== signup.contactEmail ||
     !isCanonicalFirestoreTimestamp(input.admin.updatedAt) ||
     !isRecord(input.access) ||
     !exactKeys(input.access, ["codeHash", "updatedAt"]) ||

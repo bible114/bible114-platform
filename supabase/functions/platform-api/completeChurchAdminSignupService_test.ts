@@ -69,19 +69,23 @@ const assertPlatformError = async (
 
 const clone = <T>(value: T): T => structuredClone(value);
 
-const consent = (provider: "password" | "google.com" = "password") => ({
+const consent = (
+  provider: "password" | "google.com" | "kakao.com" = "password",
+) => ({
   schemaVersion: 1,
   policyVersions: {
-    terms: "2026-07-14",
-    privacy: "2026-07-14",
-    sensitive: "2026-07-14",
-    community: "2026-07-14",
-    childGuardian: "2026-07-14",
+    terms: "2026-07-16",
+    privacy: "2026-07-16",
+    sensitive: "2026-07-16",
+    community: "2026-07-16",
+    childGuardian: "2026-07-16",
   },
   agreedAt: "2026-07-16T03:00:00.000Z",
   source: provider === "password"
     ? "email_community_admin_signup"
-    : "google_community_admin_signup",
+    : provider === "google.com"
+    ? "google_community_admin_signup"
+    : "kakao_community_admin_signup",
   locale: "ko-KR",
   audience: "communityAdmin",
   ageAssessment: {
@@ -107,17 +111,19 @@ const consent = (provider: "password" | "google.com" = "password") => ({
 });
 
 const identity = (
-  provider: "password" | "google.com" = "password",
+  provider: "password" | "google.com" | "kakao.com" = "password",
   overrides: Record<string, unknown> = {},
 ): CompleteChurchAdminSignupIdentity => ({
-  uid: UID,
-  tokenEmail: "admin@example.com",
-  signInProvider: provider,
+  uid: provider === "kakao.com" ? "kakao:12345" : UID,
+  tokenEmail: provider === "kakao.com" ? null : "admin@example.com",
+  signInProvider: provider === "kakao.com" ? "custom" : provider,
+  kakaoProviderAttestation: provider === "kakao.com" ? "kakao.com" : null,
+  kakaoId: provider === "kakao.com" ? "12345" : null,
   ...overrides,
 });
 
 const input = (
-  provider: "password" | "google.com" = "password",
+  provider: "password" | "google.com" | "kakao.com" = "password",
   overrides: Record<string, unknown> = {},
 ): CompleteChurchAdminSignupInput => ({
   requestId: REQUEST_ID,
@@ -132,6 +138,7 @@ const input = (
     subgroups: [{ id: "cell-1", name: "1구역" }],
   }],
   password: provider === "password" ? "secret-password" : null,
+  contactEmail: "contact@example.com",
   consent: consent(provider),
   ...overrides,
 });
@@ -321,6 +328,9 @@ Deno.test("공동체·관리자·private·두 디렉토리·원장을 한 transa
   assert(!harness.commits[0].paths.includes("settings/platformStats"));
   assertEquals(harness.state.get(userPath)?.password, "secret-password");
   assertEquals(harness.state.get(userPath)?.email, "admin@example.com");
+  assertEquals(harness.state.get(userPath)?.authProvider, "password");
+  assertEquals(harness.state.get(userPath)?.authProviders, ["password"]);
+  assertEquals(harness.state.get(adminPath)?.adminEmail, "contact@example.com");
   assertEquals(harness.state.get(userPath)?.startDate, "Thu Jul 16 2026");
   assertEquals(harness.state.get(accessPath)?.codeHash, HASH);
   assertEquals(harness.state.get(publicPath), {
@@ -350,6 +360,40 @@ Deno.test("Google 생성은 token email을 쓰고 password를 null로 고정한�
   assertEquals(
     (harness.state.get(ledgerPath)?.input as Data)?.signInProvider,
     "google.com",
+  );
+});
+
+Deno.test("Kakao 생성은 attested kakao UID를 쓰고 수동 연락 이메일은 private admin에만 둔다", async () => {
+  const harness = createHarness();
+  const result = await completeChurchAdminSignup(
+    SERVICE,
+    identity("kakao.com"),
+    input("kakao.com", { contactEmail: "kakao-contact@example.com" }),
+    harness.dependencies,
+  );
+  const kakaoUserPath = "users/kakao:12345";
+  const kakaoConsentPath = `${kakaoUserPath}/private/consent`;
+  assertEquals(result, { status: "created", churchId: CHURCH_ID });
+  assertEquals(harness.state.get(kakaoUserPath)?.email, null);
+  assertEquals(harness.state.get(kakaoUserPath)?.authProvider, "kakao.com");
+  assertEquals(harness.state.get(kakaoUserPath)?.authProviders, ["kakao.com"]);
+  assertEquals(harness.state.get(kakaoUserPath)?.password, null);
+  assertEquals(
+    harness.state.get(adminPath)?.adminEmail,
+    "kakao-contact@example.com",
+  );
+  assertEquals(
+    harness.state.get(kakaoConsentPath)?.source,
+    "kakao_community_admin_signup",
+  );
+  const ledgerInput = harness.state.get(ledgerPath)?.input as Data;
+  assertEquals(ledgerInput.signInProvider, "kakao.com");
+  assertEquals(ledgerInput.tokenEmail, null);
+  assertEquals(ledgerInput.contactEmail, "kakao-contact@example.com");
+  assert(
+    JSON.stringify(harness.state.get(churchPath)).includes("kakao-contact") ===
+      false,
+    "contact email leaked to public church",
   );
 });
 
@@ -562,6 +606,16 @@ Deno.test("같은 UUID 다른 payload 또는 actor 충돌을 거부한다", asyn
         SERVICE,
         identity(),
         input("password", { churchName: "다른교회" }),
+        harness.dependencies,
+      ),
+  );
+  await assertPlatformError(
+    "CONFLICT",
+    () =>
+      completeChurchAdminSignup(
+        SERVICE,
+        identity(),
+        input("password", { contactEmail: "different@example.com" }),
         harness.dependencies,
       ),
   );

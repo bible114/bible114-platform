@@ -33,7 +33,7 @@ for (const action of [
     assert.match(client, new RegExp(`callPlatformApi\\('${action}'`), `${action} client가 필요합니다.`);
 }
 
-assert.match(index, /completeChurchAdminSignup[\s\S]*verifiedUser\.claims\.email[\s\S]*sign_in_provider/);
+assert.match(index, /completeChurchAdminSignup[\s\S]*churchAdminSignupIdentityFromVerifiedUser\(\{[\s\S]*uid: verifiedUser\.uid,[\s\S]*signInProvider: verifiedUser\.signInProvider,[\s\S]*claims: verifiedUser\.claims/);
 assert.match(signupService, /churchLifecycleActions\/\$\{signup\.requestId\}/);
 assert.match(signupService, /publicChurches\/\$\{churchId\}/);
 assert.match(signupService, /platformInternal\/publicDirectoryRebuild/);
@@ -90,6 +90,18 @@ assert.doesNotMatch(codeRotation, /sha256|batch\.set|\.commit\(/);
 const ensureVirtual = sliceBetween(platformAdmin, 'const handleEnsureUnaffiliatedChurch = async', '\n    \/\/ 교회 검색 노출');
 assert.match(ensureVirtual, /ensureUnaffiliatedChurch/);
 assert.doesNotMatch(ensureVirtual, /db\.collection\('churches'\)|\.set\(/);
+
+const churchAdminLoad = sliceBetween(churchAdmin, 'const loadData = async', '\n    // 이관 완료된 회원');
+assert.match(churchAdmin, /import \{ SITE_URL, UNAFFILIATED_CHURCH_ID \} from '\.\.\/data\/constants'/);
+assert.match(churchAdminLoad, /currentUser\.churchId === UNAFFILIATED_CHURCH_ID[\s\S]*Promise\.resolve\(\{ docs: \[\] \}\)[\s\S]*where\('churchId', '==', currentUser\.churchId\)\.get\(\)/);
+assert.match(churchAdminLoad, /const \[membersSnap, rosterSnap[\s\S]*membersRequest/);
+assert.match(churchAdminLoad, /catch \(e\)[\s\S]*setLoadError\([\s\S]*finally \{\s*setLoading\(false\)/);
+assert.match(churchAdmin, /ADMIN_INITIAL_LOAD_TIMEOUT_MS = 15_000[\s\S]*withAdminLoadTimeout/);
+assert.match(churchAdminLoad, /withAdminLoadTimeout\(Promise\.all\(\[[\s\S]*setLoading\(false\);[\s\S]*const externalMemberIds/);
+assert.match(platformAdmin, /import \{ UNAFFILIATED_CHURCH_ID \} from '\.\.\/data\/constants'/);
+assert.match(platformAdmin, /selectedChurch\.id === UNAFFILIATED_CHURCH_ID \|\| selectedChurch\.isVirtual === true[\s\S]*플랫폼 가상 공동체/);
+assert.match(platformAdmin, /href=\{`mailto:\$\{selectedChurch\.adminEmail\}`\}[\s\S]*href=\{`mailto:\$\{church\.adminEmail\}`\}/);
+assert.match(signupService, /adminPath,[\s\S]*adminEmail: signup\.contactEmail/);
 
 assert.doesNotMatch(platformAdmin, /const doDeleteChurch|removeChurchFromDirectory/);
 assert.match(platformAdmin, /기존 부분 삭제 기능은 잠시 중단했습니다/);

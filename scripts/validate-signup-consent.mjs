@@ -128,6 +128,7 @@ assert.equal(validateSignupConsent({
 
 const guardianComponent = read('src/components/policies/GuardianConsent.jsx');
 const policyIndex = read('src/components/policies/index.js');
+const app = read('src/App.jsx');
 const loginView = read('src/components/LoginView.jsx');
 const socialOnboarding = read('src/components/SocialOnboardingView.jsx');
 const authHook = read('src/hooks/useAuth.js');
@@ -135,6 +136,8 @@ const userAuthHook = read('src/hooks/useUserAuth.js');
 const platformApiClient = read('src/utils/platformApi.js');
 const platformApiCore = read('supabase/functions/platform-api/core.ts');
 const platformApiIndex = read('supabase/functions/platform-api/index.ts');
+const kakaoAuthClient = read('src/utils/kakaoAuth.js');
+const servicePolicies = read('src/data/servicePolicies.js');
 const adminSignupCore = read('supabase/functions/platform-api/completeChurchAdminSignupCore.ts');
 const adminSignupCoreTest = read('supabase/functions/platform-api/completeChurchAdminSignupCore_test.ts');
 const adminSignupService = read('supabase/functions/platform-api/completeChurchAdminSignupService.ts');
@@ -153,6 +156,33 @@ assert.match(policyIndex, /default as PolicyConsent, PolicyDialog/);
 assert.match(loginView, /audience="communityAdmin"/);
 assert.match(loginView, /주요 교단의 공식 결의/);
 assert.match(loginView, /openPublicPolicyId/);
+assert.match(servicePolicies, /SERVICE_POLICY_VERSION = '2026-07-16'/);
+assert.match(adminSignupCore, /COMMUNITY_ADMIN_POLICY_VERSION = "2026-07-16"/);
+assert.match(loginView, /onKakaoAdminSignupStart[\s\S]*contactEmail:\s*aEmail[\s\S]*policyConsents:\s*aPolicyConsents/);
+assert.match(loginView, /initialKakaoAdminSignup\.uid && initialKakaoAdminSignup\.provider === 'kakao\.com'[\s\S]*provider:\s*'kakao\.com'[\s\S]*setAEmail\(String\(draft\.contactEmail/);
+assert.match(loginView, /카카오로 공동체 등록 시작[\s\S]*관리자 연락 이메일/);
+assert.match(kakaoAuthClient, /KAKAO_ADMIN_SIGNUP_RETURNING_KEY[\s\S]*KAKAO_ADMIN_SIGNUP_DRAFT_KEY/);
+assert.match(authHook, /handleKakaoAdminSignupStart[\s\S]*KAKAO_ADMIN_SIGNUP_RETURNING_KEY, 'pending'[\s\S]*KAKAO_ADMIN_SIGNUP_DRAFT_KEY, JSON\.stringify/);
+assert.match(authHook, /isAdminSignupReturn[\s\S]*signInWithCustomToken\(profile\.token\)[\s\S]*\/\^kakao:\[1-9\]\[0-9\]\*\$\/[\s\S]*get\(\{ source: 'server' \}\)[\s\S]*onKakaoAdminSignupReady\(pendingProfile\)/);
+const kakaoPersonalStartFlow = authHook.slice(
+    authHook.indexOf('const handleKakaoStart = async'),
+    authHook.indexOf('const handleGoogleLink = async'),
+);
+const kakaoLinkStartFlow = authHook.slice(
+    authHook.indexOf('const handleKakaoLinkStart = async'),
+    authHook.indexOf('const handleSocialOnboardingComplete = async'),
+);
+const kakaoAdminStartFlow = authHook.slice(
+    authHook.indexOf('const handleKakaoAdminSignupStart = async'),
+    authHook.indexOf('const cancelGoogleAdminSignup = async'),
+);
+assert.match(kakaoPersonalStartFlow, /removeItem\(KAKAO_LINK_RETURNING_KEY\)[\s\S]*removeItem\(KAKAO_ADMIN_SIGNUP_RETURNING_KEY\)[\s\S]*removeItem\(KAKAO_ADMIN_SIGNUP_DRAFT_KEY\)/);
+assert.match(kakaoLinkStartFlow, /removeItem\(KAKAO_SIGNUP_DRAFT_KEY\)[\s\S]*removeItem\(KAKAO_ADMIN_SIGNUP_RETURNING_KEY\)[\s\S]*removeItem\(KAKAO_ADMIN_SIGNUP_DRAFT_KEY\)/);
+assert.match(kakaoAdminStartFlow, /removeItem\(KAKAO_LINK_RETURNING_KEY\)[\s\S]*removeItem\(KAKAO_SIGNUP_DRAFT_KEY\)[\s\S]*setItem\(KAKAO_ADMIN_SIGNUP_RETURNING_KEY, 'pending'\)/);
+assert.match(authHook, /이미 등록된 카카오 계정입니다\. 첫 화면의 카카오로 시작 버튼으로 로그인해주세요\./);
+assert.match(authHook, /finally \{[\s\S]*if \(finalResult\.ok \|\| finalResult\.resetGoogleProfile\) \{[\s\S]*onKakaoAdminSignupReady\(null\)[\s\S]*if \(isSocialSignup\)/);
+assert.match(app, /const handleLogout = \(\) => \{[\s\S]*setPendingKakaoAdminSignup\(null\)[\s\S]*setLoginInitialTab\('member'\)/);
+assert.match(app, /const handleGuestSignupStart = \(\) => \{[\s\S]*setPendingKakaoAdminSignup\(null\)[\s\S]*setView\('login'\)/);
 assert.match(socialOnboarding, /<GuardianConsent/);
 assert.match(socialOnboarding, /<PolicyConsent/);
 assert.match(authHook, /writeSignupConsent\(/);
@@ -194,19 +224,19 @@ assert.doesNotMatch(
 );
 assert.match(
     adminSignupFlow,
-    /completeChurchAdminSignupViaApi\(\{[\s\S]*name,[\s\S]*churchName,[\s\S]*pastorName:[\s\S]*denomination:[\s\S]*entryCode:\s*churchCode,[\s\S]*departments:[\s\S]*password:\s*signupPassword,[\s\S]*consent,[\s\S]*\},\s*\{[\s\S]*expectedUid:\s*authUser\.uid[\s\S]*requestId/,
+    /completeChurchAdminSignupViaApi\(\{[\s\S]*name,[\s\S]*contactEmail:[\s\S]*churchName,[\s\S]*pastorName:[\s\S]*denomination:[\s\S]*entryCode:\s*churchCode,[\s\S]*departments:[\s\S]*password:\s*signupPassword,[\s\S]*consent,[\s\S]*\},\s*\{[\s\S]*expectedUid:\s*authUser\.uid[\s\S]*requestId/,
     '브라우저는 서버 action에 조직 정보·비밀·동의와 기대 uid를 전달해야 한다.',
 );
 
-// Google·이메일 모두 같은 action을 사용하되, provider에 맞는 source/password를 보낸다.
+// Kakao·Google·이메일 모두 같은 action을 사용하되, provider에 맞는 source/password를 보낸다.
 assert.match(
     adminSignupFlow,
-    /buildSignupConsentSnapshot\([\s\S]*audience:\s*'communityAdmin',[\s\S]*ageConfirmed14Plus,[\s\S]*source:\s*googleProfile\s*\?\s*'google_community_admin_signup'\s*:\s*'email_community_admin_signup'/,
+    /buildSignupConsentSnapshot\([\s\S]*audience:\s*'communityAdmin',[\s\S]*ageConfirmed14Plus,[\s\S]*source:\s*socialProvider === 'kakao\.com'[\s\S]*'kakao_community_admin_signup'[\s\S]*'google_community_admin_signup'[\s\S]*'email_community_admin_signup'/,
 );
 assert.match(
     adminSignupFlow,
-    /if \(isGoogleSignup\)[\s\S]*existingDoc = await db\.collection\('users'\)\.doc\(profileUid\)\.get\(\{ source: 'server' \}\)[\s\S]*finishServerChurchAdminSignup\(googleUser, null, \{[\s\S]*requestId: googleSignupRequestId/,
-    'Google 경로는 서버 사용자 상태를 확인하고 null password로 action을 호출해야 한다.',
+    /if \(isSocialSignup\)[\s\S]*existingDoc = await db\.collection\('users'\)\.doc\(profileUid\)\.get\(\{ source: 'server' \}\)[\s\S]*finishServerChurchAdminSignup\(googleUser, null, \{[\s\S]*requestId: googleSignupRequestId/,
+    '소셜 경로는 서버 사용자 상태를 확인하고 null password로 action을 호출해야 한다.',
 );
 assert.match(
     adminSignupFlow,
@@ -219,8 +249,8 @@ assert.ok(googleExistingStart >= 0 && googleExistingEnd > googleExistingStart, '
 const googleExistingRecovery = adminSignupFlow.slice(googleExistingStart, googleExistingEnd);
 assert.match(
     googleExistingRecovery,
-    /existingUser\?\.role === 'churchAdmin'[\s\S]*existingUser\?\.isDeleted !== true[\s\S]*existingUser\?\.onboardingPending === true[\s\S]*\/\^church_\[0-9a-f\]\{32\}\$\/i[\s\S]*storedEmail === profileEmail/,
-    '응답 유실 복구는 새 action 교회에 묶인 활성·온보딩 대기 Google churchAdmin만 후보로 삼아야 한다.',
+    /providerIdentityMatches = socialProvider === 'kakao\.com'[\s\S]*existingUser\?\.authProvider === 'kakao\.com'[\s\S]*storedEmail === profileEmail[\s\S]*existingUser\?\.role === 'churchAdmin'[\s\S]*existingUser\?\.isDeleted !== true[\s\S]*existingUser\?\.onboardingPending === true[\s\S]*\/\^church_\[0-9a-f\]\{32\}\$\/i[\s\S]*providerIdentityMatches/,
+    '응답 유실 복구는 provider identity가 일치하는 활성·온보딩 대기 churchAdmin만 후보로 삼아야 한다.',
 );
 assert.match(
     googleExistingRecovery,
@@ -283,18 +313,18 @@ assert.ok(adminRouteStart >= 0 && adminRouteStart < canonicalUserLookupStart, '�
 const adminRoute = platformApiIndex.slice(adminRouteStart, platformApiIndex.indexOf('\n    if (parsed.action === "rotateChurchAccessCode")', adminRouteStart));
 assert.match(
     adminRoute,
-    /verifiedUser\.claims\.email[\s\S]*claims\.firebase[\s\S]*sign_in_provider[\s\S]*\{ uid: verifiedUser\.uid, tokenEmail, signInProvider \}/,
+    /churchAdminSignupIdentityFromVerifiedUser\(\{[\s\S]*uid: verifiedUser\.uid,[\s\S]*signInProvider: verifiedUser\.signInProvider,[\s\S]*claims: verifiedUser\.claims/,
     'uid/email/provider는 요청 body가 아니라 검증된 ID token claim에서 가져와야 한다.',
 );
 
 // 서버 core는 provider-source와 성인 동의 원문을 strict 검증하고 공개 users에는 요약만 만든다.
 assert.match(
     adminSignupCore,
-    /const validateConsent = \([\s\S]*exactKeys\(value, \[[\s\S]*"policyVersions"[\s\S]*"agreements"[\s\S]*value\.source !==[\s\S]*provider === "password"[\s\S]*"email_community_admin_signup"[\s\S]*"google_community_admin_signup"[\s\S]*confirmed14Plus !== true/,
+    /const validateConsent = \([\s\S]*exactKeys\(value, \[[\s\S]*"policyVersions"[\s\S]*"agreements"[\s\S]*value\.source !==[\s\S]*provider === "password"[\s\S]*"email_community_admin_signup"[\s\S]*provider === "google\.com"[\s\S]*"google_community_admin_signup"[\s\S]*"kakao_community_admin_signup"[\s\S]*confirmed14Plus !== true/,
 );
 assert.match(
     adminSignupCore,
-    /provider !== "password" && provider !== "google\.com"[\s\S]*provider === "password"[\s\S]*provider === "google\.com" && password !== null[\s\S]*const \{ consent, summary \} = validateConsent/,
+    /rawProvider === "custom"[\s\S]*kakaoProviderAttestation === "kakao\.com"[\s\S]*uid === `kakao:\$\{kakaoId\}`[\s\S]*provider === "password"[\s\S]*provider !== "password" && password !== null[\s\S]*const \{ consent, summary \} = validateConsent/,
     '검증된 provider와 password·동의 source가 서로 어긋나면 거부해야 한다.',
 );
 assert.match(adminSignupCore, /consentSummary: summary/);
@@ -309,6 +339,8 @@ assert.match(
     '공동체·관리자·동의·비밀·디렉토리·원장은 서버 transaction 하나로 생성해야 한다.',
 );
 assert.match(adminSignupCoreTest, /Google 가입은 google\.com token과 null password만 허용한다/);
+assert.match(adminSignupCoreTest, /Kakao 가입은 custom token attestation을 canonical kakao\.com으로 만든다/);
+assert.match(adminSignupServiceTest, /Kakao 생성은 attested kakao UID를 쓰고 수동 연락 이메일은 private admin에만 둔다/);
 assert.match(adminSignupCoreTest, /동의 정책 버전·source·성인 확인·agreement exact schema를 검증한다/);
 assert.match(adminSignupServiceTest, /공동체·관리자·private·두 디렉토리·원장을 한 transaction으로 생성한다/);
 assert.match(adminSignupServiceTest, /응답 유실 뒤 새 UUID도 canonical 기존 churchAdmin으로 수렴한다/);

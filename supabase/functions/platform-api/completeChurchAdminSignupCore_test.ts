@@ -1,4 +1,5 @@
 import {
+  churchAdminSignupIdentityFromVerifiedUser,
   churchIdForAdminSignupRequest,
   type CompleteChurchAdminSignupIdentity,
   type CompleteChurchAdminSignupInput,
@@ -46,28 +47,34 @@ const assertValidationCode = (
 };
 
 const identity = (
-  provider: "password" | "google.com" = "password",
+  provider: "password" | "google.com" | "kakao.com" = "password",
   overrides: Record<string, unknown> = {},
 ): CompleteChurchAdminSignupIdentity => ({
-  uid: "admin-1",
-  tokenEmail: "ADMIN@Example.com",
-  signInProvider: provider,
+  uid: provider === "kakao.com" ? "kakao:12345" : "admin-1",
+  tokenEmail: provider === "kakao.com" ? null : "ADMIN@Example.com",
+  signInProvider: provider === "kakao.com" ? "custom" : provider,
+  kakaoProviderAttestation: provider === "kakao.com" ? "kakao.com" : null,
+  kakaoId: provider === "kakao.com" ? "12345" : null,
   ...overrides,
 });
 
-const consent = (provider: "password" | "google.com" = "password") => ({
+const consent = (
+  provider: "password" | "google.com" | "kakao.com" = "password",
+) => ({
   schemaVersion: 1,
   policyVersions: {
-    terms: "2026-07-14",
-    privacy: "2026-07-14",
-    sensitive: "2026-07-14",
-    community: "2026-07-14",
-    childGuardian: "2026-07-14",
+    terms: "2026-07-16",
+    privacy: "2026-07-16",
+    sensitive: "2026-07-16",
+    community: "2026-07-16",
+    childGuardian: "2026-07-16",
   },
   agreedAt: "2026-07-16T03:00:00.000Z",
   source: provider === "password"
     ? "email_community_admin_signup"
-    : "google_community_admin_signup",
+    : provider === "google.com"
+    ? "google_community_admin_signup"
+    : "kakao_community_admin_signup",
   locale: "ko-KR",
   audience: "communityAdmin",
   ageAssessment: {
@@ -93,7 +100,7 @@ const consent = (provider: "password" | "google.com" = "password") => ({
 });
 
 const input = (
-  provider: "password" | "google.com" = "password",
+  provider: "password" | "google.com" | "kakao.com" = "password",
   overrides: Record<string, unknown> = {},
 ): CompleteChurchAdminSignupInput => ({
   requestId: REQUEST_ID,
@@ -108,6 +115,7 @@ const input = (
     subgroups: [{ id: "cell-1", name: "1구역" }],
   }],
   password: provider === "password" ? "secret-password" : null,
+  contactEmail: "contact@example.com",
   consent: consent(provider),
   ...overrides,
 });
@@ -155,6 +163,7 @@ Deno.test("비밀번호 공동체 관리자 가입 입력을 strict canonical �
   const result = validateCompleteChurchAdminSignup(identity(), input());
   assertEquals(result.churchId, CHURCH_ID);
   assertEquals(result.tokenEmail, "admin@example.com");
+  assertEquals(result.contactEmail, "contact@example.com");
   assertEquals(result.password, "secret-password");
   assertEquals(result.consentSummary, {
     schemaVersion: 1,
@@ -182,6 +191,99 @@ Deno.test("Google 가입은 google.com token과 null password만 허용한다", 
         identity("google.com"),
         input("google.com", { password: "not-null" }),
       ),
+  );
+  assertValidationCode(
+    "INVALID_INPUT",
+    () =>
+      validateCompleteChurchAdminSignup(
+        identity(),
+        input("password", { contactEmail: "admin@localhost" }),
+      ),
+  );
+});
+
+Deno.test("Kakao 가입은 custom token attestation을 canonical kakao.com으로 만든다", () => {
+  const result = validateCompleteChurchAdminSignup(
+    identity("kakao.com"),
+    input("kakao.com", { contactEmail: "ADMIN-CONTACT@Example.com" }),
+  );
+  assertEquals(result.uid, "kakao:12345");
+  assertEquals(result.signInProvider, "kakao.com");
+  assertEquals(result.tokenEmail, null);
+  assertEquals(result.contactEmail, "admin-contact@example.com");
+  assertEquals(result.password, null);
+  assertEquals(result.consent.source, "kakao_community_admin_signup");
+});
+
+Deno.test("Kakao 가입은 raw custom provider와 일치하는 서명 attestation·UID를 요구한다", () => {
+  for (
+    const overrides of [
+      { signInProvider: "kakao.com" },
+      { kakaoProviderAttestation: null },
+      { kakaoProviderAttestation: "google.com" },
+      { kakaoId: "99999" },
+      { kakaoId: "012345" },
+      { uid: "admin-1" },
+    ]
+  ) {
+    assertValidationCode(
+      "INVALID_IDENTITY",
+      () =>
+        validateCompleteChurchAdminSignup(
+          identity("kakao.com", overrides),
+          input("kakao.com"),
+        ),
+    );
+  }
+});
+
+Deno.test("Kakao 연락 이메일은 필수이고 기존 provider는 token email로 호환 fallback한다", () => {
+  assertValidationCode(
+    "INVALID_INPUT",
+    () =>
+      validateCompleteChurchAdminSignup(
+        identity("kakao.com"),
+        input("kakao.com", { contactEmail: null }),
+      ),
+  );
+  const password = validateCompleteChurchAdminSignup(
+    identity(),
+    input("password", { contactEmail: null }),
+  );
+  assertEquals(password.contactEmail, "admin@example.com");
+  const google = validateCompleteChurchAdminSignup(
+    identity("google.com"),
+    input("google.com", { contactEmail: null }),
+  );
+  assertEquals(google.contactEmail, "admin@example.com");
+  assertValidationCode(
+    "INVALID_INPUT",
+    () =>
+      validateCompleteChurchAdminSignup(
+        identity(),
+        input("password", { contactEmail: "not-an-email" }),
+      ),
+  );
+});
+
+Deno.test("검증된 Firebase claim에서만 Kakao identity attestation을 추출한다", () => {
+  assertEquals(
+    churchAdminSignupIdentityFromVerifiedUser({
+      uid: "kakao:12345",
+      signInProvider: "custom",
+      claims: {
+        email: 123,
+        bible114_auth_provider: "kakao.com",
+        bible114_kakao_id: "12345",
+      },
+    }),
+    {
+      uid: "kakao:12345",
+      tokenEmail: null,
+      signInProvider: "custom",
+      kakaoProviderAttestation: "kakao.com",
+      kakaoId: "12345",
+    },
   );
 });
 
@@ -376,6 +478,8 @@ Deno.test("canonical 기존 관리자 상태를 response-loss 완료로 인정�
       uid: "admin-1",
       name: "관리자",
       email: "admin@example.com",
+      authProvider: "password",
+      authProviders: ["password"],
       password: null,
       role: "churchAdmin",
       churchId: CHURCH_ID,
@@ -392,7 +496,7 @@ Deno.test("canonical 기존 관리자 상태를 response-loss 완료로 인정�
     },
     admin: {
       adminUid: "admin-1",
-      adminEmail: "admin@example.com",
+      adminEmail: "contact@example.com",
       updatedAt: "2026-07-16T03:04:05Z",
     },
     access: { codeHash: HASH, updatedAt: "2026-07-16T03:04:05.123456Z" },

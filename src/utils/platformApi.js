@@ -19,7 +19,7 @@ const ADMIN_SET_CHURCH_VISIBILITY_RESPONSE_KEYS = new Set([
     'ok', 'action', 'requestId', 'status', 'hidden',
 ]);
 const COMPLETE_CHURCH_ADMIN_SIGNUP_REQUEST_KEYS = new Set([
-    'name', 'churchName', 'pastorName', 'denomination', 'entryCode',
+    'name', 'contactEmail', 'churchName', 'pastorName', 'denomination', 'entryCode',
     'departments', 'password', 'consent',
 ]);
 const COMPLETE_CHURCH_ADMIN_SIGNUP_RESPONSE_KEYS = new Set([
@@ -1972,6 +1972,11 @@ const validateCompleteChurchAdminSignupInput = input => {
     if (!isResponseRecord(input)
         || !hasExactKeys(input, COMPLETE_CHURCH_ADMIN_SIGNUP_REQUEST_KEYS)
         || !isCanonicalChurchAdminSignupText(input.name, 1, 50)
+        || typeof input.contactEmail !== 'string'
+        || input.contactEmail !== input.contactEmail.trim().toLowerCase()
+        || input.contactEmail.length > 254
+        || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.contactEmail)
+        || /[\u0000-\u001f\u007f]/.test(input.contactEmail)
         || !isCanonicalChurchAdminSignupText(input.churchName, 1, 200)
         || !isCanonicalChurchAdminSignupText(input.pastorName, 1, 100)
         || !isCanonicalChurchAdminSignupText(input.denomination, 0, 100)
@@ -1988,6 +1993,7 @@ const validateCompleteChurchAdminSignupInput = input => {
     }
     return {
         name: input.name,
+        contactEmail: input.contactEmail,
         churchName: input.churchName,
         pastorName: input.pastorName,
         denomination: input.denomination,

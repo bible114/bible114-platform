@@ -96,6 +96,7 @@ import { joinSoloCommunity } from "./joinSoloCommunityService.ts";
 import { adminSetChurchVisibility } from "./adminChurchVisibilityService.ts";
 import { convertToPersonalAccount } from "./convertToPersonalAccountService.ts";
 import { completeChurchAdminSignup } from "./completeChurchAdminSignupService.ts";
+import { churchAdminSignupIdentityFromVerifiedUser } from "./completeChurchAdminSignupCore.ts";
 import { rotateChurchAccessCode } from "./rotateChurchAccessCodeService.ts";
 import { ensureUnaffiliatedChurch } from "./ensureUnaffiliatedChurchService.ts";
 import { skipQuiz, submitQuiz } from "./quizSubmission.ts";
@@ -1162,17 +1163,13 @@ Deno.serve(async (request) => {
     // 먼저 처리한다. uid/email/provider는 클라이언트 입력이 아니라 검증된 ID token
     // claim에서만 가져온다.
     if (parsed.action === "completeChurchAdminSignup") {
-      const tokenEmail = typeof verifiedUser.claims.email === "string"
-        ? verifiedUser.claims.email
-        : "";
-      const firebaseClaims = verifiedUser.claims.firebase;
-      const signInProvider =
-        firebaseClaims && typeof firebaseClaims === "object"
-          ? (firebaseClaims as Record<string, unknown>).sign_in_provider
-          : "";
       const result = await completeChurchAdminSignup(
         service,
-        { uid: verifiedUser.uid, tokenEmail, signInProvider },
+        churchAdminSignupIdentityFromVerifiedUser({
+          uid: verifiedUser.uid,
+          signInProvider: verifiedUser.signInProvider,
+          claims: verifiedUser.claims,
+        }),
         {
           requestId: parsed.requestId,
           name: parsed.name,
@@ -1182,6 +1179,7 @@ Deno.serve(async (request) => {
           entryCode: parsed.entryCode,
           departments: parsed.departments,
           password: parsed.password,
+          contactEmail: parsed.contactEmail,
           consent: parsed.consent,
         },
       );

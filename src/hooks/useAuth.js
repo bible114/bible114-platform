@@ -11,6 +11,8 @@ import { isPlanIdAllowedForUser } from '../data/bible_options';
 import {
     KAKAO_RETURNING_KEY,
     KAKAO_LINK_RETURNING_KEY,
+    KAKAO_ADMIN_SIGNUP_RETURNING_KEY,
+    KAKAO_ADMIN_SIGNUP_DRAFT_KEY,
     KAKAO_STATE_KEY,
     buildKakaoAuthorizeUrl,
     clearKakaoCallbackUrl,
@@ -71,6 +73,7 @@ export const useAuth = ({
     loadChurchCommunities,
     loadSuperAdminData,
     onAdminProviderNotice,
+    onKakaoAdminSignupReady,
 }) => {
     const [errorMsg, setErrorMsg] = useState('');
     const [socialLinkNotice, setSocialLinkNotice] = useState(null);
@@ -92,6 +95,7 @@ export const useAuth = ({
     const googleAdminSignupPendingRef = useRef(null);
     const personalSignupRef = useRef(null);
     const kakaoStartRef = useRef(null);
+    const kakaoAdminSignupStartRef = useRef(null);
     const socialProviderRef = useRef(null);
     const passwordPersonalSignupRef = useRef(false);
 
@@ -135,16 +139,19 @@ export const useAuth = ({
         setErrorMsg('구글 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.');
     };
 
-    const matchesGoogleAdminSignupProfile = (googleUser, googleProfile) => {
-        const profileUid = String(googleProfile?.uid || '').trim();
-        const profileEmail = String(googleProfile?.email || '').trim().toLowerCase();
-        const authEmail = String(googleUser?.email || '').trim().toLowerCase();
-        const hasGoogleProvider = (googleUser?.providerData || [])
+    const matchesAdminSocialSignupProfile = (socialUser, socialProfile) => {
+        const profileUid = String(socialProfile?.uid || '').trim();
+        const provider = String(socialProfile?.provider || 'google.com').trim();
+        if (!socialUser || !profileUid || socialUser.uid !== profileUid) return false;
+        if (provider === 'kakao.com') {
+            return /^kakao:[1-9][0-9]*$/.test(profileUid);
+        }
+        const profileEmail = String(socialProfile?.email || '').trim().toLowerCase();
+        const authEmail = String(socialUser?.email || '').trim().toLowerCase();
+        const hasGoogleProvider = (socialUser?.providerData || [])
             .some(providerData => providerData?.providerId === firebase.auth.GoogleAuthProvider.PROVIDER_ID);
         return Boolean(
-            googleUser
-            && profileUid
-            && googleUser.uid === profileUid
+            provider === 'google.com'
             && profileEmail
             && authEmail === profileEmail
             && hasGoogleProvider
@@ -504,6 +511,11 @@ export const useAuth = ({
             const flowName = 'kakaoPersonalStart';
             beginInteractiveAuthFlow(flowName);
             try {
+                // 중단된 다른 Kakao redirect 흐름이 남아 있어도 이번 시작 모드를
+                // link/admin 가입으로 오분류하지 않도록 상호 배타적으로 초기화한다.
+                sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
+                sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY);
+                sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
                 if (signupDraft?.birthdate || signupDraft?.consents) {
                     buildSignupConsentSnapshot({
                         birthdate: signupDraft?.birthdate,
@@ -569,6 +581,9 @@ export const useAuth = ({
         try {
             await authReady;
             if (!auth.currentUser) throw new Error('AUTH_REQUIRED');
+            sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
+            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY);
+            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
             const state = createKakaoState();
             sessionStorage.setItem(KAKAO_STATE_KEY, state);
             sessionStorage.setItem(KAKAO_RETURNING_KEY, 'pending');
@@ -646,11 +661,18 @@ export const useAuth = ({
         const expectedState = sessionStorage.getItem(KAKAO_STATE_KEY);
         const returnStatus = sessionStorage.getItem(KAKAO_RETURNING_KEY);
         const isLinkReturn = sessionStorage.getItem(KAKAO_LINK_RETURNING_KEY) === 'pending';
+        const isAdminSignupReturn = sessionStorage.getItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY) === 'pending';
         let kakaoSignupDraft = null;
+        let kakaoAdminSignupDraft = null;
         try {
             kakaoSignupDraft = JSON.parse(sessionStorage.getItem(KAKAO_SIGNUP_DRAFT_KEY) || 'null');
         } catch {
             sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
+        }
+        try {
+            kakaoAdminSignupDraft = JSON.parse(sessionStorage.getItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY) || 'null');
+        } catch {
+            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
         }
         clearKakaoCallbackUrl();
         if (callback.error) {
@@ -658,6 +680,11 @@ export const useAuth = ({
             sessionStorage.removeItem(KAKAO_RETURNING_KEY);
             sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
             sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
+            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY);
+            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
+            if (isAdminSignupReturn && typeof onKakaoAdminSignupReady === 'function') {
+                onKakaoAdminSignupReady({ draft: kakaoAdminSignupDraft || {} });
+            }
             const message = callback.error === 'access_denied' ? '카카오 연결이 취소되었습니다.' : '카카오 연결을 완료하지 못했습니다.';
             if (isLinkReturn) setSocialLinkNotice({ type: 'error', message });
             else if (callback.error === 'access_denied') setErrorMsg('카카오 로그인이 취소되었습니다.');
@@ -668,6 +695,11 @@ export const useAuth = ({
             sessionStorage.removeItem(KAKAO_STATE_KEY);
             sessionStorage.removeItem(KAKAO_RETURNING_KEY);
             sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
+            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY);
+            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
+            if (isAdminSignupReturn && typeof onKakaoAdminSignupReady === 'function') {
+                onKakaoAdminSignupReady({ draft: kakaoAdminSignupDraft || {} });
+            }
             setErrorMsg('로그인 확인 시간이 지났어요. 노란 [카카오로 시작] 버튼을 다시 한 번 눌러주세요.');
             return () => { alive = false; };
         }
@@ -697,6 +729,42 @@ export const useAuth = ({
             }
             const cred = await auth.signInWithCustomToken(profile.token);
             if (!alive) return;
+            if (isAdminSignupReturn) {
+                const profileUid = String(cred.user?.uid || '').trim();
+                if (!/^kakao:[1-9][0-9]*$/.test(profileUid)) {
+                    if (typeof onKakaoAdminSignupReady === 'function') {
+                        onKakaoAdminSignupReady({ draft: kakaoAdminSignupDraft || {} });
+                    }
+                    setErrorMsg('이 카카오 계정은 이미 다른 계정에 연결되어 있습니다. 새 공동체 등록에는 아직 가입하지 않은 카카오 계정을 사용해주세요.');
+                    await auth.signOut().catch(() => {});
+                    return;
+                }
+                const existingDoc = await db.collection('users').doc(profileUid).get({ source: 'server' });
+                if (!alive) return;
+                if (existingDoc.exists) {
+                    if (typeof onKakaoAdminSignupReady === 'function') {
+                        onKakaoAdminSignupReady({ draft: kakaoAdminSignupDraft || {} });
+                    }
+                    setErrorMsg('이미 등록된 카카오 계정입니다. 첫 화면의 카카오로 시작 버튼으로 로그인해주세요.');
+                    await auth.signOut().catch(() => {});
+                    return;
+                }
+                const pendingProfile = {
+                    provider: 'kakao.com',
+                    uid: profileUid,
+                    email: String(profile.email || '').trim(),
+                    name: String(profile.nickname || '').trim(),
+                    draft: kakaoAdminSignupDraft && typeof kakaoAdminSignupDraft === 'object'
+                        ? kakaoAdminSignupDraft
+                        : {},
+                };
+                if (typeof onKakaoAdminSignupReady === 'function') {
+                    onKakaoAdminSignupReady(pendingProfile);
+                }
+                setView('login');
+                setErrorMsg('');
+                return;
+            }
             try {
                 await finishSocialStart(cred, 'kakao.com', profile, loginTiming, kakaoSignupDraft);
             } catch (error) {
@@ -706,6 +774,9 @@ export const useAuth = ({
         }).catch(error => {
             if (!alive || !error) return;
             console.error('카카오 인증 코드 처리 실패:', error);
+            if (isAdminSignupReturn && typeof onKakaoAdminSignupReady === 'function') {
+                onKakaoAdminSignupReady({ draft: kakaoAdminSignupDraft || {} });
+            }
             const message = error?.status === 409 ? error.message : '카카오 연결을 완료하지 못했습니다. 다시 시도해주세요.';
             if (isLinkReturn) setSocialLinkNotice({ type: 'error', message });
             else if (error?.message === 'KAKAO_AUTH_URL_MISSING') setErrorMsg('카카오 로그인 서버 설정이 아직 완료되지 않았습니다. 관리자에게 문의하세요.');
@@ -716,6 +787,8 @@ export const useAuth = ({
             sessionStorage.removeItem(KAKAO_RETURNING_KEY);
             sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
             sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
+            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY);
+            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
             endInteractiveAuthFlow('kakaoCustomTokenResult');
         });
         return () => { alive = false; };
@@ -1043,6 +1116,7 @@ export const useAuth = ({
 
             keepFlowActive = true;
             startResult = {
+                provider: 'google.com',
                 uid: cred.user.uid,
                 email: popupEmail,
                 name: cred.user.displayName || '',
@@ -1064,9 +1138,45 @@ export const useAuth = ({
         }
     };
 
+    const handleKakaoAdminSignupStart = async (draft = null) => {
+        setErrorMsg('');
+        if (kakaoAdminSignupStartRef.current) return kakaoAdminSignupStartRef.current;
+        const request = (async () => {
+            const flowName = 'kakaoAdminSignupStart';
+            beginInteractiveAuthFlow(flowName);
+            try {
+                sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
+                sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
+                const state = createKakaoState();
+                sessionStorage.setItem(KAKAO_STATE_KEY, state);
+                sessionStorage.setItem(KAKAO_RETURNING_KEY, 'pending');
+                sessionStorage.setItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY, 'pending');
+                sessionStorage.setItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY, JSON.stringify(draft || {}));
+                window.location.assign(buildKakaoAuthorizeUrl({ state }));
+            } catch (error) {
+                console.error('카카오 공동체 등록 시작 실패:', error);
+                sessionStorage.removeItem(KAKAO_STATE_KEY);
+                sessionStorage.removeItem(KAKAO_RETURNING_KEY);
+                sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY);
+                sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
+                endInteractiveAuthFlow(flowName);
+                setErrorMsg(error?.message === 'KAKAO_REST_KEY_MISSING'
+                    ? '카카오 로그인 설정이 아직 완료되지 않았습니다. 관리자에게 문의하세요.'
+                    : '카카오 공동체 등록을 시작하지 못했습니다. 잠시 후 다시 시도해주세요.');
+            } finally {
+                kakaoAdminSignupStartRef.current = null;
+            }
+        })();
+        kakaoAdminSignupStartRef.current = request;
+        return request;
+    };
+
     const cancelGoogleAdminSignup = async () => {
         setErrorMsg('');
         googleAdminSignupAttemptRef.current += 1;
+        if (typeof onKakaoAdminSignupReady === 'function') onKakaoAdminSignupReady(null);
+        sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY);
+        sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
         setCurrentUser(null);
         try {
             await auth.signOut();
@@ -1168,17 +1278,22 @@ export const useAuth = ({
 
     // ── 교회 관리자 가입 ──
     const handleChurchAdminSignup = async ({
-        name, email, password, churchName, pastorName, denomination, churchCode, departments,
+        name, email, contactEmail, password, churchName, pastorName, denomination, churchCode, departments,
         googleProfile = null, ageConfirmed14Plus = false, consents,
     }) => {
         setErrorMsg('');
-        const isGoogleSignup = Boolean(googleProfile);
-        if (isGoogleSignup && googleAdminSignupSubmittingRef.current) {
+        const socialProvider = String(googleProfile?.provider || (googleProfile ? 'google.com' : '')).trim();
+        const isSocialSignup = Boolean(googleProfile);
+        const socialProviderLabel = socialProvider === 'kakao.com' ? '카카오' : '구글';
+        const alreadyRegisteredMessage = socialProvider === 'kakao.com'
+            ? '이미 등록된 카카오 계정입니다. 첫 화면의 카카오로 시작 버튼으로 로그인해주세요.'
+            : GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE;
+        if (isSocialSignup && googleAdminSignupSubmittingRef.current) {
             return googleAdminSignupSubmittingRef.current;
         }
         let resolveGoogleSubmission = null;
         let finalResult = { ok: false, retryable: true };
-        if (isGoogleSignup) {
+        if (isSocialSignup) {
             beginGoogleAdminSignupFlow();
             googleAdminSignupSubmittingRef.current = new Promise(resolve => {
                 resolveGoogleSubmission = resolve;
@@ -1202,16 +1317,20 @@ export const useAuth = ({
                 consents,
                 audience: 'communityAdmin',
                 ageConfirmed14Plus,
-            }, { source: googleProfile ? 'google_community_admin_signup' : 'email_community_admin_signup' });
+            }, { source: socialProvider === 'kakao.com'
+                ? 'kakao_community_admin_signup'
+                : (googleProfile ? 'google_community_admin_signup' : 'email_community_admin_signup') });
 
             let googleSignupRequestId = null;
             let googleSignupConsent = signupConsent;
             let resumedGoogleSignupAttempt = false;
             let googleSignupAttemptKey = null;
-            if (isGoogleSignup) {
+            if (isSocialSignup) {
                 const { agreedAt: _agreedAt, ...stableConsent } = signupConsent;
                 googleSignupAttemptKey = JSON.stringify({
                     uid: String(googleProfile?.uid || '').trim(),
+                    provider: socialProvider,
+                    contactEmail: String(contactEmail || '').trim().toLowerCase(),
                     name,
                     churchName,
                     pastorName: pastorName || '',
@@ -1244,6 +1363,7 @@ export const useAuth = ({
                 }
                 const result = await completeChurchAdminSignupViaApi({
                     name,
+                    contactEmail: String(contactEmail || '').trim().toLowerCase(),
                     churchName,
                     pastorName: pastorName || '',
                     denomination: denomination || '',
@@ -1276,12 +1396,12 @@ export const useAuth = ({
                 return finalResult;
             };
 
-            if (isGoogleSignup) {
+            if (isSocialSignup) {
                 const profileUid = String(googleProfile?.uid || '').trim();
-                if (!profileUid || !matchesGoogleAdminSignupProfile(auth.currentUser, googleProfile)) {
+                if (!profileUid || !matchesAdminSocialSignupProfile(auth.currentUser, googleProfile)) {
                     return await finishGoogleSignupTerminal(
-                        '구글 계정 정보를 확인할 수 없습니다. 다시 구글 계정으로 시작해주세요.',
-                        '구글 관리자 가입 계정 검증 실패 후'
+                        `${socialProviderLabel} 계정 정보를 확인할 수 없습니다. 다시 ${socialProviderLabel} 계정으로 시작해주세요.`,
+                        `${socialProviderLabel} 관리자 가입 계정 검증 실패 후`
                     );
                 }
 
@@ -1290,15 +1410,17 @@ export const useAuth = ({
                     const existingUser = existingDoc.data();
                     const profileEmail = String(googleProfile?.email || '').trim().toLowerCase();
                     const storedEmail = String(existingUser?.email || '').trim().toLowerCase();
+                    const providerIdentityMatches = socialProvider === 'kakao.com'
+                        ? existingUser?.authProvider === 'kakao.com' && /^kakao:[1-9][0-9]*$/.test(profileUid)
+                        : Boolean(profileEmail && storedEmail === profileEmail);
                     const recoverableCommittedSignup = existingUser?.role === 'churchAdmin'
                         && existingUser?.isDeleted !== true
                         && existingUser?.onboardingPending === true
                         && /^church_[0-9a-f]{32}$/i.test(String(existingUser?.churchId || ''))
-                        && profileEmail
-                        && storedEmail === profileEmail;
+                        && providerIdentityMatches;
                     if (!recoverableCommittedSignup) {
                         return await finishGoogleSignupTerminal(
-                            GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE,
+                            alreadyRegisteredMessage,
                             '기존 구글 관리자 최종 가입'
                         );
                     }
@@ -1311,7 +1433,7 @@ export const useAuth = ({
                         if (!storedConsent || typeof storedConsent !== 'object' || Array.isArray(storedConsent)
                             || !Object.prototype.hasOwnProperty.call(storedConsent, 'recordedAt')) {
                             return await finishGoogleSignupTerminal(
-                                GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE,
+                                alreadyRegisteredMessage,
                                 '기존 구글 관리자 동의 검증 실패 후'
                             );
                         }
@@ -1331,7 +1453,7 @@ export const useAuth = ({
                     } catch (recoveryError) {
                         if (recoveryError instanceof PlatformApiError && recoveryError.retryable !== true) {
                             return await finishGoogleSignupTerminal(
-                                GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE,
+                                alreadyRegisteredMessage,
                                 '기존 구글 관리자 canonical 복구 거부 후'
                             );
                         }
@@ -1339,10 +1461,10 @@ export const useAuth = ({
                     }
                 }
                 const googleUser = auth.currentUser;
-                if (!matchesGoogleAdminSignupProfile(googleUser, googleProfile)) {
+                if (!matchesAdminSocialSignupProfile(googleUser, googleProfile)) {
                     return await finishGoogleSignupTerminal(
-                        '구글 계정 정보를 확인할 수 없습니다. 다시 구글 계정으로 시작해주세요.',
-                        '구글 관리자 최종 가입 계정 검증 실패 후'
+                        `${socialProviderLabel} 계정 정보를 확인할 수 없습니다. 다시 ${socialProviderLabel} 계정으로 시작해주세요.`,
+                        `${socialProviderLabel} 관리자 최종 가입 계정 검증 실패 후`
                     );
                 }
                 return await finishServerChurchAdminSignup(googleUser, null, {
@@ -1462,7 +1584,10 @@ export const useAuth = ({
             finalResult = { ok: false, retryable: true };
             return finalResult;
         } finally {
-            if (isGoogleSignup) {
+            if (finalResult.ok || finalResult.resetGoogleProfile) {
+                if (typeof onKakaoAdminSignupReady === 'function') onKakaoAdminSignupReady(null);
+            }
+            if (isSocialSignup) {
                 googleAdminSignupSubmittingRef.current = null;
                 resolveGoogleSubmission?.(finalResult);
                 if (finalResult.ok || finalResult.resetGoogleProfile) {
@@ -1488,6 +1613,7 @@ export const useAuth = ({
         handleChurchAdminLogin,
         handleGoogleAdminLogin,
         handleGoogleAdminSignupStart,
+        handleKakaoAdminSignupStart,
         cancelGoogleAdminSignup,
         handleChurchAdminSignup,
     };

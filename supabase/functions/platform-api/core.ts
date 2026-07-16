@@ -48,6 +48,7 @@ export type PlatformApiRequest =
     entryCode: string;
     departments: unknown[];
     password: string | null;
+    contactEmail: string | null;
     consent: Record<string, unknown>;
   }
   | {
@@ -324,6 +325,7 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     denomination,
     departments,
     password,
+    contactEmail,
     consent,
     expectedVersion,
   } = body as Record<string, unknown>;
@@ -383,6 +385,7 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       "entryCode",
       "departments",
       "password",
+      "contactEmail",
       "consent",
     ]);
     const strictText = (
@@ -403,12 +406,23 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       max: 100,
     });
     const normalizedEntryCode = strictText(entryCode, { min: 4, max: 128 });
+    const normalizedContactEmail = contactEmail === undefined ||
+        contactEmail === null
+      ? null
+      : (typeof contactEmail === "string"
+        ? contactEmail.trim().toLowerCase()
+        : "");
+    const validContactEmail = normalizedContactEmail === null ||
+      (normalizedContactEmail.length <= 254 &&
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedContactEmail) &&
+        !/[\u0000-\u001f\u007f]/.test(normalizedContactEmail));
     if (
       Object.keys(body).some((key) => !allowedKeys.has(key)) ||
       normalizedName === null || normalizedChurchName === null ||
       normalizedPastorName === null || normalizedDenomination === null ||
       normalizedEntryCode === null || !Array.isArray(departments) ||
       !consent || typeof consent !== "object" || Array.isArray(consent) ||
+      !validContactEmail ||
       !(password === null ||
         (typeof password === "string" && password.length >= 6 &&
           password.length <= 128 && !/[\u0000-\u001f\u007f]/.test(password)))
@@ -425,6 +439,7 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       entryCode: normalizedEntryCode,
       departments,
       password,
+      contactEmail: normalizedContactEmail,
       consent: consent as Record<string, unknown>,
     };
   }

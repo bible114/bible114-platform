@@ -40,8 +40,9 @@ export type CompleteChurchAdminSignupResult = {
 };
 
 type LifecycleInput = {
-  tokenEmail: string;
-  signInProvider: "password" | "google.com";
+  tokenEmail: string | null;
+  contactEmail: string;
+  signInProvider: "password" | "google.com" | "kakao.com";
   name: string;
   churchName: string;
   pastorName: string;
@@ -149,6 +150,7 @@ const lifecycleInput = (
   entryCodeHash: string,
 ): LifecycleInput => ({
   tokenEmail: signup.tokenEmail,
+  contactEmail: signup.contactEmail,
   signInProvider: signup.signInProvider,
   name: signup.name,
   churchName: signup.churchName,
@@ -433,6 +435,8 @@ const executeCompleteChurchAdminSignup = async (
       dependencies.updateWrite(service.projectId, userPath, {
         name: signup.name,
         email: signup.tokenEmail,
+        authProvider: signup.signInProvider,
+        authProviders: [signup.signInProvider],
         password: signup.password,
         birthdate: null,
         role: "churchAdmin",
@@ -463,7 +467,7 @@ const executeCompleteChurchAdminSignup = async (
       }, { exists: false }),
       dependencies.updateWrite(service.projectId, adminPath, {
         adminUid: signup.uid,
-        adminEmail: signup.tokenEmail,
+        adminEmail: signup.contactEmail,
         updatedAt: now,
       }, { exists: false }),
       dependencies.updateWrite(service.projectId, accessPath, {

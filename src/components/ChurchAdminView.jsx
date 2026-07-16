@@ -17,10 +17,26 @@ import {
     useToast,
 } from './admin';
 import QRCode from 'qrcode';
-import { SITE_URL } from '../data/constants';
+import { SITE_URL, UNAFFILIATED_CHURCH_ID } from '../data/constants';
 import { mergePrimaryAndRosterMembers, rosterSnapshotToMembers } from '../utils/rosterMembers';
 import { getDaysRead } from '../utils/helpers';
 import OrganizationTab from './churchAdmin/OrganizationTab';
+
+const ADMIN_INITIAL_LOAD_TIMEOUT_MS = 15_000;
+
+const withAdminLoadTimeout = (promise, timeoutMs = ADMIN_INITIAL_LOAD_TIMEOUT_MS) => new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error('CHURCH_ADMIN_LOAD_TIMEOUT')), timeoutMs);
+    Promise.resolve(promise).then(
+        value => {
+            window.clearTimeout(timer);
+            resolve(value);
+        },
+        error => {
+            window.clearTimeout(timer);
+            reject(error);
+        }
+    );
+});
 import AnnouncementTab from './churchAdmin/AnnouncementTab';
 import SettingsTab from './churchAdmin/SettingsTab';
 import DashboardTab from './churchAdmin/DashboardTab';
@@ -167,6 +183,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [members, setMembers] = useState([]);
     const [deletedMembers, setDeletedMembers] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
     const [tab, setTab] = useState('dashboard');
     const [showTutorial, setShowTutorial] = useState(false);
     const toast = useToast();
@@ -264,9 +281,16 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
     const loadData = async () => {
         setLoading(true);
+        setLoadError('');
         try {
-            const [membersSnap, rosterSnap, announcementDoc, churchDoc, kakaoDoc, platformDoc, talentShopDoc] = await Promise.all([
-                db.collection('users').where('churchId', '==', currentUser.churchId).get(),
+            // 전국 단위 가상 공동체의 users 목록은 일반 공동체 관리자 화면에서
+            // 조회하지 않는다. 슈퍼관리자 목록 화면이 이미 주 소속 회원을 보여주며,
+            // 이 화면에서는 추가 소속 roster만 안전하게 병합한다.
+            const membersRequest = currentUser.churchId === UNAFFILIATED_CHURCH_ID
+                ? Promise.resolve({ docs: [] })
+                : db.collection('users').where('churchId', '==', currentUser.churchId).get();
+            const [membersSnap, rosterSnap, announcementDoc, churchDoc, kakaoDoc, platformDoc, talentShopDoc] = await withAdminLoadTimeout(Promise.all([
+                membersRequest,
                 db.collection('churches').doc(currentUser.churchId).collection('roster').get()
                     .catch(error => { console.error('외부 명부 로딩 실패:', error); return { docs: [] }; }),
                 db.collection('churches').doc(currentUser.churchId).collection('settings').doc('announcement').get(),
@@ -274,7 +298,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 db.collection('churches').doc(currentUser.churchId).collection('settings').doc('kakao').get(),
                 db.collection('settings').doc('platform').get(),
                 db.collection('churches').doc(currentUser.churchId).collection('settings').doc('talentShop').get(),
-            ]);
+            ]));
             const loadedMembers = membersSnap.docs.map(d => ({ uid: d.id, ...d.data() })).filter(m => m.role !== 'churchAdmin');
             const activeMembers = mergePrimaryAndRosterMembers(
                 loadedMembers,
@@ -317,6 +341,9 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 setTalentShop(promoted);
                 setTalentMarketId(SHARED_TALENT_MARKET_ID);
             }
+            // 회원·공동체·설정이 준비되면 관리자 화면부터 연다. 구매 내역은 선택 기능이므로
+            // 느리거나 실패해도 전체 화면을 다시 "불러오는 중"에 묶어 두지 않는다.
+            setLoading(false);
             try {
                 const externalMemberIds = new Set(activeMembers.filter(m => m.isExternalOrgMember).map(m => m.uid));
                 const purchasesRef = db.collection('churches').doc(currentUser.churchId)
@@ -371,8 +398,10 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             }
         } catch (e) {
             console.error(e);
+            setLoadError('공동체 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     // 이관 완료된 회원은 본문서의 password가 null이므로, 필요할 때만 private 하위문서를 조회한다.
@@ -1868,6 +1897,17 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             <div className="max-w-5xl mx-auto p-4">
                 {loading ? (
                     <div className="text-center py-20 text-slate-400">불러오는 중...</div>
+                ) : loadError ? (
+                    <div className="mx-auto max-w-md rounded-2xl border border-amber-200 bg-amber-50 px-5 py-8 text-center">
+                        <p className="font-bold text-amber-900">{loadError}</p>
+                        <button
+                            type="button"
+                            onClick={loadData}
+                            className="mt-4 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-amber-700"
+                        >
+                            다시 불러오기
+                        </button>
+                    </div>
                 ) : (
                     <>
                         {/* ── 대시보드 ── */}

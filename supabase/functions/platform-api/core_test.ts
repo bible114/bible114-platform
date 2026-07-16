@@ -977,6 +977,7 @@ Deno.test("교회 관리자 가입은 서버 권위 생성에 필요한 exact �
     entryCode: "safe-code",
     departments: [{ id: "adult", name: "장년", subgroups: [] }],
     password: "secret1",
+    contactEmail: "ADMIN-CONTACT@Example.com",
     consent: { schemaVersion: 1 },
   };
   const parsed = parsePlatformApiRequest(valid);
@@ -984,11 +985,20 @@ Deno.test("교회 관리자 가입은 서버 권위 생성에 필요한 exact �
   if (parsed.action !== "completeChurchAdminSignup") return;
   assert(parsed.churchName === "성서교회", "church name mismatch");
   assert(parsed.password === "secret1", "password mismatch");
-
-  const google = parsePlatformApiRequest({ ...valid, password: null });
   assert(
-    google.action === "completeChurchAdminSignup" && google.password === null,
-    "google signup rejected",
+    parsed.contactEmail === "admin-contact@example.com",
+    "contact email not canonicalized",
+  );
+
+  const google = parsePlatformApiRequest({
+    ...valid,
+    password: null,
+    contactEmail: undefined,
+  });
+  assert(
+    google.action === "completeChurchAdminSignup" && google.password === null &&
+      google.contactEmail === null,
+    "legacy google signup fallback rejected",
   );
   for (
     const invalid of [
@@ -999,6 +1009,9 @@ Deno.test("교회 관리자 가입은 서버 권위 생성에 필요한 exact �
       { ...valid, departments: {} },
       { ...valid, consent: [] },
       { ...valid, password: "short" },
+      { ...valid, contactEmail: "not-an-email" },
+      { ...valid, contactEmail: "admin@localhost" },
+      { ...valid, contactEmail: 123 },
     ]
   ) {
     assertRequestError(

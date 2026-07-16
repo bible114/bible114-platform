@@ -7,6 +7,7 @@ import { adminPreviewDailyVideo, adminSetChurchVisibility, ensureUnaffiliatedChu
 import { getDaysRead, getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
 import { invalidateChurchDirectoryCache, migrateChurchAccessSecrets } from '../utils/churchDirectory';
 import { migrateCredentialsIfNeeded, fetchMemberCredentials } from '../utils/memberCredentials';
+import { UNAFFILIATED_CHURCH_ID } from '../data/constants';
 
 const PlatformAdminView = ({
     currentUser,
@@ -786,9 +787,15 @@ const PlatformAdminView = ({
                                             {isChurchHidden(selectedChurch) ? '🙈 검색 숨김 중 (해제하기)' : '🔍 검색에서 숨기기'}
                                         </button>
                                         <button
-                                            onClick={() => setViewingChurchAsAdmin(true)}
-                                            className="flex items-center gap-1.5 bg-blue-600 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-blue-700 shadow-sm">
-                                            ⛪ 공동체 관리자 화면으로 보기
+                                            onClick={() => {
+                                                if (selectedChurch.id === UNAFFILIATED_CHURCH_ID || selectedChurch.isVirtual === true) return;
+                                                setViewingChurchAsAdmin(true);
+                                            }}
+                                            disabled={selectedChurch.id === UNAFFILIATED_CHURCH_ID || selectedChurch.isVirtual === true}
+                                            className="flex items-center gap-1.5 bg-blue-600 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-blue-700 shadow-sm disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500">
+                                            {selectedChurch.id === UNAFFILIATED_CHURCH_ID || selectedChurch.isVirtual === true
+                                                ? '플랫폼 가상 공동체'
+                                                : '⛪ 공동체 관리자 화면으로 보기'}
                                         </button>
                                     </div>
                                 </div>
@@ -796,7 +803,22 @@ const PlatformAdminView = ({
                                     <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
                                         <div>
                                             <h2 className="text-xl font-black text-slate-800">🏛️ {selectedChurch.name}</h2>
-                                            <p className="text-xs text-slate-400 mt-1">관리자: {selectedChurch.adminEmail || '-'}</p>
+                                            <p className="mt-1 text-xs text-slate-500">
+                                                관리자 연락:{' '}
+                                                {selectedChurch.adminEmail ? (
+                                                    <a
+                                                        href={`mailto:${selectedChurch.adminEmail}`}
+                                                        className="font-bold text-blue-600 underline underline-offset-2 hover:text-blue-800"
+                                                    >
+                                                        {selectedChurch.adminEmail}
+                                                    </a>
+                                                ) : '이메일 미설정'}
+                                            </p>
+                                            {(selectedChurch.id === UNAFFILIATED_CHURCH_ID || selectedChurch.isVirtual === true) && (
+                                                <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
+                                                    실제 공동체 관리자가 없는 플랫폼 가상 공동체입니다. 회원 현황은 이 화면에서 관리합니다.
+                                                </p>
+                                            )}
                                             <p className="text-xs text-slate-400">입장코드: <span className="bg-slate-100 px-1.5 rounded">비공개 관리</span></p>
                                         </div>
                                         <div className="grid grid-cols-3 gap-3 shrink-0">
@@ -907,7 +929,17 @@ const PlatformAdminView = ({
                                             <div className="flex items-start justify-between mb-3">
                                                 <div>
                                                     <h3 className="font-black text-slate-800 text-base">🏛️ {church.name}</h3>
-                                                    <p className="text-xs text-slate-400 mt-0.5">{church.adminEmail || '이메일 미설정'}</p>
+                                                    <p className="mt-0.5 text-xs text-slate-500">
+                                                        {church.adminEmail ? (
+                                                            <a
+                                                                href={`mailto:${church.adminEmail}`}
+                                                                onClick={event => event.stopPropagation()}
+                                                                className="font-bold text-blue-600 underline underline-offset-2 hover:text-blue-800"
+                                                            >
+                                                                {church.adminEmail}
+                                                            </a>
+                                                        ) : '이메일 미설정'}
+                                                    </p>
                                                     {(church.pastorName || church.denomination) && (
                                                         <p className="text-xs text-slate-500 mt-1">
                                                             {church.pastorName && <span className="mr-2">👤 {church.pastorName}</span>}
