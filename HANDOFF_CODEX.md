@@ -2304,6 +2304,13 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 
 ## 📮 Claude → Codex 메모
 
+2026-07-17 아침 2차 — 카카오 로그인 진짜 원인 확정·서버 수정 배포 (Claude 실행):
+- 사용자 Safari 콘솔로 확정: 로그인 복원 중 `platform-api` 502 `PlatformApiError: 데이터를 저장하지 못했습니다`(FIRESTORE_WRITE_FAILED). 던진 호출은 복구-삼킴이 없는 `migratePersonalTalentWalletIfNeeded`.
+- **근본 원인**: `_shared/firestore.ts`의 `documentName`이 URL용 `encodeDocumentPath`(encodeURIComponent)를 commit **본문** `update.name`에도 사용. 본문 리소스 이름은 URL 디코딩 없이 문자 그대로 비교되므로 `users/kakao:123`이 `users/kakao%3A123`(별개 문서)이 되어 exists 전제조건이 항상 실패. **콜론이 든 카카오 uid만** 모든 서버 쓰기 action이 502로 반복 실패했다 (읽기는 URL GET이라 정상 → 트랜잭션은 진행되고 커밋만 실패). 구글/비밀번호 uid는 인코딩 무변환이라 무증상.
+- 수정 `dda1643`: URL용 `encodeDocumentPath`와 본문용 `rawDocumentPath` 분리, `documentName`은 원문 사용. 회귀 테스트 추가(427 tests). 사용자 승인으로 **platform-api v10 배포**(OPTIONS 204/미인증 400/타 origin 403, ACTIVE 확인). kakao-auth 함수는 자체 URL 기반 PATCH라 무영향.
+- **후속 감사 필요**: 7/15 서버 가입 이관 이후 카카오 uid로 서버 create(exists:false)가 실행됐다면 `kakao%3A…` 쓰레기 문서가 성공적으로 생성됐을 수 있다. 다음 감사 스크립트 실행 때 users·roster·activityActions에서 문서 ID에 `%`가 포함된 건을 세어 정리 대상으로 보고할 것. (이번 실패 계정의 지갑 이관은 커밋 자체가 원자 실패라 부분 쓰기 없음.)
+- 부수: 클라이언트 카카오 실패 문구에 진단 코드 표시(`037b071`), 관리자 역할 분기(`cffa539`)도 이날 웹 배포됨. apex `bible114.net`은 DNS A/AAAA 없음 — 서비스는 www만 유효.
+
 2026-07-17 아침 — 운영 카카오 로그인 실패 진단·수정 (Claude 실행, 배포 대기):
 - 사용자 스크린샷: bible114.net 첫 화면에서 "카카오 로그인을 완료하지 못했습니다" (2026-07-17 06:34, 7/16 릴리스 후 첫 실제 Kakao OAuth 시도로 추정. 릴리스 검증에서 실제 OAuth 완주는 의도적으로 미실행이었다).
 - **추정 원인(코드로 확정한 갭)**: T112b가 Google 큰 버튼에는 users 역할 판정(platformAdmin/superAdmin → `finishAdminLogin`)을 넣었지만 **Kakao 콜백 경로에는 없다**. `kakaoLinks`로 관리자 uid에 연결된 카카오로 로그인하면 custom token uid가 관리자 uid가 되고, `openExistingSocialUser`가 `NOT_MEMBER_ACCOUNT`를 던져 일반 실패 문구로 표시된다. T112b로 관리자가 처음 읽기 대시보드에 착륙해 `SocialLinkBanner`("다음부터 카카오/구글로 3초 로그인")로 연결한 직후라면 정확히 재현된다.
