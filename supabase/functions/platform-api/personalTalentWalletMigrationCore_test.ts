@@ -34,6 +34,7 @@ const baseUser = (overrides: Record<string, unknown> = {}) => ({
 const baseRoster = (overrides: Record<string, unknown> = {}) => ({
   uid: UID,
   talent: 40,
+  extraMemberships: [],
   ...overrides,
 });
 
@@ -79,6 +80,7 @@ Deno.test("users 달란트를 canonical roster에 더할 결정을 만든다", (
     nextRosterTalent: 65,
     writeUser: true,
     writeRoster: true,
+    rosterPatch: { talent: 65 },
   });
 });
 
@@ -91,6 +93,7 @@ Deno.test("0 달란트는 flag만 이전하고 이미 완료된 상태는 no-op�
     nextRosterTalent: 40,
     writeUser: true,
     writeRoster: false,
+    rosterPatch: null,
   });
   assertEquals(decide(baseUser({ talent: 0, talentWalletMigrated: true })), {
     status: "alreadyMigrated",
@@ -100,6 +103,7 @@ Deno.test("0 달란트는 flag만 이전하고 이미 완료된 상태는 no-op�
     nextRosterTalent: 40,
     writeUser: false,
     writeRoster: false,
+    rosterPatch: null,
   });
 });
 
@@ -114,6 +118,62 @@ Deno.test("이전 완료 뒤 늦게 들어온 양수 환불 잔액도 다시 pri
       nextRosterTalent: 65,
       writeUser: true,
       writeRoster: true,
+      rosterPatch: { talent: 65 },
+    },
+  );
+});
+
+Deno.test("legacy primary의 누락 talent/extra만 0/[]로 materialize한다", () => {
+  assertEquals(
+    decide(
+      baseUser({ talent: 25, talentWalletMigrated: false }),
+      baseRoster({ talent: undefined, extraMemberships: undefined }),
+    ),
+    {
+      status: "migrated",
+      primaryOrgId: "org-1",
+      userTalent: 25,
+      rosterTalent: 0,
+      nextRosterTalent: 25,
+      writeUser: true,
+      writeRoster: true,
+      rosterPatch: { talent: 25, extraMemberships: [] },
+    },
+  );
+  assertEquals(
+    decide(
+      baseUser({ talent: 0, talentWalletMigrated: true }),
+      baseRoster({ talent: undefined, extraMemberships: undefined }),
+    ),
+    {
+      status: "migrated",
+      primaryOrgId: "org-1",
+      userTalent: 0,
+      rosterTalent: 0,
+      nextRosterTalent: 0,
+      writeUser: false,
+      writeRoster: true,
+      rosterPatch: { talent: 0, extraMemberships: [] },
+    },
+  );
+});
+
+Deno.test("기존 extraMemberships 배열은 비어 있지 않아도 그대로 보존한다", () => {
+  const memberships = [{ departmentId: "adult" }];
+  assertEquals(
+    decide(
+      baseUser({ talent: 0, talentWalletMigrated: true }),
+      baseRoster({ extraMemberships: memberships }),
+    ),
+    {
+      status: "alreadyMigrated",
+      primaryOrgId: "org-1",
+      userTalent: 0,
+      rosterTalent: 40,
+      nextRosterTalent: 40,
+      writeUser: false,
+      writeRoster: false,
+      rosterPatch: null,
     },
   );
 });
@@ -169,7 +229,9 @@ Deno.test("활성 개인 회원과 canonical primary roster만 허용한다", ()
 });
 
 Deno.test("두 지갑은 0..1e9 safe integer이고 합계도 범위 안이어야 한다", () => {
-  for (const talent of [-1, 1.5, "1", NaN, Infinity, 1_000_000_001]) {
+  for (
+    const talent of [null, -1, 1.5, "1", NaN, Infinity, 1_000_000_001]
+  ) {
     expectValidationError(
       () => decide(baseUser({ talent })),
       "INVALID_WALLET",
@@ -215,4 +277,10 @@ Deno.test("삭제 flag와 이전 flag의 malformed 값은 fail closed한다", ()
     () => decide(baseUser(), baseRoster({ isDeleted: "false" })),
     "INVALID_ROSTER",
   );
+  for (const extraMemberships of [null, "", {}, 1]) {
+    expectValidationError(
+      () => decide(baseUser(), baseRoster({ extraMemberships })),
+      "INVALID_ROSTER",
+    );
+  }
 });

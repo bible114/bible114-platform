@@ -284,27 +284,34 @@ const executeMigration = async (
     if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
       throw new PlatformError("INTERNAL");
     }
-    const userUpdate = decision.writeRoster
+    const userUpdate = decision.userTalent > 0
       ? { talent: 0, talentWalletMigrated: true }
       : { talentWalletMigrated: true };
-    const userUpdateMask = decision.writeRoster
+    const userUpdateMask = decision.userTalent > 0
       ? ["talent", "talentWalletMigrated"]
       : ["talentWalletMigrated"];
     const result: MigratePersonalTalentWalletResult = { status: "migrated" };
     const writes = [
-      dependencies.updateWrite(
-        service.projectId,
-        userPath,
-        userUpdate,
-        { updateMask: userUpdateMask, exists: true },
-      ),
-      ...(decision.writeRoster
+      ...(decision.writeUser
+        ? [
+          dependencies.updateWrite(
+            service.projectId,
+            userPath,
+            userUpdate,
+            { updateMask: userUpdateMask, exists: true },
+          ),
+        ]
+        : []),
+      ...(decision.writeRoster && decision.rosterPatch
         ? [
           dependencies.updateWrite(
             service.projectId,
             rosterPath,
-            { talent: decision.nextRosterTalent },
-            { updateMask: ["talent"], exists: true },
+            decision.rosterPatch,
+            {
+              updateMask: Object.keys(decision.rosterPatch),
+              exists: true,
+            },
           ),
         ]
         : []),

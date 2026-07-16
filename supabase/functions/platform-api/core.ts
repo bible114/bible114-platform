@@ -25,8 +25,13 @@ export const NORMALIZE_LEGACY_READING_POSITION_ACTION =
   "normalizeLegacyReadingPosition" as const;
 export const COMPLETE_MEMBER_ONBOARDING_ACTION =
   "completeMemberOnboarding" as const;
+export const JOIN_SOLO_COMMUNITY_ACTION = "joinSoloCommunity" as const;
 
 export type PlatformApiRequest =
+  | {
+    action: typeof JOIN_SOLO_COMMUNITY_ACTION;
+    requestId: string;
+  }
   | {
     action: typeof COMPLETE_MEMBER_ONBOARDING_ACTION;
     requestId: string;
@@ -276,6 +281,13 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
   }
 
   if (action === PREFLIGHT_ACTION) return { action, requestId };
+  if (action === JOIN_SOLO_COMMUNITY_ACTION) {
+    const allowedKeys = new Set(["action", "requestId"]);
+    if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return { action, requestId };
+  }
   if (action === COMPLETE_MEMBER_ONBOARDING_ACTION) {
     const allowedKeys = new Set([
       "action",

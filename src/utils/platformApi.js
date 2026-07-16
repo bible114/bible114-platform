@@ -109,6 +109,10 @@ const MIGRATE_PERSONAL_TALENT_WALLET_RESPONSE_KEYS = new Set([
     'ok', 'action', 'requestId', 'alreadyCompleted', 'committed', 'result',
 ]);
 const MIGRATE_PERSONAL_TALENT_WALLET_RESULT_KEYS = new Set(['status']);
+const JOIN_SOLO_COMMUNITY_RESPONSE_KEYS = new Set([
+    'ok', 'action', 'requestId', 'alreadyCompleted', 'committed', 'result',
+]);
+const JOIN_SOLO_COMMUNITY_RESULT_KEYS = new Set(['status']);
 const NORMALIZE_LEGACY_READING_POSITION_RESPONSE_KEYS = new Set([
     'ok', 'action', 'requestId', 'alreadyCompleted', 'committed', 'result',
 ]);
@@ -1313,6 +1317,61 @@ export const migratePersonalTalentWallet = (options = {}) => {
     }
     return callPlatformApi('migratePersonalTalentWallet', {}, { ...options, requestId })
         .then(result => validateMigratePersonalTalentWalletResponse(result, requestId));
+};
+
+const invalidJoinSoloCommunityResponse = () => {
+    throw new PlatformApiError('혼자 읽기 모임 참여 결과를 안전하게 확인하지 못했습니다.', {
+        code: 'INVALID_RESPONSE', status: 200, retryable: true,
+    });
+};
+
+export const validateJoinSoloCommunityResponse = (result, expectedRequestId) => {
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(expectedRequestId)
+        || !hasExactKeys(result, JOIN_SOLO_COMMUNITY_RESPONSE_KEYS)
+        || result.ok !== true
+        || result.action !== 'joinSoloCommunity'
+        || result.requestId !== expectedRequestId
+        || typeof result.alreadyCompleted !== 'boolean'
+        || typeof result.committed !== 'boolean'
+        || !hasExactKeys(result.result, JOIN_SOLO_COMMUNITY_RESULT_KEYS)) {
+        return invalidJoinSoloCommunityResponse();
+    }
+
+    const status = result.result.status;
+    const committedStatus = status === 'joined'
+        || status === 'rosterRepaired'
+        || status === 'primaryRepaired';
+    const validOutcome = (
+        (committedStatus && result.committed)
+        || (status === 'alreadyJoined'
+            && !result.alreadyCompleted
+            && !result.committed)
+    );
+    if (!validOutcome || (result.alreadyCompleted && !committedStatus)) {
+        return invalidJoinSoloCommunityResponse();
+    }
+
+    return {
+        ok: true,
+        action: 'joinSoloCommunity',
+        requestId: expectedRequestId,
+        alreadyCompleted: result.alreadyCompleted,
+        committed: result.committed,
+        result: { status },
+    };
+};
+
+// uid·조직·진도·지갑은 전부 서버 users/roster에서 결정한다.
+// 브라우저는 멱등 requestId 외에 어떤 상태도 보내지 않는다.
+export const joinSoloCommunity = (options = {}) => {
+    const requestId = options.requestId || createRequestId();
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(requestId)) {
+        throw new PlatformApiError('혼자 읽기 모임 참여 요청 번호가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('joinSoloCommunity', {}, { ...options, requestId })
+        .then(result => validateJoinSoloCommunityResponse(result, requestId));
 };
 
 const invalidNormalizeLegacyReadingPositionResponse = () => {

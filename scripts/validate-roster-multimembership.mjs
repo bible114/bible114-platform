@@ -73,6 +73,7 @@ assert.doesNotMatch(rules, /신규 소셜 가입은 users \+ roster/);
 
 const membershipCard = read('src/components/dashboard/CommunityMembershipCard.jsx');
 const joinCore = read('supabase/functions/platform-api/joinCore.ts');
+const joinSoloCore = read('supabase/functions/platform-api/joinSoloCommunityCore.ts');
 const app = read('src/App.jsx');
 const adminView = read('src/components/ChurchAdminView.jsx');
 const authHook = read('src/hooks/useAuth.js');
@@ -84,7 +85,10 @@ assert.match(joinCore, /membership:\s*\{[\s\S]*extraMemberships:\s*\[\]/,
 assert.match(authHook, /completePersonalSignupViaApi\(\{[\s\S]*departmentId: organization\.departmentId[\s\S]*subgroupId: organization\.subgroupId/);
 assert.match(personalMigration, /transaction\.get\(userRef\)[\s\S]*latestUser = userSnap\.data\(\)[\s\S]*subgroupName: latestUser\.subgroupName \?\? null,[\s\S]*extraMemberships: \[\]/,
     '개인계정 전환 roster는 보안 규칙과 일치하도록 최신 users 소속을 복사해야 한다.');
-assert.match(membershipCard, /UNAFFILIATED_CHURCH_ID[\s\S]*extraMemberships: \[\]/);
+assert.match(membershipCard, /joinSoloCommunityViaApi\(\{ expectedUid: requestUid \}\)/,
+    '혼자 읽기 공동체 복귀는 브라우저 roster 생성 대신 서버 API를 사용해야 한다.');
+assert.match(joinSoloCore, /rosterSeed:[\s\S]*extraMemberships: \[\]/,
+    '서버가 혼자 읽기 roster를 추가 소속 빈 배열로 시작해야 한다.');
 assert.match(app, /extraMemberships: Array\.isArray\(activeRosterOrg\.extraMemberships\)/);
 assert.match(adminView, /isExternalOrgMember[\s\S]*collection\('roster'\)/,
     '외부 명부 회원의 추가 소속은 해당 공동체 roster에 저장해야 한다.');

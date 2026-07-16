@@ -136,6 +136,38 @@ Deno.test("개인 달란트 지갑 이전은 requestId 외 입력을 거부한�
   }
 });
 
+Deno.test("혼자 읽기 모임 참여는 requestId 외 입력을 거부한다", () => {
+  const requestId = "123e4567-e89b-42d3-a456-426614174000";
+  const parsed = parsePlatformApiRequest({
+    action: "joinSoloCommunity",
+    requestId,
+  });
+  assert(parsed.action === "joinSoloCommunity", "action mismatch");
+  assert(parsed.requestId === requestId, "requestId mismatch");
+
+  for (
+    const extra of [
+      { uid: "forged-user" },
+      { orgId: "unaffiliated_v1" },
+      { churchId: "unaffiliated_v1" },
+      { primaryOrgId: "unaffiliated_v1" },
+      { talent: 100 },
+      { name: "forged name" },
+      { input: {} },
+    ]
+  ) {
+    assertRequestError(
+      () =>
+        parsePlatformApiRequest({
+          action: "joinSoloCommunity",
+          requestId,
+          ...extra,
+        }),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
 Deno.test("legacy 읽기 진도 보정은 requestId 외 입력을 거부한다", () => {
   const requestId = "123e4567-e89b-42d3-a456-426614174000";
   const parsed = parsePlatformApiRequest({

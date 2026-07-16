@@ -15,6 +15,12 @@ export type PersonalTalentWalletRoster = {
   uid?: unknown;
   isDeleted?: unknown;
   talent?: unknown;
+  extraMemberships?: unknown;
+};
+
+export type PersonalTalentWalletRosterPatch = {
+  talent?: number;
+  extraMemberships?: unknown[];
 };
 
 export type PersonalTalentWalletMigrationDecision =
@@ -33,6 +39,7 @@ export type PersonalTalentWalletMigrationDecision =
     nextRosterTalent: number;
     writeUser: boolean;
     writeRoster: boolean;
+    rosterPatch: PersonalTalentWalletRosterPatch | null;
   };
 
 export type PersonalTalentWalletMigrationValidationCode =
@@ -147,9 +154,23 @@ export const decidePersonalTalentWalletMigration = (input: {
     throw new PersonalTalentWalletMigrationValidationError("INVALID_ROSTER");
   }
 
-  const rosterTalent = readTalent(input.roster.talent);
+  // T97 이전 개인/전환 명부에는 talent와 extraMemberships가 아예 없을 수
+  // 있었다. 오직 undefined만 legacy 0/[]로 해석하고, null·문자열·음수 등
+  // 명시된 손상 값은 기존처럼 fail closed한다.
+  const legacyTalentMissing = input.roster.talent === undefined;
+  const rosterTalent = legacyTalentMissing
+    ? 0
+    : readTalent(input.roster.talent);
   if (rosterTalent === null) {
     throw new PersonalTalentWalletMigrationValidationError("INVALID_WALLET");
+  }
+  const legacyExtraMembershipsMissing =
+    input.roster.extraMemberships === undefined;
+  if (
+    !legacyExtraMembershipsMissing &&
+    !Array.isArray(input.roster.extraMemberships)
+  ) {
+    throw new PersonalTalentWalletMigrationValidationError("INVALID_ROSTER");
   }
   if (
     userTalent > MAX_PERSONAL_TALENT_WALLET_VALUE - rosterTalent
@@ -157,15 +178,27 @@ export const decidePersonalTalentWalletMigration = (input: {
     throw new PersonalTalentWalletMigrationValidationError("INVALID_WALLET");
   }
 
-  if (userTalent === 0 && input.user.talentWalletMigrated === true) {
+  const nextRosterTalent = rosterTalent + userTalent;
+  const rosterPatch: PersonalTalentWalletRosterPatch = {
+    ...((legacyTalentMissing || userTalent > 0)
+      ? { talent: nextRosterTalent }
+      : {}),
+    ...(legacyExtraMembershipsMissing ? { extraMemberships: [] } : {}),
+  };
+  const writeRoster = Object.keys(rosterPatch).length > 0;
+  const writeUser = userTalent > 0 ||
+    input.user.talentWalletMigrated !== true;
+
+  if (!writeUser && !writeRoster) {
     return {
       status: "alreadyMigrated",
       primaryOrgId,
       userTalent,
       rosterTalent,
-      nextRosterTalent: rosterTalent,
+      nextRosterTalent,
       writeUser: false,
       writeRoster: false,
+      rosterPatch: null,
     };
   }
   return {
@@ -173,8 +206,9 @@ export const decidePersonalTalentWalletMigration = (input: {
     primaryOrgId,
     userTalent,
     rosterTalent,
-    nextRosterTalent: rosterTalent + userTalent,
-    writeUser: true,
-    writeRoster: userTalent > 0,
+    nextRosterTalent,
+    writeUser,
+    writeRoster,
+    rosterPatch: writeRoster ? rosterPatch : null,
   };
 };

@@ -1,11 +1,20 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ChurchPicker from '../ChurchPicker';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../../data/constants';
-import { db, firebase } from '../../utils/firebase';
+import { auth, db, firebase } from '../../utils/firebase';
 import { getChurchDirectory } from '../../utils/churchDirectory';
-import { loadUserExtraOrgsStrict } from '../../utils/roster';
 import { migratePersonalTalentWalletIfNeeded } from '../../utils/helpers';
-import { issueJoinTicket, joinCommunity as joinCommunityViaApi, PlatformApiError } from '../../utils/platformApi';
+import {
+    issueJoinTicket,
+    joinCommunity as joinCommunityViaApi,
+    joinSoloCommunity as joinSoloCommunityViaApi,
+    PlatformApiError,
+} from '../../utils/platformApi';
+import {
+    isLatestCanonicalUserState,
+    loadCanonicalUserStateFromServer,
+} from '../../utils/userStateSync';
+import { validateJoinedSoloCommunityState } from '../../utils/joinSoloCommunityState';
 
 const emptySelection = { departmentId: '', departmentName: '', subgroupId: '', subgroupName: '' };
 
@@ -23,6 +32,7 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
     const joinTriggerRef = useRef(null);
     const dialogRef = useRef(null);
     const busyRef = useRef(false);
+    const soloJoinInFlightRef = useRef(null);
     busyRef.current = busy;
 
     const extraOrgs = useMemo(
@@ -44,6 +54,17 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
     useEffect(() => {
         if (onboarding && !selectionOnly) setShowJoin(true);
     }, [onboarding, selectionOnly]);
+
+    useEffect(() => {
+        // 계정 전환 또는 모달 unmount 중 끝난 이전 요청은 새 계정의 busy/notice를
+        // 건드리지 못하게 generation 역할의 ref를 폐기한다.
+        soloJoinInFlightRef.current = null;
+        setBusy(false);
+        setNotice(null);
+        return () => {
+            soloJoinInFlightRef.current = null;
+        };
+    }, [currentUser?.uid]);
 
     useEffect(() => {
         if (!showJoin) return undefined;
@@ -278,30 +299,70 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
     };
 
     const joinSoloCommunity = async () => {
-        if (busy || extraOrgs.some(org => org.orgId === UNAFFILIATED_CHURCH_ID)) return;
-        setBusy(true); setNotice(null);
+        const requestUid = String(currentUser?.uid || '').trim();
+        if (busy || soloJoinInFlightRef.current
+            || !requestUid
+            || extraOrgs.some(org => org.orgId === UNAFFILIATED_CHURCH_ID)) return;
+        // UID만 generation으로 쓰면 A → B → A 계정 전환 중 이전 A 응답이
+        // 새 A 요청으로 오인될 수 있다. 요청마다 고유 객체를 결속한다.
+        const requestGeneration = { uid: requestUid };
+        soloJoinInFlightRef.current = requestGeneration;
+        setBusy(true);
+        setNotice(null);
         try {
-            const latest = await loadUserExtraOrgsStrict(currentUser.uid);
-            if (latest.length >= 3) throw new Error('max');
-            if (latest.some(org => org.orgId === UNAFFILIATED_CHURCH_ID)) return;
-            const rosterRef = db.collection('churches').doc(UNAFFILIATED_CHURCH_ID).collection('roster').doc(currentUser.uid);
-            const now = firebase.firestore.FieldValue.serverTimestamp();
-            let walletMigration = null;
-            const runtimeOrg = { uid: currentUser.uid, orgId: UNAFFILIATED_CHURCH_ID, rosterPath: rosterRef.path, talent: 0, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null, extraMemberships: [] };
-            if (!currentUser.primaryOrgId) {
-                await db.runTransaction(async transaction => {
-                    transaction.set(rosterRef, { uid: currentUser.uid, name: currentUser.name || '', score: currentUser.score || 0, talent: 0, currentDay: currentUser.currentDay || 1, streak: currentUser.streak || 0, readCount: currentUser.readCount || 1, lastReadDate: currentUser.lastReadDate || null, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null, extraMemberships: [], joinedAt: now, updatedAt: now });
-                    transaction.update(db.collection('users').doc(currentUser.uid), { primaryOrgId: UNAFFILIATED_CHURCH_ID, updatedAt: now });
-                });
-                walletMigration = await migratePersonalTalentWalletIfNeeded(currentUser.uid, UNAFFILIATED_CHURCH_ID);
-                runtimeOrg.talent = walletMigration?.talent || 0;
-            } else {
-                await rosterRef.set({ uid: currentUser.uid, name: currentUser.name || '', score: currentUser.score || 0, talent: 0, currentDay: currentUser.currentDay || 1, streak: currentUser.streak || 0, readCount: currentUser.readCount || 1, lastReadDate: currentUser.lastReadDate || null, departmentId: null, departmentName: null, subgroupId: null, subgroupName: null, extraMemberships: [], joinedAt: now, updatedAt: now });
-            }
-            setCurrentUser(user => user?.uid === currentUser.uid ? { ...user, ...(walletMigration ? { talent: 0, talentWalletMigrated: true } : {}), primaryOrgId: user.primaryOrgId || UNAFFILIATED_CHURCH_ID, extraOrgs: [...latest, runtimeOrg].sort((a, b) => a.orgId.localeCompare(b.orgId)) } : user);
+            if (auth?.currentUser?.uid !== requestUid) throw new Error('AUTH_CHANGED');
+            await joinSoloCommunityViaApi({ expectedUid: requestUid });
+            if (auth?.currentUser?.uid !== requestUid
+                || soloJoinInFlightRef.current !== requestGeneration) throw new Error('AUTH_CHANGED');
+
+            const joinedState = validateJoinedSoloCommunityState(
+                await loadCanonicalUserStateFromServer(requestUid),
+                requestUid,
+            );
+            if (auth?.currentUser?.uid !== requestUid
+                || soloJoinInFlightRef.current !== requestGeneration) throw new Error('AUTH_CHANGED');
+
+            // 새 solo primary뿐 아니라 기존 primary가 있던 계정도 같은 서버 action으로
+            // legacy users 지갑을 정확한 primary roster에 수렴시킨다.
+            await migratePersonalTalentWalletIfNeeded(
+                requestUid,
+                joinedState.primaryOrgId,
+                joinedState,
+            );
+            if (auth?.currentUser?.uid !== requestUid
+                || soloJoinInFlightRef.current !== requestGeneration) throw new Error('AUTH_CHANGED');
+
+            const freshState = validateJoinedSoloCommunityState(
+                await loadCanonicalUserStateFromServer(requestUid),
+                requestUid,
+                { requireWalletSettled: true },
+            );
+            if (auth?.currentUser?.uid !== requestUid
+                || soloJoinInFlightRef.current !== requestGeneration
+                || !isLatestCanonicalUserState(requestUid, freshState)) throw new Error('AUTH_CHANGED');
+            setCurrentUser(user => (
+                user?.uid === requestUid
+                && auth?.currentUser?.uid === requestUid
+                && soloJoinInFlightRef.current === requestGeneration
+                && isLatestCanonicalUserState(requestUid, freshState)
+                    ? freshState
+                    : user
+            ));
         } catch (error) {
-            setNotice({ type: 'error', text: error?.message === 'max' ? '공동체는 최대 3개까지 추가할 수 있습니다.' : '혼자 읽기 모임에 참여하지 못했습니다.' });
-        } finally { setBusy(false); }
+            if (auth?.currentUser?.uid !== requestUid
+                || soloJoinInFlightRef.current !== requestGeneration) return;
+            setNotice({
+                type: 'error',
+                text: error instanceof PlatformApiError && error.status === 409
+                    ? error.message
+                    : '혼자 읽기 모임에 참여하지 못했습니다.',
+            });
+        } finally {
+            if (soloJoinInFlightRef.current === requestGeneration) {
+                soloJoinInFlightRef.current = null;
+                setBusy(false);
+            }
+        }
     };
 
     if (onboarding) return (

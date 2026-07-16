@@ -525,6 +525,102 @@ for (const [label, mutate] of [
     }],
 ]) expectInvalidWalletMigrationResponse(mutate, label);
 
+// 혼자 읽기 공동체 참여도 인증 uid 외 권위 값을 payload로 받지 않고,
+// 최소 status 응답의 canonical 멱등 조합만 허용한다.
+assert.match(
+    client,
+    /callPlatformApi\('joinSoloCommunity', \{\}, \{ \.\.\.options, requestId \}\)[\s\S]*validateJoinSoloCommunityResponse\(result, requestId\)/,
+    '혼자 읽기 참여 payload는 정확히 빈 객체여야 한다.',
+);
+const joinSoloRequestId = 'c23e4567-e89b-42d3-a456-426614174000';
+const validJoinSoloResponse = {
+    ok: true,
+    action: 'joinSoloCommunity',
+    requestId: joinSoloRequestId,
+    alreadyCompleted: false,
+    committed: true,
+    result: { status: 'joined' },
+};
+for (const validOutcome of [
+    validJoinSoloResponse,
+    { ...validJoinSoloResponse, alreadyCompleted: true },
+    { ...validJoinSoloResponse, result: { status: 'rosterRepaired' } },
+    { ...validJoinSoloResponse, result: { status: 'primaryRepaired' } },
+    {
+        ...validJoinSoloResponse,
+        committed: false,
+        result: { status: 'alreadyJoined' },
+    },
+]) {
+    assert.deepEqual(
+        platformApi.validateJoinSoloCommunityResponse(validOutcome, joinSoloRequestId),
+        validOutcome,
+        'joinSoloCommunity canonical commit, replay, no-op 조합만 허용해야 한다.',
+    );
+}
+for (const [label, mutate] of [
+    ['extra top-level', response => { response.uid = 'user-1'; }],
+    ['extra result', response => { response.result.orgId = 'unaffiliated_v1'; }],
+    ['wrong action', response => { response.action = 'joinCommunity'; }],
+    ['wrong requestId', response => { response.requestId = walletMigrationRequestId; }],
+    ['unknown status', response => { response.result.status = 'pending'; }],
+    ['commit status without commit', response => { response.committed = false; }],
+    ['no-op with commit', response => { response.result.status = 'alreadyJoined'; }],
+    ['no-op replay', response => {
+        response.result.status = 'alreadyJoined';
+        response.alreadyCompleted = true;
+        response.committed = false;
+    }],
+]) {
+    const response = structuredClone(validJoinSoloResponse);
+    mutate(response);
+    assert.throws(
+        () => platformApi.validateJoinSoloCommunityResponse(response, joinSoloRequestId),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_RESPONSE'
+            && error.status === 200
+            && error.retryable === true,
+        label,
+    );
+}
+
+const joinSoloClientStart = membershipCardSource.indexOf(
+    'const joinSoloCommunity = async () => {',
+);
+const joinSoloClientEnd = membershipCardSource.indexOf(
+    '\n    };',
+    joinSoloClientStart,
+) + 7;
+assert.ok(joinSoloClientStart >= 0 && joinSoloClientEnd > joinSoloClientStart,
+    '혼자 읽기 참여 client 구간이 필요하다.');
+const joinSoloClient = membershipCardSource.slice(joinSoloClientStart, joinSoloClientEnd);
+for (const pattern of [
+    /auth\?\.currentUser\?\.uid !== requestUid/,
+    /const requestGeneration = \{ uid: requestUid \}/,
+    /soloJoinInFlightRef\.current !== requestGeneration/,
+    /soloJoinInFlightRef\.current === requestGeneration/,
+    /joinSoloCommunityViaApi\(\{ expectedUid: requestUid \}\)/,
+    /loadCanonicalUserStateFromServer\(requestUid\)/,
+    /validateJoinedSoloCommunityState/,
+    /requireWalletSettled: true/,
+    /isLatestCanonicalUserState\(requestUid, freshState\)/,
+]) assert.match(joinSoloClient, pattern);
+assert.doesNotMatch(
+    joinSoloClient,
+    /soloJoinInFlightRef\.current\s*[!=]==?\s*requestUid/,
+    'UID 문자열 자체를 generation으로 쓰면 A-B-A 계정 전환에서 이전 응답이 다시 살아날 수 있다.',
+);
+assert.doesNotMatch(
+    joinSoloClient,
+    /db\.|firebase\.|\.set\(|\.update\(|runTransaction/,
+    '혼자 읽기 참여 client가 users/roster를 직접 쓰면 안 된다.',
+);
+assert.match(
+    membershipCardSource,
+    /return \(\) => \{\s*soloJoinInFlightRef\.current = null;\s*\};\s*\}, \[currentUser\?\.uid\]\)/,
+    '계정 전환 또는 unmount는 이전 solo 참여 generation을 폐기해야 한다.',
+);
+
 const walletMigrationHelperStart = helpersSource.indexOf(
     'export const migratePersonalTalentWalletIfNeeded = async (uid, primaryOrgId, knownUserData = null) => {',
 );
@@ -585,6 +681,31 @@ assert.doesNotMatch(walletMigrationHelper, /migratePersonalTalentWalletViaApi\(\
     '브라우저 힌트의 지갑·조직 상태를 API payload 권위로 보내면 안 된다.');
 assert.match(useAuthSource, /talent: 0,[\s\S]*talentWalletMigrated: true/,
     '이관 후 users 지갑 상태는 검증된 canonical 결과에 맞춰 적용해야 한다.');
+const sessionWalletMigrationIndex = useUserAuthSource.indexOf(
+    'const walletMigration = await migratePersonalTalentWalletIfNeeded(',
+);
+const sessionPositionAuditIndex = useUserAuthSource.indexOf(
+    'positionAudit = await normalizeLegacyReadingPosition({',
+);
+const sessionRosterRefreshIndex = useUserAuthSource.indexOf(
+    'user.extraOrgs = await loadUserExtraOrgs(firebaseUser.uid, {',
+);
+assert.ok(
+    sessionWalletMigrationIndex >= 0
+        && sessionWalletMigrationIndex < sessionPositionAuditIndex
+        && sessionPositionAuditIndex < sessionRosterRefreshIndex,
+    '세션 복원은 primary legacy 지갑 보정, 진도 감사, 최종 명부 재조회 순서여야 한다.',
+);
+assert.match(
+    useUserAuthSource.slice(sessionRosterRefreshIndex, sessionRosterRefreshIndex + 180),
+    /source: 'server'/,
+    '세션 복원의 최종 명부는 server action 이전에 시작한 stale query가 아닌 source-server여야 한다.',
+);
+assert.doesNotMatch(
+    useUserAuthSource,
+    /const extraOrgsPromise = loadUserExtraOrgs/,
+    '세션 복원에서 server action 전에 명부 query를 미리 시작하면 안 된다.',
+);
 assert.doesNotMatch(useUserAuthSource, /진정희|user\.name\s*===\s*['"][^'"]+['"][\s\S]{0,300}readCount/,
     '특정 이름만으로 운영 진도·완독 횟수를 자동 보정하는 writer가 남으면 안 된다.');
 assert.doesNotMatch(useDepartmentSource, /changeSubgroup|collection\('users'\)[\s\S]{0,200}subgroupId/,

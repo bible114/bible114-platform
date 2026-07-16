@@ -5,7 +5,6 @@ import { getGuestState } from '../utils/guestStorage';
 import { migrateCredentialsIfNeeded } from '../utils/memberCredentials';
 import { isInteractiveAuthFlowActive } from '../utils/authFlowGuard';
 import { loadUserExtraOrgs } from '../utils/roster';
-import { updateRosterTalents } from '../utils/talentWallet';
 import { normalizeLegacyReadingPosition } from '../utils/platformApi';
 
 const isRecoverableReadingPositionAuditError = error => {
@@ -99,7 +98,6 @@ export const useUserAuth = () => {
                                 return;
                             }
                             const user = userDocToState(userDoc);
-                            const extraOrgsPromise = loadUserExtraOrgs(firebaseUser.uid);
                             // [랭킹] 자격증명 지연 이관 — 재로그인 없이 세션 복원만 하는
                             // 상시 사용자가 가장 많으므로 이 경로가 핵심 이관 지점이다.
                             const credentialsMigrated = await migrateCredentialsIfNeeded(firebaseUser.uid, userData);
@@ -117,6 +115,22 @@ export const useUserAuth = () => {
                                 user.talent = migrated.talent;
                                 user.score = migrated.score;
                                 user.talentMigrated = true;
+                            }
+
+                            // T97 이전 primary roster의 누락 talent/extraMemberships를
+                            // 먼저 서버에서 materialize한다. 아래 진도 감사는 이 필드를
+                            // 사용하지 않지만, 모든 후속 화면에는 보정 뒤 source-server
+                            // 명부만 적용해 로그인 시작 전의 stale query를 재사용하지 않는다.
+                            const walletMigration = await migratePersonalTalentWalletIfNeeded(
+                                firebaseUser.uid,
+                                user.primaryOrgId,
+                                user
+                            );
+                            if (discardStaleEvent()) return;
+                            if (walletMigration) {
+                                user.primaryOrgId = walletMigration.orgId;
+                                user.talent = 0;
+                                user.talentWalletMigrated = true;
                             }
 
                             // [안전장치] 매 로그인마다 users와 canonical roster의 진도 미러를
@@ -166,19 +180,9 @@ export const useUserAuth = () => {
                                 user.readCount = normalizedData.readCount;
                             }
 
-                            user.extraOrgs = await extraOrgsPromise;
-                            const walletMigration = await migratePersonalTalentWalletIfNeeded(
-                                firebaseUser.uid,
-                                user.primaryOrgId,
-                                user
-                            );
-                            if (walletMigration) {
-                                user.talent = 0;
-                                user.talentWalletMigrated = true;
-                                Object.assign(user, updateRosterTalents(user, {
-                                    [walletMigration.orgId]: walletMigration.talent,
-                                }));
-                            }
+                            user.extraOrgs = await loadUserExtraOrgs(firebaseUser.uid, {
+                                source: 'server',
+                            });
                             if (discardStaleEvent()) return;
                             setCurrentUser(user);
                         } else {

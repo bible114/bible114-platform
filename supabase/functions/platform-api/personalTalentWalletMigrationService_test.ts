@@ -65,6 +65,7 @@ const baseRoster = (overrides: Data = {}): Data => ({
   uid: UID,
   name: "민감한 이름",
   talent: 40,
+  extraMemberships: [],
   unrelated: { keep: true },
   ...overrides,
 });
@@ -333,6 +334,54 @@ Deno.test("0 달란트 미이전 상태는 users flag와 원장만 쓰고 roster
   assert(harness.state.get(userPath)?.talentWalletMigrated === true);
 });
 
+Deno.test("legacy primary 누락 필드는 users 무쓰기 roster masked patch+원장으로 materialize한다", async () => {
+  const originalUser = baseUser({ talent: 0, talentWalletMigrated: true });
+  const legacyRoster = baseRoster({
+    talent: undefined,
+    extraMemberships: undefined,
+  });
+  const harness = createHarness({
+    [userPath]: originalUser,
+    [rosterPath]: legacyRoster,
+  });
+  assertEquals(await migrate(harness), {
+    alreadyCompleted: false,
+    committed: true,
+    result: { status: "migrated" },
+  });
+  assertEquals(harness.commits, [{
+    paths: [rosterPath, ledgerPath],
+    masks: [["talent", "extraMemberships"], null],
+    transaction: "tx-1",
+  }]);
+  assertEquals(harness.state.get(userPath), originalUser);
+  assertEquals(harness.state.get(rosterPath), {
+    ...legacyRoster,
+    talent: 0,
+    extraMemberships: [],
+  });
+  assertEquals(harness.state.get(ledgerPath), storedLedger());
+});
+
+Deno.test("legacy 0 roster에 users 잔액을 더하면서 nonempty extraMemberships는 보존한다", async () => {
+  const extraMemberships = [{ departmentId: "adult", subgroupId: "cell-1" }];
+  const harness = createHarness({
+    [userPath]: baseUser({ talent: 25, talentWalletMigrated: true }),
+    [rosterPath]: baseRoster({ talent: undefined, extraMemberships }),
+  });
+  await migrate(harness);
+  assertEquals(harness.commits[0], {
+    paths: [userPath, rosterPath, ledgerPath],
+    masks: [["talent", "talentWalletMigrated"], ["talent"], null],
+    transaction: "tx-1",
+  });
+  assert(harness.state.get(rosterPath)?.talent === 25);
+  assertEquals(
+    harness.state.get(rosterPath)?.extraMemberships,
+    extraMemberships,
+  );
+});
+
 Deno.test("완료 표식 뒤 늦은 환불 잔액도 새 요청에서 정확히 한 번 재이관한다", async () => {
   const harness = createHarness({
     [userPath]: baseUser({ talent: 25, talentWalletMigrated: true }),
@@ -543,6 +592,15 @@ Deno.test("missing user, inactive, nonpersonal, wrong roster와 invalid wallet�
       {
         user: baseUser({ talent: 1 }),
         roster: baseRoster({ talent: 1_000_000_000 }),
+      },
+      { user: baseUser(), roster: baseRoster({ talent: null }) },
+      {
+        user: baseUser(),
+        roster: baseRoster({ extraMemberships: null }),
+      },
+      {
+        user: baseUser(),
+        roster: baseRoster({ extraMemberships: "invalid" }),
       },
     ]
   ) {
