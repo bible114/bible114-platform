@@ -1,7 +1,7 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { auth, db, firebase } from '../utils/firebase';
-import { ACHIEVEMENTS, getNewAchievementIds, mergeAchievementIds } from '../data/achievements';
-import { completeRead, restartReading } from '../utils/platformApi';
+import { ACHIEVEMENTS } from '../data/achievements';
+import { completeRead, restartReading, syncAchievements } from '../utils/platformApi';
 import {
     isLatestCanonicalUserState,
     loadCanonicalUserStateFromServer,
@@ -45,6 +45,14 @@ export const useUserBibleActions = (
     const readSubmittingRef = useRef(false);
     const [restartSubmitting, setRestartSubmitting] = useState(false);
     const restartSubmittingRef = useRef(false);
+    const achievementToastRef = useRef(null);
+    const achievementToastScheduleRef = useRef(0);
+
+    useEffect(() => {
+        achievementToastScheduleRef.current += 1;
+        achievementToastRef.current = null;
+        setNewAchievement(null);
+    }, [currentUser?.uid]);
 
     const syncLatestUser = useCallback(async (uid) => {
         if (auth.currentUser?.uid !== uid) return null;
@@ -58,46 +66,59 @@ export const useUserBibleActions = (
         return freshUser;
     }, [setCurrentUser]);
 
+    const showAchievementToast = useCallback((uid, achievementId, deferToast = false) => {
+        const achievement = ACHIEVEMENTS.find(item => item.id === achievementId);
+        if (!uid || !achievement) return;
+        const scheduleGeneration = ++achievementToastScheduleRef.current;
+        const show = () => {
+            if (achievementToastScheduleRef.current !== scheduleGeneration
+                || auth.currentUser?.uid !== uid
+                || currentUserRef.current?.uid !== uid
+                || !Array.isArray(currentUserRef.current?.achievements)
+                || !currentUserRef.current.achievements.includes(achievementId)) return;
+            const toastToken = { uid, achievementId, scheduleGeneration };
+            achievementToastRef.current = toastToken;
+            setNewAchievement(achievement);
+            setTimeout(() => {
+                if (auth.currentUser?.uid !== uid
+                    || achievementToastRef.current?.uid !== uid
+                    || achievementToastRef.current?.achievementId !== achievementId
+                    || achievementToastRef.current?.scheduleGeneration !== scheduleGeneration) return;
+                achievementToastRef.current = null;
+                setNewAchievement(null);
+            }, 5000);
+        };
+        if (deferToast) setTimeout(show, 5200);
+        else show();
+    }, []);
+
     const checkAchievements = useCallback(async (
         user,
-        userMemos,
+        trigger = 'memo',
         deferToast = false,
         options = {},
     ) => {
-        if (!user?.uid) return [];
-        const userRef = db.collection('users').doc(user.uid);
-        const result = await db.runTransaction(async transaction => {
-            const snap = await transaction.get(userRef);
-            if (!snap.exists) return null;
-            const latest = { ...user, ...snap.data(), uid: user.uid };
-            const newIds = getNewAchievementIds(latest, userMemos);
-            if (newIds.length === 0) {
-                return { achievements: mergeAchievementIds(latest.achievements, []), newIds: [] };
-            }
-            const achievements = mergeAchievementIds(latest.achievements, newIds);
-            transaction.update(userRef, { achievements });
-            return { achievements, newIds };
-        });
-        if (!result) return [];
+        const uid = user?.uid;
+        if (!uid || auth.currentUser?.uid !== uid) return [];
+        const response = await syncAchievements(trigger, { expectedUid: uid });
+        if (auth.currentUser?.uid !== uid) return [];
+        const returnedIds = response.result.newIds;
 
-        if (options.applyLocal !== false) {
-            setCurrentUser(previous => previous?.uid === user.uid
-                ? { ...previous, achievements: result.achievements }
-                : previous);
+        // read 경로는 caller가 completion 위치를 재검증한 뒤 final source sync를
+        // 수행한다. 서버 응답 snapshot이나 현재 렌더 상태는 여기서 합치지 않는다.
+        if (options.applyLocal === false) return returnedIds;
+
+        const freshUser = await syncLatestUser(uid);
+        if (!freshUser || auth.currentUser?.uid !== uid) return [];
+        const freshAchievementIds = new Set(
+            Array.isArray(freshUser.achievements) ? freshUser.achievements : [],
+        );
+        const confirmedIds = returnedIds.filter(achievementId => freshAchievementIds.has(achievementId));
+        if (options.showToast !== false && confirmedIds.length > 0) {
+            showAchievementToast(uid, confirmedIds[confirmedIds.length - 1], deferToast);
         }
-        if (options.showToast !== false && result.newIds.length > 0) {
-            const newest = ACHIEVEMENTS.find(item => item.id === result.newIds[result.newIds.length - 1]);
-            if (newest) {
-                const show = () => {
-                    setNewAchievement(newest);
-                    setTimeout(() => setNewAchievement(null), 5000);
-                };
-                if (deferToast) setTimeout(show, 5200);
-                else show();
-            }
-        }
-        return result.newIds;
-    }, [setCurrentUser]);
+        return confirmedIds;
+    }, [showAchievementToast, syncLatestUser]);
 
     const handleRead = useCallback(async () => {
         const requestStartUser = currentUserRef.current;
@@ -198,7 +219,7 @@ export const useUserBibleActions = (
             try {
                 achievementIds = await checkAchievements(
                     freshUser,
-                    {},
+                    'read',
                     false,
                     { applyLocal: false, showToast: false },
                 );
@@ -223,6 +244,10 @@ export const useUserBibleActions = (
             setViewingDay(freshUser.currentDay);
             setHasReadToday(freshUser.lastReadDate === response.calendarDate);
             if (!sameReadingPosition(readingPosition(freshUser), responsePosition)) return;
+            const freshAchievementIds = new Set(
+                Array.isArray(freshUser.achievements) ? freshUser.achievements : [],
+            );
+            achievementIds = achievementIds.filter(achievementId => freshAchievementIds.has(achievementId));
 
             const isFirstReadToday = summary.scoreEarned > 0;
             const quizTalentEarned = freshUser.quizRewardDate === response.calendarDate
@@ -275,21 +300,11 @@ export const useUserBibleActions = (
             });
 
             if (achievementIds.length > 0) {
-                const newest = ACHIEVEMENTS.find(item => item.id === achievementIds[achievementIds.length - 1]);
-                if (newest) {
-                    const achievementPosition = readingPosition(freshUser);
-                    const showAchievement = () => {
-                        if (auth.currentUser?.uid !== uid
-                            || !sameReadingPosition(
-                                readingPosition(currentUserRef.current),
-                                achievementPosition,
-                            )) return;
-                        setNewAchievement(newest);
-                        setTimeout(() => setNewAchievement(null), 5000);
-                    };
-                    if (summary.newLevel > summary.oldLevel) setTimeout(showAchievement, 5200);
-                    else showAchievement();
-                }
+                showAchievementToast(
+                    uid,
+                    achievementIds[achievementIds.length - 1],
+                    summary.newLevel > summary.oldLevel,
+                );
             }
             if (auth.currentUser?.uid === uid) {
                 try {
@@ -302,12 +317,25 @@ export const useUserBibleActions = (
             readSubmittingRef.current = false;
             setReadSubmitting(false);
         }
-    }, [viewingDay, syncLatestUser, setViewingDay, checkAchievements, onReadComplete, requestCommunityRefresh]);
+    }, [
+        viewingDay,
+        syncLatestUser,
+        setViewingDay,
+        checkAchievements,
+        showAchievementToast,
+        onReadComplete,
+        requestCommunityRefresh,
+    ]);
 
     const handleRestart = useCallback(async () => {
         const requestStartUser = currentUserRef.current;
         if (restartSubmittingRef.current || !requestStartUser?.uid) return false;
         const uid = requestStartUser.uid;
+        // 서버 commit 뒤 응답이 유실돼도 이미 초기화된 업적의 지연 toast가
+        // 오래된 currentUserRef를 보고 나타나지 않도록 요청 시작부터 폐기한다.
+        achievementToastScheduleRef.current += 1;
+        achievementToastRef.current = null;
+        setNewAchievement(null);
         restartSubmittingRef.current = true;
         setRestartSubmitting(true);
         let activityRequest = null;
@@ -353,10 +381,6 @@ export const useUserBibleActions = (
                     alert('진행 상태가 다른 화면에서 바뀌어 최신 위치로 맞췄습니다. 내용을 확인한 뒤 다시 눌러주세요.');
                     return false;
                 }
-                if (response.alreadyCompleted) {
-                    alert('이전 재시작 요청의 결과를 확인했습니다. 최신 상태를 유지했습니다. 현재 내용을 확인하고 다시 누르면 새 요청으로 처리됩니다.');
-                    return false;
-                }
 
                 const restartWasObserved = freshUser.readingEpoch >= response.result.next.readingEpoch
                     && freshUser.readCount >= response.result.next.cycle;
@@ -368,8 +392,16 @@ export const useUserBibleActions = (
                 // 신규 restart commit이 관찰되면 그 뒤 다른 탭이 더 진행했더라도
                 // 이전 epoch의 완료/업적/보너스 UI는 더 이상 유효하지 않다.
                 setCompletionSummary(null);
+                achievementToastScheduleRef.current += 1;
+                achievementToastRef.current = null;
                 setNewAchievement(null);
                 setBonusToast(null);
+                if (response.alreadyCompleted) {
+                    // 첫 commit의 응답이 유실된 뒤 exact replay로 확인한 경우에도
+                    // 이전 epoch의 완료/보너스 화면은 서버 reset과 함께 폐기한다.
+                    alert('이전 재시작 요청의 결과를 확인했습니다. 최신 상태를 유지했습니다. 현재 내용을 확인하고 다시 누르면 새 요청으로 처리됩니다.');
+                    return false;
+                }
                 const restartIsLatest = sameReadingPosition(
                     readingPosition(freshUser),
                     response.result.next,

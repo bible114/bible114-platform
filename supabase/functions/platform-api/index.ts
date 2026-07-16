@@ -88,6 +88,7 @@ import {
 } from "./dailyVideoResolve.ts";
 import { completeReadTransaction } from "./readCompletionService.ts";
 import { restartReading } from "./restartReadingService.ts";
+import { syncAchievements } from "./achievementSyncService.ts";
 import { skipQuiz, submitQuiz } from "./quizSubmission.ts";
 import { rebuildPublicChurches } from "./publicDirectoryService.ts";
 
@@ -1105,6 +1106,19 @@ Deno.serve(async (request) => {
           .catch(() => {});
         throw error;
       }
+    }
+
+    if (parsed.action === "syncAchievements") {
+      const result = await syncAchievements(service, verifiedUser, {
+        requestId: parsed.requestId,
+        trigger: parsed.trigger,
+      });
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        ...result,
+      });
     }
 
     const userDocument = await getDocument<UserDocument>(

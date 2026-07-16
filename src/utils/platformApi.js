@@ -89,6 +89,22 @@ const RESTART_READING_ROSTER_KEYS = new Set([
 const RESTART_READING_RESULT_KEYS = new Set(['status', 'previous', 'next']);
 const RESTART_READING_POSITION_KEYS = new Set(['status', 'expected', 'received']);
 const RESTART_READING_POSITION_VALUE_KEYS = new Set(['cycle', 'day', 'readingEpoch']);
+const SYNC_ACHIEVEMENTS_REQUEST_KEYS = new Set(['trigger']);
+const SYNC_ACHIEVEMENTS_RESPONSE_KEYS = new Set([
+    'ok', 'action', 'requestId', 'alreadyCompleted', 'committed', 'result',
+]);
+const SYNC_ACHIEVEMENTS_RESULT_KEYS = new Set(['trigger', 'newIds']);
+const SYNC_ACHIEVEMENT_TRIGGERS = new Set(['read', 'memo']);
+const SYNC_ACHIEVEMENT_IDS = [
+    'first_read',
+    'streak_7', 'streak_30', 'streak_100',
+    'day_30', 'day_100', 'day_200', 'day_365',
+    'first_memo', 'memo_10', 'memo_50',
+    'score_100', 'score_500', 'score_1000',
+];
+const SYNC_ACHIEVEMENT_INDEX = new Map(
+    SYNC_ACHIEVEMENT_IDS.map((achievementId, index) => [achievementId, index]),
+);
 const ACTIVITY_REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const QUIZ_PROGRESS_KEY_PATTERN = /^(?:e([1-9]\d*)_)?r([1-9]\d*)_d([1-9]\d*)$/;
 const QUIZ_KEY_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
@@ -1146,6 +1162,79 @@ export const restartReading = (cycle, day, options = {}) => {
     delete callOptions.readingEpoch;
     return callPlatformApi('restartReading', payload, { ...callOptions, requestId })
         .then(result => validateRestartReadingResponse(payload, result, requestId));
+};
+
+const invalidSyncAchievementsResponse = () => {
+    throw new PlatformApiError('업적 동기화 결과를 안전하게 확인하지 못했습니다.', {
+        code: 'INVALID_RESPONSE', status: 200, retryable: true,
+    });
+};
+
+const normalizeSyncAchievementIds = (value) => {
+    if (!Array.isArray(value) || value.length > SYNC_ACHIEVEMENT_IDS.length) {
+        return invalidSyncAchievementsResponse();
+    }
+    let previousCatalogIndex = -1;
+    const normalized = value.map((achievementId) => {
+        const catalogIndex = SYNC_ACHIEVEMENT_INDEX.get(achievementId);
+        if (!Number.isSafeInteger(catalogIndex) || catalogIndex <= previousCatalogIndex) {
+            return invalidSyncAchievementsResponse();
+        }
+        previousCatalogIndex = catalogIndex;
+        return achievementId;
+    });
+    return normalized;
+};
+
+export const validateSyncAchievementsResponse = (payload, result, expectedRequestId) => {
+    if (!hasExactKeys(payload, SYNC_ACHIEVEMENTS_REQUEST_KEYS)
+        || !SYNC_ACHIEVEMENT_TRIGGERS.has(payload.trigger)
+        || !ACTIVITY_REQUEST_ID_PATTERN.test(expectedRequestId)
+        || !hasExactKeys(result, SYNC_ACHIEVEMENTS_RESPONSE_KEYS)
+        || result.ok !== true
+        || result.action !== 'syncAchievements'
+        || result.requestId !== expectedRequestId
+        || typeof result.alreadyCompleted !== 'boolean'
+        || typeof result.committed !== 'boolean'
+        || !hasExactKeys(result.result, SYNC_ACHIEVEMENTS_RESULT_KEYS)
+        || result.result.trigger !== payload.trigger) {
+        return invalidSyncAchievementsResponse();
+    }
+
+    const newIds = normalizeSyncAchievementIds(result.result.newIds);
+    const hasNewAchievements = newIds.length > 0;
+    const validOutcome = (
+        (!result.alreadyCompleted && !result.committed && !hasNewAchievements)
+        || (!result.alreadyCompleted && result.committed && hasNewAchievements)
+        || (result.alreadyCompleted && result.committed && hasNewAchievements)
+    );
+    if (!validOutcome) return invalidSyncAchievementsResponse();
+
+    return {
+        ok: true,
+        action: 'syncAchievements',
+        requestId: expectedRequestId,
+        alreadyCompleted: result.alreadyCompleted,
+        committed: result.committed,
+        result: { trigger: payload.trigger, newIds },
+    };
+};
+
+export const syncAchievements = (trigger, options = {}) => {
+    if (!SYNC_ACHIEVEMENT_TRIGGERS.has(trigger)) {
+        throw new PlatformApiError('업적 동기화 종류가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const requestId = options.requestId || createRequestId();
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(requestId)) {
+        throw new PlatformApiError('업적 동기화 요청 번호가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const payload = { trigger };
+    return callPlatformApi('syncAchievements', payload, { ...options, requestId })
+        .then(result => validateSyncAchievementsResponse(payload, result, requestId));
 };
 
 const invalidDailyVideoResponse = () => {

@@ -116,7 +116,16 @@ export const useMemos = (currentUser) => {
         }
 
         if (currentUidRef.current !== uid) return;
-        if (checkAchievements) await checkAchievements(currentUser, newMemos);
+        if (checkAchievements) {
+            try {
+                await checkAchievements(currentUser, 'memo');
+            } catch (achievementError) {
+                // 메모 본문은 이미 저장됐다. 업적 동기화 실패를 저장 실패로 올리면
+                // 사용자의 재시도로 같은 문장이 다시 append될 수 있으므로 분리한다.
+                console.warn('묵상 저장 후 업적 동기화 실패:', achievementError);
+            }
+        }
+        if (currentUidRef.current !== uid) return;
         if (typeof onComplete === 'function') onComplete();
     }, [currentUser, memos]);
 

@@ -60,6 +60,49 @@ Deno.test("preflight 요청을 정규화한다", () => {
   assert(!("ignored" in parsed), "unknown field leaked into parsed request");
 });
 
+Deno.test("업적 동기화는 requestId와 exact trigger만 받는다", () => {
+  const requestId = "123e4567-e89b-12d3-a456-426614174000";
+  for (const trigger of ["read", "memo"] as const) {
+    const parsed = parsePlatformApiRequest({
+      action: "syncAchievements",
+      requestId,
+      trigger,
+    });
+    assert(parsed.action === "syncAchievements", "action mismatch");
+    if (parsed.action !== "syncAchievements") return;
+    assert(parsed.requestId === requestId, "requestId mismatch");
+    assert(parsed.trigger === trigger, "trigger mismatch");
+  }
+
+  for (
+    const invalid of [
+      {},
+      { trigger: "quiz" },
+      { trigger: 1 },
+      { trigger: "read", uid: "forged-user" },
+      { trigger: "read", user: { currentDay: 365 } },
+      { trigger: "read", memos: { forged: "client memo" } },
+      { trigger: "memo", memoCount: 50 },
+      { trigger: "memo", currentDay: 365 },
+      { trigger: "memo", streak: 100 },
+      { trigger: "memo", score: 1000 },
+      { trigger: "memo", achievementIds: ["score_1000"] },
+      { trigger: "memo", threshold: 0 },
+      { trigger: "memo", readingEpoch: 0 },
+    ]
+  ) {
+    assertRequestError(
+      () =>
+        parsePlatformApiRequest({
+          action: "syncAchievements",
+          requestId,
+          ...invalid,
+        }),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
 Deno.test("매일 영상 resolve는 requestId 외 클라이언트 입력을 거부한다", () => {
   const requestId = "123e4567-e89b-12d3-a456-426614174000";
   const parsed = parsePlatformApiRequest({

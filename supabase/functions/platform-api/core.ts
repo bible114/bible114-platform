@@ -18,8 +18,14 @@ export const RESOLVE_DAILY_VIDEO_ACTION = "resolveDailyVideo" as const;
 export const ADMIN_PREVIEW_DAILY_VIDEO_ACTION =
   "adminPreviewDailyVideo" as const;
 export const REBUILD_PUBLIC_CHURCHES_ACTION = "rebuildPublicChurches" as const;
+export const SYNC_ACHIEVEMENTS_ACTION = "syncAchievements" as const;
 
 export type PlatformApiRequest =
+  | {
+    action: typeof SYNC_ACHIEVEMENTS_ACTION;
+    requestId: string;
+    trigger: "read" | "memo";
+  }
   | {
     action: typeof RESTART_READING_ACTION;
     requestId: string;
@@ -239,12 +245,23 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     adultPlaylistId,
     kidsPlaylistId,
     dryRun,
+    trigger,
   } = body as Record<string, unknown>;
   if (!isRequestId(requestId)) {
     throw new PlatformApiRequestError("INVALID_REQUEST_ID");
   }
 
   if (action === PREFLIGHT_ACTION) return { action, requestId };
+  if (action === SYNC_ACHIEVEMENTS_ACTION) {
+    const allowedKeys = new Set(["action", "requestId", "trigger"]);
+    if (
+      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+      (trigger !== "read" && trigger !== "memo")
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return { action, requestId, trigger };
+  }
   if (action === RESOLVE_DAILY_VIDEO_ACTION) {
     const allowedKeys = new Set(["action", "requestId"]);
     if (Object.keys(body).some((key) => !allowedKeys.has(key))) {

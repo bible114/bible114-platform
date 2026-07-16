@@ -8,6 +8,7 @@ const constants = read('src/data/constants.js');
 const envExample = read('.env.example');
 const client = read('src/utils/platformApi.js');
 const userBibleActions = read('src/hooks/useUserBibleActions.js');
+const useMemosSource = read('src/hooks/useMemos.js');
 const quizCard = read('src/components/dashboard/BibleQuizCard.jsx');
 const userStateSync = read('src/utils/userStateSync.js');
 const rosterClient = read('src/utils/roster.js');
@@ -37,6 +38,8 @@ for (const pattern of [
     /export const validateSubmitQuizResponse = \(payload, result, expectedRequestId\)/,
     /export const skipQuiz = \(progressKey, quizKey, options = \{\}\)/,
     /export const validateSkipQuizResponse = \(payload, result, expectedRequestId\)/,
+    /export const syncAchievements = \(trigger, options = \{\}\)/,
+    /export const validateSyncAchievementsResponse = \(payload, result, expectedRequestId\)/,
     /export const resolveDailyVideo = \(options = \{\}\)/,
     /export const validateDailyVideoResolveResponse = \(result, expectedRequestId\)/,
     /export const adminPreviewDailyVideo = \(input, options = \{\}\)/,
@@ -75,6 +78,7 @@ assert.doesNotMatch(
 
 // Node에서 오류 타입과 URL 미설정 안전장치를 import/실행할 수 있어야 한다.
 const platformApi = await import('../src/utils/platformApi.js');
+const { ACHIEVEMENTS } = await import('../src/data/achievements.js');
 const quizProgressRuntime = await import('../src/utils/quizProgress.js');
 const { strictCanonicalRosterEntries } = await import('../src/utils/rosterSnapshot.js');
 const { updateRosterTalents } = await import('../src/utils/talentWallet.js');
@@ -335,6 +339,96 @@ for (const [cycle, day] of [[0, 1], [1.5, 1], [1, 0], [1, 366], [1, 2.5]]) {
             `잘못된 읽기 범위(${cycle}, ${day})는 네트워크 요청 전에 거부해야 한다.`,
         );
     }
+}
+
+// 업적 서버 action은 canonical ID의 결정적 부분집합만 받아들이고, 2xx 본문의
+// 키·echo·순서·중복·결과 boolean 조합 중 하나라도 어긋나면 fail-closed한다.
+const achievementRequestId = 'a23e4567-e89b-42d3-a456-426614174000';
+const validAchievementPayload = { trigger: 'read' };
+const validAchievementResponse = {
+    ok: true,
+    action: 'syncAchievements',
+    requestId: achievementRequestId,
+    alreadyCompleted: false,
+    committed: true,
+    result: { trigger: 'read', newIds: ['first_read', 'score_100'] },
+};
+assert.deepEqual(
+    platformApi.validateSyncAchievementsResponse(
+        validAchievementPayload,
+        validAchievementResponse,
+        achievementRequestId,
+    ),
+    validAchievementResponse,
+);
+for (const validOutcome of [
+    {
+        ...validAchievementResponse,
+        alreadyCompleted: true,
+    },
+    {
+        ...validAchievementResponse,
+        committed: false,
+        result: { trigger: 'read', newIds: [] },
+    },
+]) {
+    assert.deepEqual(
+        platformApi.validateSyncAchievementsResponse(
+            validAchievementPayload,
+            validOutcome,
+            achievementRequestId,
+        ),
+        validOutcome,
+        '신규 commit·replay·무변경 결과의 세 가지 canonical 조합을 허용해야 한다.',
+    );
+}
+const expectInvalidAchievementResponse = (mutate, label) => {
+    const response = structuredClone(validAchievementResponse);
+    mutate(response);
+    assert.throws(
+        () => platformApi.validateSyncAchievementsResponse(
+            validAchievementPayload,
+            response,
+            achievementRequestId,
+        ),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_RESPONSE'
+            && error.status === 200
+            && error.retryable === true,
+        label,
+    );
+};
+for (const [label, mutate] of [
+    ['extra top-level', response => { response.achievements = ['first_read']; }],
+    ['extra result', response => { response.result.score = 100; }],
+    ['wrong action', response => { response.action = 'completeRead'; }],
+    ['wrong requestId echo', response => { response.requestId = readRequestId; }],
+    ['wrong trigger echo', response => { response.result.trigger = 'memo'; }],
+    ['unknown achievement', response => { response.result.newIds = ['unknown_badge']; }],
+    ['duplicate achievement', response => { response.result.newIds = ['first_read', 'first_read']; }],
+    ['non-canonical order', response => { response.result.newIds = ['score_100', 'first_read']; }],
+    ['alreadyCompleted type', response => { response.alreadyCompleted = 0; }],
+    ['committed type', response => { response.committed = 1; }],
+    ['new IDs without commit', response => { response.committed = false; }],
+    ['empty committed result', response => { response.result.newIds = []; }],
+    ['uncommitted replay', response => {
+        response.alreadyCompleted = true;
+        response.committed = false;
+    }],
+    ['empty replay', response => {
+        response.alreadyCompleted = true;
+        response.result.newIds = [];
+    }],
+]) expectInvalidAchievementResponse(mutate, label);
+for (const trigger of [undefined, null, '', 'quiz', 'READ', 1, {}]) {
+    assert.throws(
+        () => platformApi.syncAchievements(trigger),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_PAYLOAD'
+            && error.status === 0
+            && error.retryable === false,
+        `허용되지 않은 업적 trigger는 네트워크 전에 거부해야 한다: ${String(trigger)}`,
+    );
 }
 
 // 매일 영상은 익명 Firebase 게스트도 인증형 API를 사용하고, 브라우저가 2xx 본문을
@@ -678,6 +772,60 @@ assert.match(syncLatestUserContract, /auth\.currentUser\?\.uid !== uid/);
 assert.match(syncLatestUserContract, /setCurrentUser\(freshUser\)/);
 assert.doesNotMatch(syncLatestUserContract, /setCurrentUser\([^)]*=>/);
 
+// 업적 판정과 merge는 서버 한 곳에서만 수행한다. 클라이언트는 인증 계정을
+// 고정해 action을 호출한 뒤 source-server에서 실제 반영된 ID만 UI에 사용한다.
+assert.match(
+    userBibleActions,
+    /import\s*\{[^}]*syncAchievements[^}]*\}\s*from\s*['"]\.\.\/utils\/platformApi['"]/,
+);
+assert.doesNotMatch(
+    userBibleActions,
+    /import\s*\{[^}]*(?:getNewAchievementIds|mergeAchievementIds)[^}]*\}\s*from\s*['"]\.\.\/data\/achievements['"]/,
+    '브라우저 hook이 업적 판정·merge helper를 다시 가져오면 안 된다.',
+);
+const checkAchievementsStart = userBibleActions.indexOf('const checkAchievements = useCallback(');
+const checkAchievementsEnd = userBibleActions.indexOf('const handleRead = useCallback(', checkAchievementsStart);
+assert.ok(checkAchievementsStart >= 0 && checkAchievementsEnd > checkAchievementsStart, 'checkAchievements 서버 sync helper가 필요하다.');
+const checkAchievementsContract = userBibleActions.slice(checkAchievementsStart, checkAchievementsEnd);
+for (const pattern of [
+    /const uid = user\?\.uid/,
+    /auth\.currentUser\?\.uid !== uid/,
+    /await syncAchievements\(trigger, \{ expectedUid:\s*uid \}\)/,
+    /const returnedIds = response\.result\.newIds/,
+    /await syncLatestUser\(uid\)/,
+    /freshUser\.achievements/,
+    /returnedIds\.filter\(achievementId => freshAchievementIds\.has\(achievementId\)\)/,
+]) assert.match(checkAchievementsContract, pattern);
+assert.doesNotMatch(
+    checkAchievementsContract,
+    /db\.runTransaction|getNewAchievementIds|mergeAchievementIds|transaction\.(?:get|set|update|delete)|setCurrentUser\(/,
+    'checkAchievements가 Firestore를 직접 쓰거나 응답 snapshot을 로컬 사용자에 merge하면 안 된다.',
+);
+
+// 메모 본문 쓰기가 성공한 뒤 memo trigger를 호출한다. 업적 action 실패는 이미
+// 저장된 메모를 실패·재append시키지 않으며 기존 onComplete 흐름도 보존한다.
+const saveMemoStart = useMemosSource.indexOf('const saveMemo = useCallback(');
+const saveMemoEnd = useMemosSource.indexOf('\n    return {', saveMemoStart);
+assert.ok(saveMemoStart >= 0 && saveMemoEnd > saveMemoStart, 'saveMemo 계약 구간이 필요하다.');
+const saveMemoContract = useMemosSource.slice(saveMemoStart, saveMemoEnd);
+const memoWriteStart = saveMemoContract.indexOf("await db.collection('users').doc(uid).set(");
+const memoAchievementStart = saveMemoContract.indexOf("await checkAchievements(currentUser, 'memo')");
+const memoAchievementCatch = saveMemoContract.indexOf('catch (achievementError)', memoAchievementStart);
+const memoOnComplete = saveMemoContract.indexOf("typeof onComplete === 'function'", memoAchievementStart);
+assert.ok(
+    memoWriteStart >= 0
+        && memoAchievementStart > memoWriteStart
+        && memoAchievementCatch > memoAchievementStart
+        && memoOnComplete > memoAchievementCatch,
+    '메모 저장 → 분리된 업적 동기화/catch → onComplete 순서를 지켜야 한다.',
+);
+assert.match(
+    saveMemoContract.slice(memoWriteStart, memoOnComplete),
+    /try\s*\{[\s\S]*await checkAchievements\(currentUser, 'memo'\)[\s\S]*\}\s*catch \(achievementError\)/,
+);
+assert.match(saveMemoContract.slice(memoAchievementCatch, memoOnComplete), /console\.warn\(/);
+assert.match(saveMemoContract.slice(memoAchievementCatch, memoOnComplete), /currentUidRef\.current !== uid/);
+
 // 읽기 완료는 브라우저 Firestore transaction이 아니라 멱등 requestId를 붙인
 // completeRead 서버 action 한 번으로 저장하고, 2xx 응답도 fail-closed 검증한다.
 assert.match(userBibleActions, /import\s*\{[^}]*completeRead[^}]*restartReading[^}]*\}\s*from\s*['"]\.\.\/utils\/platformApi['"]/);
@@ -731,6 +879,23 @@ assert.doesNotMatch(
 );
 assert.doesNotMatch(handleReadContract, /loadAllMembers|setAllMembersForRace|setDepartmentMembers|setSubgroupStats/);
 assert.doesNotMatch(handleReadContract, /updateRosterTalents|\.\.\.response\.state\.user/);
+assert.match(
+    handleReadContract,
+    /checkAchievements\([\s\S]*freshUser,[\s\S]*['"]read['"][\s\S]*\{ applyLocal:\s*false, showToast:\s*false \}/,
+    '읽기 완료는 read trigger를 서버에 보내되 final 위치 확인 전 toast를 띄우면 안 된다.',
+);
+const handleReadFinalSync = handleReadContract.lastIndexOf('freshUser = await syncLatestUser(uid)');
+const handleReadAchievementFilter = handleReadContract.indexOf(
+    'achievementIds = achievementIds.filter(achievementId => freshAchievementIds.has(achievementId))',
+    handleReadFinalSync,
+);
+const handleReadAchievementToast = handleReadContract.indexOf('showAchievementToast(', handleReadAchievementFilter);
+assert.ok(
+    handleReadFinalSync >= 0
+        && handleReadAchievementFilter > handleReadFinalSync
+        && handleReadAchievementToast > handleReadAchievementFilter,
+    'final source-server sync 뒤 실제 fresh achievements에 남은 ID만 읽기 toast에 사용해야 한다.',
+);
 
 const readCalendarDate = 'Thu Jul 16 2026';
 const validCompleteReadResponse = {
@@ -1074,6 +1239,201 @@ assert.equal(exists(corePath), true, `${corePath}가 필요하다.`);
 assert.equal(exists(indexPath), true, `${indexPath}가 필요하다.`);
 const serverCore = read(corePath);
 const serverIndex = read(indexPath);
+
+// 서버 업적 계산기는 클라이언트의 14개 ID·순서·경계값과 정확히 같아야 하며,
+// 외부 I/O 없이 서버가 읽은 사용자 상태만 계산한다.
+const achievementCorePath = 'supabase/functions/platform-api/achievementCore.ts';
+const achievementCoreTestPath = 'supabase/functions/platform-api/achievementCore_test.ts';
+const achievementSyncServicePath = 'supabase/functions/platform-api/achievementSyncService.ts';
+const achievementSyncServiceTestPath = 'supabase/functions/platform-api/achievementSyncService_test.ts';
+for (const path of [
+    achievementCorePath,
+    achievementCoreTestPath,
+    achievementSyncServicePath,
+    achievementSyncServiceTestPath,
+]) assert.equal(exists(path), true, `${path}가 필요하다.`);
+const achievementCore = read(achievementCorePath);
+const achievementCoreTest = read(achievementCoreTestPath);
+const achievementSyncService = read(achievementSyncServicePath);
+const achievementSyncServiceTest = read(achievementSyncServiceTestPath);
+const achievementThresholdContract = [
+    ['first_read', 'currentDay', 2],
+    ['streak_7', 'streak', 7],
+    ['streak_30', 'streak', 30],
+    ['streak_100', 'streak', 100],
+    ['day_30', 'currentDay', 30],
+    ['day_100', 'currentDay', 100],
+    ['day_200', 'currentDay', 200],
+    ['day_365', 'currentDay', 365],
+    ['first_memo', 'memoCount', 1],
+    ['memo_10', 'memoCount', 10],
+    ['memo_50', 'memoCount', 50],
+    ['score_100', 'score', 100],
+    ['score_500', 'score', 500],
+    ['score_1000', 'score', 1000],
+];
+assert.deepEqual(
+    ACHIEVEMENTS.map(achievement => achievement.id),
+    achievementThresholdContract.map(([id]) => id),
+    '클라이언트 업적 ID와 표시 순서는 canonical 14개와 같아야 한다.',
+);
+const serverAchievementCatalog = Array.from(
+    achievementCore.matchAll(
+        /\{\s*id:\s*"([^"]+)",\s*threshold:\s*\{\s*field:\s*"([^"]+)",\s*value:\s*(\d+)\s*\}\s*\}/g,
+    ),
+    match => [match[1], match[2], Number(match[3])],
+);
+assert.deepEqual(
+    serverAchievementCatalog,
+    achievementThresholdContract,
+    'achievementCore의 ID·순서·field·threshold가 클라이언트 계약과 정확히 같아야 한다.',
+);
+assert.doesNotMatch(
+    achievementCore,
+    /(?:\bfetch\s*\(|\bDeno\.|db\.collection|firebase\.firestore|\bgetDocument\s*\(|\bbeginTransaction\s*\(|\bcommitWrites\s*\(|\brollbackTransaction\s*\(|\bupdateWrite\s*\()/,
+    'achievementCore는 외부 I/O가 없는 순수 계산 모듈이어야 한다.',
+);
+for (const exportedName of [
+    'ACHIEVEMENT_CATALOG',
+    'ACHIEVEMENT_IDS',
+    'calculateAchievementSync',
+    'isKnownAchievementId',
+    'isCatalogOrderedAchievementSubset',
+]) assert.match(achievementCore, new RegExp(`export const ${exportedName}\\b`));
+for (const pattern of [
+    /for \(const definition of ACHIEVEMENT_CATALOG\)/,
+    /definition\.threshold\.value - 1/,
+    /stateFor\(definition\.id, definition\.threshold\.value\)/,
+    /trigger:\s*"read"/,
+    /memoCount:\s*50/,
+    /isCatalogOrderedAchievementSubset/,
+]) assert.match(achievementCoreTest, pattern, 'achievementCore 경계·trigger·순서 테스트가 필요하다.');
+
+// 공개 요청은 trigger만 제어할 수 있다. 사용자 수치·메모·업적 목록을 함께 보내
+// 서버 판정을 위조하는 입력은 parser와 service 양쪽에서 exact-key로 거부한다.
+assert.match(serverCore, /SYNC_ACHIEVEMENTS_ACTION\s*=\s*['"]syncAchievements['"]/);
+const syncAchievementsParserStart = serverCore.indexOf('if (action === SYNC_ACHIEVEMENTS_ACTION)');
+const syncAchievementsParserEnd = serverCore.indexOf('if (action === RESOLVE_DAILY_VIDEO_ACTION)', syncAchievementsParserStart);
+assert.ok(
+    syncAchievementsParserStart >= 0 && syncAchievementsParserEnd > syncAchievementsParserStart,
+    'syncAchievements 요청 parser 구간이 필요하다.',
+);
+const syncAchievementsParser = serverCore.slice(syncAchievementsParserStart, syncAchievementsParserEnd);
+assert.match(syncAchievementsParser, /new Set\(\["action", "requestId", "trigger"\]\)/);
+assert.match(
+    syncAchievementsParser,
+    /(?:\(trigger !== "read" && trigger !== "memo"\)|!\["read", "memo"\]\.includes\(String\(trigger\)\))/,
+);
+const coreTestSource = read('supabase/functions/platform-api/core_test.ts');
+for (const controlledField of [
+    'uid',
+    'user',
+    'memos',
+    'memoCount',
+    'currentDay',
+    'streak',
+    'score',
+    'achievementIds',
+    'threshold',
+    'readingEpoch',
+]) {
+    assert.match(
+        coreTestSource,
+        new RegExp(`\\b${controlledField}\\s*:`),
+        `syncAchievements parser가 client controlled ${controlledField}를 거부하는 테스트가 필요하다.`,
+    );
+}
+for (const pattern of [
+    /keys\.length !== 2/,
+    /keys\[0\] !== "requestId"/,
+    /keys\[1\] !== "trigger"/,
+    /(?:\(input\.trigger !== "read" && input\.trigger !== "memo"\)|!\["read", "memo"\]\.includes\(String\(input\.trigger\)\))/,
+]) assert.match(achievementSyncService, pattern, 'achievement service도 exact input을 확인해야 한다.');
+
+// 인증된 UID 아래 activityActions ledger와 users.achievements를 같은 transaction에
+// 저장하며, 응답과 ledger에는 업적 결과 외 사용자 문서/PII를 복제하지 않는다.
+for (const pattern of [
+    /const userPath = `users\/\$\{uid\}`/,
+    /const ledgerPath = `\$\{userPath\}\/activityActions\/\$\{input\.requestId\}`/,
+    /beginTransaction\(/,
+    /commitWrites\(/,
+    /rollbackTransaction\(/,
+    /memoCount:\s*input\.trigger === "memo" \? user\.memoCount : 0/,
+    /\{ achievements:\s*calculation\.mergedIds \}/,
+    /updateMask:\s*\["achievements"\]/,
+    /action:\s*SYNC_ACHIEVEMENTS_ACTION/,
+    /input:\s*\{ trigger:\s*input\.trigger \}/,
+    /alreadyCompleted:\s*true/,
+    /alreadyCompleted:\s*false/,
+    /committed:\s*false/,
+    /committed:\s*true/,
+]) assert.match(achievementSyncService, pattern);
+assert.match(achievementSyncService, /requireExactKeys\(ledger\.input, \["trigger"\]/);
+assert.match(achievementSyncService, /requireExactKeys\(value, \["trigger", "newIds"\]/);
+assert.match(achievementSyncService, /new Set\(newIds\)\.size !== newIds\.length/);
+assert.match(achievementSyncService, /isCatalogOrderedAchievementSubset\(newIds\)/);
+const achievementLedgerWriteStart = achievementSyncService.indexOf(
+    'dependencies.updateWrite(\n        service.projectId,\n        ledgerPath',
+);
+const achievementLedgerWriteEnd = achievementSyncService.indexOf(
+    'await dependencies.commitWrites(',
+    achievementLedgerWriteStart,
+);
+assert.ok(
+    achievementLedgerWriteStart >= 0 && achievementLedgerWriteEnd > achievementLedgerWriteStart,
+    '업적 activityActions ledger 쓰기 구간이 필요하다.',
+);
+assert.doesNotMatch(
+    achievementSyncService.slice(achievementLedgerWriteStart, achievementLedgerWriteEnd),
+    /\b(?:email|name|birthdate|password|memos|currentDay|streak|score|churchId|orgId)\b\s*:/,
+    '업적 ledger에 사용자 문서나 PII를 복제하면 안 된다.',
+);
+for (const pattern of [
+    /activityActions/,
+    /alreadyCompleted/,
+    /committed/,
+    /newIds/,
+    /trigger/,
+    /CONFLICT/,
+]) assert.match(achievementSyncServiceTest, pattern, 'achievement service의 commit·replay·검증 테스트가 필요하다.');
+
+assert.match(serverIndex, /import \{ syncAchievements \} from "\.\/achievementSyncService\.ts";/);
+const verifiedUserStart = serverIndex.indexOf('const [verifiedUser, service] = await Promise.all([');
+const syncAchievementsBranchStart = serverIndex.indexOf('if (parsed.action === "syncAchievements")');
+const syncAchievementsBranchEnd = serverIndex.indexOf(
+    'const userDocument = await getDocument<UserDocument>',
+    syncAchievementsBranchStart,
+);
+assert.ok(
+    verifiedUserStart >= 0
+        && syncAchievementsBranchStart > verifiedUserStart
+        && syncAchievementsBranchEnd > syncAchievementsBranchStart,
+    'syncAchievements는 익명 허용 분기가 아니라 verifiedUser 인증 뒤에 실행해야 한다.',
+);
+const syncAchievementsBranch = serverIndex.slice(syncAchievementsBranchStart, syncAchievementsBranchEnd);
+assert.match(
+    syncAchievementsBranch,
+    /syncAchievements\(service, verifiedUser, \{[\s\S]*requestId:\s*parsed\.requestId[\s\S]*trigger:\s*parsed\.trigger/,
+);
+const syncAchievementsResponseStart = syncAchievementsBranch.indexOf('return jsonResponse(origin, 200, {');
+const syncAchievementsResponseEnd = syncAchievementsBranch.indexOf('\n      });', syncAchievementsResponseStart);
+assert.ok(
+    syncAchievementsResponseStart >= 0 && syncAchievementsResponseEnd > syncAchievementsResponseStart,
+    'syncAchievements 최소 응답 구간이 필요하다.',
+);
+const syncAchievementsResponse = syncAchievementsBranch.slice(
+    syncAchievementsResponseStart,
+    syncAchievementsResponseEnd,
+);
+assert.match(syncAchievementsResponse, /ok:\s*true/);
+assert.match(syncAchievementsResponse, /action:\s*parsed\.action/);
+assert.match(syncAchievementsResponse, /requestId:\s*parsed\.requestId/);
+assert.match(syncAchievementsResponse, /\.\.\.result/);
+assert.doesNotMatch(
+    syncAchievementsResponse,
+    /\b(?:uid|user|state|email|name|birthdate|password|memos|currentDay|streak|score|churchId|orgId|achievements)\b\s*:/,
+    'syncAchievements 응답은 식별자·사용자 snapshot·PII를 노출하면 안 된다.',
+);
 
 // T123 v2 달란트 계산 계약: 브라우저 talentProgram과 동일한 순수 해석,
 // canonical roster 검증, 응답 최소화, 실제 적립 가능한 지갑 기준 보상을 고정한다.
