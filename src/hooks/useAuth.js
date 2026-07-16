@@ -378,6 +378,14 @@ export const useAuth = ({
         const doc = await db.collection('users').doc(firebaseUser.uid).get();
         if (auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
         if (doc.exists) {
+            // Google 큰 버튼(T112b)과 동일하게 저장된 관리자 역할을 먼저 판정한다.
+            // 연결된 카카오가 플랫폼/슈퍼관리자 uid로 커스텀 토큰을 받으면
+            // 일반 교인 열기(NOT_MEMBER_ACCOUNT)로는 로그인할 수 없기 때문이다.
+            // finishAdminLogin이 source-server 재조회로 역할을 다시 증명한다.
+            if (['platformAdmin', 'superAdmin'].includes(doc.data()?.role)) {
+                await finishAdminLogin(cred, { requireRegisteredAdmin: true, loginTiming });
+                return;
+            }
             await openExistingSocialUser(firebaseUser, doc, loginTiming);
             return;
         }
@@ -769,7 +777,13 @@ export const useAuth = ({
                 await finishSocialStart(cred, 'kakao.com', profile, loginTiming, kakaoSignupDraft);
             } catch (error) {
                 console.error('카카오 커스텀 토큰 처리 실패:', error);
-                if (alive) setErrorMsg('카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요.');
+                if (!alive) return;
+                if (error?.message === 'NOT_MEMBER_ACCOUNT') {
+                    setErrorMsg('이미 다른 방식으로 등록된 계정입니다. 기존 로그인 방법을 이용해주세요.');
+                    await auth.signOut().catch(() => {});
+                } else {
+                    setErrorMsg('카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요.');
+                }
             }
         }).catch(error => {
             if (!alive || !error) return;

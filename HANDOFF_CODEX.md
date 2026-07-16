@@ -2303,6 +2303,18 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 
 ## 📮 Claude → Codex 메모
 
+2026-07-17 아침 — 운영 카카오 로그인 실패 진단·수정 (Claude 실행, 배포 대기):
+- 사용자 스크린샷: bible114.net 첫 화면에서 "카카오 로그인을 완료하지 못했습니다" (2026-07-17 06:34, 7/16 릴리스 후 첫 실제 Kakao OAuth 시도로 추정. 릴리스 검증에서 실제 OAuth 완주는 의도적으로 미실행이었다).
+- **추정 원인(코드로 확정한 갭)**: T112b가 Google 큰 버튼에는 users 역할 판정(platformAdmin/superAdmin → `finishAdminLogin`)을 넣었지만 **Kakao 콜백 경로에는 없다**. `kakaoLinks`로 관리자 uid에 연결된 카카오로 로그인하면 custom token uid가 관리자 uid가 되고, `openExistingSocialUser`가 `NOT_MEMBER_ACCOUNT`를 던져 일반 실패 문구로 표시된다. T112b로 관리자가 처음 읽기 대시보드에 착륙해 `SocialLinkBanner`("다음부터 카카오/구글로 3초 로그인")로 연결한 직후라면 정확히 재현된다.
+- 수정: `finishSocialStart`에 Google과 동일한 역할 분기 추가(`['platformAdmin','superAdmin']` → `finishAdminLogin({requireRegisteredAdmin:true})`, 역할은 finishAdminLogin이 source-server 재조회로 재증명). Kakao catch에서 `NOT_MEMBER_ACCOUNT`는 Google과 같은 안내 문구 + signOut으로 분리. `validate-kakao-custom-auth.mjs`에 두 계약 회귀 검사 추가. 전체 `npm run validate`(platform-api 426 tests)·build 통과.
+- **미확정**: 사용자 계정의 kakaoLinks 연결 여부와 Edge 로그를 확인하지 못해(권한 게이트) 서버 500 가능성(KAKAO_TOKEN_EXCHANGE 등)은 배제 못 했다. 배포 후 재시도에서도 같은 문구가 나오면 Safari 콘솔의 `카카오 인증 코드 처리 실패`/`카카오 커스텀 토큰 처리 실패` 라인 또는 kakao-auth Edge 로그 확인이 필요하다. 웹 재배포는 T126/T127 관찰 시계와 무관한 클라이언트 수정이지만 배포는 사용자 게이트.
+
+2026-07-16 저녁 — Firebase 재인증 완료, rules dry-run·운영 감사 결과 (Claude 실행):
+- 사용자가 `firebase login --reauth` 완료. **현행 `firestore.rules` dry-run 컴파일 성공** (배포는 하지 않음 — T127 관찰 종료 전 배포 금지 유지). 이제 rules 변경 시 원격 dry-run을 매번 돌릴 수 있다.
+- `audit-t127-legacy-state.mjs --target-name '진정희' --expected-day 91 --expected-read-count 4` 실행 (읽기 전용, 집계만): users 38(active 37/deleted 1), `legacyCurrentDayOver365` **0**, `invalidCurrentDay` 6·`missingOrInvalidReadCount` 6·`missingOrUnknownRole` 6, `talentMigratedMissingOrFalse` 23, `nonMigratedWithInventory/UnlockedRooms` 0. personal: active 7, `positiveUsersTalent` 3, `primaryOrgMissing` 5, primary roster 누락·잔액 이상 0. rosters 3 전부 정상 (경로·uid·진도·고아 0).
+- **⚠️ `targetRepair.matches: 0`** — '진정희' 이름과 일치하는 users 문서가 없어 기대 상태(Day 91/readCount 4)를 검증하지 못했다. 이름 표기 차이(공백·다른 필드)거나 계정이 존재하지 않는 경우다. 다음 세션에서 원인을 확인하되 출력에 이름/UID를 남기지 않는 원칙 유지. `legacyCurrentDayOver365`가 0이므로 T127e 하드코딩 삭제로 인한 즉시 회귀 위험은 낮다.
+- `invalidCurrentDay 6`·`missingOrUnknownRole 6`이 같은 6건(관리자 등 비member 역할이라 진도 필드가 원래 없는 무해 케이스)인지 해석해 메모에 남기고, 만약 member 계정이 섞여 있으면 로그인 fail-closed 경로에 걸리지 않는지 확인할 것.
+
 - 이 설계는 3차 자체 점검을 거친 확정본이다. "더 나은 방법"이 보여도 위 설계 결정 4가지(가상 교회/익명 인증/localStorage 전용/클라이언트 상수)는 바꾸지 말고, 제안은 위 메모란에 적어라.
 - ~~firestore.rules의 `users` read 규칙 버그 — 건드리지 말 것~~ (해결됨 — 현행 규칙 49~62행에 랭킹 read 분기 반영 완료). 2026-07-14부터 규칙 수정은 **라운드 20 T108·T109 범위 안에서만** 허용, 로컬 수정까지만 하고 배포는 Claude 담당.
 - Firebase는 compat(v8 스타일) API만 쓴다. `import { doc, getDoc }` 같은 modular API를 섞지 마라.
