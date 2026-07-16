@@ -59,6 +59,18 @@ const beginLoginTiming = label => import.meta.env.DEV && typeof performance !== 
     ? { label, startedAt: performance.now() }
     : null;
 
+// 카카오 로그인 실패를 지원 문의로 진단할 수 있게 상태·코드만 짧게 요약한다.
+// (개인정보·토큰은 포함하지 않는다. TOKEN_ = 로그인 후처리, CODE_ = 코드 교환 단계)
+const describeKakaoAuthError = (error) => {
+    const status = Number.isFinite(Number(error?.status)) && error?.status !== undefined
+        ? `s${Number(error.status)}`
+        : '';
+    const code = String(error?.code || error?.message || 'UNKNOWN')
+        .replace(/\s+/g, ' ')
+        .slice(0, 60);
+    return [status, code].filter(Boolean).join(':') || 'UNKNOWN';
+};
+
 const finishLoginTiming = (timing, targetView) => {
     if (!timing || typeof performance === 'undefined') return;
     console.info(`[로그인 속도] ${timing.label}: ${Math.round(performance.now() - timing.startedAt)}ms → ${targetView}`);
@@ -782,7 +794,7 @@ export const useAuth = ({
                     setErrorMsg('이미 다른 방식으로 등록된 계정입니다. 기존 로그인 방법을 이용해주세요.');
                     await auth.signOut().catch(() => {});
                 } else {
-                    setErrorMsg('카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요.');
+                    setErrorMsg(`카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요. (진단: TOKEN_${describeKakaoAuthError(error)})`);
                 }
             }
         }).catch(error => {
@@ -794,7 +806,7 @@ export const useAuth = ({
             const message = error?.status === 409 ? error.message : '카카오 연결을 완료하지 못했습니다. 다시 시도해주세요.';
             if (isLinkReturn) setSocialLinkNotice({ type: 'error', message });
             else if (error?.message === 'KAKAO_AUTH_URL_MISSING') setErrorMsg('카카오 로그인 서버 설정이 아직 완료되지 않았습니다. 관리자에게 문의하세요.');
-            else setErrorMsg('카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요.');
+            else setErrorMsg(`카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요. (진단: CODE_${describeKakaoAuthError(error)})`);
             if (!isLinkReturn) auth.signOut().catch(() => {});
         }).finally(() => {
             sessionStorage.removeItem(KAKAO_STATE_KEY);
