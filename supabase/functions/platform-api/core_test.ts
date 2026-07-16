@@ -168,6 +168,69 @@ Deno.test("혼자 읽기 모임 참여는 requestId 외 입력을 거부한다",
   }
 });
 
+Deno.test("개인 계정 전환은 requestId 외 클라이언트 입력을 거부한다", () => {
+  const requestId = "123e4567-e89b-42d3-a456-426614174000";
+  const parsed = parsePlatformApiRequest({
+    action: "convertToPersonalAccount",
+    requestId,
+  });
+  assert(parsed.action === "convertToPersonalAccount", "action mismatch");
+  assert(parsed.requestId === requestId, "requestId mismatch");
+
+  for (
+    const extra of [
+      { uid: "forged-user" },
+      { churchId: "forged-org" },
+      { primaryOrgId: "forged-org" },
+      { email: "forged@example.com" },
+      { phone4: "1234" },
+      { roster: {} },
+    ]
+  ) {
+    assertRequestError(
+      () =>
+        parsePlatformApiRequest({
+          action: "convertToPersonalAccount",
+          requestId,
+          ...extra,
+        }),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
+Deno.test("플랫폼 관리자 교회 숨김은 exact 교회 ID와 boolean만 받는다", () => {
+  const requestId = "123e4567-e89b-42d3-a456-426614174000";
+  const valid = {
+    action: "adminSetChurchVisibility",
+    requestId,
+    churchId: "church-1",
+    hidden: true,
+  };
+  const parsed = parsePlatformApiRequest(valid);
+  assert(parsed.action === "adminSetChurchVisibility", "action mismatch");
+  if (parsed.action !== "adminSetChurchVisibility") return;
+  assert(parsed.churchId === valid.churchId, "church mismatch");
+  assert(parsed.hidden === true, "hidden mismatch");
+
+  for (
+    const invalid of [
+      { ...valid, churchId: " church-1" },
+      { ...valid, churchId: "a/b" },
+      { ...valid, churchId: "." },
+      { ...valid, churchId: "unaffiliated_v1" },
+      { ...valid, hidden: 1 },
+      { ...valid, uid: "forged-admin" },
+      { ...valid, churchName: "위조 이름" },
+    ]
+  ) {
+    assertRequestError(
+      () => parsePlatformApiRequest(invalid),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
 Deno.test("legacy 읽기 진도 보정은 requestId 외 입력을 거부한다", () => {
   const requestId = "123e4567-e89b-42d3-a456-426614174000";
   const parsed = parsePlatformApiRequest({

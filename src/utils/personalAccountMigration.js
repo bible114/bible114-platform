@@ -1,8 +1,13 @@
-import { auth, db, firebase } from './firebase';
+import { auth, db } from './firebase';
 import { makePseudoEmail, makeUnaffiliatedIdentity, userDocToState, migratePersonalTalentWalletIfNeeded } from './helpers';
 import { writeMemberCredentials } from './memberCredentials';
 import { loadUserExtraOrgs } from './roster';
-import { nextPersonalMigrationStep } from './personalMigrationSteps';
+import { convertToPersonalAccount, createRequestId } from './platformApi';
+import {
+    buildRecoveredPersonalMigrationState,
+    PERSONAL_MIGRATION_STEPS,
+    nextPersonalMigrationStep,
+} from './personalMigrationSteps';
 
 export const PERSONAL_MIGRATION_KEY = 'b114_migration_v1';
 
@@ -26,6 +31,30 @@ export const clearPersonalMigration = () => localStorage.removeItem(PERSONAL_MIG
 
 const migrationError = (code, message) => Object.assign(new Error(message), { code });
 const migrationPromises = new Map();
+const REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+// Auth 이메일 변경은 Firestore 전환보다 먼저 일어난다. 브라우저 저장소가
+// 사라져도 새 개인 pseudo-email 자체를 durable intent로 사용해 어느 기기에서나
+// 동일 uid의 전환을 재개한다. users 값만으로 임의 전환을 시작하지 않고,
+// 인증된 Auth 이메일이 users 이름·생년월일+전화4자리 계약과 정확히 맞을 때만 복구한다.
+export const restorePendingPersonalMigrationFromAuth = ({ firebaseUser, userData }) => {
+    const existing = getPendingPersonalMigration(firebaseUser?.uid);
+    if (existing) return existing;
+    const state = buildRecoveredPersonalMigrationState(
+        { firebaseUser, userData },
+        { makePseudoEmail, makeUnaffiliatedIdentity, createRequestId },
+    );
+    if (!state) return null;
+    writeState(state);
+    return state;
+};
+
+const assertMigrationAuth = uid => {
+    if (!auth.currentUser || auth.currentUser.uid !== uid) {
+        throw migrationError('migration/auth-changed', '로그인 상태가 변경되었습니다. 다시 로그인해주세요.');
+    }
+    return auth.currentUser;
+};
 
 const runMigration = async ({ currentUser, phone4 }) => {
     const firebaseUser = auth.currentUser;
@@ -54,7 +83,13 @@ const runMigration = async ({ currentUser, phone4 }) => {
         makeUnaffiliatedIdentity(currentUser.birthdate, normalizedPhone4)
     );
     let state = pending || { uid: currentUser.uid, step: 'start', phone4: normalizedPhone4, newEmail, source };
-    state = { ...state, phone4: normalizedPhone4, newEmail, source };
+    if (!PERSONAL_MIGRATION_STEPS.includes(state.step)) {
+        throw migrationError('migration/state-invalid', '개인 계정 전환 상태를 다시 확인해주세요.');
+    }
+    const conversionRequestId = REQUEST_ID_PATTERN.test(state.conversionRequestId || '')
+        ? state.conversionRequestId
+        : createRequestId();
+    state = { ...state, phone4: normalizedPhone4, newEmail, source, conversionRequestId };
     writeState(state);
 
     if (state.step === 'start') {
@@ -81,59 +116,62 @@ const runMigration = async ({ currentUser, phone4 }) => {
         writeState(state);
     }
 
-    const rosterRef = db.collection('churches').doc(source.churchId).collection('roster').doc(currentUser.uid);
-    if (state.step === 'credentials') {
-        const userRef = db.collection('users').doc(currentUser.uid);
-        await db.runTransaction(async transaction => {
-            const [userSnap, rosterSnap] = await Promise.all([
-                transaction.get(userRef),
-                transaction.get(rosterRef),
-            ]);
-            if (rosterSnap.exists) return;
-            if (!userSnap.exists) throw migrationError('migration/user-missing', '회원 정보를 확인할 수 없습니다.');
-            const latestUser = userSnap.data();
-            const now = firebase.firestore.FieldValue.serverTimestamp();
-            transaction.set(rosterRef, {
-                uid: currentUser.uid,
-                name: latestUser.name ?? '',
-                score: latestUser.score ?? 0,
-                talent: 0,
-                currentDay: latestUser.currentDay ?? 1,
-                streak: latestUser.streak ?? 0,
-                readCount: latestUser.readCount ?? 1,
-                lastReadDate: latestUser.lastReadDate ?? null,
-                departmentId: latestUser.departmentId ?? null,
-                departmentName: latestUser.departmentName ?? null,
-                subgroupId: latestUser.subgroupId ?? null,
-                subgroupName: latestUser.subgroupName ?? null,
-                extraMemberships: [],
-                joinedAt: now,
-                updatedAt: now,
-            });
-        });
-        state = { ...state, step: nextPersonalMigrationStep(state.step) };
-        writeState(state);
-    }
-
+    // 구 브라우저는 roster 생성 뒤 users 전환을 직접 썼다. users commit 직후
+    // 단계 저장만 유실된 경우에는 새 action 원장이 없으므로 canonical 완료
+    // 상태를 서버에서 확인해 user 단계에 안전하게 합류시킨다.
     if (state.step === 'roster') {
-        await db.collection('users').doc(currentUser.uid).update({
-            accountType: 'personal',
-            email: newEmail,
-            churchId: null,
-            churchName: null,
-            primaryOrgId: source.churchId,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        const legacyUserDoc = await db.collection('users').doc(currentUser.uid).get({ source: 'server' });
+        if (!legacyUserDoc.exists) {
+            throw migrationError('migration/user-missing', '회원 정보를 확인할 수 없습니다.');
+        }
+        const legacyUser = legacyUserDoc.data() || {};
+        const legacyConversionCompleted = legacyUser.role === 'member'
+            && legacyUser.accountType === 'personal'
+            && legacyUser.churchId === null
+            && legacyUser.churchName === null
+            && legacyUser.primaryOrgId === source.churchId
+            && legacyUser.email === newEmail
+            && (legacyUser.isDeleted === undefined || legacyUser.isDeleted === false);
+        if (legacyConversionCompleted) {
+            state = { ...state, step: 'user' };
+            writeState(state);
+        }
+    }
+
+    // credentials는 새 흐름, 남아 있는 roster는 구 흐름의 users 미완료 지점이다.
+    // 둘 다 같은 requestId의 서버 transaction으로 수렴시킨다.
+    if (state.step === 'credentials' || state.step === 'roster') {
+        const latestFirebaseUser = assertMigrationAuth(currentUser.uid);
+        await latestFirebaseUser.getIdToken(true);
+        assertMigrationAuth(currentUser.uid);
+        const conversion = await convertToPersonalAccount({
+            expectedUid: currentUser.uid,
+            requestId: state.conversionRequestId,
         });
-        state = { ...state, step: nextPersonalMigrationStep(state.step) };
+        assertMigrationAuth(currentUser.uid);
+        state = {
+            ...state,
+            step: 'user',
+            source: { ...source, churchId: conversion.result.primaryOrgId },
+        };
         writeState(state);
     }
 
-    await migratePersonalTalentWalletIfNeeded(currentUser.uid, source.churchId);
+    const primaryOrgId = state.source?.churchId || source.churchId;
+    await migratePersonalTalentWalletIfNeeded(currentUser.uid, primaryOrgId);
+    assertMigrationAuth(currentUser.uid);
 
-    const userDoc = await db.collection('users').doc(currentUser.uid).get();
+    const userDoc = await db.collection('users').doc(currentUser.uid).get({ source: 'server' });
     if (!userDoc.exists) throw migrationError('migration/user-missing', '회원 정보를 다시 불러오지 못했습니다.');
     const migratedUser = userDocToState(userDoc);
-    migratedUser.extraOrgs = await loadUserExtraOrgs(currentUser.uid);
+    if (migratedUser.uid !== currentUser.uid
+        || migratedUser.accountType !== 'personal'
+        || migratedUser.churchId !== null
+        || migratedUser.primaryOrgId !== primaryOrgId) {
+        throw migrationError('migration/state-invalid', '개인 계정 전환 결과를 다시 확인해주세요.');
+    }
+    migratedUser.extraOrgs = await loadUserExtraOrgs(currentUser.uid, { source: 'server' });
+    assertMigrationAuth(currentUser.uid);
     clearPersonalMigration();
     return migratedUser;
 };

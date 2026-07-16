@@ -93,6 +93,8 @@ import { migratePersonalTalentWallet } from "./personalTalentWalletMigrationServ
 import { normalizeLegacyReadingPosition } from "./normalizeLegacyReadingPositionService.ts";
 import { completeMemberOnboarding } from "./ownMembershipService.ts";
 import { joinSoloCommunity } from "./joinSoloCommunityService.ts";
+import { adminSetChurchVisibility } from "./adminChurchVisibilityService.ts";
+import { convertToPersonalAccount } from "./convertToPersonalAccountService.ts";
 import { skipQuiz, submitQuiz } from "./quizSubmission.ts";
 import { rebuildPublicChurches } from "./publicDirectoryService.ts";
 
@@ -1145,6 +1147,41 @@ Deno.serve(async (request) => {
       const result = await joinSoloCommunity(service, verifiedUser, {
         requestId: parsed.requestId,
       });
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        ...result,
+      });
+    }
+
+    if (parsed.action === "adminSetChurchVisibility") {
+      const result = await adminSetChurchVisibility(service, verifiedUser, {
+        requestId: parsed.requestId,
+        churchId: parsed.churchId,
+        hidden: parsed.hidden,
+      });
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        ...result,
+      });
+    }
+
+    if (parsed.action === "convertToPersonalAccount") {
+      const tokenEmail = typeof verifiedUser.claims.email === "string"
+        ? verifiedUser.claims.email
+        : "";
+      const result = await convertToPersonalAccount(
+        service,
+        {
+          uid: verifiedUser.uid,
+          anonymous: verifiedUser.anonymous,
+          tokenEmail,
+        },
+        { requestId: parsed.requestId },
+      );
       return jsonResponse(origin, 200, {
         ok: true,
         action: parsed.action,

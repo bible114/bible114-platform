@@ -14,6 +14,10 @@ const REBUILD_PUBLIC_CHURCHES_SUMMARY_KEYS = new Set([
     'sourceCount', 'expectedCount', 'publicCount', 'legacyCount', 'upsertCount',
     'deleteCount', 'legacyChanged', 'invalidCount',
 ]);
+const ADMIN_SET_CHURCH_VISIBILITY_REQUEST_KEYS = new Set(['churchId', 'hidden']);
+const ADMIN_SET_CHURCH_VISIBILITY_RESPONSE_KEYS = new Set([
+    'ok', 'action', 'requestId', 'status', 'hidden',
+]);
 const DAILY_VIDEO_PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{1,200}$/;
 const RESERVED_PAYLOAD_KEYS = new Set(['action', 'requestId']);
 const DAILY_VIDEO_RESPONSE_KEYS = new Set([
@@ -109,6 +113,10 @@ const MIGRATE_PERSONAL_TALENT_WALLET_RESPONSE_KEYS = new Set([
     'ok', 'action', 'requestId', 'alreadyCompleted', 'committed', 'result',
 ]);
 const MIGRATE_PERSONAL_TALENT_WALLET_RESULT_KEYS = new Set(['status']);
+const CONVERT_TO_PERSONAL_ACCOUNT_RESPONSE_KEYS = new Set([
+    'ok', 'action', 'requestId', 'alreadyCompleted', 'committed', 'result',
+]);
+const CONVERT_TO_PERSONAL_ACCOUNT_RESULT_KEYS = new Set(['status', 'primaryOrgId']);
 const JOIN_SOLO_COMMUNITY_RESPONSE_KEYS = new Set([
     'ok', 'action', 'requestId', 'alreadyCompleted', 'committed', 'result',
 ]);
@@ -1319,6 +1327,52 @@ export const migratePersonalTalentWallet = (options = {}) => {
         .then(result => validateMigratePersonalTalentWalletResponse(result, requestId));
 };
 
+const invalidConvertToPersonalAccountResponse = () => {
+    throw new PlatformApiError('개인 계정 전환 결과를 안전하게 확인하지 못했습니다.', {
+        code: 'INVALID_RESPONSE', status: 200, retryable: true,
+    });
+};
+
+export const validateConvertToPersonalAccountResponse = (result, expectedRequestId) => {
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(expectedRequestId)
+        || !hasExactKeys(result, CONVERT_TO_PERSONAL_ACCOUNT_RESPONSE_KEYS)
+        || result.ok !== true
+        || result.action !== 'convertToPersonalAccount'
+        || result.requestId !== expectedRequestId
+        || typeof result.alreadyCompleted !== 'boolean'
+        || result.committed !== true
+        || !hasExactKeys(result.result, CONVERT_TO_PERSONAL_ACCOUNT_RESULT_KEYS)
+        || result.result.status !== 'converted'
+        || !isValidCanonicalOrgId(result.result.primaryOrgId)
+        || result.result.primaryOrgId === 'unaffiliated_v1') {
+        return invalidConvertToPersonalAccountResponse();
+    }
+    return {
+        ok: true,
+        action: 'convertToPersonalAccount',
+        requestId: expectedRequestId,
+        alreadyCompleted: result.alreadyCompleted,
+        committed: true,
+        result: {
+            status: 'converted',
+            primaryOrgId: result.result.primaryOrgId,
+        },
+    };
+};
+
+// 이메일 변경 뒤 새 ID token의 email claim으로 본인 전환을 검증한다.
+// 브라우저는 멱등 requestId 외에 users/roster 상태를 보내지 않는다.
+export const convertToPersonalAccount = (options = {}) => {
+    const requestId = options.requestId || createRequestId();
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(requestId)) {
+        throw new PlatformApiError('개인 계정 전환 요청 번호가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('convertToPersonalAccount', {}, { ...options, requestId })
+        .then(result => validateConvertToPersonalAccountResponse(result, requestId));
+};
+
 const invalidJoinSoloCommunityResponse = () => {
     throw new PlatformApiError('혼자 읽기 모임 참여 결과를 안전하게 확인하지 못했습니다.', {
         code: 'INVALID_RESPONSE', status: 200, retryable: true,
@@ -1793,6 +1847,69 @@ export const rebuildPublicChurches = (dryRun, options = {}) => {
         : PUBLIC_DIRECTORY_TIMEOUT_MS;
     return callPlatformApi('rebuildPublicChurches', payload, { ...options, requestId, timeoutMs })
         .then(result => validateRebuildPublicChurchesResponse(payload, result, requestId));
+};
+
+const invalidAdminSetChurchVisibilityResponse = () => {
+    throw new PlatformApiError('교회 검색 노출 처리 결과를 안전하게 확인하지 못했습니다.', {
+        code: 'INVALID_RESPONSE', status: 200, retryable: true,
+    });
+};
+
+export const validateAdminSetChurchVisibilityResponse = (
+    payload,
+    result,
+    expectedRequestId,
+) => {
+    if (!hasExactKeys(payload, ADMIN_SET_CHURCH_VISIBILITY_REQUEST_KEYS)
+        || typeof payload.churchId !== 'string'
+        || !payload.churchId || payload.churchId !== payload.churchId.trim()
+        || payload.churchId.length > 128 || payload.churchId.includes('/')
+        || payload.churchId === '.' || payload.churchId === '..'
+        || payload.churchId === 'unaffiliated_v1'
+        || /[\u0000-\u001f\u007f]/.test(payload.churchId)
+        || typeof payload.hidden !== 'boolean'
+        || !ACTIVITY_REQUEST_ID_PATTERN.test(expectedRequestId)
+        || !hasExactKeys(result, ADMIN_SET_CHURCH_VISIBILITY_RESPONSE_KEYS)
+        || result.ok !== true
+        || result.action !== 'adminSetChurchVisibility'
+        || result.requestId !== expectedRequestId
+        || !['updated', 'alreadySet'].includes(result.status)
+        || result.hidden !== payload.hidden) {
+        return invalidAdminSetChurchVisibilityResponse();
+    }
+    return {
+        ok: true,
+        action: 'adminSetChurchVisibility',
+        requestId: expectedRequestId,
+        status: result.status,
+        hidden: result.hidden,
+    };
+};
+
+export const adminSetChurchVisibility = (input, options = {}) => {
+    if (!isResponseRecord(input) || !hasExactKeys(input, ADMIN_SET_CHURCH_VISIBILITY_REQUEST_KEYS)) {
+        throw new PlatformApiError('교회 검색 노출 요청 형식이 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const churchId = typeof input.churchId === 'string' ? input.churchId.trim() : '';
+    if (!churchId || churchId !== input.churchId || churchId.length > 128
+        || churchId.includes('/') || churchId === '.' || churchId === '..'
+        || churchId === 'unaffiliated_v1' || /[\u0000-\u001f\u007f]/.test(churchId)
+        || typeof input.hidden !== 'boolean') {
+        throw new PlatformApiError('교회 검색 노출 요청 형식이 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const payload = { churchId, hidden: input.hidden };
+    const requestId = options.requestId || createRequestId();
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(requestId)) {
+        throw new PlatformApiError('교회 검색 노출 요청 번호가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('adminSetChurchVisibility', payload, { ...options, requestId })
+        .then(result => validateAdminSetChurchVisibilityResponse(payload, result, requestId));
 };
 
 export const issueJoinTicket = ({ churchId, entryCode, purpose }, options = {}) => {

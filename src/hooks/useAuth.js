@@ -26,7 +26,10 @@ import { writeMemberCredentials, migrateCredentialsIfNeeded } from '../utils/mem
 import { beginInteractiveAuthFlow, endInteractiveAuthFlow } from '../utils/authFlowGuard';
 import { loadUserExtraOrgs } from '../utils/roster';
 import { updateRosterTalents } from '../utils/talentWallet';
-import { getPendingPersonalMigration } from '../utils/personalAccountMigration';
+import {
+    getPendingPersonalMigration,
+    restorePendingPersonalMigrationFromAuth,
+} from '../utils/personalAccountMigration';
 import { buildSignupConsentSnapshot, buildSignupConsentSummary } from '../utils/signupConsent';
 import { writeSignupConsent } from '../utils/signupConsentStore';
 import {
@@ -293,7 +296,8 @@ export const useAuth = ({
             await rejectDeletedUser();
             return false;
         }
-        const pendingMigration = getPendingPersonalMigration(firebaseUser.uid);
+        const pendingMigration = getPendingPersonalMigration(firebaseUser.uid)
+            || restorePendingPersonalMigrationFromAuth({ firebaseUser, userData: data });
         if (data.accountType !== 'personal' && !pendingMigration) throw new Error('NOT_PERSONAL_ACCOUNT');
         let user = userDocToState(doc);
         const extraOrgsPromise = loadUserExtraOrgs(firebaseUser.uid);
@@ -318,7 +322,8 @@ export const useAuth = ({
             await rejectDeletedUser();
             return false;
         }
-        const pendingMigration = getPendingPersonalMigration(firebaseUser.uid);
+        const pendingMigration = getPendingPersonalMigration(firebaseUser.uid)
+            || restorePendingPersonalMigrationFromAuth({ firebaseUser, userData: data });
         if (data.accountType === 'personal' || pendingMigration) {
             await openExistingPersonalUser(firebaseUser, doc, loginTiming);
             return;

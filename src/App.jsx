@@ -673,11 +673,11 @@ const App = () => {
     };
 
     useEffect(() => {
-        if (!currentUser?.uid || currentUser.accountType === 'personal') return;
+        if (!currentUser?.uid) return;
         const pending = getPendingPersonalMigration(currentUser.uid);
         if (!pending?.phone4) return;
         handlePersonalAccountMigrate(pending.phone4);
-    }, [currentUser?.uid]);
+    }, [currentUser?.uid, currentUser?.accountType]);
 
     const handleLogout = () => {
         if (auth) auth.signOut();

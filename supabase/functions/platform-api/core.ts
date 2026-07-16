@@ -26,8 +26,22 @@ export const NORMALIZE_LEGACY_READING_POSITION_ACTION =
 export const COMPLETE_MEMBER_ONBOARDING_ACTION =
   "completeMemberOnboarding" as const;
 export const JOIN_SOLO_COMMUNITY_ACTION = "joinSoloCommunity" as const;
+export const ADMIN_SET_CHURCH_VISIBILITY_ACTION =
+  "adminSetChurchVisibility" as const;
+export const CONVERT_TO_PERSONAL_ACCOUNT_ACTION =
+  "convertToPersonalAccount" as const;
 
 export type PlatformApiRequest =
+  | {
+    action: typeof CONVERT_TO_PERSONAL_ACCOUNT_ACTION;
+    requestId: string;
+  }
+  | {
+    action: typeof ADMIN_SET_CHURCH_VISIBILITY_ACTION;
+    requestId: string;
+    churchId: string;
+    hidden: boolean;
+  }
   | {
     action: typeof JOIN_SOLO_COMMUNITY_ACTION;
     requestId: string;
@@ -275,12 +289,33 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     kidsPlaylistId,
     dryRun,
     trigger,
+    hidden,
   } = body as Record<string, unknown>;
   if (!isRequestId(requestId)) {
     throw new PlatformApiRequestError("INVALID_REQUEST_ID");
   }
 
   if (action === PREFLIGHT_ACTION) return { action, requestId };
+  if (action === CONVERT_TO_PERSONAL_ACCOUNT_ACTION) {
+    const allowedKeys = new Set(["action", "requestId"]);
+    if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return { action, requestId };
+  }
+  if (action === ADMIN_SET_CHURCH_VISIBILITY_ACTION) {
+    const allowedKeys = new Set(["action", "requestId", "churchId", "hidden"]);
+    const normalizedChurchId = safeDocumentId(churchId);
+    if (
+      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+      !normalizedChurchId || normalizedChurchId !== churchId ||
+      normalizedChurchId === "." || normalizedChurchId === ".." ||
+      normalizedChurchId === "unaffiliated_v1" || typeof hidden !== "boolean"
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return { action, requestId, churchId: normalizedChurchId, hidden };
+  }
   if (action === JOIN_SOLO_COMMUNITY_ACTION) {
     const allowedKeys = new Set(["action", "requestId"]);
     if (Object.keys(body).some((key) => !allowedKeys.has(key))) {

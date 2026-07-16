@@ -3,9 +3,9 @@ import Icon from './Icon';
 import GoogleLinkCard from './admin/GoogleLinkCard';
 import { firebase } from '../utils/firebase';
 import ChurchAdminView from './ChurchAdminView';
-import { adminPreviewDailyVideo, rebuildPublicChurches } from '../utils/platformApi';
+import { adminPreviewDailyVideo, adminSetChurchVisibility, rebuildPublicChurches } from '../utils/platformApi';
 import { getDaysRead, getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
-import { invalidateChurchDirectoryCache, migrateChurchAccessSecrets, removeChurchFromDirectory, syncChurchDirectoryEntry } from '../utils/churchDirectory';
+import { invalidateChurchDirectoryCache, migrateChurchAccessSecrets, removeChurchFromDirectory } from '../utils/churchDirectory';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
 import { migrateCredentialsIfNeeded, fetchMemberCredentials } from '../utils/memberCredentials';
 
@@ -489,10 +489,14 @@ const PlatformAdminView = ({
         if (!confirm(msg)) return;
         setHiddenToggling(true);
         try {
-            await db.collection('churches').doc(church.id).update({ hiddenFromDirectory: next });
-            await syncChurchDirectoryEntry({ id: church.id, name: church.name, hidden: next });
-            setHiddenOverrides(prev => ({ ...prev, [church.id]: next }));
-            alert(next ? '✅ 검색에서 숨겼습니다.' : '✅ 검색에 다시 노출했습니다.');
+            const response = await adminSetChurchVisibility({
+                churchId: church.id,
+                hidden: next,
+            }, { expectedUid: currentUser?.uid });
+            invalidateChurchDirectoryCache();
+            const confirmedHidden = response.hidden;
+            setHiddenOverrides(prev => ({ ...prev, [church.id]: confirmedHidden }));
+            alert(confirmedHidden ? '✅ 검색에서 숨겼습니다.' : '✅ 검색에 다시 노출했습니다.');
         } catch (e) {
             console.error(e);
             alert('처리 실패: ' + e.message);

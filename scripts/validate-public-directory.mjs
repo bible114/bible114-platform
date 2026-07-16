@@ -14,6 +14,15 @@ const service = read(
 const serviceTest = read(
   "supabase/functions/platform-api/publicDirectoryService_test.ts",
 );
+const visibilityCore = read(
+  "supabase/functions/platform-api/adminChurchVisibilityCore.ts",
+);
+const visibilityService = read(
+  "supabase/functions/platform-api/adminChurchVisibilityService.ts",
+);
+const visibilityServiceTest = read(
+  "supabase/functions/platform-api/adminChurchVisibilityService_test.ts",
+);
 const firestore = read("supabase/functions/_shared/firestore.ts");
 const firestoreTest = read("supabase/functions/_shared/firestore_test.ts");
 const client = read("src/utils/platformApi.js");
@@ -154,6 +163,51 @@ assert.match(platformAdmin, /await rebuildPublicChurches\(true,/);
 assert.match(platformAdmin, /await rebuildPublicChurches\(false,/);
 assert.doesNotMatch(platformAdmin, /\brebuildChurchDirectory\b/);
 
+assert.match(
+  core,
+  /ADMIN_SET_CHURCH_VISIBILITY_ACTION =\s*\n?\s*"adminSetChurchVisibility" as const/,
+);
+assert.match(
+  core,
+  /new Set\(\["action", "requestId", "churchId", "hidden"\]\)/,
+);
+assert.match(visibilityCore, /status: "updated" \| "alreadySet"/);
+assert.match(visibilityCore, /LEGACY_ENTRY_KEYS[\s\S]*"codeHash"[\s\S]*"churchCodeHash"/);
+assert.match(visibilityCore, /seen\.has\(id\)/);
+assert.match(visibilityCore, /actor\.role !== "platformAdmin" && actor\.role !== "superAdmin"/);
+for (const pattern of [
+  /const ledgerPath = `platformAdminActions\/\$\{input\.requestId\}`/,
+  /legacyDirectoryPath = "settings\/churchDirectory"/,
+  /publicChurchPath = `publicChurches\/\$\{input\.churchId\}`/,
+  /updateMask: \["hiddenFromDirectory", "updatedAt"\]/,
+  /churches: decision\.legacyChurches, updatedAt: now/,
+  /MAX_TRANSACTION_ATTEMPTS = 3/,
+]) assert.match(visibilityService, pattern);
+assert.match(visibilityServiceTest, /apply-then-409/);
+assert.match(visibilityServiceTest, /exact ledger[\s\S]*replay/);
+
+const visibilityHandlerStart = index.indexOf(
+  'if (parsed.action === "adminSetChurchVisibility")',
+);
+assert.ok(visibilityHandlerStart >= 0, "adminSetChurchVisibility 서버 라우터가 필요하다.");
+const visibilityHandler = index.slice(
+  visibilityHandlerStart,
+  index.indexOf("\n    if (parsed.action ===", visibilityHandlerStart + 10),
+);
+assert.match(
+  visibilityHandler,
+  /adminSetChurchVisibility\(service, verifiedUser, \{[\s\S]*requestId: parsed\.requestId[\s\S]*churchId: parsed\.churchId[\s\S]*hidden: parsed\.hidden/,
+);
+
+const toggleStart = platformAdmin.indexOf("const toggleChurchHidden = async");
+const toggleEnd = platformAdmin.indexOf("\n    };", toggleStart) + 7;
+assert.ok(toggleStart >= 0 && toggleEnd > toggleStart, "교회 숨김 UI 진입점이 필요하다.");
+const toggleContract = platformAdmin.slice(toggleStart, toggleEnd);
+assert.match(toggleContract, /await adminSetChurchVisibility\(\{[\s\S]*churchId: church\.id[\s\S]*hidden: next[\s\S]*expectedUid: currentUser\?\.uid/);
+assert.match(toggleContract, /invalidateChurchDirectoryCache\(\)/);
+assert.doesNotMatch(toggleContract, /db\.|syncChurchDirectoryEntry|\.update\(|\.set\(/,
+  "교회 숨김 UI가 브라우저에서 교회·directory를 직접 쓰면 안 된다.");
+
 const platformApi = await import("../src/utils/platformApi.js");
 const requestId = "123e4567-e89b-42d3-a456-426614174000";
 const summary = {
@@ -219,6 +273,41 @@ for (
       error instanceof platformApi.PlatformApiError &&
       error.code === "INVALID_RESPONSE" &&
       error.retryable === true,
+  );
+}
+
+const visibilityPayload = { churchId: "church-1", hidden: true };
+const visibilityResponse = {
+  ok: true,
+  action: "adminSetChurchVisibility",
+  requestId,
+  status: "updated",
+  hidden: true,
+};
+assert.deepEqual(
+  platformApi.validateAdminSetChurchVisibilityResponse(
+    visibilityPayload,
+    visibilityResponse,
+    requestId,
+  ),
+  visibilityResponse,
+);
+for (const mutate of [
+  (result) => { result.extra = true; },
+  (result) => { result.hidden = false; },
+  (result) => { result.status = "pending"; },
+  (result) => { result.requestId = "223e4567-e89b-42d3-a456-426614174000"; },
+]) {
+  const result = structuredClone(visibilityResponse);
+  mutate(result);
+  assert.throws(
+    () => platformApi.validateAdminSetChurchVisibilityResponse(
+      visibilityPayload,
+      result,
+      requestId,
+    ),
+    error => error instanceof platformApi.PlatformApiError
+      && error.code === "INVALID_RESPONSE" && error.retryable === true,
   );
 }
 

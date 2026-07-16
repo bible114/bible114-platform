@@ -6,6 +6,7 @@ import { migrateCredentialsIfNeeded } from '../utils/memberCredentials';
 import { isInteractiveAuthFlowActive } from '../utils/authFlowGuard';
 import { loadUserExtraOrgs } from '../utils/roster';
 import { normalizeLegacyReadingPosition } from '../utils/platformApi';
+import { restorePendingPersonalMigrationFromAuth } from '../utils/personalAccountMigration';
 
 const isRecoverableReadingPositionAuditError = error => {
     const status = Number(error?.status);
@@ -97,6 +98,7 @@ export const useUserAuth = () => {
                                 setAuthLoading(false);
                                 return;
                             }
+                            restorePendingPersonalMigrationFromAuth({ firebaseUser, userData });
                             const user = userDocToState(userDoc);
                             // [랭킹] 자격증명 지연 이관 — 재로그인 없이 세션 복원만 하는
                             // 상시 사용자가 가장 많으므로 이 경로가 핵심 이관 지점이다.

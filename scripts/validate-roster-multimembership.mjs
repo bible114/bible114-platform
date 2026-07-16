@@ -78,13 +78,21 @@ const app = read('src/App.jsx');
 const adminView = read('src/components/ChurchAdminView.jsx');
 const authHook = read('src/hooks/useAuth.js');
 const personalMigration = read('src/utils/personalAccountMigration.js');
+const convertPersonalCore = read('supabase/functions/platform-api/convertToPersonalAccountCore.ts');
+const convertPersonalService = read('supabase/functions/platform-api/convertToPersonalAccountService.ts');
 assert.match(membershipCard, /joinCommunityViaApi\(\{/,
     '일반 추가 공동체 참여는 서버 API를 사용해야 한다.');
 assert.match(joinCore, /membership:\s*\{[\s\S]*extraMemberships:\s*\[\]/,
     '서버가 새 roster를 추가 소속 빈 배열로 시작해야 한다.');
 assert.match(authHook, /completePersonalSignupViaApi\(\{[\s\S]*departmentId: organization\.departmentId[\s\S]*subgroupId: organization\.subgroupId/);
-assert.match(personalMigration, /transaction\.get\(userRef\)[\s\S]*latestUser = userSnap\.data\(\)[\s\S]*subgroupName: latestUser\.subgroupName \?\? null,[\s\S]*extraMemberships: \[\]/,
-    '개인계정 전환 roster는 보안 규칙과 일치하도록 최신 users 소속을 복사해야 한다.');
+assert.match(personalMigration, /convertToPersonalAccount\(\{[\s\S]*requestId: state\.conversionRequestId/,
+    '개인계정 전환은 브라우저 users/roster 쓰기 대신 멱등 서버 action을 사용해야 한다.');
+assert.doesNotMatch(personalMigration, /transaction\.set|\.collection\('users'\)\.doc\([^)]*\)\.update/,
+    '개인계정 전환 브라우저가 users 또는 roster를 직접 쓰면 안 된다.');
+assert.match(convertPersonalCore, /rosterSeed:[\s\S]*extraMemberships: userExtras/,
+    '서버 전환 core가 최신 users 추가 소속을 source roster seed에 복사해야 한다.');
+assert.match(convertPersonalService, /runCollectionGroupQuery<ConvertToPersonalAccountRoster>[\s\S]*"roster"[\s\S]*identity\.uid[\s\S]*limit: 4, transaction/,
+    '서버 전환이 4번째 소속 생성을 막도록 canonical roster를 같은 transaction에서 읽어야 한다.');
 assert.match(membershipCard, /joinSoloCommunityViaApi\(\{ expectedUid: requestUid \}\)/,
     '혼자 읽기 공동체 복귀는 브라우저 roster 생성 대신 서버 API를 사용해야 한다.');
 assert.match(joinSoloCore, /rosterSeed:[\s\S]*extraMemberships: \[\]/,
