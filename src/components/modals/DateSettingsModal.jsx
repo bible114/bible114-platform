@@ -10,16 +10,22 @@ const DateSettingsModal = ({
     dateSettingsDate,
     setDateSettingsDate,
     dateToOffset,
-    changeStartDate
+    changeStartDate,
+    onOpenRestart,
 }) => {
     const [canClose, setCanClose] = React.useState(false);
+    const [saving, setSaving] = React.useState(false);
+    const [saveError, setSaveError] = React.useState('');
 
     React.useEffect(() => {
         if (show) {
+            setSaveError('');
             const timer = setTimeout(() => setCanClose(true), 300);
             return () => clearTimeout(timer);
         } else {
             setCanClose(false);
+            setSaving(false);
+            setSaveError('');
         }
     }, [show]);
 
@@ -41,11 +47,31 @@ const DateSettingsModal = ({
         return entry ? entry.range : null;
     };
 
+    const saveSelectedDate = async (offset) => {
+        if (saving) return;
+        setSaving(true);
+        setSaveError('');
+        try {
+            const newOffset = offset - currentDay + 1;
+            const saved = await changeStartDate(newOffset);
+            if (saved === true) {
+                onClose();
+            } else {
+                setSaveError('읽기 진행 상태가 바뀌었거나 날짜를 저장하지 못했습니다. 최신 상태에서 다시 선택해주세요.');
+            }
+        } catch (error) {
+            console.error('날짜 설정 화면 저장 실패:', error);
+            setSaveError('날짜를 저장하지 못했습니다. 잠시 후 다시 선택해주세요.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     return (
         <div
             className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-in fade-in duration-200"
             onClick={(e) => {
-                if (e.target === e.currentTarget && canClose) onClose();
+                if (!saving && e.target === e.currentTarget && canClose) onClose();
             }}
         >
             <div
@@ -54,7 +80,7 @@ const DateSettingsModal = ({
             >
                 <div className="flex justify-between items-center mb-4 border-b pb-2">
                     <h3 className="text-xl font-bold text-slate-800">📅 날짜 설정</h3>
-                    <button onClick={onClose} className="text-slate-400 p-1 hover:bg-slate-100 rounded-full transition-colors"><Icon name="close" /></button>
+                    <button type="button" onClick={onClose} disabled={saving} className="text-slate-400 p-1 hover:bg-slate-100 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40"><Icon name="close" /></button>
                 </div>
                 <div className="mb-4 bg-purple-50 p-4 rounded-xl border border-purple-100 text-center">
                     <p className="text-lg font-bold text-purple-700 leading-relaxed">
@@ -66,9 +92,9 @@ const DateSettingsModal = ({
                 </div>
                 <div className="space-y-4">
                     <div className="flex justify-between items-center bg-slate-50 p-2 rounded-xl">
-                        <button onClick={(e) => { e.stopPropagation(); setDateSettingsDate(new Date(year, month - 1)); }} className="p-2 hover:bg-white rounded-lg transition-colors"><Icon name="back" size={16} /></button>
+                        <button type="button" disabled={saving} onClick={(e) => { e.stopPropagation(); setDateSettingsDate(new Date(year, month - 1)); }} className="p-2 hover:bg-white rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-40"><Icon name="back" size={16} /></button>
                         <span className="font-bold text-slate-700">{year}년 {month + 1}월</span>
-                        <button onClick={(e) => { e.stopPropagation(); setDateSettingsDate(new Date(year, month + 1)); }} className="p-2 hover:bg-white rounded-lg transition-colors rotate-180"><Icon name="back" size={16} /></button>
+                        <button type="button" disabled={saving} onClick={(e) => { e.stopPropagation(); setDateSettingsDate(new Date(year, month + 1)); }} className="p-2 hover:bg-white rounded-lg transition-colors rotate-180 disabled:cursor-not-allowed disabled:opacity-40"><Icon name="back" size={16} /></button>
                     </div>
                     <div className="grid grid-cols-7 gap-1 text-center mb-1">
                         {['일', '월', '화', '수', '목', '금', '토'].map((d, i) => (
@@ -86,12 +112,12 @@ const DateSettingsModal = ({
                                 <button key={idx}
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        const newOffset = offset - currentDay + 1;
-                                        changeStartDate(newOffset);
-                                        onClose();
+                                        void saveSelectedDate(offset);
                                     }}
+                                    disabled={saving}
                                     className={`group aspect-square flex flex-col items-center justify-center rounded-lg border transition-all hover:border-purple-400 hover:shadow-sm active:scale-95
                                         ${isToday ? 'bg-purple-50 border-purple-200 ring-1 ring-purple-300' : 'bg-white border-slate-100'}
+                                        ${saving ? 'cursor-wait opacity-50' : ''}
                                     `}
                                 >
                                     <span className={`text-xs font-bold ${dayOfWeek === 0 ? 'text-red-500' : dayOfWeek === 6 ? 'text-blue-500' : 'text-slate-700'}`}>{day}</span>
@@ -110,7 +136,25 @@ const DateSettingsModal = ({
                         </p>
                     </div>
                 </div>
-                <button onClick={onClose} className="w-full bg-slate-100 font-bold py-3 rounded-xl mt-4 text-slate-600">닫기</button>
+                <button
+                    type="button"
+                    onClick={() => { if (!saving) onOpenRestart(); }}
+                    disabled={saving}
+                    className="mt-5 w-full rounded-xl border border-red-200 bg-red-50 py-3 font-bold text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    Day 1로 다시 시작
+                </button>
+                <p className="mt-2 text-center text-[10px] font-medium text-slate-400">
+                    현재 진도만 초기화하며 달란트와 묵상, 과거 기록은 보존됩니다.
+                </p>
+                {(saving || saveError) && (
+                    <p className={`mt-3 text-center text-xs font-bold ${saveError ? 'text-red-500' : 'text-purple-600'}`} role="status">
+                        {saveError || '날짜를 저장하고 있습니다…'}
+                    </p>
+                )}
+                <button type="button" onClick={onClose} disabled={saving} className="w-full bg-slate-100 font-bold py-3 rounded-xl mt-4 text-slate-600 disabled:cursor-not-allowed disabled:opacity-50">
+                    {saving ? '저장 중…' : '닫기'}
+                </button>
             </div>
         </div>
     );

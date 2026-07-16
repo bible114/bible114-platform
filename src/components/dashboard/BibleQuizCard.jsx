@@ -1,10 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { auth, db, firebase } from '../../utils/firebase';
 import { QUIZ_BANK, getKstDateString } from '../../data/bibleQuiz';
-import { getQuizLevel, getQuizProgressKey } from '../../utils/quizProgress';
+import {
+    getQuizConfigurationKey,
+    getQuizLevel,
+    getQuizProgressKey,
+    userAllowsQuizProgressKey,
+} from '../../utils/quizProgress';
 import { saveGuestState } from '../../utils/guestStorage';
-import { updateRosterTalents } from '../../utils/talentWallet';
 import { PlatformApiError, skipQuiz, submitQuiz } from '../../utils/platformApi';
+import {
+    isLatestCanonicalUserState,
+    loadCanonicalUserStateFromServer,
+} from '../../utils/userStateSync';
 import {
     clearActivityRequest,
     getOrCreateQuizActivityRequest,
@@ -147,6 +155,17 @@ const buildDayQuiz = async (currentUser, viewingDay) => {
     return null;
 };
 
+const projectFreshUserForQuizConfiguration = (freshUser, rosterOrgId) => {
+    if (!rosterOrgId) return freshUser;
+    const roster = (Array.isArray(freshUser?.extraOrgs) ? freshUser.extraOrgs : [])
+        .find(org => org?.orgId === rosterOrgId);
+    return roster ? {
+        ...freshUser,
+        departmentId: roster.departmentId || null,
+        departmentName: roster.departmentName || null,
+    } : null;
+};
+
 const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateChange, sectionRef, highlight = false, talentProgramEnabled = true }) => {
     const todayKey = getKstDateString();
     const hasReadToday = currentUser?.lastReadDate === new Date().toDateString();
@@ -154,10 +173,34 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
     const progressCycle = hasReadToday && currentUser?.currentDay === 1 && progressDay === 365
         ? Math.max(1, (currentUser?.readCount || 1) - 1)
         : (currentUser?.readCount || 1);
-    const progressKey = getQuizProgressKey(progressCycle, progressDay);
+    const readingEpoch = currentUser?.readingEpoch ?? 0;
+    const progressKey = getQuizProgressKey(progressCycle, progressDay, readingEpoch);
+    const currentUserRef = useRef(currentUser);
+    const progressKeyRef = useRef(progressKey);
+    currentUserRef.current = currentUser;
+    progressKeyRef.current = progressKey;
+    const submissionStillCurrent = (
+        uid,
+        epoch,
+        submittedProgressKey,
+        submittedQuizConfigurationKey,
+        submittedRosterOrgId,
+    ) => (
+        auth?.currentUser?.uid === uid
+        && currentUserRef.current?.uid === uid
+        && (currentUserRef.current?.readingEpoch ?? 0) === epoch
+        && progressKeyRef.current === submittedProgressKey
+        && getQuizConfigurationKey(currentUserRef.current) === submittedQuizConfigurationKey
+        && (currentUserRef.current?.talentWalletType === 'roster'
+            ? currentUserRef.current.talentWalletOrgId
+            : null) === submittedRosterOrgId
+    );
     const legacyDay = hasReadToday ? (currentUser?.currentDay === 1 ? 365 : (currentUser?.currentDay || 1) - 1) : (currentUser?.currentDay || 1);
     const legacyCycle = hasReadToday && currentUser?.currentDay === 1 ? Math.max(1, (currentUser?.readCount || 1) - 1) : (currentUser?.readCount || 1);
-    const canUseLegacy = progressDay === legacyDay && progressKey === getQuizProgressKey(legacyCycle, legacyDay) && currentUser?.quizDate === todayKey;
+    const canUseLegacy = readingEpoch === 0
+        && progressDay === legacyDay
+        && progressKey === getQuizProgressKey(legacyCycle, legacyDay, readingEpoch)
+        && currentUser?.quizDate === todayKey;
     const progress = currentUser?.quizProgress?.[progressKey] || (canUseLegacy ? {
         attempts: currentUser?.quizAttempts || 0,
         solved: currentUser?.quizSolved === true,
@@ -215,6 +258,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
         currentUser?.planId,
         currentUser?.quizLevel,
         currentUser?.readCount,
+        currentUser?.readingEpoch,
         todayKey,
     ]);
 
@@ -252,6 +296,7 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
         currentUser?.quizLevel,
         progress?.quizKey,
         currentUser?.readCount,
+        currentUser?.readingEpoch,
         todayKey,
     ]);
 
@@ -274,6 +319,12 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
     const skipToday = async () => {
         if (submitting || !quizKey) return;
         const submittedUid = currentUser.uid;
+        const submittedEpoch = readingEpoch;
+        const submittedProgressKey = progressKey;
+        const submittedQuizConfigurationKey = getQuizConfigurationKey(currentUser);
+        const submittedRosterOrgId = currentUser.talentWalletType === 'roster'
+            ? currentUser.talentWalletOrgId
+            : null;
         let activityRequest = null;
         setSubmitting(true);
         try {
@@ -289,16 +340,50 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
             );
             clearActivityRequest(activityRequest);
             if (auth?.currentUser?.uid !== submittedUid) return;
-            const entry = response.state.progress;
-            setCurrentUser(previous => previous?.uid === submittedUid
-                ? {
-                    ...previous,
-                    quizProgress: {
-                        ...(previous.quizProgress || {}),
-                        [response.state.progressKey]: entry,
-                    },
+            let freshUser;
+            try {
+                freshUser = await loadCanonicalUserStateFromServer(submittedUid);
+            } catch (syncError) {
+                console.error('퀴즈 건너뛰기 후 최신 사용자 동기화 실패:', syncError);
+                if (submissionStillCurrent(
+                    submittedUid,
+                    submittedEpoch,
+                    submittedProgressKey,
+                    submittedQuizConfigurationKey,
+                    submittedRosterOrgId,
+                )) {
+                    setFeedback({
+                        type: 'error',
+                        message: '건너뛰기는 처리됐지만 최신 상태를 불러오지 못했어요. 잠시 후 다시 확인해주세요.',
+                    });
                 }
-                : previous);
+                return;
+            }
+            if (auth?.currentUser?.uid !== submittedUid || freshUser?.uid !== submittedUid
+                || !isLatestCanonicalUserState(submittedUid, freshUser)) return;
+            const visibleContextMatches = submissionStillCurrent(
+                submittedUid,
+                submittedEpoch,
+                submittedProgressKey,
+                submittedQuizConfigurationKey,
+                submittedRosterOrgId,
+            );
+            const freshConfigurationUser = projectFreshUserForQuizConfiguration(
+                freshUser,
+                submittedRosterOrgId,
+            );
+            currentUserRef.current = freshUser;
+            setCurrentUser(freshUser);
+            if (!visibleContextMatches
+                || !freshConfigurationUser
+                || getQuizConfigurationKey(freshConfigurationUser) !== submittedQuizConfigurationKey
+                || !userAllowsQuizProgressKey(
+                    freshUser,
+                    submittedProgressKey,
+                    response.calendarDate,
+                )) return;
+            const entry = freshUser.quizProgress?.[submittedProgressKey];
+            if (!entry || entry.quizKey !== response.state.progress.quizKey) return;
             if (entry.skipped && typeof localStorage !== 'undefined') {
                 try {
                     localStorage.setItem(skipStorageKey, '1');
@@ -314,7 +399,13 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
                 clearActivityRequest(activityRequest);
             }
             console.error('퀴즈 건너뛰기 저장 실패:', error);
-            if (auth?.currentUser?.uid === submittedUid) {
+            if (submissionStillCurrent(
+                submittedUid,
+                submittedEpoch,
+                submittedProgressKey,
+                submittedQuizConfigurationKey,
+                submittedRosterOrgId,
+            )) {
                 setFeedback({
                     type: 'error',
                     message: outcomeUncertain
@@ -330,6 +421,12 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
     const submitAnswer = async () => {
         if (!quiz || !quizKey || selectedIndex === null || submitting || finished || skipped) return;
         const submittedUid = currentUser.uid;
+        const submittedEpoch = readingEpoch;
+        const submittedProgressKey = progressKey;
+        const submittedQuizConfigurationKey = getQuizConfigurationKey(currentUser);
+        const submittedRosterOrgId = currentUser.talentWalletType === 'roster'
+            ? currentUser.talentWalletOrgId
+            : null;
         let activityRequest = null;
         setSubmitting(true);
         try {
@@ -350,24 +447,51 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
             );
             clearActivityRequest(activityRequest);
             if (auth?.currentUser?.uid !== submittedUid) return;
-
-            const freshProgress = response.state.progress;
-            const rosterTalentByOrgId = Object.fromEntries(
-                response.state.rosterTalents.map(({ orgId, talent }) => [orgId, talent]),
+            let freshUser;
+            try {
+                freshUser = await loadCanonicalUserStateFromServer(submittedUid);
+            } catch (syncError) {
+                console.error('성경퀴즈 제출 후 최신 사용자 동기화 실패:', syncError);
+                if (submissionStillCurrent(
+                    submittedUid,
+                    submittedEpoch,
+                    submittedProgressKey,
+                    submittedQuizConfigurationKey,
+                    submittedRosterOrgId,
+                )) {
+                    setFeedback({
+                        type: 'error',
+                        message: '답은 처리됐지만 최신 상태를 불러오지 못했어요. 잠시 후 다시 확인해주세요.',
+                    });
+                }
+                return;
+            }
+            if (auth?.currentUser?.uid !== submittedUid || freshUser?.uid !== submittedUid
+                || !isLatestCanonicalUserState(submittedUid, freshUser)) return;
+            const visibleContextMatches = submissionStillCurrent(
+                submittedUid,
+                submittedEpoch,
+                submittedProgressKey,
+                submittedQuizConfigurationKey,
+                submittedRosterOrgId,
             );
-            setCurrentUser((previous) => {
-                if (previous?.uid !== submittedUid) return previous;
-                return updateRosterTalents({
-                    ...previous,
-                    quizProgress: {
-                        ...(previous.quizProgress || {}),
-                        [response.state.progressKey]: freshProgress,
-                    },
-                    quizRewardDate: response.state.quizRewardDate,
-                    quizRewardAmount: response.state.quizRewardAmount,
-                    talent: response.state.userTalent,
-                }, rosterTalentByOrgId, { authoritative: true });
-            });
+            const freshConfigurationUser = projectFreshUserForQuizConfiguration(
+                freshUser,
+                submittedRosterOrgId,
+            );
+            currentUserRef.current = freshUser;
+            setCurrentUser(freshUser);
+            if (!visibleContextMatches
+                || !freshConfigurationUser
+                || getQuizConfigurationKey(freshConfigurationUser) !== submittedQuizConfigurationKey
+                || !userAllowsQuizProgressKey(
+                    freshUser,
+                    submittedProgressKey,
+                    response.calendarDate,
+                )) return;
+
+            const freshProgress = freshUser.quizProgress?.[submittedProgressKey];
+            if (!freshProgress || freshProgress.quizKey !== response.state.progress.quizKey) return;
             setSkipped(freshProgress.skipped === true);
 
             if (freshProgress.solved) {
@@ -390,7 +514,13 @@ const BibleQuizCard = ({ currentUser, setCurrentUser, viewingDay, onGateStateCha
             if (activityRequest && e instanceof PlatformApiError && !outcomeUncertain) {
                 clearActivityRequest(activityRequest);
             }
-            if (auth?.currentUser?.uid !== submittedUid) return;
+            if (!submissionStillCurrent(
+                submittedUid,
+                submittedEpoch,
+                submittedProgressKey,
+                submittedQuizConfigurationKey,
+                submittedRosterOrgId,
+            )) return;
             if (outcomeUncertain && activityRequest) {
                 setSelectedIndex(activityRequest.payload.selectedIndex);
             }

@@ -194,12 +194,12 @@ const platformApiServer = read('supabase/functions/platform-api/index.ts');
 const purchaseCore = read('supabase/functions/platform-api/purchaseCore.ts');
 const adminPurchaseCore = read('supabase/functions/platform-api/adminPurchaseCore.ts');
 
-assert.match(readActions, /response\.state\.rosters\.map\(item => \[item\.orgId, item\.talent\]\)[\s\S]*updateRosterTalents\([\s\S]*response\.state\.user[\s\S]*rosterTalentByOrgId/,
-    '읽기 완료는 서버가 반환한 최신 사용자·명부 지갑 상태를 적용해야 한다.');
+assert.match(readActions, /loadCanonicalUserStateFromServer\(uid\)[\s\S]*setCurrentUser\(freshUser\)[\s\S]*\(freshUser\.extraOrgs \|\| \[\]\)\.map\(org => \[org\.orgId, Number\(org\.talent\) \|\| 0\]\)[\s\S]*rosterTalentByOrgId/,
+    '읽기 완료는 Firestore 서버에서 다시 읽은 최신 사용자·명부 지갑 상태를 적용해야 한다.');
 assert.match(readActions, /const isFirstReadToday = summary\.scoreEarned > 0/,
     '서버 읽기 요약의 점수 적립 여부와 첫 읽기 여부를 연결해야 한다.');
-assert.match(quizCard, /const response = await submitQuiz\([\s\S]*response\.state\.rosterTalents\.map[\s\S]*updateRosterTalents\([\s\S]*talent: response\.state\.userTalent/,
-    '퀴즈 완료는 서버가 반환한 최신 사용자·명부 지갑 상태를 적용해야 한다.');
+assert.match(quizCard, /const response = await submitQuiz\([\s\S]*loadCanonicalUserStateFromServer\(submittedUid\)[\s\S]*setCurrentUser\(freshUser\)/,
+    '퀴즈 완료는 Firestore 서버에서 다시 읽은 최신 사용자·명부 지갑 상태를 적용해야 한다.');
 assert.match(memberShop, /const purchasePrice = Number\(item\?\.price\)[\s\S]*isValidTalentPurchasePrice\(purchasePrice\)/,
     '모든 상점 구매는 쓰기 전에 양수 숫자 가격으로 정규화해야 한다.');
 assert.match(memberShop, /purchaseItemViaApi\(\{[\s\S]*churchId:[\s\S]*itemId:[\s\S]*departmentId:[\s\S]*marketId:/,

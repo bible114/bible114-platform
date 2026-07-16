@@ -9,6 +9,10 @@ const envExample = read('.env.example');
 const client = read('src/utils/platformApi.js');
 const userBibleActions = read('src/hooks/useUserBibleActions.js');
 const quizCard = read('src/components/dashboard/BibleQuizCard.jsx');
+const userStateSync = read('src/utils/userStateSync.js');
+const rosterClient = read('src/utils/roster.js');
+const bibleLogic = read('src/hooks/useBibleLogic.js');
+const quizProgressSource = read('src/utils/quizProgress.js');
 const packageJson = JSON.parse(read('package.json'));
 
 assert.match(constants, /export const PLATFORM_API_URL = import\.meta\.env\?\.VITE_PLATFORM_API_URL \|\| '';/);
@@ -71,6 +75,8 @@ assert.doesNotMatch(
 
 // Node에서 오류 타입과 URL 미설정 안전장치를 import/실행할 수 있어야 한다.
 const platformApi = await import('../src/utils/platformApi.js');
+const quizProgressRuntime = await import('../src/utils/quizProgress.js');
+const { strictCanonicalRosterEntries } = await import('../src/utils/rosterSnapshot.js');
 const { updateRosterTalents } = await import('../src/utils/talentWallet.js');
 const { reconcileStoredRequestIds } = await import('../src/utils/adminTalentRequests.js');
 const {
@@ -79,11 +85,98 @@ const {
     getOrCreateQuizActivityRequest,
     getOrCreateQuizSkipActivityRequest,
     getOrCreateReadActivityRequest,
+    getOrCreateRestartActivityRequest,
 } = await import('../src/utils/userActivityRequests.js');
 const sampleError = new platformApi.PlatformApiError('fixture', { code: 'FIXTURE', status: 418, retryable: false });
 assert.equal(sampleError.code, 'FIXTURE');
 assert.equal(sampleError.status, 418);
 assert.equal(sampleError.retryable, false);
+const makeCanonicalRosterSnapshot = (orgIds, overrides = {}) => ({
+    docs: orgIds.map((orgId, index) => {
+        const uid = overrides.uid ?? 'user-1';
+        const pathUid = overrides.pathUid ?? uid;
+        const path = overrides.path ?? `churches/${orgId}/roster/${pathUid}`;
+        return {
+            id: overrides.id ?? uid,
+            exists: overrides.exists ?? true,
+            data: () => ({ uid, talent: index + 1 }),
+            ref: {
+                path,
+                parent: { parent: { id: overrides.parentOrgId ?? orgId } },
+            },
+        };
+    }),
+});
+assert.deepEqual(
+    strictCanonicalRosterEntries(makeCanonicalRosterSnapshot(['z-org', 'a-org']), 'user-1')
+        .map(entry => entry.rosterPath),
+    ['churches/a-org/roster/user-1', 'churches/z-org/roster/user-1'],
+    'transaction 대상 canonical roster 경로는 uid/path를 검증하고 결정적으로 정렬해야 한다.',
+);
+assert.throws(
+    () => strictCanonicalRosterEntries(makeCanonicalRosterSnapshot(['a', 'b', 'c', 'd']), 'user-1'),
+    /limit exceeded/,
+    'canonical roster가 3개를 넘으면 일부만 적용하지 말고 fail-closed 해야 한다.',
+);
+for (const invalidSnapshot of [
+    makeCanonicalRosterSnapshot(['a'], { id: 'other-user' }),
+    makeCanonicalRosterSnapshot(['a'], { uid: 'other-user', pathUid: 'user-1' }),
+    makeCanonicalRosterSnapshot(['a'], { path: 'churches/a/members/user-1' }),
+    makeCanonicalRosterSnapshot(['a'], { parentOrgId: 'other-org' }),
+    makeCanonicalRosterSnapshot(['a'], { exists: false }),
+]) {
+    assert.throws(
+        () => strictCanonicalRosterEntries(invalidSnapshot, 'user-1'),
+        /invalid canonical roster row/,
+        '비canonical uid/path 또는 transaction 중 사라진 roster를 거부해야 한다.',
+    );
+}
+const currentQuizContext = { uid: 'user-1', readCount: 2, currentDay: 10, readingEpoch: 3 };
+const runtimeCalendarDate = 'Thu Jul 16 2026';
+assert.equal(
+    quizProgressRuntime.userAllowsQuizProgressKey(currentQuizContext, 'e3_r2_d10', runtimeCalendarDate),
+    true,
+    'fresh quiz context는 같은 uid·epoch·cycle·day에서만 유효해야 한다.',
+);
+for (const staleKey of ['e2_r2_d10', 'e3_r1_d10', 'e3_r2_d9']) {
+    assert.equal(
+        quizProgressRuntime.userAllowsQuizProgressKey(currentQuizContext, staleKey, runtimeCalendarDate),
+        false,
+        `다른 탭의 restart/read로 오래어진 퀴즈 context(${staleKey})를 거부해야 한다.`,
+    );
+}
+assert.equal(
+    quizProgressRuntime.userAllowsQuizProgressKey(
+        { ...currentQuizContext, lastReadDate: runtimeCalendarDate },
+        'e3_r2_d9',
+        runtimeCalendarDate,
+    ),
+    true,
+    '오늘 방금 완료한 직전 Day 퀴즈 context를 허용해야 한다.',
+);
+assert.equal(
+    quizProgressRuntime.userAllowsQuizProgressKey(
+        { uid: 'user-1', readCount: 3, currentDay: 1, readingEpoch: 3, lastReadDate: runtimeCalendarDate },
+        'e3_r2_d365',
+        runtimeCalendarDate,
+    ),
+    true,
+    '회차 경계 직후에는 이전 회차 Day 365 퀴즈 context를 허용해야 한다.',
+);
+assert.equal(
+    quizProgressRuntime.userAllowsQuizProgressKey(
+        { ...currentQuizContext, lastReadDate: 'Wed Jul 15 2026' },
+        'e3_r2_d9',
+        runtimeCalendarDate,
+    ),
+    false,
+    '오늘 읽기 완료가 아니면 직전 Day 퀴즈 context를 거부해야 한다.',
+);
+assert.notEqual(
+    quizProgressRuntime.getQuizConfigurationKey({ ...currentQuizContext, dayOffset: 0, planId: '1year_revised' }),
+    quizProgressRuntime.getQuizConfigurationKey({ ...currentQuizContext, dayOffset: 1, planId: '1year_revised' }),
+    '다른 탭에서 dayOffset이 바뀐 퀴즈 context를 구분해야 한다.',
+);
 const uuidV4Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 assert.match(platformApi.createRequestId(null, () => 0), uuidV4Pattern, 'crypto 완전 부재 fallback도 UUIDv4여야 한다.');
 assert.match(platformApi.createRequestId({
@@ -135,19 +228,36 @@ const makeStorage = () => {
 const activityStorage = makeStorage();
 const readRequestId = '523e4567-e89b-42d3-a456-426614174000';
 const readRequest = getOrCreateReadActivityRequest(
-    { uid: 'user-1', cycle: 2, day: 10 },
+    { uid: 'user-1', cycle: 2, day: 10, readingEpoch: 0 },
     { storage: activityStorage, requestIdFactory: () => readRequestId },
 );
 assert.equal(readRequest.requestId, readRequestId);
-assert.deepEqual(readRequest.payload, { cycle: 2, day: 10 });
+assert.deepEqual(readRequest.payload, { cycle: 2, day: 10, readingEpoch: 0 });
 assert.equal(
     getOrCreateReadActivityRequest(
-        { uid: 'user-1', cycle: 2, day: 10 },
+        { uid: 'user-1', cycle: 2, day: 10, readingEpoch: 0 },
         { storage: activityStorage, requestIdFactory: () => { throw new Error('must reuse'); } },
     ).requestId,
     readRequestId,
     '같은 읽기 위치는 저장된 requestId를 재사용해야 한다.',
 );
+
+const restartRequestId = '573e4567-e89b-42d3-a456-426614174000';
+const restartRequest = getOrCreateRestartActivityRequest(
+    { uid: 'user-1', cycle: 2, day: 10, readingEpoch: 3 },
+    { storage: activityStorage, requestIdFactory: () => restartRequestId },
+);
+assert.equal(restartRequest.requestId, restartRequestId);
+assert.deepEqual(restartRequest.payload, { cycle: 2, day: 10, readingEpoch: 3 });
+assert.equal(
+    getOrCreateRestartActivityRequest(
+        { uid: 'user-1', cycle: 9, day: 300, readingEpoch: 8 },
+        { storage: activityStorage, requestIdFactory: () => { throw new Error('must reuse'); } },
+    ).requestId,
+    restartRequestId,
+    '미확정 재시작은 상태가 바뀌어도 UID별 최초 requestId를 재사용해야 한다.',
+);
+assert.equal(clearActivityRequest(restartRequest, { storage: activityStorage }), true);
 
 const quizRequestId = '623e4567-e89b-42d3-a456-426614174000';
 const firstQuizRequest = getOrCreateQuizActivityRequest(
@@ -511,9 +621,66 @@ for (const invalidInput of [
     );
 }
 
+// 결정적 action 뒤에는 응답 snapshot을 merge하지 않는다. server query로 찾은
+// canonical roster 경로와 users 문서를 같은 read-only transaction에서 읽고,
+// query 전후 membership 경로가 안정된 경우에만 base currentUser를 만든다.
+for (const pattern of [
+    /import\s*\{\s*userDocToState\s*\}\s*from\s*['"]\.\/helpers['"]/,
+    /loadCanonicalRosterRefsFromServer/,
+    /strictCanonicalRosterEntries/,
+    /rosterSnapshotToExtraOrgs/,
+    /const MAX_CANONICAL_ROSTERS = 3/,
+    /const MAX_MEMBERSHIP_SNAPSHOT_ATTEMPTS = 3/,
+    /for \(let attempt = 0; attempt < MAX_MEMBERSHIP_SNAPSHOT_ATTEMPTS; attempt \+= 1\)/,
+    /const discoveredBefore = await discoverCanonicalRosters\(normalizedUid\)/,
+    /dbInstance\.runTransaction\(async transaction =>/,
+    /transaction\.get\(userRef\)/,
+    /\.\.\.discoveredBefore\.map\(entry => transaction\.get\(entry\.ref\)\)/,
+    /const discoveredAfter = await discoverCanonicalRosters\(normalizedUid\)/,
+    /sameRosterPaths\(expectedPaths, rosterPaths\(discoveredAfter\)\)/,
+    /throw new Error\(['"]user state sync unstable membership['"]\)/,
+    /latestSyncGenerationByUid\.set\(normalizedUid, generation\)/,
+    /stateSyncGeneration\.set\(state, \{ uid:\s*normalizedUid, generation \}\)/,
+    /export const isLatestCanonicalUserState =/,
+    /const state = \{ \.\.\.transactionState\.user, extraOrgs: transactionState\.extraOrgs \}[\s\S]*return state/,
+]) assert.match(userStateSync, pattern);
+assert.doesNotMatch(
+    userStateSync,
+    /\.doc\(normalizedUid\)\.get\(\{ source:\s*['"]server['"] \}\)/,
+    'users와 roster를 독립 server read로 조합하면 hybrid snapshot이 될 수 있다.',
+);
+const canonicalSyncTransactionStart = userStateSync.indexOf('transactionState = await dbInstance.runTransaction(async transaction => {');
+const canonicalSyncTransactionEnd = userStateSync.indexOf('const discoveredAfter =', canonicalSyncTransactionStart);
+assert.ok(
+    canonicalSyncTransactionStart >= 0 && canonicalSyncTransactionEnd > canonicalSyncTransactionStart,
+    'canonical user state read-only transaction 구간이 필요하다.',
+);
+assert.doesNotMatch(
+    userStateSync.slice(canonicalSyncTransactionStart, canonicalSyncTransactionEnd),
+    /transaction\.(?:set|update|delete)\(/,
+    'canonical user state transaction은 읽기 전용이어야 한다.',
+);
+assert.match(rosterClient, /query\.get\(\{ source:\s*['"]server['"] \}\)/);
+assert.match(rosterClient, /export const loadCanonicalRosterRefsFromServer = async/);
+assert.match(rosterClient, /strictCanonicalRosterEntries\(snapshot, normalizedUid, MAX_CANONICAL_USER_ORGS\)/);
+assert.match(rosterClient, /\.get\(\{ source:\s*['"]server['"] \}\)/);
+assert.match(rosterClient, /requestKey = `\$\{normalizedUid\}:\$\{maxOrgs\}:\$\{source\}`/);
+assert.match(rosterClient, /const shouldDedupe = source !== ['"]server['"]/);
+assert.match(rosterClient, /if \(shouldDedupe\) rosterLoadPromises\.set\(requestKey, loadPromise\)/);
+assert.match(userBibleActions, /import\s*\{[^}]*isLatestCanonicalUserState[^}]*loadCanonicalUserStateFromServer[^}]*\}\s*from\s*['"]\.\.\/utils\/userStateSync['"]/);
+const syncLatestUserStart = userBibleActions.indexOf('const syncLatestUser = useCallback(async (uid) => {');
+const syncLatestUserEnd = userBibleActions.indexOf('const checkAchievements = useCallback(', syncLatestUserStart);
+assert.ok(syncLatestUserStart >= 0 && syncLatestUserEnd > syncLatestUserStart, 'fresh user sync helper가 필요하다.');
+const syncLatestUserContract = userBibleActions.slice(syncLatestUserStart, syncLatestUserEnd);
+assert.match(syncLatestUserContract, /await loadCanonicalUserStateFromServer\(uid\)/);
+assert.match(syncLatestUserContract, /isLatestCanonicalUserState\(uid, freshUser\)/);
+assert.match(syncLatestUserContract, /auth\.currentUser\?\.uid !== uid/);
+assert.match(syncLatestUserContract, /setCurrentUser\(freshUser\)/);
+assert.doesNotMatch(syncLatestUserContract, /setCurrentUser\([^)]*=>/);
+
 // 읽기 완료는 브라우저 Firestore transaction이 아니라 멱등 requestId를 붙인
 // completeRead 서버 action 한 번으로 저장하고, 2xx 응답도 fail-closed 검증한다.
-assert.match(userBibleActions, /import\s*\{\s*completeRead\s*\}\s*from\s*['"]\.\.\/utils\/platformApi['"]/);
+assert.match(userBibleActions, /import\s*\{[^}]*completeRead[^}]*restartReading[^}]*\}\s*from\s*['"]\.\.\/utils\/platformApi['"]/);
 assert.match(
     userBibleActions,
     /import\s*\{[^}]*clearActivityRequest[^}]*getOrCreateReadActivityRequest[^}]*\}\s*from\s*['"]\.\.\/utils\/userActivityRequests['"]/,
@@ -524,16 +691,29 @@ assert.ok(handleReadStart >= 0 && handleReadEnd > handleReadStart, 'handleRead �
 const handleReadContract = userBibleActions.slice(handleReadStart, handleReadEnd);
 assert.match(
     handleReadContract,
-    /getOrCreateReadActivityRequest\([\s\S]*cycle:\s*submittedReadCount[\s\S]*day:\s*vDay/,
+    /getOrCreateReadActivityRequest\([\s\S]*cycle:\s*submittedReadCount[\s\S]*day:\s*vDay[\s\S]*readingEpoch:\s*requestStartUser\.readingEpoch\s*\?\?\s*0/,
     '현재 읽기 위치에 묶인 멱등 requestId를 먼저 복구·생성해야 한다.',
 );
 assert.match(
     handleReadContract,
-    /await completeRead\([\s\S]*activityRequest\.payload\.cycle[\s\S]*activityRequest\.payload\.day[\s\S]*requestId:\s*activityRequest\.requestId[\s\S]*expectedUid:\s*uid/,
+    /await completeRead\([\s\S]*activityRequest\.payload\.cycle[\s\S]*activityRequest\.payload\.day[\s\S]*requestId:\s*activityRequest\.requestId[\s\S]*expectedUid:\s*uid[\s\S]*readingEpoch:\s*activityRequest\.payload\.readingEpoch/,
     'completeRead에는 저장된 원본 payload·requestId와 제출 계정 UID를 함께 보내야 한다.',
 );
 assert.match(handleReadContract, /clearActivityRequest\(activityRequest\)/);
 assert.match(handleReadContract, /auth\.currentUser\?\.uid !== uid/);
+assert.match(handleReadContract, /freshUser = await syncLatestUser\(uid\)/);
+assert.match(handleReadContract, /requestCommunityRefresh\?\.\(\)/);
+assert.match(handleReadContract, /sameReadingPosition\(readingPosition\(freshUser\), responsePosition\)/);
+assert.match(handleReadContract, /\{ applyLocal:\s*false, showToast:\s*false \}/);
+assert.ok(
+    (handleReadContract.match(/freshUser = await syncLatestUser\(uid\)/g) || []).length >= 2,
+    '업적 transaction 뒤에도 source-server final sync를 다시 수행해야 한다.',
+);
+assert.ok(
+    handleReadContract.indexOf('clearActivityRequest(activityRequest)')
+        < handleReadContract.indexOf('freshUser = await syncLatestUser(uid)'),
+    '결정적 read requestId를 정리한 뒤 source-server sync를 수행해야 한다.',
+);
 assert.match(
     handleReadContract,
     /shouldPreserveRequest[\s\S]*error\?\.retryable === true[\s\S]*error\?\.code === 'INVALID_RESPONSE'/,
@@ -549,6 +729,8 @@ assert.doesNotMatch(
     /db\.runTransaction\s*\(|\btransaction\.(?:get|set|update|delete)\s*\(|collection\(['"]platformStats['"]\)|collection\(['"]history['"]\)\.add\s*\(/,
     'handleRead가 읽기·지갑·통계를 브라우저에서 직접 transaction/write하면 안 된다.',
 );
+assert.doesNotMatch(handleReadContract, /loadAllMembers|setAllMembersForRace|setDepartmentMembers|setSubgroupStats/);
+assert.doesNotMatch(handleReadContract, /updateRosterTalents|\.\.\.response\.state\.user/);
 
 const readCalendarDate = 'Thu Jul 16 2026';
 const validCompleteReadResponse = {
@@ -605,7 +787,7 @@ const validCompleteReadResponse = {
         rosters: [],
     },
 };
-const validCompleteReadPayload = { cycle: 1, day: 1 };
+const validCompleteReadPayload = { cycle: 1, day: 1, readingEpoch: 0 };
 assert.deepEqual(
     platformApi.validateCompleteReadResponse(
         validCompleteReadPayload,
@@ -613,6 +795,24 @@ assert.deepEqual(
         readRequestId,
     ),
     validCompleteReadResponse,
+);
+const validZeroCountReadGuardResponse = structuredClone(validCompleteReadResponse);
+validZeroCountReadGuardResponse.committed = false;
+validZeroCountReadGuardResponse.result = {
+    status: 'positionMismatch',
+    expected: { cycle: 1, day: 2 },
+    received: { cycle: 1, day: 1 },
+};
+validZeroCountReadGuardResponse.state.user.currentDay = 2;
+validZeroCountReadGuardResponse.state.user.dailyAdvanceCount = 0;
+assert.equal(
+    platformApi.validateCompleteReadResponse(
+        validCompleteReadPayload,
+        validZeroCountReadGuardResponse,
+        readRequestId,
+    ).state.user.dailyAdvanceCount,
+    0,
+    '날짜가 있는 count 0 무보상 guard는 유효한 서버 상태로 받아들여야 한다.',
 );
 for (const mutate of [
     response => { response.extra = true; },
@@ -639,6 +839,149 @@ for (const mutate of [
         '읽기 2xx 응답의 키·식별자·날짜·상태 불일치는 fail-closed여야 한다.',
     );
 }
+
+// Day 1 재시작은 읽기 회차(readCount)를 완독으로 오표시하지 않고 보존하며,
+// 별도 readingEpoch로 과거 탭과 퀴즈 의미 원장을 분리한다.
+const validRestartPayload = { cycle: 2, day: 10, readingEpoch: 3 };
+const validRestartResponse = {
+    ok: true,
+    action: 'restartReading',
+    requestId: restartRequestId,
+    alreadyCompleted: false,
+    committed: true,
+    calendarDate: readCalendarDate,
+    result: {
+        status: 'restarted',
+        previous: { cycle: 2, day: 10, readingEpoch: 3 },
+        next: { cycle: 2, day: 1, readingEpoch: 4 },
+    },
+    state: {
+        user: {
+            currentDay: 1,
+            readCount: 2,
+            readingEpoch: 4,
+            score: 0,
+            talent: 77,
+            streak: 0,
+            maxStreak: 8,
+            startDate: readCalendarDate,
+            lastReadDate: null,
+            dailyAdvanceDate: readCalendarDate,
+            dailyAdvanceCount: 2,
+            recentReadDates: [readCalendarDate],
+            achievements: [],
+            dayOffset: 0,
+            secretShopUnlocked: true,
+            quizDate: null,
+            quizAttempts: 0,
+            quizSolved: false,
+            quizSkipped: false,
+            quizKey: null,
+            quizRewardDate: readCalendarDate,
+            quizRewardAmount: 10,
+        },
+        rosters: [{
+            orgId: 'a-org',
+            currentDay: 1,
+            readCount: 2,
+            score: 0,
+            streak: 0,
+            lastReadDate: null,
+            talent: 33,
+        }],
+    },
+};
+assert.deepEqual(
+    platformApi.validateRestartReadingResponse(
+        validRestartPayload,
+        validRestartResponse,
+        restartRequestId,
+    ),
+    validRestartResponse,
+);
+for (const mutate of [
+    response => { response.extra = true; },
+    response => { response.requestId = readRequestId; },
+    response => { response.result.next.readingEpoch = 3; },
+    response => { response.state.user.readCount = 3; },
+    response => { response.state.user.lastReadDate = readCalendarDate; },
+    response => { response.state.user.dailyAdvanceDate = null; },
+    response => { response.state.user.achievements = ['first_memo']; },
+    response => { response.state.user.quizProgress = {}; },
+    response => { response.state.rosters[0].talent = 1_000_000_001; },
+]) {
+    const response = structuredClone(validRestartResponse);
+    mutate(response);
+    assert.throws(
+        () => platformApi.validateRestartReadingResponse(validRestartPayload, response, restartRequestId),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_RESPONSE'
+            && error.status === 200
+            && error.retryable === true,
+        '재시작 2xx 응답의 키·epoch·보존 상태 불일치는 fail-closed여야 한다.',
+    );
+}
+
+const handleRestartStart = userBibleActions.indexOf('const handleRestart = useCallback(async () => {');
+const handleRestartEnd = userBibleActions.indexOf('const changeStartDate = useCallback(', handleRestartStart);
+assert.ok(handleRestartStart >= 0 && handleRestartEnd > handleRestartStart, 'handleRestart 서버 저장 구간이 필요하다.');
+const handleRestartContract = userBibleActions.slice(handleRestartStart, handleRestartEnd);
+for (const pattern of [
+    /restartSubmittingRef\.current/,
+    /getOrCreateRestartActivityRequest\([\s\S]*readingEpoch:\s*requestStartUser\.readingEpoch\s*\?\?\s*0/,
+    /await restartReading\([\s\S]*requestId:\s*activityRequest\.requestId[\s\S]*expectedUid:\s*uid[\s\S]*readingEpoch:\s*activityRequest\.payload\.readingEpoch/,
+    /clearActivityRequest\(activityRequest\)/,
+    /auth\.currentUser\?\.uid !== uid/,
+    /freshUser = await syncLatestUser\(uid\)/,
+    /restartWasObserved[\s\S]*freshUser\.readingEpoch >= response\.result\.next\.readingEpoch/,
+    /response\.result\.status === 'positionMismatch'/,
+    /if \(response\.alreadyCompleted\)/,
+    /shouldPreserveRequest[\s\S]*error\?\.retryable === true[\s\S]*error\?\.code === 'INVALID_RESPONSE'/,
+]) assert.match(handleRestartContract, pattern);
+assert.ok(
+    handleRestartContract.indexOf('clearActivityRequest(activityRequest)')
+        < handleRestartContract.indexOf('freshUser = await syncLatestUser(uid)'),
+    '결정적 restart requestId를 정리한 뒤 source-server sync를 수행해야 한다.',
+);
+assert.match(handleRestartContract, /requestCommunityRefresh\?\.\(\)/);
+assert.match(handleRestartContract, /setCompletionSummary\(null\)[\s\S]*const restartIsLatest/);
+assert.doesNotMatch(
+    handleRestartContract,
+    /db\.collection|db\.runTransaction|firebase\.firestore|setReadHistory\s*\(|dailyAdvanceDate:\s*null|dailyAdvanceCount:\s*0|readCount:\s*1|loadAllMembers|setAllMembersForRace|setDepartmentMembers|setSubgroupStats|updateRosterTalents|\.\.\.response\.state\.user/,
+    '재시작 경로가 Firestore·기록·보상 제한·완독 횟수를 브라우저에서 직접 초기화하면 안 된다.',
+);
+
+const dashboardView = read('src/components/DashboardView.jsx');
+const restartModal = read('src/components/modals/RestartConfirmModal.jsx');
+const dateSettingsModal = read('src/components/modals/DateSettingsModal.jsx');
+assert.match(dashboardView, /setShowRestartConfirm\(true\)/, '재시작 모달의 실제 진입점이 필요하다.');
+assert.match(dateSettingsModal, /Day 1로 다시 시작/);
+assert.match(dateSettingsModal, /const saved = await changeStartDate\(newOffset\)/);
+assert.match(dateSettingsModal, /disabled=\{saving\}/);
+assert.match(restartModal, /disabled=\{submitting\}/);
+assert.match(restartModal, /달란트, 묵상, 과거 읽기 기록, 최고 연속 기록, 완독 횟수/);
+assert.match(restartModal, /같은 날 읽기·퀴즈 보상은 중복 지급되지 않습니다/);
+assert.match(quizProgressSource, /epoch === 0 \? legacyKey : `e\$\{epoch\}_\$\{legacyKey\}`/);
+assert.match(quizCard, /getQuizProgressKey\(progressCycle, progressDay, readingEpoch\)/);
+const changeStartDateStart = userBibleActions.indexOf('const changeStartDate = useCallback(async (dayOffset) => {');
+const changeStartDateEnd = userBibleActions.indexOf('\n\n    return {', changeStartDateStart);
+assert.ok(changeStartDateStart >= 0 && changeStartDateEnd > changeStartDateStart, '날짜 설정 transaction 구간이 필요하다.');
+const changeStartDateContract = userBibleActions.slice(changeStartDateStart, changeStartDateEnd);
+assert.match(changeStartDateContract, /db\.runTransaction\(async \(transaction\) =>/);
+assert.match(changeStartDateContract, /sameReadingPosition\(readingPosition\(snapshot\.data\(\)\), submittedPosition\)/);
+assert.match(changeStartDateContract, /auth\.currentUser\?\.uid !== uid/);
+assert.match(changeStartDateContract, /freshUser = await syncLatestUser\(uid\)/);
+assert.match(changeStartDateContract, /return freshUser\.dayOffset === dayOffset/);
+assert.doesNotMatch(changeStartDateContract, /setCurrentUser\([^)]*=>|\.\.\.previous/);
+
+// read/restart 랭킹 refresh는 같은 hook의 세대 effect를 nonce로 재실행한다.
+for (const pattern of [
+    /const \[communityRefreshNonce, setCommunityRefreshNonce\] = useState\(0\)/,
+    /const requestCommunityRefresh = useCallback\(\(\) =>/,
+    /const requestId = \+\+communityRequestRef\.current/,
+    /const isCurrentRequest = \(\) => requestId === communityRequestRef\.current/,
+    /communityRefreshNonce/,
+]) assert.match(bibleLogic, pattern);
 
 // 퀴즈 정답 서버 권위 기반: 클라이언트와 생성기가 같은 결정적 섞기 함수를
 // 공유하고, 서버에 배치되는 인덱스가 전체 원본과 정확히 대응해야 한다.
@@ -957,10 +1300,20 @@ assert.match(
     'skipQuiz에는 저장된 원본 payload·requestId와 제출 계정 UID를 보내야 한다.',
 );
 assert.match(skipTodayContract, /clearActivityRequest\(activityRequest\)/);
-assert.match(skipTodayContract, /auth\?\.currentUser\?\.uid !== submittedUid/);
+assert.match(skipTodayContract, /submissionStillCurrent\([\s\S]*submittedUid,[\s\S]*submittedEpoch,[\s\S]*submittedProgressKey,[\s\S]*submittedQuizConfigurationKey,[\s\S]*submittedRosterOrgId/);
+assert.match(skipTodayContract, /freshUser = await loadCanonicalUserStateFromServer\(submittedUid\)/);
+assert.match(skipTodayContract, /setCurrentUser\(freshUser\)/);
+assert.match(skipTodayContract, /getQuizConfigurationKey\(freshConfigurationUser\) !== submittedQuizConfigurationKey/);
+assert.match(skipTodayContract, /userAllowsQuizProgressKey\([\s\S]*response\.calendarDate/);
+assert.match(skipTodayContract, /freshUser\.quizProgress\?\.\[submittedProgressKey\]/);
+assert.ok(
+    skipTodayContract.indexOf('clearActivityRequest(activityRequest)')
+        < skipTodayContract.indexOf('freshUser = await loadCanonicalUserStateFromServer(submittedUid)'),
+    '결정적 skip requestId를 정리한 뒤 source-server sync를 수행해야 한다.',
+);
 assert.doesNotMatch(
     skipTodayContract,
-    /db\.collection\s*\(|db\.runTransaction\s*\(|\btransaction\.(?:get|set|update|delete)\s*\(/,
+    /db\.collection\s*\(|db\.runTransaction\s*\(|\btransaction\.(?:get|set|update|delete)\s*\(|setCurrentUser\([^)]*=>|updateRosterTalents/,
     'skipToday가 브라우저 Firestore 쓰기로 제출 결과를 덮어쓰면 안 된다.',
 );
 const submitAnswerStart = quizCard.indexOf('const submitAnswer = async () => {');
@@ -978,8 +1331,17 @@ assert.match(
     'submitQuiz에는 저장된 원본 payload·requestId와 제출 계정 UID를 보내야 한다.',
 );
 assert.match(submitAnswerContract, /clearActivityRequest\(activityRequest\)/);
-assert.match(submitAnswerContract, /auth\?\.currentUser\?\.uid !== submittedUid/);
-assert.match(submitAnswerContract, /updateRosterTalents\([\s\S]*\{ authoritative:\s*true \}\)/);
+assert.match(submitAnswerContract, /submissionStillCurrent\([\s\S]*submittedUid,[\s\S]*submittedEpoch,[\s\S]*submittedProgressKey,[\s\S]*submittedQuizConfigurationKey,[\s\S]*submittedRosterOrgId/);
+assert.match(submitAnswerContract, /freshUser = await loadCanonicalUserStateFromServer\(submittedUid\)/);
+assert.match(submitAnswerContract, /setCurrentUser\(freshUser\)/);
+assert.match(submitAnswerContract, /getQuizConfigurationKey\(freshConfigurationUser\) !== submittedQuizConfigurationKey/);
+assert.match(submitAnswerContract, /userAllowsQuizProgressKey\([\s\S]*response\.calendarDate/);
+assert.match(submitAnswerContract, /freshUser\.quizProgress\?\.\[submittedProgressKey\]/);
+assert.ok(
+    submitAnswerContract.indexOf('clearActivityRequest(activityRequest)')
+        < submitAnswerContract.indexOf('freshUser = await loadCanonicalUserStateFromServer(submittedUid)'),
+    '결정적 submit requestId를 정리한 뒤 source-server sync를 수행해야 한다.',
+);
 assert.match(
     submitAnswerContract,
     /outcomeUncertain[\s\S]*e\.retryable === true[\s\S]*e\.status >= 200 && e\.status < 300/,
@@ -987,7 +1349,7 @@ assert.match(
 );
 assert.doesNotMatch(
     submitAnswerContract,
-    /previewQuizSubmission|compareQuizSubmissionShadow|\[quiz-shadow\]|db\.runTransaction\s*\(|\btransaction\.(?:get|set|update|delete)\s*\(/,
+    /previewQuizSubmission|compareQuizSubmissionShadow|\[quiz-shadow\]|db\.runTransaction\s*\(|\btransaction\.(?:get|set|update|delete)\s*\(|setCurrentUser\([^)]*=>|updateRosterTalents/,
     'submitAnswer가 shadow나 브라우저 Firestore transaction으로 퀴즈·지갑을 확정하면 안 된다.',
 );
 
@@ -1233,19 +1595,25 @@ assert.doesNotMatch(
 
 const readCompletionServicePath = 'supabase/functions/platform-api/readCompletionService.ts';
 const readCompletionServiceTestPath = 'supabase/functions/platform-api/readCompletionService_test.ts';
+const restartReadingServicePath = 'supabase/functions/platform-api/restartReadingService.ts';
+const restartReadingServiceTestPath = 'supabase/functions/platform-api/restartReadingService_test.ts';
 const quizSubmissionPath = 'supabase/functions/platform-api/quizSubmission.ts';
 const quizSubmissionTestPath = 'supabase/functions/platform-api/quizSubmission_test.ts';
 for (const path of [
     readCompletionServicePath,
     readCompletionServiceTestPath,
+    restartReadingServicePath,
+    restartReadingServiceTestPath,
     quizSubmissionPath,
     quizSubmissionTestPath,
 ]) assert.equal(exists(path), true, `${path}가 필요하다.`);
 const readCompletionService = read(readCompletionServicePath);
+const restartReadingService = read(restartReadingServicePath);
 const quizSubmission = read(quizSubmissionPath);
 const firestoreRules = read('firestore.rules');
 
 assert.match(serverCore, /COMPLETE_READ_ACTION\s*=\s*['"]completeRead['"]/);
+assert.match(serverCore, /RESTART_READING_ACTION\s*=\s*['"]restartReading['"]/);
 for (const field of ['cycle', 'day']) {
     assert.match(
         serverCore,
@@ -1253,32 +1621,42 @@ for (const field of ['cycle', 'day']) {
         `completeRead 요청에 ${field}가 필요하다.`,
     );
 }
-assert.match(serverCore, /COMPLETE_READ_ACTION[\s\S]*new Set\(\["action", "requestId", "cycle", "day"\]\)/);
+assert.match(serverCore, /COMPLETE_READ_ACTION[\s\S]*new Set\(\["action", "requestId", "cycle", "day", "readingEpoch"\]\)/);
+assert.match(serverCore, /RESTART_READING_ACTION[\s\S]*new Set\(\[[\s\S]*"readingEpoch"[\s\S]*\]\)/);
 assert.match(serverCore, /SUBMIT_QUIZ_ACTION[\s\S]*new Set\(\[[\s\S]*"selectedIndex"[\s\S]*"attemptSlot"[\s\S]*\]\)/);
 assert.match(serverCore, /SKIP_QUIZ_ACTION[\s\S]*new Set\(\["action", "requestId", "progressKey", "quizKey"\]\)/);
 assert.match(
     serverIndex,
     /import \{ completeReadTransaction \} from "\.\/readCompletionService\.ts";/,
 );
+assert.match(serverIndex, /import \{ restartReading \} from "\.\/restartReadingService\.ts";/);
 assert.match(serverIndex, /import \{ skipQuiz, submitQuiz \} from "\.\/quizSubmission\.ts";/);
 
 const completeReadBranchStart = serverIndex.indexOf('if (parsed.action === "completeRead")');
-const submitQuizBranchStart = serverIndex.indexOf('if (parsed.action === "submitQuiz")', completeReadBranchStart);
+const restartReadingBranchStart = serverIndex.indexOf('if (parsed.action === "restartReading")', completeReadBranchStart);
+const submitQuizBranchStart = serverIndex.indexOf('if (parsed.action === "submitQuiz")', restartReadingBranchStart);
 const skipQuizBranchStart = serverIndex.indexOf('if (parsed.action === "skipQuiz")', submitQuizBranchStart);
 const activityBranchEnd = serverIndex.indexOf('const role = normalizeRole', skipQuizBranchStart);
 assert.ok(
-    completeReadBranchStart >= 0 && submitQuizBranchStart > completeReadBranchStart
+    completeReadBranchStart >= 0 && restartReadingBranchStart > completeReadBranchStart
+        && submitQuizBranchStart > restartReadingBranchStart
         && skipQuizBranchStart > submitQuizBranchStart && activityBranchEnd > skipQuizBranchStart,
-    '인증 사용자 확인 뒤 completeRead·submitQuiz·skipQuiz action 분기가 필요하다.',
+    '인증 사용자 확인 뒤 completeRead·restartReading·submitQuiz·skipQuiz action 분기가 필요하다.',
 );
-const completeReadBranch = serverIndex.slice(completeReadBranchStart, submitQuizBranchStart);
+const completeReadBranch = serverIndex.slice(completeReadBranchStart, restartReadingBranchStart);
+const restartReadingBranch = serverIndex.slice(restartReadingBranchStart, submitQuizBranchStart);
 const submitQuizBranch = serverIndex.slice(submitQuizBranchStart, skipQuizBranchStart);
 const skipQuizBranch = serverIndex.slice(skipQuizBranchStart, activityBranchEnd);
 assert.match(
     completeReadBranch,
-    /completeReadTransaction\(service, verifiedUser, \{[\s\S]*requestId:\s*parsed\.requestId[\s\S]*cycle:\s*parsed\.cycle[\s\S]*day:\s*parsed\.day/,
+    /completeReadTransaction\(service, verifiedUser, \{[\s\S]*requestId:\s*parsed\.requestId[\s\S]*cycle:\s*parsed\.cycle[\s\S]*day:\s*parsed\.day[\s\S]*readingEpoch:\s*parsed\.readingEpoch/,
 );
 assert.match(completeReadBranch, /action:\s*parsed\.action[\s\S]*requestId:\s*parsed\.requestId[\s\S]*\.\.\.result/);
+assert.match(
+    restartReadingBranch,
+    /restartReading\(service, verifiedUser, \{[\s\S]*requestId:\s*parsed\.requestId[\s\S]*cycle:\s*parsed\.cycle[\s\S]*day:\s*parsed\.day[\s\S]*readingEpoch:\s*parsed\.readingEpoch/,
+);
+assert.match(restartReadingBranch, /action:\s*parsed\.action[\s\S]*requestId:\s*parsed\.requestId[\s\S]*\.\.\.result/);
 assert.match(
     submitQuizBranch,
     /submitQuiz\(service, \{[\s\S]*uid,[\s\S]*requestId:\s*parsed\.requestId[\s\S]*progressKey:\s*parsed\.progressKey[\s\S]*quizKey:\s*parsed\.quizKey[\s\S]*selectedIndex:\s*parsed\.selectedIndex[\s\S]*attemptSlot:\s*parsed\.attemptSlot/,
@@ -1290,6 +1668,7 @@ assert.match(
 
 for (const [label, source] of [
     ['읽기', readCompletionService],
+    ['재시작', restartReadingService],
     ['퀴즈', quizSubmission],
 ]) {
     assert.match(source, /activityActions\/\$\{input\.requestId\}/, `${label} service에 사용자 하위 멱등 ledger가 필요하다.`);
@@ -1297,6 +1676,20 @@ for (const [label, source] of [
     assert.match(source, /commitWrites\(/, `${label} service가 ledger와 상태를 한 transaction으로 커밋해야 한다.`);
     assert.match(source, /alreadyCompleted:\s*true/, `${label} service가 requestId replay를 명시해야 한다.`);
 }
+for (const pattern of [
+    /readingEpoch/,
+    /currentDay:\s*1/,
+    /score:\s*0/,
+    /streak:\s*0/,
+    /lastReadDate:\s*null/,
+    /activityActions\/\$\{input\.requestId\}/,
+    /parseRosterTalentWallets\(/,
+    /MAX_TRANSACTION_ATTEMPTS\s*=\s*3/,
+]) assert.match(restartReadingService, pattern);
+assert.doesNotMatch(restartReadingService, /history\/\$\{input\.requestId\}/, '재시작은 읽기 이력 문서를 만들면 안 된다.');
+assert.match(readCompletionService, /readingEpoch/);
+assert.match(quizSubmission, /readingEpoch/);
+assert.match(quizSubmission, /quizAttemptSlots\/\$\{input\.progressKey\}_a1/);
 assert.match(
     firestoreRules,
     /match \/activityActions\/\{requestId\}\s*\{\s*allow read, write: if false;\s*\}/,

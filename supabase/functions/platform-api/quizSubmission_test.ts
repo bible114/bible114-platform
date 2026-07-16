@@ -20,6 +20,7 @@ const QUIZ_KEY = "test-quiz";
 const OTHER_QUIZ_KEY = "test-quiz-next";
 const PROGRESS_KEY = "r1_d10";
 const OTHER_PROGRESS_KEY = "r1_d11";
+const EPOCH_PROGRESS_KEY = "e1_r1_d10";
 const REQUEST_ID = "123e4567-e89b-42d3-a456-426614174000";
 const OTHER_REQUEST_ID = "223e4567-e89b-42d3-a456-426614174000";
 const THIRD_REQUEST_ID = "323e4567-e89b-42d3-a456-426614174000";
@@ -416,6 +417,7 @@ Deno.test("첫 정답은 user와 활성 roster만 보상하고 ledger까지 원�
     "ledger schema",
   );
   assert(ledger?.action === SUBMIT_QUIZ_ACTION, "ledger action");
+  assert(ledger?.readingEpoch === 0, "epoch-0 ledger binding missing");
   assert(
     harness.data(
       `users/${UID}/quizAttemptSlots/${PROGRESS_KEY}_a1`,
@@ -427,6 +429,129 @@ Deno.test("첫 정답은 user와 활성 roster만 보상하고 ledger까지 원�
     !JSON.stringify(response).includes("answerIndex"),
     "answer index leaked",
   );
+});
+
+Deno.test("현재 readingEpoch 진도 키만 submit·skip을 허용한다", async () => {
+  const submitted = createHarness();
+  seedUser(submitted, { readingEpoch: 1 });
+  seedBaseShop(submitted);
+  const submitResponse = await runSubmit(submitted, {
+    progressKey: EPOCH_PROGRESS_KEY,
+  });
+  assert(submitResponse.result.status === "ready", "epoch submit rejected");
+  assert(
+    submitted.data(
+      `users/${UID}/quizAttemptSlots/${EPOCH_PROGRESS_KEY}_a1`,
+    )?.readingEpoch === 1,
+    "epoch submit semantic ledger missing",
+  );
+
+  const skipped = createHarness();
+  seedUser(skipped, { readingEpoch: 1 });
+  const skipResponse = await runSkip(skipped, {
+    progressKey: EPOCH_PROGRESS_KEY,
+  });
+  assert(skipResponse.committed, "epoch skip rejected");
+  assert(
+    skipped.data(
+      `users/${UID}/quizAttemptSlots/${EPOCH_PROGRESS_KEY}_skip`,
+    )?.readingEpoch === 1,
+    "epoch skip semantic ledger missing",
+  );
+});
+
+Deno.test("readingEpoch 0의 기존 submit ledger를 replay 호환한다", async () => {
+  const harness = createHarness();
+  seedUser(harness);
+  seedBaseShop(harness);
+  await runSubmit(harness, { selectedIndex: 0 });
+  for (
+    const path of [
+      `users/${UID}/activityActions/${REQUEST_ID}`,
+      `users/${UID}/quizAttemptSlots/${PROGRESS_KEY}_a1`,
+    ]
+  ) {
+    const ledger = { ...harness.data(path)! };
+    ledger.schemaVersion = 1;
+    delete ledger.readingEpoch;
+    harness.setDocument(path, ledger);
+  }
+
+  const replay = await runSubmit(harness, { selectedIndex: 0 });
+
+  assert(replay.alreadyCompleted, "legacy epoch-0 ledger rejected");
+  assert(harness.commits.length === 1, "legacy replay wrote again");
+});
+
+Deno.test("readingEpoch 0의 기존 skip ledger를 replay 호환한다", async () => {
+  const harness = createHarness();
+  seedUser(harness);
+  await runSkip(harness);
+  for (
+    const path of [
+      `users/${UID}/activityActions/${REQUEST_ID}`,
+      `users/${UID}/quizAttemptSlots/${PROGRESS_KEY}_skip`,
+    ]
+  ) {
+    const ledger = { ...harness.data(path)! };
+    ledger.schemaVersion = 1;
+    delete ledger.readingEpoch;
+    harness.setDocument(path, ledger);
+  }
+
+  const replay = await runSkip(harness);
+
+  assert(replay.alreadyCompleted, "legacy epoch-0 skip ledger rejected");
+  assert(harness.commits.length === 1, "legacy skip replay wrote again");
+});
+
+Deno.test("재시작 뒤 stale submit·skip replay는 보상·progress repair 없이 거부한다", async () => {
+  const submitted = createHarness();
+  seedUser(submitted);
+  seedBaseShop(submitted);
+  await runSubmit(submitted);
+  const rewarded = submitted.data(`users/${UID}`)!;
+  submitted.setDocument(`users/${UID}`, {
+    ...rewarded,
+    readingEpoch: 1,
+    quizProgress: {},
+    quizRewardDate: null,
+    quizRewardAmount: 0,
+  });
+
+  await expectPlatformError(runSubmit(submitted), "CONFLICT");
+  assert(submitted.commits.length === 1, "stale submit replay wrote data");
+  assert(
+    Object.keys(record(submitted.data(`users/${UID}`)?.quizProgress) || {})
+          .length === 0 &&
+      submitted.data(`users/${UID}`)?.quizRewardDate === null &&
+      submitted.data(`users/${UID}`)?.talent === 15,
+    "stale submit repaired progress or changed reward",
+  );
+
+  const skipped = createHarness();
+  seedUser(skipped);
+  await runSkip(skipped);
+  const skippedUser = skipped.data(`users/${UID}`)!;
+  skipped.setDocument(`users/${UID}`, {
+    ...skippedUser,
+    readingEpoch: 1,
+    quizProgress: {},
+  });
+
+  await expectPlatformError(runSkip(skipped), "CONFLICT");
+  assert(skipped.commits.length === 1, "stale skip replay wrote repair");
+  assert(
+    Object.keys(record(skipped.data(`users/${UID}`)?.quizProgress) || {})
+      .length === 0,
+    "stale skip restored old progress",
+  );
+
+  const staleFresh = createHarness();
+  seedUser(staleFresh, { readingEpoch: 1 });
+  seedBaseShop(staleFresh);
+  await expectPlatformError(runSubmit(staleFresh), "CONFLICT");
+  assert(staleFresh.commits.length === 0, "stale fresh submit wrote data");
 });
 
 Deno.test("오답도 progress와 ledger를 한 번만 저장하고 멱등 replay는 fresh state를 돌려준다", async () => {
@@ -1006,6 +1131,12 @@ Deno.test("비정규 기본 공동체와 기본·roster 중복 지갑은 보상 
 });
 
 Deno.test("손상된 퀴즈 날짜·진행 상태는 commit 전에 거부한다", async () => {
+  const badEpoch = createHarness();
+  seedUser(badEpoch, { readingEpoch: "1" });
+  seedBaseShop(badEpoch);
+  await expectPlatformError(runSubmit(badEpoch), "CONFLICT");
+  assert(badEpoch.commits.length === 0, "bad reading epoch committed");
+
   const badRewardDate = createHarness();
   seedUser(badRewardDate, { quizRewardDate: 123 });
   seedBaseShop(badRewardDate);

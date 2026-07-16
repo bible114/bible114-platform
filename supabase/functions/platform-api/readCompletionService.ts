@@ -23,7 +23,8 @@ import {
 } from "./talentProgramCore.ts";
 
 const COMPLETE_READ_ACTION = "completeRead";
-const ACTIVITY_LEDGER_SCHEMA_VERSION = 1;
+const ACTIVITY_LEDGER_SCHEMA_VERSION = 2;
+const LEGACY_ACTIVITY_LEDGER_SCHEMA_VERSION = 1;
 const MAX_TRANSACTION_ATTEMPTS = 3;
 const MAX_TALENT_VALUE = 1_000_000_000;
 const REQUEST_ID_PATTERN =
@@ -38,9 +39,16 @@ export type CompleteReadIdentity = {
 
 export type CompleteReadInput = ReadCompletionRequest & {
   requestId: string;
+  readingEpoch?: number;
+};
+
+type ValidatedCompleteReadInput = ReadCompletionRequest & {
+  requestId: string;
+  readingEpoch: number;
 };
 
 type CompleteReadUserDocument = StoredReadUser & TalentMembershipUser & {
+  readingEpoch?: unknown;
   uid?: unknown;
   role?: unknown;
   isDeleted?: unknown;
@@ -61,6 +69,7 @@ type CompleteReadLedgerDocument = {
   uid?: unknown;
   cycle?: unknown;
   day?: unknown;
+  readingEpoch?: unknown;
   calendarDate?: unknown;
   result?: unknown;
 };
@@ -71,6 +80,7 @@ type CompleteReadHistoryDocument = {
   uid?: unknown;
   cycle?: unknown;
   day?: unknown;
+  readingEpoch?: unknown;
 };
 
 type PlatformStatsDocument = {
@@ -127,6 +137,7 @@ const DEFAULT_DEPENDENCIES: CompleteReadDependencies = {
 };
 
 type NormalizedUser = CompleteReadUserDocument & {
+  readingEpoch: number;
   currentDay: number;
   readCount: number;
   score: number;
@@ -293,17 +304,28 @@ const canonicalIdentity = (identity: CompleteReadIdentity): string => {
   return uid;
 };
 
-const validateInput = (input: CompleteReadInput): CompleteReadInput => {
+const validateInput = (
+  input: CompleteReadInput,
+): ValidatedCompleteReadInput => {
+  const readingEpoch = input?.readingEpoch === undefined
+    ? 0
+    : input.readingEpoch;
   if (
     !input || typeof input !== "object" ||
     typeof input.requestId !== "string" ||
     !REQUEST_ID_PATTERN.test(input.requestId) ||
+    !Number.isSafeInteger(readingEpoch) || readingEpoch < 0 ||
     !Number.isSafeInteger(input.cycle) || input.cycle < 1 ||
     !Number.isSafeInteger(input.day) || input.day < 1 || input.day > 365
   ) {
     throw new PlatformError("BAD_REQUEST");
   }
-  return { requestId: input.requestId, cycle: input.cycle, day: input.day };
+  return {
+    requestId: input.requestId,
+    cycle: input.cycle,
+    day: input.day,
+    readingEpoch,
+  };
 };
 
 const normalizeUser = (
@@ -318,6 +340,11 @@ const normalizeUser = (
   });
   return {
     ...data,
+    readingEpoch: requireSafeInteger(
+      data.readingEpoch,
+      "users.readingEpoch",
+      { fallback: 0 },
+    ),
     currentDay: requireSafeInteger(data.currentDay, "users.currentDay", {
       fallback: 1,
       min: 1,
@@ -550,17 +577,30 @@ const validateReplay = (
   ledger: CompleteReadLedgerDocument,
   history: CompleteReadHistoryDocument | null,
   uid: string,
-  input: CompleteReadInput,
+  input: ValidatedCompleteReadInput,
+  currentReadingEpoch: number,
   currentCalendarDate: string,
 ): { calendarDate: string; result: ReadCompletionResult } => {
-  const matches = ledger.schemaVersion === ACTIVITY_LEDGER_SCHEMA_VERSION &&
+  const isLegacyLedger =
+    ledger.schemaVersion === LEGACY_ACTIVITY_LEDGER_SCHEMA_VERSION &&
+    ledger.readingEpoch === undefined;
+  const ledgerReadingEpoch = isLegacyLedger
+    ? 0
+    : requireSafeInteger(ledger.readingEpoch, "ledger.readingEpoch");
+  const historyReadingEpoch = history?.readingEpoch === undefined
+    ? 0
+    : requireSafeInteger(history.readingEpoch, "history.readingEpoch");
+  const matches = (isLegacyLedger ||
+    ledger.schemaVersion === ACTIVITY_LEDGER_SCHEMA_VERSION) &&
     ledger.action === COMPLETE_READ_ACTION &&
     ledger.requestId === input.requestId &&
     ledger.uid === uid && ledger.cycle === input.cycle &&
-    ledger.day === input.day;
+    ledger.day === input.day && ledgerReadingEpoch === input.readingEpoch &&
+    ledgerReadingEpoch === currentReadingEpoch;
   const historyMatches = history?.action === COMPLETE_READ_ACTION &&
     history.requestId === input.requestId && history.uid === uid &&
-    history.cycle === input.cycle && history.day === input.day;
+    history.cycle === input.cycle && history.day === input.day &&
+    historyReadingEpoch === input.readingEpoch;
   if (!matches || !historyMatches) {
     throw conflict("같은 요청 번호가 다른 읽기 작업에 사용되었습니다.");
   }
@@ -606,7 +646,7 @@ const rollbackQuietly = async (
 const executeCompleteRead = async (
   service: ServiceAccess,
   uid: string,
-  input: CompleteReadInput,
+  input: ValidatedCompleteReadInput,
   dependencies: CompleteReadDependencies,
 ): Promise<CompleteReadResponse> => {
   const transaction = await dependencies.beginTransaction(
@@ -660,6 +700,9 @@ const executeCompleteRead = async (
     }
     const user = normalizeUser(uid, userDocument.data);
     const rosters = normalizeRosters(uid, rosterDocuments);
+    if (user.readingEpoch !== input.readingEpoch) {
+      throw conflict("재시작 전 읽기 요청은 처리할 수 없습니다.");
+    }
     for (
       const [field, value] of [
         ["users.lastReadDate", user.lastReadDate],
@@ -685,6 +728,7 @@ const executeCompleteRead = async (
         historyDocument?.data || null,
         uid,
         input,
+        user.readingEpoch,
         calendarDate,
       );
       await rollbackQuietly(dependencies, service, transaction);
@@ -802,6 +846,7 @@ const executeCompleteRead = async (
         uid,
         cycle: input.cycle,
         day: input.day,
+        readingEpoch: input.readingEpoch,
         date: calendarDate,
         score: result.summary.scoreEarned,
         talent: result.summary.talentEarned,
@@ -814,6 +859,7 @@ const executeCompleteRead = async (
         uid,
         cycle: input.cycle,
         day: input.day,
+        readingEpoch: input.readingEpoch,
         calendarDate,
         result,
         createdAt: now,

@@ -389,6 +389,10 @@ const DashboardView = ({
                 setDateSettingsDate={setDateSettingsDate}
                 dateToOffset={dateToOffset}
                 changeStartDate={changeStartDate}
+                onOpenRestart={() => {
+                    setShowDateSettings(false);
+                    setShowRestartConfirm(true);
+                }}
             />
             <RankingModal
                 show={showFullRanking}

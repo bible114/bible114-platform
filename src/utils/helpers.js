@@ -117,6 +117,13 @@ export const migratePersonalTalentWalletIfNeeded = async (uid, primaryOrgId, kno
 // Firestore 문서 → 사용자 상태 객체 변환
 export const userDocToState = (doc) => {
     const d = doc.data();
+    const readingEpoch = Number.isSafeInteger(d.readingEpoch) && d.readingEpoch >= 0
+        ? d.readingEpoch
+        : 0;
+    const streak = Number.isSafeInteger(d.streak) && d.streak >= 0 ? d.streak : 0;
+    const storedMaxStreak = Number.isSafeInteger(d.maxStreak) && d.maxStreak >= 0
+        ? d.maxStreak
+        : streak;
     return {
         uid: doc.id,
         name: d.name,
@@ -133,7 +140,9 @@ export const userDocToState = (doc) => {
         extraMemberships: Array.isArray(d.extraMemberships) ? d.extraMemberships : [],
         startDate: d.startDate,
         currentDay: d.currentDay ?? 1,
-        streak: d.streak ?? 0,
+        readingEpoch,
+        streak,
+        maxStreak: Math.max(storedMaxStreak, streak),
         score: d.score ?? 0,
         talent: d.talent,
         talentMigrated: d.talentMigrated ?? false,
@@ -144,6 +153,11 @@ export const userDocToState = (doc) => {
         quizSolved: d.quizSolved ?? false,
         quizSkipped: d.quizSkipped ?? false,
         quizKey: d.quizKey ?? null,
+        quizProgress: d.quizProgress && typeof d.quizProgress === 'object' && !Array.isArray(d.quizProgress)
+            ? d.quizProgress
+            : {},
+        quizRewardDate: d.quizRewardDate ?? null,
+        quizRewardAmount: d.quizRewardAmount ?? 0,
         quizLevel: ['standard', 'easy'].includes(d.quizLevel) ? d.quizLevel : null,
         lastReadDate: d.lastReadDate ?? null,
         gender: d.gender ?? "male",

@@ -333,7 +333,11 @@ Deno.test("첫 읽기는 users·canonical roster·history·ledger·통계를 한
   assert(
     harness.state.get(`users/${UID}/history/${REQUEST_ID}`)?.day === 10 &&
       harness.state.get(`users/${UID}/activityActions/${REQUEST_ID}`)
-          ?.requestId === REQUEST_ID,
+          ?.requestId === REQUEST_ID &&
+      harness.state.get(`users/${UID}/history/${REQUEST_ID}`)
+          ?.readingEpoch === 0 &&
+      harness.state.get(`users/${UID}/activityActions/${REQUEST_ID}`)
+          ?.readingEpoch === 0,
     "deterministic history or ledger missing",
   );
 });
@@ -386,6 +390,59 @@ Deno.test("같은 requestId replay는 입력을 결속하고 통계·history를 
     "CONFLICT",
   );
   assert(harness.commits.length === 1, "input collision wrote data");
+});
+
+Deno.test("readingEpoch 0의 기존 ledger와 history를 replay 호환한다", async () => {
+  const harness = createHarness({
+    [`users/${UID}`]: baseUser(),
+    [`churches/base-org/settings/talentShop`]: v2Shop(),
+    "settings/platformStats": { today_date: TODAY, readers_today: 0 },
+  });
+  await complete(harness);
+  const ledger = harness.state.get(
+    `users/${UID}/activityActions/${REQUEST_ID}`,
+  )!;
+  const history = harness.state.get(`users/${UID}/history/${REQUEST_ID}`)!;
+  ledger.schemaVersion = 1;
+  delete ledger.readingEpoch;
+  delete history.readingEpoch;
+
+  const replay = await complete(harness);
+
+  assert(replay.alreadyCompleted, "legacy epoch-0 replay was rejected");
+  assert(harness.commits.length === 1, "legacy replay wrote again");
+});
+
+Deno.test("현재 readingEpoch만 읽기를 쓰고 stale 요청과 replay는 무쓰기 거부한다", async () => {
+  const current = createHarness({
+    [`users/${UID}`]: baseUser({ readingEpoch: 2 }),
+    [`churches/base-org/settings/talentShop`]: v2Shop(),
+    "settings/platformStats": { today_date: TODAY, readers_today: 0 },
+  });
+  const response = await complete(current, input({ readingEpoch: 2 }));
+  assert(response.committed, "current epoch read was rejected");
+  assert(
+    current.state.get(`users/${UID}/activityActions/${REQUEST_ID}`)
+      ?.readingEpoch === 2,
+    "current epoch was not bound to ledger",
+  );
+
+  const staleFresh = createHarness({
+    [`users/${UID}`]: baseUser({ readingEpoch: 1 }),
+    [`churches/base-org/settings/talentShop`]: v2Shop(),
+  });
+  await expectPlatformError(() => complete(staleFresh), "CONFLICT");
+  assert(staleFresh.commits.length === 0, "stale fresh request wrote data");
+
+  const staleReplay = createHarness({
+    [`users/${UID}`]: baseUser(),
+    [`churches/base-org/settings/talentShop`]: v2Shop(),
+    "settings/platformStats": { today_date: TODAY, readers_today: 0 },
+  });
+  await complete(staleReplay);
+  staleReplay.state.get(`users/${UID}`)!.readingEpoch = 1;
+  await expectPlatformError(() => complete(staleReplay), "CONFLICT");
+  assert(staleReplay.commits.length === 1, "stale replay repaired or rewrote");
 });
 
 Deno.test("동일 requestId 경쟁 commit 뒤에는 bounded retry로 ledger replay를 반환한다", async () => {
@@ -553,6 +610,10 @@ Deno.test("익명·unsafe request와 저장 정수 overflow를 쓰기 전에 거
     () => complete(harness, input({ cycle: Number.MAX_SAFE_INTEGER + 1 })),
     "BAD_REQUEST",
   );
+  await expectPlatformError(
+    () => complete(harness, input({ readingEpoch: -1 })),
+    "BAD_REQUEST",
+  );
   assert(harness.transactionCount === 0, "invalid request opened transaction");
 
   harness.state.set(
@@ -563,6 +624,10 @@ Deno.test("익명·unsafe request와 저장 정수 overflow를 쓰기 전에 거
   );
   await expectPlatformError(() => complete(harness), "CONFLICT");
   assert(harness.commits.length === 0, "overflow committed");
+
+  harness.state.set(`users/${UID}`, baseUser({ readingEpoch: "1" }));
+  await expectPlatformError(() => complete(harness), "CONFLICT");
+  assert(harness.commits.length === 0, "invalid reading epoch committed");
 });
 
 Deno.test("4번째 또는 비정규 roster는 어떤 지갑도 쓰기 전에 거부한다", async () => {

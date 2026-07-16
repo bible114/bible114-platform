@@ -1,6 +1,10 @@
 const DAYS_PER_CYCLE = 365;
 
-export type QuizProgressPosition = { cycle: number; day: number };
+export type QuizProgressPosition = {
+  epoch: number;
+  cycle: number;
+  day: number;
+};
 
 export type QuizIndexRecord = {
   answerIndex: number;
@@ -21,6 +25,7 @@ export type StoredQuizEntry = {
 };
 
 export type StoredQuizUser = {
+  readingEpoch?: unknown;
   currentDay?: unknown;
   readCount?: unknown;
   dayOffset?: unknown;
@@ -88,6 +93,13 @@ const integer = (value: unknown, fallback: number): number => {
 const normalizedCycle = (value: unknown): number =>
   Math.max(1, integer(value, 1));
 
+const normalizedReadingEpoch = (value: unknown): number | null => {
+  if (value === undefined || value === null) return 0;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+};
+
 const normalizedDay = (value: unknown): number => {
   const day = integer(value, 1);
   return ((day - 1) % DAYS_PER_CYCLE + DAYS_PER_CYCLE) % DAYS_PER_CYCLE + 1;
@@ -105,14 +117,18 @@ export const parseQuizProgressKey = (
   value: unknown,
 ): QuizProgressPosition | null => {
   if (typeof value !== "string") return null;
-  const match = /^r([1-9]\d*)_d([1-9]\d*)$/.exec(value);
+  const match = /^(?:e([1-9]\d*)_)?r([1-9]\d*)_d([1-9]\d*)$/.exec(value);
   if (!match) return null;
-  const cycle = Number(match[1]);
-  const day = Number(match[2]);
-  if (!Number.isSafeInteger(cycle) || day < 1 || day > DAYS_PER_CYCLE) {
+  const epoch = match[1] === undefined ? 0 : Number(match[1]);
+  const cycle = Number(match[2]);
+  const day = Number(match[3]);
+  if (
+    !Number.isSafeInteger(epoch) || epoch < 0 ||
+    !Number.isSafeInteger(cycle) || day < 1 || day > DAYS_PER_CYCLE
+  ) {
     return null;
   }
-  return { cycle, day };
+  return { epoch, cycle, day };
 };
 
 export const getQuizPlanScope = (planId: unknown): "nt" | "whole" =>
@@ -129,22 +145,27 @@ export const getAllowedQuizPositions = (
   user: StoredQuizUser,
   todayLegacy: string,
 ): QuizProgressPosition[] => {
+  const readingEpoch = normalizedReadingEpoch(user.readingEpoch);
+  if (readingEpoch === null) return [];
   const current = {
+    epoch: readingEpoch,
     cycle: normalizedCycle(user.readCount),
     day: normalizedDay(user.currentDay),
   };
   if (user.lastReadDate !== todayLegacy) return [current];
 
   const justCompleted = current.day === 1
-    ? { cycle: current.cycle - 1, day: DAYS_PER_CYCLE }
-    : { cycle: current.cycle, day: current.day - 1 };
+    ? { epoch: current.epoch, cycle: current.cycle - 1, day: DAYS_PER_CYCLE }
+    : { epoch: current.epoch, cycle: current.cycle, day: current.day - 1 };
   return justCompleted.cycle >= 1 ? [current, justCompleted] : [current];
 };
 
 const positionsEqual = (
   left: QuizProgressPosition,
   right: QuizProgressPosition,
-): boolean => left.cycle === right.cycle && left.day === right.day;
+): boolean =>
+  left.epoch === right.epoch && left.cycle === right.cycle &&
+  left.day === right.day;
 
 const readProgressEntry = (
   user: StoredQuizUser,
@@ -172,7 +193,8 @@ const readStoredProgress = (
   // 기존 단일 quiz* 필드는 오늘의 현재/방금 완료 위치에만 승계한다.
   // 날짜 제한이 없으면 오래된 bank 키를 다른 Day에 재사용할 수 있다.
   const legacyPosition = getAllowedQuizPositions(user, todayLegacy).at(-1);
-  const canUseLegacy = user.quizDate === todayLegacy && legacyPosition &&
+  const canUseLegacy = position.epoch === 0 &&
+    user.quizDate === todayLegacy && legacyPosition &&
     positionsEqual(position, legacyPosition);
   return canUseLegacy
     ? {

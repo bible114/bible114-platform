@@ -30,7 +30,7 @@ const handleReadSource = actions.slice(
     actions.indexOf('const handleRead'),
     actions.indexOf('const handleRestart'),
 );
-assert(actions.includes("import { completeRead } from '../utils/platformApi';"));
+assert.match(actions, /import\s*\{[^}]*completeRead[^}]*restartReading[^}]*\}\s*from\s*['"]\.\.\/utils\/platformApi['"]/);
 assert(handleReadSource.includes('response = await completeRead('));
 assert(handleReadSource.includes("response.result.status === 'dailyLimit'"));
 assert(!handleReadSource.includes('db.runTransaction'));

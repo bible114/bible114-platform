@@ -1,5 +1,5 @@
-import { useEffect, useCallback, useRef } from 'react';
-import { auth, db } from '../utils/firebase';
+import { useEffect, useCallback, useRef, useState } from 'react';
+import { db } from '../utils/firebase';
 import { calculateSubgroupStats } from '../utils/statsUtils';
 import { belongsToDepartment } from '../utils/memberships';
 
@@ -12,6 +12,10 @@ import { useUserBibleActions } from './useUserBibleActions';
 export const useBibleLogic = (currentUser, setCurrentUser, view, communities, onReadComplete) => {
     const communityRequestRef = useRef(0);
     const userDataRequestRef = useRef(0);
+    const [communityRefreshNonce, setCommunityRefreshNonce] = useState(0);
+    const requestCommunityRefresh = useCallback(() => {
+        setCommunityRefreshNonce(value => value + 1);
+    }, []);
     // 1. Content Hook
     const {
         verseData, setVerseData, viewingDay, setViewingDay, loadContent
@@ -29,16 +33,16 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
     const {
         readHistory, setReadHistory, hasReadToday, setHasReadToday,
         showConfetti, setShowConfetti, levelUpToast, setLevelUpToast,
-        bonusToast, setBonusToast, newAchievement, setNewAchievement,
-        readSubmitting,
+        bonusToast, setBonusToast, completionSummary, setCompletionSummary,
+        newAchievement, setNewAchievement,
+        readSubmitting, restartSubmitting,
         handleRead, handleRestart, changeStartDate, checkAchievements
     } = useUserBibleActions(
         currentUser, setCurrentUser,
-        setAllMembersForRace, setDepartmentMembers, setSubgroupStats,
-        loadAllMembers,
         setViewingDay,
         viewingDay,
-        onReadComplete
+        onReadComplete,
+        requestCommunityRefresh,
     );
 
     // 4. Memos Hook
@@ -89,6 +93,7 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
         currentUser?.uid,
         currentUser?.churchId,
         currentUser?.departmentId,
+        communityRefreshNonce,
         loadAllMembers, loadAnnouncement, loadKakaoLink,
         setAllMembersForRace, setSubgroupStats, setDepartmentMembers,
     ]);
@@ -156,15 +161,17 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
         showConfetti, setShowConfetti,
         levelUpToast, setLevelUpToast,
         bonusToast, setBonusToast,
+        completionSummary, setCompletionSummary,
         newAchievement, setNewAchievement,
         readSubmitting,
+        restartSubmitting,
 
         // Actions
         handleRead,
         saveMemo: (readCount, day, memoText, onComplete) =>
             saveMemo(readCount, day, memoText, verseData?.subtitle, checkAchievements, onComplete),
         changeSubgroup,
-        handleRestart: () => handleRestart(setReadHistory),
+        handleRestart,
         changeStartDate,
 
         // Data Loaders

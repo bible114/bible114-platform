@@ -32,8 +32,23 @@ const submission = (
 
 Deno.test("진도 키, 계획 범위, 실제 Day를 엄격히 계산한다", () => {
   assert(parseQuizProgressKey("r2_d365")?.cycle === 2, "valid key rejected");
+  assert(
+    parseQuizProgressKey("e3_r2_d365")?.epoch === 3,
+    "epoch key rejected",
+  );
   for (
-    const key of ["r0_d1", "r1_d0", "r1_d366", "r01_d1", "r1_d01", "r1_d1x", 1]
+    const key of [
+      "r0_d1",
+      "r1_d0",
+      "r1_d366",
+      "r01_d1",
+      "r1_d01",
+      "r1_d1x",
+      "e0_r1_d1",
+      "e01_r1_d1",
+      "e1_r01_d1",
+      1,
+    ]
   ) {
     assert(parseQuizProgressKey(key) === null, `invalid key accepted: ${key}`);
   }
@@ -59,6 +74,54 @@ Deno.test("현재 위치와 오늘 방금 완료한 위치만 허용한다", () 
   assert(
     wrapped.some((item) => item.cycle === 2 && item.day === 365),
     "wrapped completed position missing",
+  );
+  const restarted = getAllowedQuizPositions(
+    { readingEpoch: 4, currentDay: 1, readCount: 3, lastReadDate: TODAY },
+    TODAY,
+  );
+  assert(
+    restarted.every((item) => item.epoch === 4),
+    "allowed position lost reading epoch",
+  );
+});
+
+Deno.test("사용자 readingEpoch와 다른 진도 키는 허용하지 않는다", () => {
+  const accepted = validateQuizSubmission(submission({
+    user: {
+      readingEpoch: 2,
+      currentDay: 10,
+      readCount: 1,
+      dayOffset: 0,
+      planId: "whole_1",
+    },
+    progressKey: "e2_r1_d10",
+  }));
+  assert(accepted.status === "ready", "current epoch position rejected");
+
+  const stale = validateQuizSubmission(submission({
+    user: {
+      readingEpoch: 2,
+      currentDay: 10,
+      readCount: 1,
+      dayOffset: 0,
+      planId: "whole_1",
+    },
+    progressKey: "r1_d10",
+  }));
+  assert(stale.status === "invalidPosition", "stale epoch position accepted");
+
+  const corrupt = validateQuizSubmission(submission({
+    user: {
+      readingEpoch: "2",
+      currentDay: 10,
+      readCount: 1,
+      dayOffset: 0,
+      planId: "whole_1",
+    },
+  }));
+  assert(
+    corrupt.status === "invalidPosition" && corrupt.allowed.length === 0,
+    "corrupt user epoch was normalized to epoch 0",
   );
 });
 

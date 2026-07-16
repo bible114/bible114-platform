@@ -238,6 +238,32 @@ Deno.test("읽기 완료 실제 쓰기 요청은 위치 외 필드를 거부한�
   assert(parsed.action === "completeRead", "complete read action mismatch");
   if (parsed.action !== "completeRead") return;
   assert(parsed.cycle === 2 && parsed.day === 365, "read position mismatch");
+  assert(parsed.readingEpoch === 0, "legacy epoch must default to zero");
+  const currentEpoch = parsePlatformApiRequest({
+    action: "completeRead",
+    requestId,
+    cycle: 2,
+    day: 365,
+    readingEpoch: 7,
+  });
+  assert(
+    currentEpoch.action === "completeRead" &&
+      currentEpoch.readingEpoch === 7,
+    "current epoch was not preserved",
+  );
+  for (const readingEpoch of [-1, 1.5, "1"]) {
+    assertRequestError(
+      () =>
+        parsePlatformApiRequest({
+          action: "completeRead",
+          requestId,
+          cycle: 2,
+          day: 365,
+          readingEpoch,
+        }),
+      "INVALID_PAYLOAD",
+    );
+  }
   for (
     const extra of [
       { score: 10 },
@@ -254,6 +280,43 @@ Deno.test("읽기 완료 실제 쓰기 요청은 위치 외 필드를 거부한�
           cycle: 2,
           day: 365,
           ...extra,
+        }),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
+Deno.test("읽기 재시작은 현재 epoch와 위치만 정확히 받는다", () => {
+  const requestId = "123e4567-e89b-42d3-a456-426614174000";
+  const parsed = parsePlatformApiRequest({
+    action: "restartReading",
+    requestId,
+    cycle: 2,
+    day: 10,
+    readingEpoch: 3,
+  });
+  assert(parsed.action === "restartReading", "restart action mismatch");
+  if (parsed.action !== "restartReading") return;
+  assert(
+    parsed.cycle === 2 && parsed.day === 10 && parsed.readingEpoch === 3,
+    "restart position mismatch",
+  );
+  for (
+    const invalid of [
+      { cycle: 2, day: 10 },
+      { cycle: 2, day: 10, readingEpoch: -1 },
+      { cycle: 2, day: 10, readingEpoch: 1.5 },
+      { cycle: 2, day: 10, readingEpoch: "1" },
+      { cycle: 2, day: 10, readingEpoch: 0, score: 0 },
+      { cycle: 2, day: 10, readingEpoch: 0, quizProgress: {} },
+    ]
+  ) {
+    assertRequestError(
+      () =>
+        parsePlatformApiRequest({
+          action: "restartReading",
+          requestId,
+          ...invalid,
         }),
       "INVALID_PAYLOAD",
     );
@@ -320,6 +383,21 @@ Deno.test("퀴즈 실제 제출은 표시 답 외 보상 입력을 거부한다"
   if (parsed.action !== "submitQuiz") return;
   assert(parsed.selectedIndex === 1, "selected answer mismatch");
   assert(parsed.attemptSlot === 1, "attempt slot mismatch");
+  const epochParsed = parsePlatformApiRequest({
+    ...valid,
+    progressKey: "e3_r2_d10",
+  });
+  assert(
+    epochParsed.action === "submitQuiz" &&
+      epochParsed.progressKey === "e3_r2_d10",
+    "epoch progress key rejected",
+  );
+  for (const progressKey of ["e0_r2_d10", "e01_r2_d10", "e1_r2_d366"]) {
+    assertRequestError(
+      () => parsePlatformApiRequest({ ...valid, progressKey }),
+      "INVALID_PAYLOAD",
+    );
+  }
   for (const attemptSlot of [0, 3, 1.5, "1"]) {
     assertRequestError(
       () => parsePlatformApiRequest({ ...valid, attemptSlot }),
@@ -351,6 +429,15 @@ Deno.test("퀴즈 건너뛰기는 위치와 문항 외 클라이언트 상태를
   };
   const parsed = parsePlatformApiRequest(valid);
   assert(parsed.action === "skipQuiz", "skip quiz action mismatch");
+  const epochParsed = parsePlatformApiRequest({
+    ...valid,
+    progressKey: "e2_r2_d10",
+  });
+  assert(
+    epochParsed.action === "skipQuiz" &&
+      epochParsed.progressKey === "e2_r2_d10",
+    "epoch skip progress key rejected",
+  );
   for (const extra of [{ skipped: true }, { reward: 0 }, { attempts: 1 }]) {
     assertRequestError(
       () => parsePlatformApiRequest({ ...valid, ...extra }),

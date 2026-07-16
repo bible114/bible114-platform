@@ -28,7 +28,8 @@ import {
 
 export const SUBMIT_QUIZ_ACTION = "submitQuiz" as const;
 export const SKIP_QUIZ_ACTION = "skipQuiz" as const;
-export const QUIZ_ACTIVITY_LEDGER_SCHEMA_VERSION = 1;
+export const QUIZ_ACTIVITY_LEDGER_SCHEMA_VERSION = 2;
+const LEGACY_QUIZ_ACTIVITY_LEDGER_SCHEMA_VERSION = 1;
 
 const MAX_TALENT_VALUE = 1_000_000_000;
 const QUIZ_KEY_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
@@ -152,6 +153,7 @@ export type SkipQuizResponse = {
 
 type QuizActivityLedger = {
   schemaVersion?: unknown;
+  readingEpoch?: unknown;
   action?: unknown;
   requestId?: unknown;
   input?: unknown;
@@ -280,6 +282,7 @@ const assertStoredQuizNumbers = (
   calendarDate: string,
 ) => {
   const todayTimestamp = storedDateTimestamp(calendarDate);
+  readNonNegativeSafeInteger(user.readingEpoch, 0);
   if (user.currentDay !== null && user.currentDay !== undefined) {
     const currentDay = readNonNegativeSafeInteger(user.currentDay, 1, 365);
     if (currentDay < 1) throw stateConflict();
@@ -443,6 +446,34 @@ const inputMatches = (value: unknown, expected: BoundQuizInput): boolean => {
   );
 };
 
+const progressReadingEpoch = (progressKey: unknown): number => {
+  const position = parseQuizProgressKey(progressKey);
+  if (!position) throw stateConflict("퀴즈 진도 회차를 확인해 주세요.");
+  return position.epoch;
+};
+
+const ledgerReadingEpoch = (ledger: QuizActivityLedger): number => {
+  const input = record(ledger.input);
+  const progressEpoch = progressReadingEpoch(input?.progressKey);
+  if (ledger.schemaVersion === LEGACY_QUIZ_ACTIVITY_LEDGER_SCHEMA_VERSION) {
+    if (ledger.readingEpoch !== undefined || progressEpoch !== 0) {
+      throw stateConflict("저장된 퀴즈 재시작 회차를 확인해 주세요.");
+    }
+    return 0;
+  }
+  if (ledger.schemaVersion !== QUIZ_ACTIVITY_LEDGER_SCHEMA_VERSION) {
+    throw stateConflict("저장된 퀴즈 원장 버전을 확인해 주세요.");
+  }
+  if (ledger.readingEpoch === undefined || ledger.readingEpoch === null) {
+    throw stateConflict("저장된 퀴즈 재시작 회차가 없습니다.");
+  }
+  const epoch = readNonNegativeSafeInteger(ledger.readingEpoch, 0);
+  if (epoch !== progressEpoch) {
+    throw stateConflict("저장된 퀴즈 재시작 회차가 일치하지 않습니다.");
+  }
+  return epoch;
+};
+
 const readStringArray = (value: unknown): string[] | null => {
   if (!Array.isArray(value) || value.length > 3) return null;
   const normalized = value.flatMap((item) => {
@@ -500,8 +531,9 @@ const readLedger = (
   expectedInput: BoundQuizInput,
   currentCalendarDate: string,
 ): { calendarDate: string; result: SubmitQuizResult } => {
+  const expectedReadingEpoch = progressReadingEpoch(expectedInput.progressKey);
   if (
-    ledger.schemaVersion !== QUIZ_ACTIVITY_LEDGER_SCHEMA_VERSION ||
+    ledgerReadingEpoch(ledger) !== expectedReadingEpoch ||
     ledger.action !== SUBMIT_QUIZ_ACTION || ledger.requestId !== requestId ||
     !inputMatches(ledger.input, expectedInput) ||
     typeof ledger.calendarDate !== "string" ||
@@ -579,8 +611,8 @@ const readDailyAwardedReward = (
   calendarDate: string,
 ): number | null => {
   if (ledger.action !== SUBMIT_QUIZ_ACTION) return null;
+  ledgerReadingEpoch(ledger);
   if (
-    ledger.schemaVersion !== QUIZ_ACTIVITY_LEDGER_SCHEMA_VERSION ||
     !isRequestId(ledger.requestId) || ledger.calendarDate !== calendarDate
   ) throw stateConflict("저장된 당일 퀴즈 내역을 확인해 주세요.");
   const result = readLedgerResult(ledger.result);
@@ -738,6 +770,7 @@ export const submitQuiz = async (
   options: { dependencies?: Partial<QuizSubmissionDependencies> } = {},
 ): Promise<SubmitQuizResponse> => {
   const boundInput = validateInput(input);
+  const readingEpoch = progressReadingEpoch(boundInput.progressKey);
   const dependencies = {
     ...DEFAULT_DEPENDENCIES,
     ...(options.dependencies || {}),
@@ -819,6 +852,12 @@ export const submitQuiz = async (
       );
       if (!userDocument || userDocument.data.isDeleted === true) {
         throw new PlatformError("NOT_FOUND");
+      }
+      if (
+        readNonNegativeSafeInteger(userDocument.data.readingEpoch, 0) !==
+          readingEpoch
+      ) {
+        throw stateConflict("재시작 전 퀴즈 요청은 처리할 수 없습니다.");
       }
       if (rosterDocuments.length >= 4) throw rosterConflict();
       if (dailyActivityDocuments.length >= 101) {
@@ -1184,6 +1223,7 @@ export const submitQuiz = async (
           ledgerPath,
           {
             schemaVersion: QUIZ_ACTIVITY_LEDGER_SCHEMA_VERSION,
+            readingEpoch,
             action: SUBMIT_QUIZ_ACTION,
             requestId: input.requestId,
             input: boundInput,
@@ -1198,6 +1238,7 @@ export const submitQuiz = async (
           requestedSlotPath,
           {
             schemaVersion: QUIZ_ACTIVITY_LEDGER_SCHEMA_VERSION,
+            readingEpoch,
             action: SUBMIT_QUIZ_ACTION,
             requestId: input.requestId,
             input: boundInput,
@@ -1287,8 +1328,9 @@ const readSkipLedger = (
 ): { calendarDate: string; progress: PublicQuizProgressEntry } => {
   const storedResult = record(ledger.result);
   const progressRecord = record(storedResult?.progress);
+  const expectedReadingEpoch = progressReadingEpoch(expectedInput.progressKey);
   if (
-    ledger.schemaVersion !== QUIZ_ACTIVITY_LEDGER_SCHEMA_VERSION ||
+    ledgerReadingEpoch(ledger) !== expectedReadingEpoch ||
     ledger.action !== SKIP_QUIZ_ACTION || ledger.requestId !== requestId ||
     !skipInputMatches(ledger.input, expectedInput) ||
     typeof ledger.calendarDate !== "string" ||
@@ -1389,6 +1431,7 @@ export const skipQuiz = async (
   options: { dependencies?: Partial<QuizSubmissionDependencies> } = {},
 ): Promise<SkipQuizResponse> => {
   const boundInput = validateSkipInput(input);
+  const readingEpoch = progressReadingEpoch(boundInput.progressKey);
   const dependencies = {
     ...DEFAULT_DEPENDENCIES,
     ...(options.dependencies || {}),
@@ -1448,6 +1491,12 @@ export const skipQuiz = async (
       ]);
       if (!userDocument || userDocument.data.isDeleted === true) {
         throw new PlatformError("NOT_FOUND");
+      }
+      if (
+        readNonNegativeSafeInteger(userDocument.data.readingEpoch, 0) !==
+          readingEpoch
+      ) {
+        throw stateConflict("재시작 전 퀴즈 요청은 처리할 수 없습니다.");
       }
       assertStoredQuizNumbers(
         userDocument.data,
@@ -1673,6 +1722,7 @@ export const skipQuiz = async (
             ledgerPath,
             {
               schemaVersion: QUIZ_ACTIVITY_LEDGER_SCHEMA_VERSION,
+              readingEpoch,
               action: SKIP_QUIZ_ACTION,
               requestId: input.requestId,
               input: boundInput,
@@ -1687,6 +1737,7 @@ export const skipQuiz = async (
             skipPath,
             {
               schemaVersion: QUIZ_ACTIVITY_LEDGER_SCHEMA_VERSION,
+              readingEpoch,
               action: SKIP_QUIZ_ACTION,
               requestId: input.requestId,
               input: boundInput,

@@ -2,6 +2,7 @@ export const PREFLIGHT_ACTION = "preflight" as const;
 export const PREVIEW_READ_COMPLETION_ACTION = "previewReadCompletion" as const;
 export const PREVIEW_QUIZ_SUBMISSION_ACTION = "previewQuizSubmission" as const;
 export const COMPLETE_READ_ACTION = "completeRead" as const;
+export const RESTART_READING_ACTION = "restartReading" as const;
 export const SUBMIT_QUIZ_ACTION = "submitQuiz" as const;
 export const SKIP_QUIZ_ACTION = "skipQuiz" as const;
 export const JOIN_COMMUNITY_ACTION = "joinCommunity" as const;
@@ -19,6 +20,13 @@ export const ADMIN_PREVIEW_DAILY_VIDEO_ACTION =
 export const REBUILD_PUBLIC_CHURCHES_ACTION = "rebuildPublicChurches" as const;
 
 export type PlatformApiRequest =
+  | {
+    action: typeof RESTART_READING_ACTION;
+    requestId: string;
+    cycle: number;
+    day: number;
+    readingEpoch: number;
+  }
   | {
     action: typeof REBUILD_PUBLIC_CHURCHES_ACTION;
     requestId: string;
@@ -81,6 +89,7 @@ export type PlatformApiRequest =
     requestId: string;
     cycle: number;
     day: number;
+    readingEpoch: number;
   }
   | {
     action: typeof PREVIEW_QUIZ_SUBMISSION_ACTION;
@@ -204,6 +213,7 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     requestId,
     cycle,
     day,
+    readingEpoch,
     progressKey,
     quizKey,
     selectedIndex,
@@ -403,7 +413,8 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     if (
       action === COMPLETE_READ_ACTION &&
       Object.keys(body).some((key) =>
-        !new Set(["action", "requestId", "cycle", "day"]).has(key)
+        !new Set(["action", "requestId", "cycle", "day", "readingEpoch"])
+          .has(key)
       )
     ) {
       throw new PlatformApiRequestError("INVALID_PAYLOAD");
@@ -414,7 +425,44 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     ) {
       throw new PlatformApiRequestError("INVALID_PAYLOAD");
     }
+    if (action === COMPLETE_READ_ACTION) {
+      if (
+        readingEpoch !== undefined &&
+        (!Number.isSafeInteger(readingEpoch) || Number(readingEpoch) < 0)
+      ) throw new PlatformApiRequestError("INVALID_PAYLOAD");
+      return {
+        action,
+        requestId,
+        cycle: Number(cycle),
+        day: Number(day),
+        readingEpoch: readingEpoch === undefined ? 0 : Number(readingEpoch),
+      };
+    }
     return { action, requestId, cycle: Number(cycle), day: Number(day) };
+  }
+  if (action === RESTART_READING_ACTION) {
+    const allowedKeys = new Set([
+      "action",
+      "requestId",
+      "cycle",
+      "day",
+      "readingEpoch",
+    ]);
+    if (
+      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+      !Number.isSafeInteger(cycle) || Number(cycle) < 1 ||
+      !Number.isSafeInteger(day) || Number(day) < 1 || Number(day) > 365 ||
+      !Number.isSafeInteger(readingEpoch) || Number(readingEpoch) < 0
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return {
+      action,
+      requestId,
+      cycle: Number(cycle),
+      day: Number(day),
+      readingEpoch: Number(readingEpoch),
+    };
   }
   if (
     action === PREVIEW_QUIZ_SUBMISSION_ACTION ||
@@ -436,12 +484,16 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       throw new PlatformApiRequestError("INVALID_PAYLOAD");
     }
     const progressMatch = typeof progressKey === "string"
-      ? /^r([1-9]\d*)_d([1-9]\d*)$/.exec(progressKey)
+      ? /^(?:e([1-9]\d*)_)?r([1-9]\d*)_d([1-9]\d*)$/.exec(progressKey)
       : null;
-    const progressCycle = progressMatch ? Number(progressMatch[1]) : NaN;
-    const progressDay = progressMatch ? Number(progressMatch[2]) : NaN;
+    const progressEpoch = progressMatch && progressMatch[1]
+      ? Number(progressMatch[1])
+      : 0;
+    const progressCycle = progressMatch ? Number(progressMatch[2]) : NaN;
+    const progressDay = progressMatch ? Number(progressMatch[3]) : NaN;
     if (
-      !progressMatch || !Number.isSafeInteger(progressCycle) ||
+      !progressMatch || !Number.isSafeInteger(progressEpoch) ||
+      !Number.isSafeInteger(progressCycle) ||
       !Number.isSafeInteger(progressDay) || progressDay < 1 ||
       progressDay > 365 || typeof quizKey !== "string" ||
       !/^[A-Za-z0-9_-]{1,128}$/.test(quizKey) ||
@@ -470,12 +522,16 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       )
     ) throw new PlatformApiRequestError("INVALID_PAYLOAD");
     const progressMatch = typeof progressKey === "string"
-      ? /^r([1-9]\d*)_d([1-9]\d*)$/.exec(progressKey)
+      ? /^(?:e([1-9]\d*)_)?r([1-9]\d*)_d([1-9]\d*)$/.exec(progressKey)
       : null;
-    const progressCycle = progressMatch ? Number(progressMatch[1]) : NaN;
-    const progressDay = progressMatch ? Number(progressMatch[2]) : NaN;
+    const progressEpoch = progressMatch && progressMatch[1]
+      ? Number(progressMatch[1])
+      : 0;
+    const progressCycle = progressMatch ? Number(progressMatch[2]) : NaN;
+    const progressDay = progressMatch ? Number(progressMatch[3]) : NaN;
     if (
-      !progressMatch || !Number.isSafeInteger(progressCycle) ||
+      !progressMatch || !Number.isSafeInteger(progressEpoch) ||
+      !Number.isSafeInteger(progressCycle) ||
       !Number.isSafeInteger(progressDay) || progressDay < 1 ||
       progressDay > 365 || typeof quizKey !== "string" ||
       !/^[A-Za-z0-9_-]{1,128}$/.test(quizKey)

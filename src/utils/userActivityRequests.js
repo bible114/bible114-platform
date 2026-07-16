@@ -23,6 +23,12 @@ const safeUid = value => {
 
 const activityKey = parts => `${STORAGE_PREFIX}${parts.map(value => encodeURIComponent(String(value))).join(':')}`;
 
+const hasExactKeys = (value, keys) => Boolean(value)
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && Object.keys(value).length === keys.length
+    && Object.keys(value).every(key => keys.includes(key));
+
 const readStored = (key, storage) => {
     const fallback = requestFallback.get(key);
     if (fallback) return fallback;
@@ -63,15 +69,20 @@ const removeStored = (key, expectedRequestId, storage) => {
     }
 };
 
-const validReadPayload = payload => Boolean(payload)
+const validReadPayload = payload => hasExactKeys(payload, ['cycle', 'day', 'readingEpoch'])
     && Number.isSafeInteger(payload.cycle) && payload.cycle >= 1
-    && Number.isSafeInteger(payload.day) && payload.day >= 1 && payload.day <= 365;
+    && Number.isSafeInteger(payload.day) && payload.day >= 1 && payload.day <= 365
+    && Number.isSafeInteger(payload.readingEpoch) && payload.readingEpoch >= 0;
+
+const validRestartPayload = payload => validReadPayload(payload);
 
 const validQuizProgressKey = value => {
     const match = typeof value === 'string'
-        ? /^r([1-9]\d*)_d(?:([1-9]\d?|[12]\d{2}|3[0-5]\d|36[0-5]))$/.exec(value)
+        ? /^(?:e([1-9]\d*)_)?r([1-9]\d*)_d(?:([1-9]\d?|[12]\d{2}|3[0-5]\d|36[0-5]))$/.exec(value)
         : null;
-    return Boolean(match) && Number.isSafeInteger(Number(match[1]));
+    return Boolean(match)
+        && (!match[1] || Number.isSafeInteger(Number(match[1])))
+        && Number.isSafeInteger(Number(match[2]));
 };
 
 const validQuizPayload = payload => Boolean(payload)
@@ -90,9 +101,11 @@ const validStoredRequest = (stored, type) => Boolean(stored)
     && UUID_PATTERN.test(stored.requestId)
     && (type === 'read'
         ? validReadPayload(stored.payload)
-        : type === 'quizSkip'
-            ? validQuizSkipPayload(stored.payload)
-            : validQuizPayload(stored.payload));
+        : type === 'restart'
+            ? validRestartPayload(stored.payload)
+            : type === 'quizSkip'
+                ? validQuizSkipPayload(stored.payload)
+                : validQuizPayload(stored.payload));
 
 const getOrCreate = ({ key, type, payload, storage, requestIdFactory }) => {
     const existing = readStored(key, storage);
@@ -106,15 +119,41 @@ const getOrCreate = ({ key, type, payload, storage, requestIdFactory }) => {
 };
 
 export const getOrCreateReadActivityRequest = (
-    { uid, cycle, day },
+    { uid, cycle, day, readingEpoch },
     { storage, requestIdFactory = createRequestId } = {},
 ) => {
     const normalizedUid = safeUid(uid);
-    const payload = { cycle: Number(cycle), day: Number(day) };
+    const payload = {
+        cycle: Number(cycle),
+        day: Number(day),
+        readingEpoch: Number(readingEpoch),
+    };
     if (!normalizedUid || !validReadPayload(payload)) throw new Error('INVALID_READ_ACTIVITY_REQUEST');
     return getOrCreate({
-        key: activityKey(['read', normalizedUid, payload.cycle, payload.day]),
+        key: activityKey(['read', normalizedUid, payload.cycle, payload.day, payload.readingEpoch]),
         type: 'read', payload, storage, requestIdFactory,
+    });
+};
+
+export const getOrCreateRestartActivityRequest = (
+    { uid, cycle, day, readingEpoch },
+    { storage, requestIdFactory = createRequestId } = {},
+) => {
+    const normalizedUid = safeUid(uid);
+    const payload = {
+        cycle: Number(cycle),
+        day: Number(day),
+        readingEpoch: Number(readingEpoch),
+    };
+    if (!normalizedUid || !validRestartPayload(payload)) {
+        throw new Error('INVALID_RESTART_ACTIVITY_REQUEST');
+    }
+    return getOrCreate({
+        // 결과가 유실된 뒤 사용자 상태가 다른 탭/새 로드로 갱신돼도 먼저 보낸
+        // 요청을 복구해야 한다. UID마다 미결 restart를 하나만 두고, 결정적인
+        // 응답 전에는 저장된 payload/UUID를 새 현재 위치로 교체하지 않는다.
+        key: activityKey(['restart', normalizedUid]),
+        type: 'restart', payload, storage, requestIdFactory,
     });
 };
 

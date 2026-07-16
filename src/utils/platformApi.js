@@ -70,9 +70,27 @@ const COMPLETE_READ_SUMMARY_KEYS = new Set([
 const COMPLETE_READ_READY_KEYS = new Set(['status', 'updateData', 'summary']);
 const COMPLETE_READ_POSITION_KEYS = new Set(['status', 'expected', 'received']);
 const COMPLETE_READ_DAILY_LIMIT_KEYS = new Set(['status', 'limit', 'count']);
+const COMPLETE_READ_REQUEST_KEYS = new Set(['cycle', 'day', 'readingEpoch']);
 const COMPLETE_READ_POSITION_VALUE_KEYS = new Set(['cycle', 'day']);
+const RESTART_READING_REQUEST_KEYS = new Set(['cycle', 'day', 'readingEpoch']);
+const RESTART_READING_RESPONSE_KEYS = new Set([
+    'ok', 'action', 'requestId', 'alreadyCompleted', 'committed', 'calendarDate', 'result', 'state',
+]);
+const RESTART_READING_STATE_KEYS = new Set(['user', 'rosters']);
+const RESTART_READING_USER_KEYS = new Set([
+    'currentDay', 'readCount', 'readingEpoch', 'score', 'talent', 'streak', 'maxStreak',
+    'startDate', 'lastReadDate', 'dailyAdvanceDate', 'dailyAdvanceCount', 'recentReadDates',
+    'achievements', 'dayOffset', 'secretShopUnlocked', 'quizDate', 'quizAttempts',
+    'quizSolved', 'quizSkipped', 'quizKey', 'quizRewardDate', 'quizRewardAmount',
+]);
+const RESTART_READING_ROSTER_KEYS = new Set([
+    'orgId', 'currentDay', 'readCount', 'score', 'streak', 'lastReadDate', 'talent',
+]);
+const RESTART_READING_RESULT_KEYS = new Set(['status', 'previous', 'next']);
+const RESTART_READING_POSITION_KEYS = new Set(['status', 'expected', 'received']);
+const RESTART_READING_POSITION_VALUE_KEYS = new Set(['cycle', 'day', 'readingEpoch']);
 const ACTIVITY_REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const QUIZ_PROGRESS_KEY_PATTERN = /^r([1-9]\d*)_d([1-9]\d*)$/;
+const QUIZ_PROGRESS_KEY_PATTERN = /^(?:e([1-9]\d*)_)?r([1-9]\d*)_d([1-9]\d*)$/;
 const QUIZ_KEY_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const LEGACY_CALENDAR_DATE_PATTERN = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (0[1-9]|[12]\d|3[01]) (\d{4})$/;
 const MAX_TALENT_BALANCE = 1_000_000_000;
@@ -300,11 +318,17 @@ export const previewReadCompletion = (cycle, day, options = {}) => {
 };
 
 export const previewQuizSubmission = (progressKey, quizKey, selectedIndex, options = {}) => {
-    const progressMatch = typeof progressKey === 'string' ? /^r([1-9]\d*)_d([1-9]\d*)$/.exec(progressKey) : null;
-    const progressCycle = progressMatch ? Number(progressMatch[1]) : NaN;
-    const progressDay = progressMatch ? Number(progressMatch[2]) : NaN;
+    const progressMatch = typeof progressKey === 'string' ? QUIZ_PROGRESS_KEY_PATTERN.exec(progressKey) : null;
+    const progressEpoch = progressMatch?.[1] ? Number(progressMatch[1]) : 0;
+    const progressCycle = progressMatch ? Number(progressMatch[2]) : NaN;
+    const progressDay = progressMatch ? Number(progressMatch[3]) : NaN;
     if (!Number.isSafeInteger(progressCycle) || !Number.isSafeInteger(progressDay) || progressDay < 1 || progressDay > 365) {
         throw new PlatformApiError('퀴즈 진행 위치가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    if (!Number.isSafeInteger(progressEpoch) || progressEpoch < 0) {
+        throw new PlatformApiError('퀴즈 진행 회차가 올바르지 않습니다.', {
             code: 'INVALID_PAYLOAD', status: 0, retryable: false,
         });
     }
@@ -339,9 +363,11 @@ const isSafeIntegerInRange = (value, minimum, maximum) => (
 
 const isValidQuizProgressKey = (value) => {
     const match = typeof value === 'string' ? QUIZ_PROGRESS_KEY_PATTERN.exec(value) : null;
-    const cycle = match ? Number(match[1]) : NaN;
-    const day = match ? Number(match[2]) : NaN;
-    return Number.isSafeInteger(cycle) && cycle >= 1
+    const epoch = match?.[1] ? Number(match[1]) : 0;
+    const cycle = match ? Number(match[2]) : NaN;
+    const day = match ? Number(match[3]) : NaN;
+    return Number.isSafeInteger(epoch) && epoch >= 0
+        && Number.isSafeInteger(cycle) && cycle >= 1
         && Number.isSafeInteger(day) && day >= 1 && day <= 365;
 };
 
@@ -683,6 +709,7 @@ const normalizeReadStateUser = (value) => {
         || (value.lastReadDate !== null && !isValidLegacyCalendarDate(value.lastReadDate))
         || (value.dailyAdvanceDate !== null && !isValidLegacyCalendarDate(value.dailyAdvanceDate))
         || !isSafeIntegerInRange(value.dailyAdvanceCount, 0, Number.MAX_SAFE_INTEGER)
+        || (value.dailyAdvanceDate === null && value.dailyAdvanceCount > 0)
         || typeof value.secretShopUnlocked !== 'boolean') {
         return invalidCompleteReadResponse();
     }
@@ -780,9 +807,10 @@ const sameReadUpdateState = (update, stateUser) => (
 );
 
 export const validateCompleteReadResponse = (payload, result, expectedRequestId) => {
-    if (!hasExactKeys(payload, COMPLETE_READ_POSITION_VALUE_KEYS)
+    if (!hasExactKeys(payload, COMPLETE_READ_REQUEST_KEYS)
         || !isSafeIntegerInRange(payload.cycle, 1, Number.MAX_SAFE_INTEGER)
         || !isSafeIntegerInRange(payload.day, 1, 365)
+        || !isSafeIntegerInRange(payload.readingEpoch, 0, Number.MAX_SAFE_INTEGER)
         || !ACTIVITY_REQUEST_ID_PATTERN.test(expectedRequestId)
         || !hasExactKeys(result, COMPLETE_READ_RESPONSE_KEYS)
         || result.ok !== true || result.action !== 'completeRead'
@@ -878,9 +906,11 @@ export const validateCompleteReadResponse = (payload, result, expectedRequestId)
 };
 
 export const completeRead = (cycle, day, options = {}) => {
-    const payload = { cycle, day };
+    const readingEpoch = options.readingEpoch ?? 0;
+    const payload = { cycle, day, readingEpoch };
     if (!isSafeIntegerInRange(cycle, 1, Number.MAX_SAFE_INTEGER)
-        || !isSafeIntegerInRange(day, 1, 365)) {
+        || !isSafeIntegerInRange(day, 1, 365)
+        || !isSafeIntegerInRange(readingEpoch, 0, Number.MAX_SAFE_INTEGER)) {
         throw new PlatformApiError('읽기 완료 위치가 올바르지 않습니다.', {
             code: 'INVALID_PAYLOAD', status: 0, retryable: false,
         });
@@ -891,8 +921,231 @@ export const completeRead = (cycle, day, options = {}) => {
             code: 'INVALID_PAYLOAD', status: 0, retryable: false,
         });
     }
-    return callPlatformApi('completeRead', payload, { ...options, requestId })
+    const callOptions = { ...options };
+    delete callOptions.readingEpoch;
+    return callPlatformApi('completeRead', payload, { ...callOptions, requestId })
         .then(result => validateCompleteReadResponse(payload, result, requestId));
+};
+
+const invalidRestartReadingResponse = () => {
+    throw new PlatformApiError('Day 1 재시작 결과를 안전하게 확인하지 못했습니다.', {
+        code: 'INVALID_RESPONSE', status: 200, retryable: true,
+    });
+};
+
+const normalizeRestartPosition = (value) => {
+    if (!hasExactKeys(value, RESTART_READING_POSITION_VALUE_KEYS)
+        || !isSafeIntegerInRange(value.cycle, 1, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.day, 1, 365)
+        || !isSafeIntegerInRange(value.readingEpoch, 0, Number.MAX_SAFE_INTEGER)) {
+        return invalidRestartReadingResponse();
+    }
+    return { cycle: value.cycle, day: value.day, readingEpoch: value.readingEpoch };
+};
+
+const normalizeRestartAchievements = (value) => {
+    if (!Array.isArray(value) || value.length > 100
+        || value.some(item => typeof item !== 'string'
+            || !item || item.length > 128
+            || /[\u0000-\u001f\u007f]/.test(item))) {
+        return invalidRestartReadingResponse();
+    }
+    return [...value];
+};
+
+const normalizeRestartReadDates = (value) => {
+    if (!Array.isArray(value) || value.length > 14
+        || value.some(item => !isValidStoredDate(item))) {
+        return invalidRestartReadingResponse();
+    }
+    return [...value];
+};
+
+const normalizeRestartStateUser = (value) => {
+    if (!hasExactKeys(value, RESTART_READING_USER_KEYS)
+        || !isSafeIntegerInRange(value.currentDay, 1, 365)
+        || !isSafeIntegerInRange(value.readCount, 1, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.readingEpoch, 0, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.score, 0, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.talent, 0, MAX_TALENT_BALANCE)
+        || !isSafeIntegerInRange(value.streak, 0, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.maxStreak, value.streak, Number.MAX_SAFE_INTEGER)
+        || (value.startDate !== null && !isValidStoredDate(value.startDate))
+        || (value.lastReadDate !== null && !isValidLegacyCalendarDate(value.lastReadDate))
+        || (value.dailyAdvanceDate !== null && !isValidLegacyCalendarDate(value.dailyAdvanceDate))
+        || !isSafeIntegerInRange(value.dailyAdvanceCount, 0, Number.MAX_SAFE_INTEGER)
+        || (value.dailyAdvanceDate === null && value.dailyAdvanceCount > 0)
+        || !Number.isSafeInteger(value.dayOffset)
+        || typeof value.secretShopUnlocked !== 'boolean'
+        || (value.quizDate !== null && !isValidLegacyCalendarDate(value.quizDate))
+        || !isSafeIntegerInRange(value.quizAttempts, 0, 2)
+        || typeof value.quizSolved !== 'boolean'
+        || typeof value.quizSkipped !== 'boolean'
+        || (value.quizKey !== null && !isValidQuizKey(value.quizKey))
+        || (value.quizRewardDate !== null && !isValidLegacyCalendarDate(value.quizRewardDate))
+        || ![0, 5, 10].includes(value.quizRewardAmount)
+        || ((value.quizRewardDate === null) !== (value.quizRewardAmount === 0))) {
+        return invalidRestartReadingResponse();
+    }
+    return {
+        currentDay: value.currentDay,
+        readCount: value.readCount,
+        readingEpoch: value.readingEpoch,
+        score: value.score,
+        talent: value.talent,
+        streak: value.streak,
+        maxStreak: value.maxStreak,
+        startDate: value.startDate,
+        lastReadDate: value.lastReadDate,
+        dailyAdvanceDate: value.dailyAdvanceDate,
+        dailyAdvanceCount: value.dailyAdvanceCount,
+        recentReadDates: normalizeRestartReadDates(value.recentReadDates),
+        achievements: normalizeRestartAchievements(value.achievements),
+        dayOffset: value.dayOffset,
+        secretShopUnlocked: value.secretShopUnlocked,
+        quizDate: value.quizDate,
+        quizAttempts: value.quizAttempts,
+        quizSolved: value.quizSolved,
+        quizSkipped: value.quizSkipped,
+        quizKey: value.quizKey,
+        quizRewardDate: value.quizRewardDate,
+        quizRewardAmount: value.quizRewardAmount,
+    };
+};
+
+const normalizeRestartRosters = (value) => {
+    if (!Array.isArray(value) || value.length > 3) return invalidRestartReadingResponse();
+    const normalized = value.map((row) => {
+        if (!hasExactKeys(row, RESTART_READING_ROSTER_KEYS)
+            || !isValidCanonicalOrgId(row.orgId)
+            || !isSafeIntegerInRange(row.currentDay, 1, 365)
+            || !isSafeIntegerInRange(row.readCount, 1, Number.MAX_SAFE_INTEGER)
+            || !isSafeIntegerInRange(row.score, 0, Number.MAX_SAFE_INTEGER)
+            || !isSafeIntegerInRange(row.streak, 0, Number.MAX_SAFE_INTEGER)
+            || (row.lastReadDate !== null && !isValidLegacyCalendarDate(row.lastReadDate))
+            || !isSafeIntegerInRange(row.talent, 0, MAX_TALENT_BALANCE)) {
+            return invalidRestartReadingResponse();
+        }
+        return { ...row };
+    });
+    if (normalized.some((row, index) => (
+        index > 0 && compareCanonicalIds(normalized[index - 1].orgId, row.orgId) >= 0
+    ))) return invalidRestartReadingResponse();
+    return normalized;
+};
+
+export const validateRestartReadingResponse = (payload, result, expectedRequestId) => {
+    if (!hasExactKeys(payload, RESTART_READING_REQUEST_KEYS)
+        || !isSafeIntegerInRange(payload.cycle, 1, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(payload.day, 1, 365)
+        || !isSafeIntegerInRange(payload.readingEpoch, 0, Number.MAX_SAFE_INTEGER)
+        || !ACTIVITY_REQUEST_ID_PATTERN.test(expectedRequestId)
+        || !hasExactKeys(result, RESTART_READING_RESPONSE_KEYS)
+        || result.ok !== true || result.action !== 'restartReading'
+        || result.requestId !== expectedRequestId
+        || typeof result.alreadyCompleted !== 'boolean'
+        || typeof result.committed !== 'boolean'
+        || (result.alreadyCompleted && !result.committed)
+        || !isValidLegacyCalendarDate(result.calendarDate)
+        || !hasExactKeys(result.state, RESTART_READING_STATE_KEYS)) {
+        return invalidRestartReadingResponse();
+    }
+    const user = normalizeRestartStateUser(result.state.user);
+    const rosters = normalizeRestartRosters(result.state.rosters);
+    const submitted = normalizeRestartPosition(payload);
+
+    let normalizedResult;
+    if (hasExactKeys(result.result, RESTART_READING_RESULT_KEYS)
+        && result.result.status === 'restarted') {
+        const previous = normalizeRestartPosition(result.result.previous);
+        const next = normalizeRestartPosition(result.result.next);
+        if (!result.committed
+            || previous.cycle !== submitted.cycle
+            || previous.day !== submitted.day
+            || previous.readingEpoch !== submitted.readingEpoch
+            || next.cycle !== submitted.cycle
+            || next.day !== 1
+            || next.readingEpoch !== submitted.readingEpoch + 1
+            || !Number.isSafeInteger(next.readingEpoch)
+            || user.readCount < next.cycle
+            || user.readingEpoch < next.readingEpoch
+            || (!result.alreadyCompleted && (
+                user.currentDay !== 1
+                || user.readCount !== next.cycle
+                || user.readingEpoch !== next.readingEpoch
+                || user.score !== 0
+                || user.streak !== 0
+                || user.startDate !== result.calendarDate
+                || user.lastReadDate !== null
+                || user.achievements.length !== 0
+                || user.dayOffset !== 0
+                || user.quizDate !== null
+                || user.quizAttempts !== 0
+                || user.quizSolved
+                || user.quizSkipped
+                || user.quizKey !== null
+                || rosters.some(row => row.currentDay !== 1
+                    || row.readCount !== next.cycle
+                    || row.score !== 0
+                    || row.streak !== 0
+                    || row.lastReadDate !== null)
+            ))) {
+            return invalidRestartReadingResponse();
+        }
+        normalizedResult = { status: 'restarted', previous, next };
+    } else if (hasExactKeys(result.result, RESTART_READING_POSITION_KEYS)
+        && result.result.status === 'positionMismatch') {
+        const expected = normalizeRestartPosition(result.result.expected);
+        const received = normalizeRestartPosition(result.result.received);
+        if (result.alreadyCompleted || result.committed
+            || received.cycle !== submitted.cycle
+            || received.day !== submitted.day
+            || received.readingEpoch !== submitted.readingEpoch
+            || expected.cycle !== user.readCount
+            || expected.day !== user.currentDay
+            || expected.readingEpoch !== user.readingEpoch
+            || (expected.cycle === received.cycle
+                && expected.day === received.day
+                && expected.readingEpoch === received.readingEpoch)) {
+            return invalidRestartReadingResponse();
+        }
+        normalizedResult = { status: 'positionMismatch', expected, received };
+    } else {
+        return invalidRestartReadingResponse();
+    }
+
+    return {
+        ok: true,
+        action: 'restartReading',
+        requestId: expectedRequestId,
+        alreadyCompleted: result.alreadyCompleted,
+        committed: result.committed,
+        calendarDate: result.calendarDate,
+        result: normalizedResult,
+        state: { user, rosters },
+    };
+};
+
+export const restartReading = (cycle, day, options = {}) => {
+    const readingEpoch = options.readingEpoch ?? 0;
+    const payload = { cycle, day, readingEpoch };
+    if (!isSafeIntegerInRange(cycle, 1, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(day, 1, 365)
+        || !isSafeIntegerInRange(readingEpoch, 0, Number.MAX_SAFE_INTEGER)) {
+        throw new PlatformApiError('Day 1 재시작 위치가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const requestId = options.requestId || createRequestId();
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(requestId)) {
+        throw new PlatformApiError('Day 1 재시작 요청 번호가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const callOptions = { ...options };
+    delete callOptions.readingEpoch;
+    return callPlatformApi('restartReading', payload, { ...callOptions, requestId })
+        .then(result => validateRestartReadingResponse(payload, result, requestId));
 };
 
 const invalidDailyVideoResponse = () => {

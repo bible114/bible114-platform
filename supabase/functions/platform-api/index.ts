@@ -87,6 +87,7 @@ import {
   resolveDailyVideo,
 } from "./dailyVideoResolve.ts";
 import { completeReadTransaction } from "./readCompletionService.ts";
+import { restartReading } from "./restartReadingService.ts";
 import { skipQuiz, submitQuiz } from "./quizSubmission.ts";
 import { rebuildPublicChurches } from "./publicDirectoryService.ts";
 
@@ -1121,6 +1122,22 @@ Deno.serve(async (request) => {
         requestId: parsed.requestId,
         cycle: parsed.cycle,
         day: parsed.day,
+        readingEpoch: parsed.readingEpoch,
+      });
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        ...result,
+      });
+    }
+
+    if (parsed.action === "restartReading") {
+      const result = await restartReading(service, verifiedUser, {
+        requestId: parsed.requestId,
+        cycle: parsed.cycle,
+        day: parsed.day,
+        readingEpoch: parsed.readingEpoch,
       });
       return jsonResponse(origin, 200, {
         ok: true,
