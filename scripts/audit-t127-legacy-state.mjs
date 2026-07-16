@@ -125,6 +125,7 @@ const report = {
         talentMigratedMissingOrFalse: 0,
         nonMigratedWithInventory: 0,
         nonMigratedWithUnlockedRooms: 0,
+        percentEncodedUserIds: 0,
     },
     personalWallets: {
         activePersonal: 0,
@@ -148,6 +149,8 @@ const report = {
 };
 
 for (const { uid, data } of users.values()) {
+    // commit 본문 percent 인코딩 버그(kakao:123 → kakao%3A123, 2026-07-14~07-17)의 잔존 여부 참고 지표.
+    if (uid.includes('%')) report.users.percentEncodedUserIds += 1;
     const deleted = data.isDeleted === true;
     if (deleted) report.users.deleted += 1;
     else report.users.active += 1;

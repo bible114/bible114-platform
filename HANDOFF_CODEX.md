@@ -2304,6 +2304,11 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 
 ## 📮 Claude → Codex 메모
 
+2026-07-17 아침 3차 — 카카오 uid 수정 후속 검증·감사, **Codex 인계** (사용자 지시):
+- **완료 (Claude)**: (1) `scripts/audit-percent-encoded-ids.mjs` 신규 작성·실행 — 운영 전수 스캔 결과 **CLEAN** (users 38·churches 9·roster 3·kakaoLinks 0, `%` 포함 ID 0건 → `kakao%3A` 쓰레기 문서 없음, 정리 불필요). users 콜론 uid 2건·roster 콜론 uid 3건 확인. kakaoLinks 0건이라 "관리자 연결 계정" 가설은 최종 기각 — 실제 피해는 콜론 uid 개인 계정의 서버 쓰기 전면 실패였다. (2) `scripts/audit-t127-legacy-state.mjs`에 `percentEncodedUserIds` 카운터 추가. (3) `scripts/verify-kakao-uid-write-path.mjs` 신규 작성 — 배포된 platform-api v10이 콜론 uid로 실쓰기(users 보정 + activityActions 원장)에 성공하는지 검증하는 일회용 프로브. 임시 Auth 계정 `kakao:19999999999999999998`(+users 문서, currentDay 400 레거시 픽스처)을 만들어 `normalizeLegacyReadingPosition` 호출 → 기대값(currentDay 35·readCount 3·원장 존재·리터럴 % 문서 없음) 검증 → try/finally로 전부 삭제. 문법 검증·코드 리뷰 완료, **실행은 안 함** (운영 임시 데이터 생성이 권한 게이트에 걸림 — 사용자 개입 필요 판단).
+- **Codex가 할 일**: ① 사용자 재량/입회 하에 `node scripts/verify-kakao-uid-write-path.mjs` 실행해 `VERIFY RESULT: PASS`와 정리 4단계 전부 성공 확인 (T123 일회용 계정 관례와 동일 — 검증 직후 Auth·문서 완전 삭제 필수, 실패 시 남은 문서 수동 삭제까지). ② 실제 카카오 계정 로그인 성공(대시보드 진입)을 사용자에게 확인받아 이 건 종결. ③ (선택) 로그인 복원 체인에서 `migratePersonalTalentWalletIfNeeded`가 retryable 5xx에도 fail-closed인 문제 — normalize 감사처럼 복구 가능 오류를 삼킬지 정책 검토해 메모로 회신.
+- 관련 커밋: `cffa539`(관리자 역할 분기)·`037b071`(진단 코드 표시)·`dda1643`(**근본 수정** — commit 본문 percent 인코딩 제거, platform-api v10로 배포됨). 상세 원인은 아래 "아침 2차" 메모 참조.
+
 2026-07-17 아침 2차 — 카카오 로그인 진짜 원인 확정·서버 수정 배포 (Claude 실행):
 - 사용자 Safari 콘솔로 확정: 로그인 복원 중 `platform-api` 502 `PlatformApiError: 데이터를 저장하지 못했습니다`(FIRESTORE_WRITE_FAILED). 던진 호출은 복구-삼킴이 없는 `migratePersonalTalentWalletIfNeeded`.
 - **근본 원인**: `_shared/firestore.ts`의 `documentName`이 URL용 `encodeDocumentPath`(encodeURIComponent)를 commit **본문** `update.name`에도 사용. 본문 리소스 이름은 URL 디코딩 없이 문자 그대로 비교되므로 `users/kakao:123`이 `users/kakao%3A123`(별개 문서)이 되어 exists 전제조건이 항상 실패. **콜론이 든 카카오 uid만** 모든 서버 쓰기 action이 502로 반복 실패했다 (읽기는 URL GET이라 정상 → 트랜잭션은 진행되고 커밋만 실패). 구글/비밀번호 uid는 인코딩 무변환이라 무증상.
