@@ -305,6 +305,43 @@ Deno.test("legacy 진도는 user·모든 canonical roster·최소 원장을 한 
   }
 });
 
+Deno.test("로그인 감사가 기준 공동체 이름만 users에 점진 보정한다", async () => {
+  const harness = createHarness({
+    [`users/${UID}`]: baseUser({
+      currentDay: 42,
+      readCount: 2,
+      churchId: "church-1",
+      churchName: "이전 이름",
+    }),
+    "churches/church-1": {
+      name: "새 이름",
+      isDeleted: false,
+    },
+  });
+
+  assertEquals(await normalize(harness), {
+    alreadyCompleted: false,
+    committed: true,
+    result: { status: "normalized", currentDay: 42, readCount: 2 },
+  });
+  assertEquals(harness.commits[0].paths, [
+    `users/${UID}`,
+    `users/${UID}/activityActions/${REQUEST_ID}`,
+  ]);
+  assertEquals(harness.state.get(`users/${UID}`), {
+    ...baseUser({
+      currentDay: 42,
+      readCount: 2,
+      churchId: "church-1",
+      churchName: "새 이름",
+    }),
+  });
+  const ledger = harness.state.get(
+    `users/${UID}/activityActions/${REQUEST_ID}`,
+  );
+  assert(ledger && !JSON.stringify(ledger).includes("새 이름"));
+});
+
 Deno.test("이미 1~365 범위면 원장도 쓰지 않는 fresh no-op이다", async () => {
   const harness = createHarness({
     [`users/${UID}`]: baseUser({ currentDay: 365, readCount: 7 }),

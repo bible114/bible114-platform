@@ -180,6 +180,14 @@ export const useUserAuth = () => {
                                 }
                                 user.currentDay = normalizedData.currentDay;
                                 user.readCount = normalizedData.readCount;
+                                if (typeof normalizedData.churchName === 'string'
+                                    && normalizedData.churchName === normalizedData.churchName.trim()
+                                    && normalizedData.churchName.length >= 1
+                                    && normalizedData.churchName.length <= 200) {
+                                    user.churchName = normalizedData.churchName;
+                                } else if (normalizedData.churchName === null) {
+                                    user.churchName = null;
+                                }
                             }
 
                             user.extraOrgs = await loadUserExtraOrgs(firebaseUser.uid, {

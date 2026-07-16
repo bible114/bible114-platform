@@ -3,7 +3,7 @@ import Icon from './Icon';
 import GoogleLinkCard from './admin/GoogleLinkCard';
 import { firebase } from '../utils/firebase';
 import ChurchAdminView from './ChurchAdminView';
-import { adminPreviewDailyVideo, adminSetChurchVisibility, ensureUnaffiliatedChurch, rebuildPublicChurches } from '../utils/platformApi';
+import { adminPreviewDailyVideo, adminRenameChurch, adminSetChurchVisibility, ensureUnaffiliatedChurch, rebuildPublicChurches } from '../utils/platformApi';
 import { getDaysRead, getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
 import { invalidateChurchDirectoryCache, migrateChurchAccessSecrets } from '../utils/churchDirectory';
 import { migrateCredentialsIfNeeded, fetchMemberCredentials } from '../utils/memberCredentials';
@@ -41,6 +41,8 @@ const PlatformAdminView = ({
     // 검색 숨김 토글의 낙관적 반영 (allChurches는 prop이라 로컬 오버라이드로 관리)
     const [hiddenOverrides, setHiddenOverrides] = React.useState({});
     const [hiddenToggling, setHiddenToggling] = React.useState(false);
+    const [churchNameOverrides, setChurchNameOverrides] = React.useState({});
+    const [renamingChurchId, setRenamingChurchId] = React.useState(null);
     const [platformKakaoInput, setPlatformKakaoInput] = React.useState('');
     const [savingPlatformKakao, setSavingPlatformKakao] = React.useState(false);
     // 팝업 광고 (모든 사용자 대상, settings/platformPopup)
@@ -439,6 +441,34 @@ const PlatformAdminView = ({
         }
     };
 
+    const renameChurch = async (church) => {
+        if (church.id === UNAFFILIATED_CHURCH_ID || church.isVirtual === true) return;
+        const entered = prompt('새 공동체 이름을 입력하세요.', church.name || '');
+        if (entered === null) return;
+        const nextName = entered.trim();
+        if (!nextName || nextName.length > 200 || /[\u0000-\u001f\u007f]/.test(nextName)) {
+            alert('공동체 이름은 1~200자의 일반 문자로 입력해주세요.');
+            return;
+        }
+        if (nextName === church.name) return;
+        if (!confirm(`공동체 이름을 변경할까요?\n\n${church.name} → ${nextName}\n\n기존 회원의 저장된 이름은 다음 로그인 때 서버가 점진적으로 보정합니다.`)) return;
+        setRenamingChurchId(church.id);
+        try {
+            const response = await adminRenameChurch({
+                churchId: church.id,
+                name: nextName,
+            }, { expectedUid: currentUser?.uid });
+            invalidateChurchDirectoryCache();
+            setChurchNameOverrides(prev => ({ ...prev, [church.id]: response.name }));
+            alert(`✅ 공동체 이름을 '${response.name}'(으)로 변경했습니다.`);
+        } catch (e) {
+            console.error(e);
+            alert('이름 변경 실패: ' + e.message);
+        } finally {
+            setRenamingChurchId(null);
+        }
+    };
+
     // 전체 회원 문서의 평문 password/phone4를 private 하위문서로 이관하고 본문서에 null 마커를 남긴다.
     // userDocToState는 phone4를 매핑하지 않으므로 allUsers 대신 최신 문서를 직접 조회한다.
     const handleMigrateCredentials = async () => {
@@ -597,7 +627,10 @@ const PlatformAdminView = ({
     };
 
     const users = Array.isArray(allUsers) ? allUsers : [];
-    const churches = Array.isArray(allChurches) ? allChurches : [];
+    const churches = (Array.isArray(allChurches) ? allChurches : []).map(church => ({
+        ...church,
+        ...(churchNameOverrides[church.id] ? { name: churchNameOverrides[church.id] } : {}),
+    }));
     const departments = Array.isArray(DEFAULT_DEPARTMENTS) ? DEFAULT_DEPARTMENTS : [];
     const todayStr = new Date().toDateString();
 
@@ -778,6 +811,12 @@ const PlatformAdminView = ({
                                         ← 교회 목록으로
                                     </button>
                                     <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => renameChurch(selectedChurch)}
+                                            disabled={renamingChurchId === selectedChurch.id || selectedChurch.id === UNAFFILIATED_CHURCH_ID || selectedChurch.isVirtual === true}
+                                            className="flex items-center gap-1.5 bg-white text-slate-600 border border-slate-200 text-sm font-bold px-4 py-2 rounded-xl hover:bg-slate-50 shadow-sm disabled:cursor-not-allowed disabled:opacity-50">
+                                            {renamingChurchId === selectedChurch.id ? '이름 변경 중...' : '✏️ 이름 변경'}
+                                        </button>
                                         <button
                                             onClick={() => toggleChurchHidden(selectedChurch)}
                                             disabled={hiddenToggling}

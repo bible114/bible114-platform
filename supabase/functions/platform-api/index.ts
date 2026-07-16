@@ -94,6 +94,7 @@ import { normalizeLegacyReadingPosition } from "./normalizeLegacyReadingPosition
 import { completeMemberOnboarding } from "./ownMembershipService.ts";
 import { joinSoloCommunity } from "./joinSoloCommunityService.ts";
 import { adminSetChurchVisibility } from "./adminChurchVisibilityService.ts";
+import { adminRenameChurch } from "./adminChurchRenameService.ts";
 import { convertToPersonalAccount } from "./convertToPersonalAccountService.ts";
 import { completeChurchAdminSignup } from "./completeChurchAdminSignupService.ts";
 import { churchAdminSignupIdentityFromVerifiedUser } from "./completeChurchAdminSignupCore.ts";
@@ -1225,6 +1226,20 @@ Deno.serve(async (request) => {
         requestId: parsed.requestId,
         churchId: parsed.churchId,
         hidden: parsed.hidden,
+      });
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        ...result,
+      });
+    }
+
+    if (parsed.action === "adminRenameChurch") {
+      const result = await adminRenameChurch(service, verifiedUser, {
+        requestId: parsed.requestId,
+        churchId: parsed.churchId,
+        name: parsed.name,
       });
       return jsonResponse(origin, 200, {
         ok: true,

@@ -57,8 +57,16 @@ export type NormalizeLegacyReadingPositionResponse = {
 type LegacyReadingUser = {
   uid?: unknown;
   isDeleted?: unknown;
+  accountType?: unknown;
+  churchId?: unknown;
+  churchName?: unknown;
   currentDay?: unknown;
   readCount?: unknown;
+};
+
+type LegacyReadingChurch = {
+  name?: unknown;
+  isDeleted?: unknown;
 };
 
 type LegacyReadingRoster = TalentMembershipUser & {
@@ -173,7 +181,12 @@ const validateInput = (
 const normalizeUser = (
   uid: string,
   user: LegacyReadingUser,
-): { currentDay: number; readCount: number } => {
+): {
+  currentDay: number;
+  readCount: number;
+  churchId: string | null;
+  churchName: unknown;
+} => {
   if (user.uid !== undefined && user.uid !== null && user.uid !== uid) {
     throw conflict("사용자 식별자가 현재 로그인과 일치하지 않습니다.");
   }
@@ -182,6 +195,22 @@ const normalizeUser = (
     user.isDeleted !== undefined && user.isDeleted !== null &&
     user.isDeleted !== false
   ) throw conflict("사용자 삭제 상태가 올바르지 않습니다.");
+  let churchId: string | null = null;
+  if (
+    user.accountType !== "personal" && user.churchId !== undefined &&
+    user.churchId !== null
+  ) {
+    if (typeof user.churchId !== "string") {
+      throw conflict("사용자 공동체 식별자가 올바르지 않습니다.");
+    }
+    const normalizedChurchId = normalizeStoredDocumentId(user.churchId);
+    if (
+      !normalizedChurchId || normalizedChurchId !== user.churchId ||
+      normalizedChurchId.length > 128 || normalizedChurchId === "." ||
+      normalizedChurchId === ".." || hasControlCharacters(normalizedChurchId)
+    ) throw conflict("사용자 공동체 식별자가 올바르지 않습니다.");
+    churchId = normalizedChurchId;
+  }
   return {
     currentDay: requireSafeInteger(user.currentDay, "users.currentDay"),
     // 구버전 문서는 readCount 자체가 없을 수 있으며 기존 클라이언트도 이를
@@ -189,7 +218,25 @@ const normalizeUser = (
     readCount: requireSafeInteger(user.readCount, "users.readCount", {
       fallback: 1,
     }),
+    churchId,
+    churchName: user.churchName,
   };
+};
+
+const canonicalChurchName = (
+  churchId: string,
+  church: LegacyReadingChurch | null,
+): string => {
+  if (!isRecord(church) || church.isDeleted === true) {
+    throw conflict("사용자의 기준 공동체를 찾을 수 없습니다.");
+  }
+  if (
+    church.isDeleted !== undefined && church.isDeleted !== false ||
+    typeof church.name !== "string" || church.name !== church.name.trim() ||
+    church.name.length < 1 || church.name.length > 200 ||
+    hasControlCharacters(church.name)
+  ) throw conflict(`공동체 이름 상태가 올바르지 않습니다: ${churchId}`);
+  return church.name;
 };
 
 const normalizeRosters = (
@@ -361,6 +408,19 @@ const executeNormalization = async (
     if (!userDocument) throw new PlatformError("NOT_FOUND");
     const user = normalizeUser(uid, userDocument.data);
     const rosters = normalizeRosters(uid, rosterDocuments, user);
+    const churchDocument = user.churchId
+      ? await dependencies.getDocument<LegacyReadingChurch>(
+        service.token,
+        service.projectId,
+        `churches/${user.churchId}`,
+        { transaction },
+      )
+      : null;
+    const authoritativeChurchName = user.churchId
+      ? canonicalChurchName(user.churchId, churchDocument?.data || null)
+      : null;
+    const churchNameNeedsRepair = authoritativeChurchName !== null &&
+      user.churchName !== authoritativeChurchName;
 
     if (ledgerDocument) {
       const result = validateReplay(ledgerDocument.data, input);
@@ -372,7 +432,10 @@ const executeNormalization = async (
     const rosterTargets = userNeedsNormalization
       ? rosters
       : rosters.filter((roster) => roster.needsRepair);
-    if (!userNeedsNormalization && rosterTargets.length === 0) {
+    if (
+      !userNeedsNormalization && !churchNameNeedsRepair &&
+      rosterTargets.length === 0
+    ) {
       await rollbackQuietly(dependencies, service, transaction);
       return {
         alreadyCompleted: false,
@@ -403,15 +466,19 @@ const executeNormalization = async (
       currentDay: result.currentDay,
       readCount: result.readCount,
     };
+    const userUpdate = {
+      ...(userNeedsNormalization ? progressUpdate : {}),
+      ...(churchNameNeedsRepair ? { churchName: authoritativeChurchName } : {}),
+    };
     const writes = [
-      ...(userNeedsNormalization
+      ...(userNeedsNormalization || churchNameNeedsRepair
         ? [
           dependencies.updateWrite(
             service.projectId,
             userPath,
-            progressUpdate,
+            userUpdate,
             {
-              updateMask: ["currentDay", "readCount"],
+              updateMask: Object.keys(userUpdate),
               exists: true,
             },
           ),

@@ -28,6 +28,7 @@ export const COMPLETE_MEMBER_ONBOARDING_ACTION =
 export const JOIN_SOLO_COMMUNITY_ACTION = "joinSoloCommunity" as const;
 export const ADMIN_SET_CHURCH_VISIBILITY_ACTION =
   "adminSetChurchVisibility" as const;
+export const ADMIN_RENAME_CHURCH_ACTION = "adminRenameChurch" as const;
 export const CONVERT_TO_PERSONAL_ACCOUNT_ACTION =
   "convertToPersonalAccount" as const;
 export const COMPLETE_CHURCH_ADMIN_SIGNUP_ACTION =
@@ -71,6 +72,12 @@ export type PlatformApiRequest =
     requestId: string;
     churchId: string;
     hidden: boolean;
+  }
+  | {
+    action: typeof ADMIN_RENAME_CHURCH_ACTION;
+    requestId: string;
+    churchId: string;
+    name: string;
   }
   | {
     action: typeof JOIN_SOLO_COMMUNITY_ACTION;
@@ -273,6 +280,17 @@ const safeDocumentId = (value: unknown, { optional = false } = {}) => {
     : null;
 };
 
+const strictText = (
+  value: unknown,
+  { min = 0, max }: { min?: number; max: number },
+) => {
+  if (typeof value !== "string" || value !== value.trim()) return null;
+  return value.length >= min && value.length <= max &&
+      !/[\u0000-\u001f\u007f]/.test(value)
+    ? value
+    : null;
+};
+
 const hasEntryCodeOrTicket = (entryCode: string, joinTicket: string) => {
   const hasEntryCode = entryCode.length >= 4 && entryCode.length <= 128 &&
     !/[\u0000-\u001f\u007f]/.test(entryCode);
@@ -388,16 +406,6 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       "contactEmail",
       "consent",
     ]);
-    const strictText = (
-      value: unknown,
-      { min = 0, max }: { min?: number; max: number },
-    ) => {
-      if (typeof value !== "string" || value !== value.trim()) return null;
-      return value.length >= min && value.length <= max &&
-          !/[\u0000-\u001f\u007f]/.test(value)
-        ? value
-        : null;
-    };
     const normalizedName = strictText(name, { min: 1, max: 50 });
     const normalizedChurchName = strictText(churchName, { min: 1, max: 200 });
     const normalizedPastorName = strictText(pastorName, { min: 1, max: 100 });
@@ -462,6 +470,25 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       throw new PlatformApiRequestError("INVALID_PAYLOAD");
     }
     return { action, requestId, churchId: normalizedChurchId, hidden };
+  }
+  if (action === ADMIN_RENAME_CHURCH_ACTION) {
+    const allowedKeys = new Set(["action", "requestId", "churchId", "name"]);
+    const normalizedChurchId = safeDocumentId(churchId);
+    const normalizedName = strictText(name, { min: 1, max: 200 });
+    if (
+      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+      !normalizedChurchId || normalizedChurchId !== churchId ||
+      normalizedChurchId === "." || normalizedChurchId === ".." ||
+      normalizedChurchId === "unaffiliated_v1" || normalizedName === null
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return {
+      action,
+      requestId,
+      churchId: normalizedChurchId,
+      name: normalizedName,
+    };
   }
   if (action === JOIN_SOLO_COMMUNITY_ACTION) {
     const allowedKeys = new Set(["action", "requestId"]);

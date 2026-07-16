@@ -231,6 +231,40 @@ Deno.test("플랫폼 관리자 교회 숨김은 exact 교회 ID와 boolean만 �
   }
 });
 
+Deno.test("플랫폼 관리자 교회 이름 변경은 exact ID와 canonical 이름만 받는다", () => {
+  const requestId = "123e4567-e89b-42d3-a456-426614174000";
+  const valid = {
+    action: "adminRenameChurch",
+    requestId,
+    churchId: "church-1",
+    name: "새 공동체 이름",
+  };
+  const parsed = parsePlatformApiRequest(valid);
+  assert(parsed.action === "adminRenameChurch", "action mismatch");
+  if (parsed.action !== "adminRenameChurch") return;
+  assert(parsed.churchId === valid.churchId, "church mismatch");
+  assert(parsed.name === valid.name, "name mismatch");
+
+  for (
+    const invalid of [
+      { ...valid, churchId: " church-1" },
+      { ...valid, churchId: "a/b" },
+      { ...valid, churchId: "." },
+      { ...valid, churchId: "unaffiliated_v1" },
+      { ...valid, name: " 새 이름" },
+      { ...valid, name: "" },
+      { ...valid, name: "bad\nname" },
+      { ...valid, hidden: false },
+      { ...valid, uid: "forged-admin" },
+    ]
+  ) {
+    assertRequestError(
+      () => parsePlatformApiRequest(invalid),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
 Deno.test("legacy 읽기 진도 보정은 requestId 외 입력을 거부한다", () => {
   const requestId = "123e4567-e89b-42d3-a456-426614174000";
   const parsed = parsePlatformApiRequest({

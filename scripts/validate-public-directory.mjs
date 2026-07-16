@@ -23,6 +23,12 @@ const visibilityService = read(
 const visibilityServiceTest = read(
   "supabase/functions/platform-api/adminChurchVisibilityService_test.ts",
 );
+const renameService = read(
+  "supabase/functions/platform-api/adminChurchRenameService.ts",
+);
+const renameServiceTest = read(
+  "supabase/functions/platform-api/adminChurchRenameService_test.ts",
+);
 const firestore = read("supabase/functions/_shared/firestore.ts");
 const firestoreTest = read("supabase/functions/_shared/firestore_test.ts");
 const client = read("src/utils/platformApi.js");
@@ -186,6 +192,15 @@ for (const pattern of [
 assert.match(visibilityServiceTest, /apply-then-409/);
 assert.match(visibilityServiceTest, /exact ledger[\s\S]*replay/);
 
+for (const pattern of [
+  /const legacyPath = "settings\/churchDirectory"/,
+  /const publicPath = `publicChurches\/\$\{input\.churchId\}`/,
+  /updateMask: \["name", "updatedAt"\]/,
+  /churches: decision\.legacyChurches, updatedAt: now/,
+]) assert.match(renameService, pattern);
+assert.match(renameServiceTest, /legacy 비밀 drift/);
+assert.match(renameServiceTest, /apply-then-409/);
+
 const visibilityHandlerStart = index.indexOf(
   'if (parsed.action === "adminSetChurchVisibility")',
 );
@@ -303,6 +318,51 @@ for (const mutate of [
   assert.throws(
     () => platformApi.validateAdminSetChurchVisibilityResponse(
       visibilityPayload,
+      result,
+      requestId,
+    ),
+    error => error instanceof platformApi.PlatformApiError
+      && error.code === "INVALID_RESPONSE" && error.retryable === true,
+  );
+}
+
+const renamePayload = { churchId: "church-1", name: "새 이름" };
+const renameResponse = {
+  ok: true,
+  action: "adminRenameChurch",
+  requestId,
+  status: "renamed",
+  churchId: "church-1",
+  previousName: "이전 이름",
+  name: "새 이름",
+};
+assert.deepEqual(
+  platformApi.validateAdminRenameChurchResponse(
+    renamePayload,
+    renameResponse,
+    requestId,
+  ),
+  renameResponse,
+);
+assert.deepEqual(
+  platformApi.validateAdminRenameChurchResponse(
+    renamePayload,
+    { ...renameResponse, previousName: "새 이름" },
+    requestId,
+  ).status,
+  "renamed",
+);
+for (const mutate of [
+  (result) => { result.extra = true; },
+  (result) => { result.name = "다른 이름"; },
+  (result) => { result.status = "pending"; },
+  (result) => { result.churchId = "church-2"; },
+]) {
+  const result = structuredClone(renameResponse);
+  mutate(result);
+  assert.throws(
+    () => platformApi.validateAdminRenameChurchResponse(
+      renamePayload,
       result,
       requestId,
     ),

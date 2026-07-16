@@ -21,6 +21,10 @@ const signupService = read('supabase/functions/platform-api/completeChurchAdminS
 const rotateService = read('supabase/functions/platform-api/rotateChurchAccessCodeService.ts');
 const ensureService = read('supabase/functions/platform-api/ensureUnaffiliatedChurchService.ts');
 const ensureCore = read('supabase/functions/platform-api/ensureUnaffiliatedChurchCore.ts');
+const renameService = read('supabase/functions/platform-api/adminChurchRenameService.ts');
+const renameServiceTest = read('supabase/functions/platform-api/adminChurchRenameService_test.ts');
+const normalizeService = read('supabase/functions/platform-api/normalizeLegacyReadingPositionService.ts');
+const userAuth = read('src/hooks/useUserAuth.js');
 const constants = read('src/data/constants.js');
 
 for (const action of [
@@ -32,6 +36,33 @@ for (const action of [
     assert.match(index, new RegExp(`parsed\\.action === "${action}"`), `${action} router가 필요합니다.`);
     assert.match(client, new RegExp(`callPlatformApi\\('${action}'`), `${action} client가 필요합니다.`);
 }
+
+assert.match(core, /ADMIN_RENAME_CHURCH_ACTION = "adminRenameChurch" as const/);
+assert.match(index, /parsed\.action === "adminRenameChurch"[\s\S]*adminRenameChurch\(service, verifiedUser/);
+assert.match(client, /callPlatformApi\('adminRenameChurch', payload/);
+for (const pattern of [
+    /const ledgerPath = `platformAdminActions\/\$\{input\.requestId\}`/,
+    /const churchPath = `churches\/\$\{input\.churchId\}`/,
+    /const publicPath = `publicChurches\/\$\{input\.churchId\}`/,
+    /const legacyPath = "settings\/churchDirectory"/,
+    /updateMask: \["name", "updatedAt"\]/,
+    /churches: decision\.legacyChurches, updatedAt: now/,
+    /MAX_TRANSACTION_ATTEMPTS = 3/,
+]) assert.match(renameService, pattern);
+assert.match(renameServiceTest, /한 transaction에서 바꾼다/);
+assert.match(renameServiceTest, /apply-then-409/);
+assert.match(renameServiceTest, /legacy 비밀 drift/);
+
+const renameStart = platformAdmin.indexOf('const renameChurch = async');
+const renameEnd = platformAdmin.indexOf('\n    };', renameStart) + 7;
+assert.ok(renameStart >= 0 && renameEnd > renameStart, '공동체 이름 변경 UI 진입점이 필요합니다.');
+const renameContract = platformAdmin.slice(renameStart, renameEnd);
+assert.match(renameContract, /await adminRenameChurch\(\{[\s\S]*churchId: church\.id[\s\S]*name: nextName[\s\S]*expectedUid: currentUser\?\.uid/);
+assert.match(renameContract, /invalidateChurchDirectoryCache\(\)/);
+assert.doesNotMatch(renameContract, /db\.|\.update\(|\.set\(/, '이름 변경 UI가 브라우저에서 직접 쓰면 안 됩니다.');
+assert.match(normalizeService, /`churches\/\$\{user\.churchId\}`[\s\S]*churchNameNeedsRepair/);
+assert.match(normalizeService, /churchNameNeedsRepair \? \{ churchName: authoritativeChurchName \} : \{\}/);
+assert.match(userAuth, /normalizedData\.churchName[\s\S]*user\.churchName = normalizedData\.churchName/);
 
 assert.match(index, /completeChurchAdminSignup[\s\S]*churchAdminSignupIdentityFromVerifiedUser\(\{[\s\S]*uid: verifiedUser\.uid,[\s\S]*signInProvider: verifiedUser\.signInProvider,[\s\S]*claims: verifiedUser\.claims/);
 assert.match(signupService, /churchLifecycleActions\/\$\{signup\.requestId\}/);

@@ -18,6 +18,10 @@ const ADMIN_SET_CHURCH_VISIBILITY_REQUEST_KEYS = new Set(['churchId', 'hidden'])
 const ADMIN_SET_CHURCH_VISIBILITY_RESPONSE_KEYS = new Set([
     'ok', 'action', 'requestId', 'status', 'hidden',
 ]);
+const ADMIN_RENAME_CHURCH_REQUEST_KEYS = new Set(['churchId', 'name']);
+const ADMIN_RENAME_CHURCH_RESPONSE_KEYS = new Set([
+    'ok', 'action', 'requestId', 'status', 'churchId', 'previousName', 'name',
+]);
 const COMPLETE_CHURCH_ADMIN_SIGNUP_REQUEST_KEYS = new Set([
     'name', 'contactEmail', 'churchName', 'pastorName', 'denomination', 'entryCode',
     'departments', 'password', 'consent',
@@ -1930,6 +1934,74 @@ export const adminSetChurchVisibility = (input, options = {}) => {
     }
     return callPlatformApi('adminSetChurchVisibility', payload, { ...options, requestId })
         .then(result => validateAdminSetChurchVisibilityResponse(payload, result, requestId));
+};
+
+const invalidAdminRenameChurchResponse = () => {
+    throw new PlatformApiError('공동체 이름 변경 결과를 안전하게 확인하지 못했습니다.', {
+        code: 'INVALID_RESPONSE', status: 200, retryable: true,
+    });
+};
+
+export const validateAdminRenameChurchResponse = (payload, result, expectedRequestId) => {
+    const validName = value => typeof value === 'string'
+        && value === value.trim() && value.length >= 1 && value.length <= 200
+        && !/[\u0000-\u001f\u007f]/.test(value);
+    if (!hasExactKeys(payload, ADMIN_RENAME_CHURCH_REQUEST_KEYS)
+        || typeof payload.churchId !== 'string'
+        || !payload.churchId || payload.churchId !== payload.churchId.trim()
+        || payload.churchId.length > 128 || payload.churchId.includes('/')
+        || payload.churchId === '.' || payload.churchId === '..'
+        || payload.churchId === 'unaffiliated_v1'
+        || /[\u0000-\u001f\u007f]/.test(payload.churchId)
+        || !validName(payload.name)
+        || !ACTIVITY_REQUEST_ID_PATTERN.test(expectedRequestId)
+        || !hasExactKeys(result, ADMIN_RENAME_CHURCH_RESPONSE_KEYS)
+        || result.ok !== true || result.action !== 'adminRenameChurch'
+        || result.requestId !== expectedRequestId
+        || !['renamed', 'alreadyNamed'].includes(result.status)
+        || result.churchId !== payload.churchId
+        || !validName(result.previousName) || !validName(result.name)
+        || result.name !== payload.name
+        || (result.status === 'alreadyNamed' && result.previousName !== result.name)) {
+        return invalidAdminRenameChurchResponse();
+    }
+    return {
+        ok: true,
+        action: 'adminRenameChurch',
+        requestId: expectedRequestId,
+        status: result.status,
+        churchId: result.churchId,
+        previousName: result.previousName,
+        name: result.name,
+    };
+};
+
+export const adminRenameChurch = (input, options = {}) => {
+    if (!isResponseRecord(input) || !hasExactKeys(input, ADMIN_RENAME_CHURCH_REQUEST_KEYS)) {
+        throw new PlatformApiError('공동체 이름 변경 요청 형식이 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const churchId = typeof input.churchId === 'string' ? input.churchId.trim() : '';
+    const name = typeof input.name === 'string' ? input.name.trim() : '';
+    if (!churchId || churchId !== input.churchId || churchId.length > 128
+        || churchId.includes('/') || churchId === '.' || churchId === '..'
+        || churchId === 'unaffiliated_v1' || /[\u0000-\u001f\u007f]/.test(churchId)
+        || !name || name !== input.name || name.length > 200
+        || /[\u0000-\u001f\u007f]/.test(name)) {
+        throw new PlatformApiError('공동체 이름 변경 요청 형식이 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const payload = { churchId, name };
+    const requestId = options.requestId || createRequestId();
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(requestId)) {
+        throw new PlatformApiError('공동체 이름 변경 요청 번호가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('adminRenameChurch', payload, { ...options, requestId })
+        .then(result => validateAdminRenameChurchResponse(payload, result, requestId));
 };
 
 const isCanonicalChurchAdminSignupText = (value, min, max) => (
