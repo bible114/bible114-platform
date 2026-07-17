@@ -183,6 +183,7 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-17 | T130 신약 파생 캐시·새번역 품질 무쓰기 감사 도구 준비 | `scripts/audit-{nt-derived-verses-schedule,new-translation-text-quality}.mjs`, `HANDOFF_CODEX.md` | `nt_saehangul`·`nt_easy`·`nt_message` 365일의 title/본문 장 헤더, 신약 260장 커버리지, canonical Day 불일치·offset, 세 버전 배치 동일성을 결정적으로 집계하는 읽기 전용 도구를 추가했다. `1year_new`는 title/day ID/원문을 출력하지 않고 73일 구간별 절 표식 구조·숫자 잔재 후보 건수만 집계한다. 문법·diff 검사는 통과했으나 Firebase CLI refresh credential이 만료·폐기되어 Firestore 요청 전 `firebase login --reauth` 안내로 멈췄다. 이 시도의 운영 읽기·쓰기는 0건이며 T130은 재인증 후 실행·결과 메모까지 남아 미완료다. |
 | 2026-07-17 | T127 최종 감사 전 운영·정적 writer 기준선 | `scripts/audit-t127-{legacy-state,direct-writers}.mjs`, `HANDOFF_CODEX.md` | 최종 7일 관찰 종료 전 비교 기준선을 재채취했다. users 38(active 37/deleted 1), Day>365 0, percent-encoded UID 0, 미이관 inventory/unlockedRooms 0. personal primary roster 누락·손상 잔액 0, roster 3건의 경로·uid·진도·고아 이상 0으로 이전 기준선과 동일하다. 추가한 보고 전용 정적 감사는 `src` 157파일에서 보호 대상 직접 writer 후보 30건(users 17, roster 7, directory 3, dailyVideos 2, videoAutoConfig 1)을 파일:행·필드로 재현하고, platformStats·talentPurchases 클라이언트 직접 writer는 0건으로 확인했다. 운영 문서는 수정하지 않았다. 2026-07-24 19:00:53 KST 이후 두 감사를 재실행해 drift 0과 각 후보의 이관/제거 여부를 확인한 뒤만 writer/rules 차단을 진행한다. |
 | 2026-07-17 | T129d 순서대로 퀴즈 운영 실쓰기 스모크 | `scripts/verify-sequential-quiz-write-path.mjs`, `HANDOFF_CODEX.md` | 고정 UID·이메일의 기존 users/Auth 미존재를 먼저 확인하고, 일회용 `1year_sequential` Day 105 운영 fixture로 배포된 `submitQuiz`를 호출했다. 서버 인덱스 정답을 선택한 첫 시도가 HTTP 200 / `ready` / attempts 1 / solved true였고, users `quizProgress` 및 `activityActions`·`quizAttemptSlots` 원장 각 1건을 확인했다. 하위 문서 2건·users 1건·임시 Auth를 `finally`에서 모두 삭제해 잔여 없음. `VERIFY RESULT: PASS`. |
 | 2026-07-17 | T125e·T128·T129 운영 릴리스 + title 10건 원자 교정 | `scripts/apply-verses-title-phase2.mjs`, `HANDOFF_CODEX.md` (배포 대상 `f56d194`) | `platform-api` v11 ACTIVE 후 OPTIONS 204·미인증 400·bad origin 403을 확인하고 `main`을 `f56d194`까지 push했다. GitHub Pages 공개 번들 `assets/index-DO0vfEyz.js`는 로컬과 SHA-256 `464b3ab3a896ec35d5ab6f60df696c30a051b6c36b992f0f6b38369aa4052668` 일치. rules/index/kakao-auth 변경·배포 없음. 운영 title 10건은 새 제목 parser 기대를 검증하고 expected current/updateTime fence를 둔 한 atomic title-only commit으로 적용했다. 0600 백업 SHA-256 `2d935788f35155bb05be0a52b293f5a39409fb6d6bee302209bd3c6036c06489`, 사후 already 10/mismatch 0, sequential title/body 365일 일치·66권 1,189장 확인. Day 357 `유다 1장` 파서 누락은 적용 전 `유다서 1장`으로 보정했다. 최종 T127 7일 시계는 공개 웹 확인 2026-07-17 19:00:53 KST부터 재시작한다. |
@@ -377,6 +378,10 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-17 라운드 28 T130 진행 중·재인증 차단:
+- 신약 파생 3개 캐시 전수 대조와 `1year_new` 숫자/절 표식 품질 집계 도구를 작성했지만, Firebase CLI refresh credential이 만료·폐기되어 `auth.getAccessToken()`에서 종료됐다. Firestore 요청 전이므로 운영 읽기·쓰기 0건이다. **사용자 확인 필요:** 다음 실행 전 `firebase login --reauth`를 진행해도 되는지. 재인증 후 두 스크립을 실행·해석하기 전에는 T130을 완료 처리하지 않는다.
+- 운영 결과 전 임시 설계 권고는 canonical `new_testament`·단일 `allowed.nt`를 유지하고 세 파생 캐시를 재배치/재생성하는 안이다. 전용 scope 분리는 `nt_easy` 승인 문항 1,825개의 Day 의미까지 재배치·재검수해야 하고 클라이언트/서버/인덱스 계약을 확장한다. 단순 Day 이동은 금지하고, 실제 수리 시 title·본문 절 범위·audioUrl·updateTime fence·frozen backup을 포함한 bijection을 먼저 증명해야 한다. 수리 후에는 Firestore보다 먼저 재사용되는 `v_nt_*` localStorage 캐시 revision도 올려야 한다.
 
 2026-07-17 순서대로 읽기 퀴즈·T127 잔여 감사:
 - T127 최종 감사의 재현성을 위해 `audit-t127-direct-writers.mjs`를 추가했다. compat Firestore 참조를 따라 `src` 157파일을 읽기 전용으로 스캔하고 보호 대상 writer 후보를 target·파일:행·set/update/delete/batch/transaction·필드로 정렬한다. 현재 30건(users 17, roster 7, directory 3, dailyVideos 2, videoAutoConfig 1)이며 platformStats·talentPurchases는 0건이다. 변수명을 서로 다른 scope에서 재사용한 호출은 안전하게 복수 target 후보로 보고하므로, 최종 차단 전 각 파일:행을 코드로 확정해야 한다.
