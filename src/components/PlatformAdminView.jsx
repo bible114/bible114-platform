@@ -3,7 +3,7 @@ import Icon from './Icon';
 import GoogleLinkCard from './admin/GoogleLinkCard';
 import { firebase } from '../utils/firebase';
 import ChurchAdminView from './ChurchAdminView';
-import { adminPreviewDailyVideo, adminRenameChurch, adminSetChurchVisibility, ensureUnaffiliatedChurch, rebuildPublicChurches } from '../utils/platformApi';
+import { adminPreviewDailyVideo, adminRenameChurch, adminSetChurchLifecycle, adminSetChurchVisibility, ensureUnaffiliatedChurch, rebuildPlatformStats, rebuildPublicChurches } from '../utils/platformApi';
 import { getDaysRead, getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
 import { invalidateChurchDirectoryCache, migrateChurchAccessSecrets } from '../utils/churchDirectory';
 import { migrateCredentialsIfNeeded, fetchMemberCredentials } from '../utils/memberCredentials';
@@ -43,6 +43,7 @@ const PlatformAdminView = ({
     const [hiddenToggling, setHiddenToggling] = React.useState(false);
     const [churchNameOverrides, setChurchNameOverrides] = React.useState({});
     const [renamingChurchId, setRenamingChurchId] = React.useState(null);
+    const [lifecycleChurchId, setLifecycleChurchId] = React.useState(null);
     const [platformKakaoInput, setPlatformKakaoInput] = React.useState('');
     const [savingPlatformKakao, setSavingPlatformKakao] = React.useState(false);
     // 팝업 광고 (모든 사용자 대상, settings/platformPopup)
@@ -315,24 +316,14 @@ const PlatformAdminView = ({
     };
 
     const refreshPlatformStats = async () => {
-        if (!db) return;
         setStatsRefreshing(true);
         try {
-            const today = new Date().toDateString();
-            const [churchSnap, userSnap] = await Promise.all([
-                db.collection('churches').get(),
-                db.collection('users').where('role', '!=', 'churchAdmin').get(),
-            ]);
-            const users = userSnap.docs.map(d => d.data()).filter(u => !u.isDeleted);
-            await db.collection('settings').doc('platformStats').set({
-                total_churches: churchSnap.size,
-                total_readers: users.length,
-                finished_total: users.filter(u => (u.readCount || 1) >= 2).length,
-                readers_today: users.filter(u => u.lastReadDate === today).length,
-                today_date: today,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            });
-            alert(`통계 갱신 완료!\n교회 ${churchSnap.size}개 / 성도 ${users.length}명`);
+            const preview = await rebuildPlatformStats({ dryRun: true }, { expectedUid: currentUser?.uid });
+            const summary = `공동체 ${preview.current.total_churches ?? '-'} → ${preview.expected.total_churches}\n독자 ${preview.current.total_readers ?? '-'} → ${preview.expected.total_readers}\n오늘 독자 ${preview.current.readers_today ?? '-'} → ${preview.expected.readers_today}\n누적 완독 ${preview.current.finished_total ?? '-'} → ${preview.expected.finished_total}`;
+            if (preview.changed.length === 0) { alert(`✅ 통계가 이미 정확합니다.\n\n${summary}`); return; }
+            if (!confirm(`서버 전수 재계산 결과를 반영할까요?\n\n${summary}`)) return;
+            const applied = await rebuildPlatformStats({ dryRun: false }, { expectedUid: currentUser?.uid });
+            alert(`✅ 통계 재계산 완료\n\n공동체 ${applied.expected.total_churches}개 / 독자 ${applied.expected.total_readers}명 / 누적 완독 ${applied.expected.finished_total}회`);
         } catch (e) {
             alert('갱신 실패: ' + e.message);
         } finally {
@@ -622,8 +613,26 @@ const PlatformAdminView = ({
         }
     };
 
-    const deleteChurch = church => {
-        alert(`"${church.name}" 교회 비활성화는 현재 안전한 서버 처리 정책을 확정 중입니다.\n교인·외부 소속·달란트·미처리 구매를 보호하기 위해 기존 부분 삭제 기능은 잠시 중단했습니다.`);
+    const deleteChurch = async church => {
+        if (church.id === UNAFFILIATED_CHURCH_ID || church.isVirtual === true) return;
+        const active = church.isDeleted === true;
+        const verb = active ? '복원' : '비활성화';
+        const warning = active
+            ? `"${church.name}" 공동체를 복원할까요?\n\n이 비활성화 세대에서 중단된 주 소속 사용자만 함께 복원됩니다.`
+            : `"${church.name}" 공동체를 비활성화할까요?\n\n검색·신규 가입과 공동체 활동이 즉시 중단됩니다. 주 소속 사용자는 복원 가능한 상태로 전환되며, 외부 소속·달란트·미처리 구매는 삭제하거나 자동 환불하지 않습니다.`;
+        if (!confirm(warning)) return;
+        setLifecycleChurchId(church.id);
+        try {
+            const result = await adminSetChurchLifecycle({ churchId: church.id, active }, { expectedUid: currentUser?.uid });
+            invalidateChurchDirectoryCache();
+            alert(`✅ 공동체 ${verb} 완료\n주 소속 사용자 ${result.affectedUsers}명\n양수 잔액 roster ${result.positiveRosterCount}건 (합계 ⭐${result.positiveTalentTotal})\n미처리 구매 ${result.pendingPurchaseCount}건\n\n잔액과 미처리 구매는 동결 보존되며 오프라인 정산 대상입니다.`);
+            window.location.reload();
+        } catch (e) {
+            console.error(e);
+            alert(`${verb} 실패: ${e.message}`);
+        } finally {
+            setLifecycleChurchId(null);
+        }
     };
 
     const users = Array.isArray(allUsers) ? allUsers : [];
@@ -950,9 +959,9 @@ const PlatformAdminView = ({
                                         </div>
                                         <button
                                             onClick={() => deleteChurch(selectedChurch)}
-                                            disabled={seedingData}
+                                            disabled={seedingData || lifecycleChurchId === selectedChurch.id}
                                             className="w-full bg-amber-100 hover:bg-amber-200 text-amber-800 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition-colors border border-amber-300">
-                                            ⚠️ 교회 비활성화 정책 확인 중
+                                            {lifecycleChurchId === selectedChurch.id ? '처리 중...' : (selectedChurch.isDeleted === true ? '♻️ 공동체 복원' : '⚠️ 공동체 비활성화')}
                                         </button>
                                     </div>
                                 </div>

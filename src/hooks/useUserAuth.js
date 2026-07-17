@@ -193,6 +193,15 @@ export const useUserAuth = () => {
                             user.extraOrgs = await loadUserExtraOrgs(firebaseUser.uid, {
                                 source: 'server',
                             });
+                            if (user.accountType === 'personal' && user.primaryOrgId) {
+                                try {
+                                    const primaryChurch = await db.collection('churches').doc(user.primaryOrgId).get({ source: 'server' });
+                                    user.primaryOrgInactive = !primaryChurch.exists || primaryChurch.data()?.isDeleted === true;
+                                } catch (primaryError) {
+                                    console.error('기준 공동체 활성 상태 확인 실패:', primaryError);
+                                    user.primaryOrgInactive = null;
+                                }
+                            }
                             if (discardStaleEvent()) return;
                             setCurrentUser(user);
                         } else {

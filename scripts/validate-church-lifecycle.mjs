@@ -135,7 +135,10 @@ assert.match(platformAdmin, /href=\{`mailto:\$\{selectedChurch\.adminEmail\}`\}[
 assert.match(signupService, /adminPath,[\s\S]*adminEmail: signup\.contactEmail/);
 
 assert.doesNotMatch(platformAdmin, /const doDeleteChurch|removeChurchFromDirectory/);
-assert.match(platformAdmin, /기존 부분 삭제 기능은 잠시 중단했습니다/);
+assert.match(platformAdmin, /adminSetChurchLifecycle/);
+assert.match(platformAdmin, /외부 소속·달란트·미처리 구매는 삭제하거나 자동 환불하지 않습니다/);
+assert.match(index, /parsed\.action === "adminSetChurchLifecycle"[\s\S]*adminSetChurchLifecycle\(service, verifiedUser/);
+assert.match(client, /callPlatformApi\('adminSetChurchLifecycle'/);
 assert.doesNotMatch(platformAdmin, /migrateChurchAccessSecrets\(\{[\s\S]{0,120}dryRun:\s*false/);
 
 const platformUserEdit = sliceBetween(app, 'const saveEditUser = async', '\n    /*');

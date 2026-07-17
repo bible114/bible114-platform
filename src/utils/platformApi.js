@@ -22,6 +22,11 @@ const ADMIN_RENAME_CHURCH_REQUEST_KEYS = new Set(['churchId', 'name']);
 const ADMIN_RENAME_CHURCH_RESPONSE_KEYS = new Set([
     'ok', 'action', 'requestId', 'status', 'churchId', 'previousName', 'name',
 ]);
+const ADMIN_CHURCH_LIFECYCLE_REQUEST_KEYS = new Set(['churchId', 'active']);
+const ADMIN_CHURCH_LIFECYCLE_RESULT_KEYS = new Set([
+    'status', 'churchId', 'active', 'affectedUsers', 'positiveRosterCount',
+    'positiveTalentTotal', 'pendingPurchaseCount',
+]);
 const COMPLETE_CHURCH_ADMIN_SIGNUP_REQUEST_KEYS = new Set([
     'name', 'contactEmail', 'churchName', 'pastorName', 'denomination', 'entryCode',
     'departments', 'password', 'consent',
@@ -2002,6 +2007,60 @@ export const adminRenameChurch = (input, options = {}) => {
     }
     return callPlatformApi('adminRenameChurch', payload, { ...options, requestId })
         .then(result => validateAdminRenameChurchResponse(payload, result, requestId));
+};
+
+export const adminSetChurchLifecycle = (input, options = {}) => {
+    if (!isResponseRecord(input) || !hasExactKeys(input, ADMIN_CHURCH_LIFECYCLE_REQUEST_KEYS)) {
+        throw new PlatformApiError('공동체 활성 상태 요청 형식이 올바르지 않습니다.', { code: 'INVALID_PAYLOAD' });
+    }
+    const churchId = typeof input.churchId === 'string' ? input.churchId.trim() : '';
+    if (!churchId || churchId !== input.churchId || churchId.length > 128 || churchId.includes('/')
+        || churchId === '.' || churchId === '..' || churchId === 'unaffiliated_v1'
+        || /[\u0000-\u001f\u007f]/.test(churchId) || typeof input.active !== 'boolean') {
+        throw new PlatformApiError('공동체 활성 상태 요청 형식이 올바르지 않습니다.', { code: 'INVALID_PAYLOAD' });
+    }
+    const payload = { churchId, active: input.active };
+    const requestId = options.requestId || createRequestId();
+    return callPlatformApi('adminSetChurchLifecycle', payload, { ...options, requestId, timeoutMs: 120_000 })
+        .then(response => {
+            const result = response?.result;
+            if (!hasExactKeys(response, new Set(['ok', 'action', 'requestId', 'result']))
+                || response.ok !== true || response.action !== 'adminSetChurchLifecycle'
+                || response.requestId !== requestId || !hasExactKeys(result, ADMIN_CHURCH_LIFECYCLE_RESULT_KEYS)
+                || result.churchId !== churchId || result.active !== input.active
+                || !['deactivated', 'restored', 'alreadySet'].includes(result.status)
+                || ['affectedUsers', 'positiveRosterCount', 'positiveTalentTotal', 'pendingPurchaseCount']
+                    .some(key => !Number.isSafeInteger(result[key]) || result[key] < 0)) {
+                throw new PlatformApiError('공동체 활성 상태 결과를 안전하게 확인하지 못했습니다.', {
+                    code: 'INVALID_RESPONSE', status: 200, retryable: true,
+                });
+            }
+            return result;
+        });
+};
+
+export const rebuildPlatformStats = ({ dryRun = true } = {}, options = {}) => {
+    if (typeof dryRun !== 'boolean') {
+        throw new PlatformApiError('통계 재계산 요청 형식이 올바르지 않습니다.', { code: 'INVALID_PAYLOAD' });
+    }
+    const requestId = options.requestId || createRequestId();
+    return callPlatformApi('rebuildPlatformStats', { dryRun }, { ...options, requestId, timeoutMs: 120_000 })
+        .then(response => {
+            const result = response?.result;
+            const statsKeys = ['total_readers', 'total_churches', 'readers_today', 'finished_total', 'today_date'];
+            if (!hasExactKeys(response, new Set(['ok', 'action', 'requestId', 'result']))
+                || response.ok !== true || response.action !== 'rebuildPlatformStats'
+                || response.requestId !== requestId || !isResponseRecord(result)
+                || !hasExactKeys(result, new Set(['dryRun', 'applied', 'expected', 'current', 'changed']))
+                || result.dryRun !== dryRun || typeof result.applied !== 'boolean'
+                || !isResponseRecord(result.expected) || !isResponseRecord(result.current)
+                || !Array.isArray(result.changed) || result.changed.some(key => !statsKeys.includes(key))
+                || statsKeys.slice(0, 4).some(key => !Number.isSafeInteger(result.expected[key]) || result.expected[key] < 0)
+                || typeof result.expected.today_date !== 'string') {
+                throw new PlatformApiError('통계 재계산 결과를 안전하게 확인하지 못했습니다.', { code: 'INVALID_RESPONSE', status: 200, retryable: true });
+            }
+            return result;
+        });
 };
 
 const isCanonicalChurchAdminSignupText = (value, min, max) => (

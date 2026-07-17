@@ -95,6 +95,8 @@ import { completeMemberOnboarding } from "./ownMembershipService.ts";
 import { joinSoloCommunity } from "./joinSoloCommunityService.ts";
 import { adminSetChurchVisibility } from "./adminChurchVisibilityService.ts";
 import { adminRenameChurch } from "./adminChurchRenameService.ts";
+import { adminSetChurchLifecycle } from "./adminChurchLifecycleService.ts";
+import { rebuildPlatformStats } from "./platformStatsService.ts";
 import { convertToPersonalAccount } from "./convertToPersonalAccountService.ts";
 import { completeChurchAdminSignup } from "./completeChurchAdminSignupService.ts";
 import { churchAdminSignupIdentityFromVerifiedUser } from "./completeChurchAdminSignupCore.ts";
@@ -1246,6 +1248,32 @@ Deno.serve(async (request) => {
         action: parsed.action,
         requestId: parsed.requestId,
         ...result,
+      });
+    }
+
+    if (parsed.action === "adminSetChurchLifecycle") {
+      const result = await adminSetChurchLifecycle(service, verifiedUser, {
+        requestId: parsed.requestId,
+        churchId: parsed.churchId,
+        active: parsed.active,
+      });
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        result,
+      });
+    }
+
+    if (parsed.action === "rebuildPlatformStats") {
+      const result = await rebuildPlatformStats(service, verifiedUser, {
+        dryRun: parsed.dryRun,
+      });
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        result,
       });
     }
 

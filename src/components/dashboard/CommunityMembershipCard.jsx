@@ -386,6 +386,11 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
 
     return (
         <section className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+            {currentUser?.accountType === 'personal' && currentUser?.primaryOrgInactive === true && (
+                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800">
+                    기준 공동체가 비활성화되어 공동체 활동이 중단됐어요. 아래에서 다른 공동체를 기준으로 설정해주세요.
+                </div>
+            )}
             <div className="flex items-center justify-between gap-3 mb-4">
                 <div><h2 className="font-bold text-slate-800">내 공동체</h2><p className="text-xs text-slate-500 mt-1">다른 공동체에서도 함께 성경을 읽을 수 있어요.</p></div>
                 <button ref={joinTriggerRef} type="button" disabled={extraOrgs.length >= 3 || busy} onClick={() => { setNotice(null); setShowJoin(true); }} className="shrink-0 rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:bg-slate-300">공동체 추가</button>

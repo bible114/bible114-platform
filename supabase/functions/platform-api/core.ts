@@ -29,6 +29,9 @@ export const JOIN_SOLO_COMMUNITY_ACTION = "joinSoloCommunity" as const;
 export const ADMIN_SET_CHURCH_VISIBILITY_ACTION =
   "adminSetChurchVisibility" as const;
 export const ADMIN_RENAME_CHURCH_ACTION = "adminRenameChurch" as const;
+export const ADMIN_SET_CHURCH_LIFECYCLE_ACTION =
+  "adminSetChurchLifecycle" as const;
+export const REBUILD_PLATFORM_STATS_ACTION = "rebuildPlatformStats" as const;
 export const CONVERT_TO_PERSONAL_ACCOUNT_ACTION =
   "convertToPersonalAccount" as const;
 export const COMPLETE_CHURCH_ADMIN_SIGNUP_ACTION =
@@ -78,6 +81,17 @@ export type PlatformApiRequest =
     requestId: string;
     churchId: string;
     name: string;
+  }
+  | {
+    action: typeof ADMIN_SET_CHURCH_LIFECYCLE_ACTION;
+    requestId: string;
+    churchId: string;
+    active: boolean;
+  }
+  | {
+    action: typeof REBUILD_PLATFORM_STATS_ACTION;
+    requestId: string;
+    dryRun: boolean;
   }
   | {
     action: typeof JOIN_SOLO_COMMUNITY_ACTION;
@@ -338,6 +352,7 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     dryRun,
     trigger,
     hidden,
+    active,
     churchName,
     pastorName,
     denomination,
@@ -489,6 +504,28 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       churchId: normalizedChurchId,
       name: normalizedName,
     };
+  }
+  if (action === ADMIN_SET_CHURCH_LIFECYCLE_ACTION) {
+    const allowedKeys = new Set(["action", "requestId", "churchId", "active"]);
+    const normalizedChurchId = safeDocumentId(churchId);
+    if (
+      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+      !normalizedChurchId || normalizedChurchId !== churchId ||
+      normalizedChurchId === "unaffiliated_v1" || typeof active !== "boolean"
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return { action, requestId, churchId: normalizedChurchId, active };
+  }
+  if (action === REBUILD_PLATFORM_STATS_ACTION) {
+    const allowedKeys = new Set(["action", "requestId", "dryRun"]);
+    if (
+      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+      typeof dryRun !== "boolean"
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return { action, requestId, dryRun };
   }
   if (action === JOIN_SOLO_COMMUNITY_ACTION) {
     const allowedKeys = new Set(["action", "requestId"]);
