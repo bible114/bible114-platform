@@ -6215,7 +6215,9 @@
     "2john-1-1": {
       "answerIndex": 1,
       "allowed": {
-        "whole": [],
+        "whole": [
+          363
+        ],
         "nt": [
           356
         ]
@@ -6224,7 +6226,9 @@
     "2john-1-2": {
       "answerIndex": 2,
       "allowed": {
-        "whole": [],
+        "whole": [
+          363
+        ],
         "nt": [
           356
         ]
@@ -6233,7 +6237,9 @@
     "2john-1-3": {
       "answerIndex": 1,
       "allowed": {
-        "whole": [],
+        "whole": [
+          363
+        ],
         "nt": [
           356
         ]
@@ -6242,7 +6248,9 @@
     "2john-1-4": {
       "answerIndex": 1,
       "allowed": {
-        "whole": [],
+        "whole": [
+          363
+        ],
         "nt": [
           356
         ]
@@ -6251,7 +6259,9 @@
     "2john-1-5": {
       "answerIndex": 1,
       "allowed": {
-        "whole": [],
+        "whole": [
+          363
+        ],
         "nt": [
           356
         ]
@@ -8133,7 +8143,9 @@
     "3john-1-1": {
       "answerIndex": 0,
       "allowed": {
-        "whole": [],
+        "whole": [
+          363
+        ],
         "nt": [
           357
         ]
@@ -8142,7 +8154,9 @@
     "3john-1-2": {
       "answerIndex": 2,
       "allowed": {
-        "whole": [],
+        "whole": [
+          363
+        ],
         "nt": [
           357
         ]
@@ -8151,7 +8165,9 @@
     "3john-1-3": {
       "answerIndex": 3,
       "allowed": {
-        "whole": [],
+        "whole": [
+          363
+        ],
         "nt": [
           357
         ]
@@ -8160,7 +8176,9 @@
     "3john-1-4": {
       "answerIndex": 0,
       "allowed": {
-        "whole": [],
+        "whole": [
+          363
+        ],
         "nt": [
           357
         ]
@@ -8169,7 +8187,9 @@
     "3john-1-5": {
       "answerIndex": 2,
       "allowed": {
-        "whole": [],
+        "whole": [
+          363
+        ],
         "nt": [
           357
         ]
@@ -10755,7 +10775,9 @@
         "whole": [
           169
         ],
-        "nt": []
+        "nt": [
+          136
+        ]
       }
     },
     "acts-11-236": {
@@ -10764,7 +10786,9 @@
         "whole": [
           169
         ],
-        "nt": []
+        "nt": [
+          136
+        ]
       }
     },
     "acts-11-237": {
@@ -10773,7 +10797,9 @@
         "whole": [
           169
         ],
-        "nt": []
+        "nt": [
+          136
+        ]
       }
     },
     "acts-11-238": {
@@ -10782,7 +10808,9 @@
         "whole": [
           169
         ],
-        "nt": []
+        "nt": [
+          136
+        ]
       }
     },
     "acts-11-239": {
@@ -10791,7 +10819,9 @@
         "whole": [
           169
         ],
-        "nt": []
+        "nt": [
+          136
+        ]
       }
     },
     "acts-12-240": {
@@ -22337,63 +22367,81 @@
     "jeremiah-30-88": {
       "answerIndex": 0,
       "allowed": {
-        "whole": [],
+        "whole": [
+          337
+        ],
         "nt": []
       }
     },
     "jeremiah-30-89": {
       "answerIndex": 3,
       "allowed": {
-        "whole": [],
+        "whole": [
+          337
+        ],
         "nt": []
       }
     },
     "jeremiah-30-90": {
       "answerIndex": 0,
       "allowed": {
-        "whole": [],
+        "whole": [
+          337
+        ],
         "nt": []
       }
     },
     "jeremiah-31-91": {
       "answerIndex": 3,
       "allowed": {
-        "whole": [],
+        "whole": [
+          337
+        ],
         "nt": []
       }
     },
     "jeremiah-31-92": {
       "answerIndex": 1,
       "allowed": {
-        "whole": [],
+        "whole": [
+          337
+        ],
         "nt": []
       }
     },
     "jeremiah-31-93": {
       "answerIndex": 3,
       "allowed": {
-        "whole": [],
+        "whole": [
+          337
+        ],
         "nt": []
       }
     },
     "jeremiah-32-94": {
       "answerIndex": 1,
       "allowed": {
-        "whole": [],
+        "whole": [
+          337
+        ],
         "nt": []
       }
     },
     "jeremiah-32-95": {
       "answerIndex": 1,
       "allowed": {
-        "whole": [],
+        "whole": [
+          337
+        ],
         "nt": []
       }
     },
     "jeremiah-32-96": {
       "answerIndex": 3,
       "allowed": {
-        "whole": [],
+        "whole": [
+          337
+        ],
         "nt": []
       }
     },

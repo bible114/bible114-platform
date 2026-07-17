@@ -2311,6 +2311,14 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 
 ## 📮 Claude → Codex 메모
 
+2026-07-17 오후 — 읽기 일정 결측 수리 (Claude 실행, 사용자 지시):
+- **운영 verses 전수 스캔으로 기존 분석(2026-07-16)을 정정**: ① 렘 30~32장은 개역개정·쉬운성경·새한글 Day 337 캐시에 **이미 본문이 있었고**(제목 "29:24-32장"의 의미), 실제 결손은 **새번역(`1year_new_337`) 1건**(29장에서 잘림, 말미 "31 32" 잔재). ② 행 11장 결손은 **`nt_new_136` 1건** — 쉬운·메시지·새한글 신약 캐시는 Day 136에 행 11이 이미 있음(신약 일정 JSON은 nt_new 배치 기준). ③ 요이·요삼은 표기 문제가 아니라 **실제 본문 결손** — `1year_revised_363`·`1year_new_363`에 요일 5장까지만 있었음(쉬운·새한글은 정상, 제목만 파서 미인식).
+- **완료 (운영 반영됨)**: 본문 4건 PATCH 업로드(text만, title 불변, `gapFixedAt` 마커) — `1year_new_337`(+새번역 렘 30~32, 출처: 로컬 SWORD RNKSV 모듈→bible.db, 각주 제거·[소제목]→### 변환), `nt_new_136`(+새번역 행 11 선두 삽입), `1year_new_363`(+요이·요삼, 출처: 운영 `nt_new_356/357` 본문 그대로), `1year_revised_363`(+요이·요삼, 출처: 운영 `1year_sequential_357`에서 추출). 업로드 전 운영 문서-조립 기준 일치 검증, 업로드 후 장 헤더 재확인 완료.
+- **완료 (로컬 커밋)**: `read_schedules.json` 3건 수정(Day 337 "렘 29:24-32:44"·Day 363 "요이 1장, 요삼 1장"·NT Day 136 "행 11-12장") + `quiz-answer-index.json` 재생성 — 고아 24문항(렘 9·행 5·요이요삼 10)에 allowed 부여. validate-quiz·round24 등 통과.
+- **⚠️ 남은 2단계 (Edge 배포 후에만)**: 캐시 title 9건 교정(파서 인식용, `<scratchpad>/upload-fixes.mjs title` 준비됨 — 스크립트·조립본은 세션 스크래치에 있으므로 필요시 재작성: 대상은 337 4건·363 4건·nt_new_136). **순서 강제**: 새 quiz-answer-index를 포함한 Edge 배포가 먼저 — 배포 전에 title을 바꾸면 클라이언트가 새 문항을 내밀고 구 인덱스가 invalidQuiz로 거부한다. title 반영 전까지 퀴즈 고아 24문항은 실사용에서 계속 미출제(회귀는 아님).
+- **부수 발견 (별도 과제)**: `1year_sequential`(개역개정 순서대로)은 캐시가 창세기→계시록 정순으로 whole_bible 일정과 전면 불일치 — 퀴즈 클라이언트는 캐시 제목으로 문항을 고르고 서버 allowed는 whole_bible 기준이라 **sequential 사용자의 표준 문항은 대부분 invalidQuiz로 거부될 구조**(T123d3 실쓰기 전환 이후 실영향 가능). 운영 planId 분포 집계·quizLedger 확인 후 sequential 전용 일정 도입 여부 결정 필요. 또 `1year_new` 캐시에 절 번호 없음·잔재 숫자 등 새번역 고유 품질 문제가 산재(오늘 범위 밖).
+- 재발 방지: 66권 전장 커버리지 검사를 validate에 추가하는 과제는 여전히 유효 — 단 JSON 일정만이 아니라 **운영 캐시 실본문 기준** 검사가 필요함이 이번에 확인됨.
+
 2026-07-17 아침 3차 — 카카오 uid 수정 후속 검증·감사, **Codex 인계** (사용자 지시):
 - **완료 (Claude)**: (1) `scripts/audit-percent-encoded-ids.mjs` 신규 작성·실행 — 운영 전수 스캔 결과 **CLEAN** (users 38·churches 9·roster 3·kakaoLinks 0, `%` 포함 ID 0건 → `kakao%3A` 쓰레기 문서 없음, 정리 불필요). users 콜론 uid 2건·roster 콜론 uid 3건 확인. kakaoLinks 0건이라 "관리자 연결 계정" 가설은 최종 기각 — 실제 피해는 콜론 uid 개인 계정의 서버 쓰기 전면 실패였다. (2) `scripts/audit-t127-legacy-state.mjs`에 `percentEncodedUserIds` 카운터 추가. (3) `scripts/verify-kakao-uid-write-path.mjs` 신규 작성 — 배포된 platform-api v10이 콜론 uid로 실쓰기(users 보정 + activityActions 원장)에 성공하는지 검증하는 일회용 프로브. 임시 Auth 계정 `kakao:19999999999999999998`(+users 문서, currentDay 400 레거시 픽스처)을 만들어 `normalizeLegacyReadingPosition` 호출 → 기대값(currentDay 35·readCount 3·원장 존재·리터럴 % 문서 없음) 검증 → try/finally로 전부 삭제. 문법 검증·코드 리뷰 완료, **실행은 안 함** (운영 임시 데이터 생성이 권한 게이트에 걸림 — 사용자 개입 필요 판단).
 - **Codex가 할 일**: ① 사용자 재량/입회 하에 `node scripts/verify-kakao-uid-write-path.mjs` 실행해 `VERIFY RESULT: PASS`와 정리 4단계 전부 성공 확인 (T123 일회용 계정 관례와 동일 — 검증 직후 Auth·문서 완전 삭제 필수, 실패 시 남은 문서 수동 삭제까지). ② 실제 카카오 계정 로그인 성공(대시보드 진입)을 사용자에게 확인받아 이 건 종결. ③ (선택) 로그인 복원 체인에서 `migratePersonalTalentWalletIfNeeded`가 retryable 5xx에도 fail-closed인 문제 — normalize 감사처럼 복구 가능 오류를 삼킬지 정책 검토해 메모로 회신.
@@ -2332,7 +2340,7 @@ export const isPlanIdAllowedForUser = (planId, user) =>
 2026-07-16 저녁 — Firebase 재인증 완료, rules dry-run·운영 감사 결과 (Claude 실행):
 - 사용자가 `firebase login --reauth` 완료. **현행 `firestore.rules` dry-run 컴파일 성공** (배포는 하지 않음 — T127 관찰 종료 전 배포 금지 유지). 이제 rules 변경 시 원격 dry-run을 매번 돌릴 수 있다.
 - `audit-t127-legacy-state.mjs --target-name '진정희' --expected-day 91 --expected-read-count 4` 실행 (읽기 전용, 집계만): users 38(active 37/deleted 1), `legacyCurrentDayOver365` **0**, `invalidCurrentDay` 6·`missingOrInvalidReadCount` 6·`missingOrUnknownRole` 6, `talentMigratedMissingOrFalse` 23, `nonMigratedWithInventory/UnlockedRooms` 0. personal: active 7, `positiveUsersTalent` 3, `primaryOrgMissing` 5, primary roster 누락·잔액 이상 0. rosters 3 전부 정상 (경로·uid·진도·고아 0).
-- **⚠️ `targetRepair.matches: 0`** — '진정희' 이름과 일치하는 users 문서가 없어 기대 상태(Day 91/readCount 4)를 검증하지 못했다. 이름 표기 차이(공백·다른 필드)거나 계정이 존재하지 않는 경우다. 다음 세션에서 원인을 확인하되 출력에 이름/UID를 남기지 않는 원칙 유지. `legacyCurrentDayOver365`가 0이므로 T127e 하드코딩 삭제로 인한 즉시 회귀 위험은 낮다.
+- ~~**⚠️ `targetRepair.matches: 0`** — '진정희' 이름과 일치하는 users 문서가 없어 기대 상태(Day 91/readCount 4)를 검증하지 못했다.~~ **종결(2026-07-17, 사용자 확인)**: 해당 계정은 프로토 버전 DB에만 있던 계정으로 현재 운영 DB에는 존재하지 않음. 하드코딩 삭제(T127e)에 의존하는 계정이 없으므로 회귀 위험 없음 확정 — 추가 조사 불필요.
 - `invalidCurrentDay 6`·`missingOrUnknownRole 6`이 같은 6건(관리자 등 비member 역할이라 진도 필드가 원래 없는 무해 케이스)인지 해석해 메모에 남기고, 만약 member 계정이 섞여 있으면 로그인 fail-closed 경로에 걸리지 않는지 확인할 것.
 
 - 이 설계는 3차 자체 점검을 거친 확정본이다. "더 나은 방법"이 보여도 위 설계 결정 4가지(가상 교회/익명 인증/localStorage 전용/클라이언트 상수)는 바꾸지 말고, 제안은 위 메모란에 적어라.
