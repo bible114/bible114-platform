@@ -189,8 +189,8 @@ assert.match(authHook, /writeSignupConsent\(/);
 assert.match(authHook, /consentSummary: buildSignupConsentSummary\(signupConsent\)/);
 
 // 일반 교인·개인 계정 가입의 기존 서버 authority 계약도 계속 유지되어야 한다.
-assert.match(authHook, /completeMemberSignupViaApi\(\{[\s\S]*churchId,[\s\S]*entryCode:\s*joinTicket \? '' : churchCode,[\s\S]*joinTicket,[\s\S]*name:\s*newUser\.name,[\s\S]*birthdate:\s*newUser\.birthdate,[\s\S]*guestProgress:/);
-assert.match(authHook, /created = result\.created === true;[\s\S]*if \(created\)[\s\S]*total_readers/);
+assert.match(authHook, /completeMemberSignupViaApi\(\{[\s\S]*churchId,[\s\S]*entryCode:\s*churchId === UNAFFILIATED_CHURCH_ID \|\| joinTicket \? '' : churchCode,[\s\S]*joinTicket:\s*churchId === UNAFFILIATED_CHURCH_ID \? '' : joinTicket,[\s\S]*name:\s*newUser\.name,[\s\S]*birthdate:\s*newUser\.birthdate,[\s\S]*guestProgress:/);
+assert.doesNotMatch(authHook, /collection\('settings'\)\.doc\('platformStats'\)/);
 assert.match(authHook, /const migrateGuest = shouldMigrateGuestState\(\);[\s\S]*if \(migrateGuest\)[\s\S]*migratedAt/);
 assert.match(authHook, /finishMemberSignup\(\{\s*user:\s*cred\.user,[\s\S]*churchCode,[\s\S]*joinTicket,[\s\S]*signupConsent\s*\}\)/);
 assert.match(

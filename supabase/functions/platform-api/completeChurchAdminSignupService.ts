@@ -24,12 +24,14 @@ import {
   validateCompleteChurchAdminSignup,
   type ValidatedChurchAdminSignup,
 } from "./completeChurchAdminSignupCore.ts";
+import { nextPlatformStatsAfterSignup } from "./platformStatsService.ts";
 
 const LEDGER_SCHEMA_VERSION = 1;
 const MAX_TRANSACTION_ATTEMPTS = 3;
 const LEGACY_DIRECTORY_PATH = "settings/churchDirectory";
 const PUBLIC_META_PATH = "publicDirectoryMeta/current";
 const PUBLIC_REBUILD_LOCK_PATH = "platformInternal/publicDirectoryRebuild";
+const PLATFORM_STATS_PATH = "settings/platformStats";
 
 type ServiceAccess = { token: string; projectId: string };
 type UnknownRecord = Record<string, unknown>;
@@ -281,6 +283,7 @@ const executeCompleteChurchAdminSignup = async (
       legacyDirectoryDocument,
       publicMetaDocument,
       rebuildLockDocument,
+      platformStatsDocument,
     ] = await Promise.all([
       dependencies.getDocument<CompleteChurchAdminSignupUser>(
         service.token,
@@ -310,6 +313,12 @@ const executeCompleteChurchAdminSignup = async (
         service.token,
         service.projectId,
         PUBLIC_REBUILD_LOCK_PATH,
+        { transaction },
+      ),
+      dependencies.getDocument<UnknownRecord>(
+        service.token,
+        service.projectId,
+        PLATFORM_STATS_PATH,
         { transaction },
       ),
     ]);
@@ -504,6 +513,19 @@ const executeCompleteChurchAdminSignup = async (
         result,
         createdAt: now,
       }, { exists: false }),
+      dependencies.updateWrite(
+        service.projectId,
+        PLATFORM_STATS_PATH,
+        nextPlatformStatsAfterSignup(platformStatsDocument?.data || null, {
+          readerDelta: 1,
+          churchDelta: 1,
+          now,
+        }),
+        {
+          updateMask: ["total_readers", "total_churches", "updatedAt"],
+          exists: Boolean(platformStatsDocument),
+        },
+      ),
     ];
     await dependencies.commitWrites(
       service.token,

@@ -219,35 +219,21 @@ export const useAuth = ({
                 if (credentials.phone4) newUser.phone4 = credentials.phone4;
             }
         }
-        let runtimeUser = newUser;
-        let created = true;
-        if (churchId === UNAFFILIATED_CHURCH_ID) {
-            await db.collection('users').doc(user.uid).set(newUser);
-        } else {
-            const result = await completeMemberSignupViaApi({
-                churchId,
-                entryCode: joinTicket ? '' : churchCode,
-                joinTicket,
-                name: newUser.name,
-                birthdate: newUser.birthdate,
-                guestProgress: {
-                    currentDay: newUser.currentDay,
-                    streak: newUser.streak,
-                    lastReadDate: newUser.lastReadDate,
-                    planId: newUser.planId,
-                },
-            });
-            if (!result?.user) throw new Error('MEMBER_SIGNUP_RESPONSE_INVALID');
-            runtimeUser = result.user;
-            created = result.created === true;
-        }
-        // 신규 성도 → 통계 증가
-        if (created) {
-            db.collection('settings').doc('platformStats').set({
-                total_readers: firebase.firestore.FieldValue.increment(1),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true }).catch(() => {});
-        }
+        const result = await completeMemberSignupViaApi({
+            churchId,
+            entryCode: churchId === UNAFFILIATED_CHURCH_ID || joinTicket ? '' : churchCode,
+            joinTicket: churchId === UNAFFILIATED_CHURCH_ID ? '' : joinTicket,
+            name: newUser.name,
+            birthdate: newUser.birthdate,
+            guestProgress: {
+                currentDay: newUser.currentDay,
+                streak: newUser.streak,
+                lastReadDate: newUser.lastReadDate,
+                planId: newUser.planId,
+            },
+        });
+        if (!result?.user) throw new Error('MEMBER_SIGNUP_RESPONSE_INVALID');
+        const runtimeUser = result.user;
         await loadChurchCommunities(churchId, { requireServer: true });
         if (auth.currentUser?.uid !== user.uid) return;
         setTempUser({ ...runtimeUser, uid: user.uid });
@@ -284,12 +270,6 @@ export const useAuth = ({
             },
         });
         if (!result?.user) throw new Error('PERSONAL_SIGNUP_RESPONSE_INVALID');
-        if (result.created === true) {
-            db.collection('settings').doc('platformStats').set({
-                total_readers: firebase.firestore.FieldValue.increment(1),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true }).catch(() => {});
-        }
         const runtimeUser = { ...result.user, uid: user.uid, extraOrgs: [] };
         setCurrentUser(runtimeUser);
         setTempUser(runtimeUser);
@@ -654,12 +634,6 @@ export const useAuth = ({
             },
         });
         if (!result?.user || !result?.membership) throw new Error('PERSONAL_SIGNUP_RESPONSE_INVALID');
-        if (result.created === true) {
-            db.collection('settings').doc('platformStats').set({
-                total_readers: firebase.firestore.FieldValue.increment(1),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true }).catch(() => {});
-        }
         if (shouldMigrateGuestState()) saveGuestState({ migratedAt: new Date().toISOString() });
         setCurrentUser({
             ...result.user, uid: socialUser.uid,

@@ -34,6 +34,7 @@ const legacyPath = "settings/churchDirectory";
 const publicPath = `publicChurches/${CHURCH_ID}`;
 const metaPath = "publicDirectoryMeta/current";
 const lockPath = "platformInternal/publicDirectoryRebuild";
+const statsPath = "settings/platformStats";
 const ledgerPath = `churchLifecycleActions/${REQUEST_ID}`;
 type Data = Record<string, unknown>;
 
@@ -324,8 +325,10 @@ Deno.test("공동체·관리자·private·두 디렉토리·원장을 한 transa
     publicPath,
     metaPath,
     ledgerPath,
+    statsPath,
   ]);
-  assert(!harness.commits[0].paths.includes("settings/platformStats"));
+  assertEquals(harness.state.get(statsPath)?.total_readers, 1);
+  assertEquals(harness.state.get(statsPath)?.total_churches, 1);
   assertEquals(harness.state.get(userPath)?.password, "secret-password");
   assertEquals(harness.state.get(userPath)?.email, "admin@example.com");
   assertEquals(harness.state.get(userPath)?.authProvider, "password");
@@ -412,7 +415,7 @@ Deno.test("legacy/meta가 없어도 secret-free legacy와 public 문서를 생�
     { id: CHURCH_ID, name: "테스트교회" },
   ]);
   assertEquals(harness.state.has(metaPath), false);
-  assertEquals(harness.commits[0].paths.length, 8);
+  assertEquals(harness.commits[0].paths.length, 9);
   const legacyWriteIndex = harness.commits[0].paths.indexOf(legacyPath);
   assertEquals(
     harness.commits[0].currentDocuments[legacyWriteIndex],

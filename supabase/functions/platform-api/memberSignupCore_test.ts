@@ -72,6 +72,21 @@ Deno.test("교회 교인 가입은 서버가 프로필과 동의 요약을 정�
   assert(result.profile.guestProgress.currentDay === 42, "guest progress");
 });
 
+Deno.test("무소속 가상 공동체 가입은 입장코드 없이 서버에서 허용한다", () => {
+  const result = validateMemberSignup(fixture({
+    churchId: "unaffiliated_v1",
+    entryCodeHash: "",
+    church: { name: "성경 읽는 사람들", isVirtual: true },
+  }));
+  assert(result.status === "create", "virtual signup should create");
+  expectCode("CHURCH_UNAVAILABLE", () =>
+    validateMemberSignup(fixture({
+      churchId: "unaffiliated_v1",
+      entryCodeHash: "",
+      church: { name: "성경 읽는 사람들", isVirtual: false },
+    })));
+});
+
 Deno.test("만 14세 미만은 보호자 동의 기록을 요구한다", () => {
   const childConsent = consent(true);
   const result = validateMemberSignup(fixture({

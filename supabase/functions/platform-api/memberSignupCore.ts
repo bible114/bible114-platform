@@ -2,6 +2,7 @@ export type MemberSignupChurch = {
   name?: unknown;
   churchCodeHash?: unknown;
   isDeleted?: unknown;
+  isVirtual?: unknown;
 };
 
 export type MemberSignupUser = {
@@ -196,15 +197,17 @@ export const validateMemberSignup = (input: {
     (guestProgress.lastReadDate !== null &&
       (!lastReadDateKey || lastReadDateKey > input.calendarDate))
   ) throw new MemberSignupValidationError("INVALID_PROFILE");
+  const isUnaffiliated = input.churchId === "unaffiliated_v1";
   if (
     !input.church || input.church.isDeleted === true ||
-    input.churchId === "unaffiliated_v1" ||
-    typeof input.church.name !== "string" || !input.church.name.trim()
+    typeof input.church.name !== "string" || !input.church.name.trim() ||
+    (isUnaffiliated && input.church.isVirtual !== true)
   ) throw new MemberSignupValidationError("CHURCH_UNAVAILABLE");
   if (
-    typeof input.church.churchCodeHash !== "string" ||
-    !input.church.churchCodeHash ||
-    input.church.churchCodeHash !== input.entryCodeHash
+    !isUnaffiliated &&
+    (typeof input.church.churchCodeHash !== "string" ||
+      !input.church.churchCodeHash ||
+      input.church.churchCodeHash !== input.entryCodeHash)
   ) throw new MemberSignupValidationError("INVALID_ENTRY_CODE");
 
   const consentSummary = validateConsent(

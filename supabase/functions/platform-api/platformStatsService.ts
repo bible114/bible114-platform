@@ -32,6 +32,37 @@ const depsDefault: RebuildPlatformStatsDependencies = {
 const safeCount = (value: unknown) =>
   Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : 0;
 
+export const nextPlatformStatsAfterSignup = (
+  current: RecordValue | null,
+  input: { readerDelta: 1; churchDelta: 0 | 1; now: Date },
+) => {
+  const readCounter = (key: "total_readers" | "total_churches") => {
+    const value = current?.[key];
+    if (value === undefined && current === null) return 0;
+    if (!Number.isSafeInteger(value) || Number(value) < 0) {
+      throw new PlatformError("CONFLICT", {
+        message:
+          "플랫폼 통계 원장을 안전하게 갱신할 수 없습니다. 먼저 통계를 재계산해 주세요.",
+      });
+    }
+    return Number(value);
+  };
+  const totalReaders = readCounter("total_readers") + input.readerDelta;
+  const totalChurches = readCounter("total_churches") + input.churchDelta;
+  if (
+    !Number.isSafeInteger(totalReaders) || !Number.isSafeInteger(totalChurches)
+  ) {
+    throw new PlatformError("CONFLICT", {
+      message: "플랫폼 통계 값이 너무 큽니다.",
+    });
+  }
+  return {
+    total_readers: totalReaders,
+    total_churches: totalChurches,
+    updatedAt: input.now,
+  };
+};
+
 export const rebuildPlatformStats = async (
   service: Service,
   identity: { uid: string; anonymous: boolean },

@@ -96,7 +96,10 @@ import { joinSoloCommunity } from "./joinSoloCommunityService.ts";
 import { adminSetChurchVisibility } from "./adminChurchVisibilityService.ts";
 import { adminRenameChurch } from "./adminChurchRenameService.ts";
 import { adminSetChurchLifecycle } from "./adminChurchLifecycleService.ts";
-import { rebuildPlatformStats } from "./platformStatsService.ts";
+import {
+  nextPlatformStatsAfterSignup,
+  rebuildPlatformStats,
+} from "./platformStatsService.ts";
 import { convertToPersonalAccount } from "./convertToPersonalAccountService.ts";
 import { completeChurchAdminSignup } from "./completeChurchAdminSignupService.ts";
 import { churchAdminSignupIdentityFromVerifiedUser } from "./completeChurchAdminSignupCore.ts";
@@ -709,12 +712,14 @@ Deno.serve(async (request) => {
         // 현재 온보딩의 부서 선택과 탈퇴 UI에 중복 소속으로 노출된다.
         // 다만 새 users가 없는데 동일 기본 roster만 남은 충돌은 거부한다.
         const rosterPath = `${churchPath}/roster/${uid}`;
+        const statsPath = "settings/platformStats";
         const [
           existingUser,
           churchDocument,
           accessDocument,
           consentDocument,
           existingRoster,
+          statsDocument,
         ] = await Promise.all([
           getDocument<MemberSignupUser>(
             service.token,
@@ -746,17 +751,25 @@ Deno.serve(async (request) => {
             rosterPath,
             { transaction },
           ),
+          getDocument<Record<string, unknown>>(
+            service.token,
+            service.projectId,
+            statsPath,
+            { transaction },
+          ),
         ]);
 
-        const credential = await resolveJoinCredential(service, {
-          churchId: parsed.churchId,
-          entryCode: parsed.entryCode,
-          joinTicket: parsed.joinTicket,
-          purpose: "memberSignup",
-          uid,
-          requestId: parsed.requestId,
-          transaction,
-        });
+        const credential = parsed.churchId === "unaffiliated_v1"
+          ? { entryCodeHash: "", ticketPath: null, consumeTicket: false }
+          : await resolveJoinCredential(service, {
+            churchId: parsed.churchId,
+            entryCode: parsed.entryCode,
+            joinTicket: parsed.joinTicket,
+            purpose: "memberSignup",
+            uid,
+            requestId: parsed.requestId,
+            transaction,
+          });
         const churchData = churchDocument?.data
           ? {
             ...churchDocument.data,
@@ -838,6 +851,19 @@ Deno.serve(async (request) => {
           updateWrite(service.projectId, userPath, userData, {
             exists: decision.status === "reactivate" ? true : false,
           }),
+          updateWrite(
+            service.projectId,
+            statsPath,
+            nextPlatformStatsAfterSignup(statsDocument?.data || null, {
+              readerDelta: 1,
+              churchDelta: 0,
+              now,
+            }),
+            {
+              updateMask: ["total_readers", "total_churches", "updatedAt"],
+              exists: Boolean(statsDocument),
+            },
+          ),
         ];
         if (credential.ticketPath && credential.consumeTicket) {
           writes.push(updateWrite(service.projectId, credential.ticketPath, {
@@ -900,12 +926,14 @@ Deno.serve(async (request) => {
         const consentPath = `${userPath}/private/consent`;
         const churchPath = parsed.churchId ? `churches/${parsed.churchId}` : "";
         const rosterPath = churchPath ? `${churchPath}/roster/${uid}` : "";
+        const statsPath = "settings/platformStats";
         const [
           existingUser,
           consentDocument,
           churchDocument,
           accessDocument,
           existingRoster,
+          statsDocument,
         ] = await Promise.all([
           getDocument<PersonalSignupUser>(
             service.token,
@@ -943,6 +971,12 @@ Deno.serve(async (request) => {
               { transaction },
             )
             : Promise.resolve(null),
+          getDocument<Record<string, unknown>>(
+            service.token,
+            service.projectId,
+            statsPath,
+            { transaction },
+          ),
         ]);
         const tokenEmail = typeof verifiedUser.claims.email === "string"
           ? verifiedUser.claims.email
@@ -1073,6 +1107,19 @@ Deno.serve(async (request) => {
           : null;
         const writes = [
           updateWrite(service.projectId, userPath, userData, { exists: false }),
+          updateWrite(
+            service.projectId,
+            statsPath,
+            nextPlatformStatsAfterSignup(statsDocument?.data || null, {
+              readerDelta: 1,
+              churchDelta: 0,
+              now,
+            }),
+            {
+              updateMask: ["total_readers", "total_churches", "updatedAt"],
+              exists: Boolean(statsDocument),
+            },
+          ),
         ];
         if (membership && rosterPath) {
           writes.push(

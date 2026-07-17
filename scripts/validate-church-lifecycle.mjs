@@ -68,7 +68,8 @@ assert.match(index, /completeChurchAdminSignup[\s\S]*churchAdminSignupIdentityFr
 assert.match(signupService, /churchLifecycleActions\/\$\{signup\.requestId\}/);
 assert.match(signupService, /publicChurches\/\$\{churchId\}/);
 assert.match(signupService, /platformInternal\/publicDirectoryRebuild/);
-assert.doesNotMatch(signupService, /platformStats/);
+assert.match(signupService, /PLATFORM_STATS_PATH = "settings\/platformStats"/);
+assert.match(signupService, /nextPlatformStatsAfterSignup\(platformStatsDocument\?\.data \|\| null/);
 assert.match(rotateService, /const churchPath = `churches\/\$\{input\.churchId\}`[\s\S]*const ledgerPath = `\$\{churchPath\}\/adminActions\/\$\{input\.requestId\}`/);
 assert.match(rotateService, /expectedVersion[\s\S]*nextVersion/);
 assert.match(ensureService, /const publicPath = `publicChurches\/\$\{UNAFFILIATED_CHURCH_ID\}`/);
