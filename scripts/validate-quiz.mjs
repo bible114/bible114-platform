@@ -6,6 +6,7 @@ import { BOOKS, getBookBySlug, parseReadingRange } from '../src/utils/quizParsin
 const ROOT = process.cwd();
 const QUIZ_DIR = path.join(ROOT, 'src/data/quiz');
 const SCHEDULE_PATH = path.join(ROOT, 'src/data/read_schedules.json');
+const SEQUENTIAL_SCHEDULE_PATH = path.join(ROOT, 'src/data/sequential_schedule.json');
 const BOOK_BY_SLUG = new Map(BOOKS.map(book => [book.slug, book]));
 const BOOK_BY_FULL = new Map(BOOKS.map(book => [book.full, book]));
 const REF_BOOK_PATTERN = new RegExp(`^(${BOOKS.map(book => book.full).sort((a, b) => b.length - a.length).join('|')})\\s+\\d+:\\d+`);
@@ -140,11 +141,12 @@ const getMissingItems = (items, quizBySlug) => items.filter(item => {
 
 const validateScheduleCoverage = async (quizBySlug) => {
     const schedules = await readJsonFile(SCHEDULE_PATH);
+    schedules.sequential_schedule = await readJsonFile(SEQUENTIAL_SCHEDULE_PATH);
     const errors = [];
     const missingSummary = new Map();
     const ntSegments = [];
 
-    for (const [planName, minPool] of [['whole_bible', 3], ['new_testament', 5]]) {
+    for (const [planName, minPool] of [['whole_bible', 3], ['new_testament', 5], ['sequential_schedule', 3]]) {
         const days = schedules[planName] || [];
         days.forEach((day, index) => {
             const dayNo = index + 1;

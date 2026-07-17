@@ -15,7 +15,7 @@ const assert = (condition: unknown, message: string) => {
 
 const RECORD: QuizIndexRecord = {
   answerIndex: 2,
-  allowed: { whole: [10], nt: [110] },
+  allowed: { whole: [10], nt: [110], sequential: [10] },
 };
 
 const submission = (
@@ -53,6 +53,10 @@ Deno.test("진도 키, 계획 범위, 실제 Day를 엄격히 계산한다", () 
     assert(parseQuizProgressKey(key) === null, `invalid key accepted: ${key}`);
   }
   assert(getQuizPlanScope("nt_easy") === "nt", "nt scope mismatch");
+  assert(
+    getQuizPlanScope("1year_sequential") === "sequential",
+    "sequential scope mismatch",
+  );
   assert(getQuizPlanScope("whole_1") === "whole", "whole scope mismatch");
   assert(getActualQuizDay(365, 1) === 1, "positive wrap mismatch");
   assert(getActualQuizDay(1, -1) === 365, "negative wrap mismatch");
@@ -250,6 +254,11 @@ Deno.test("다른 Day나 계획 범위의 문항은 거부한다", () => {
     user: { currentDay: 10, readCount: 1, planId: "nt_easy" },
   }));
   assert(ntMismatch.status === "invalidQuiz", "other plan scope accepted");
+
+  const sequential = validateQuizSubmission(submission({
+    user: { currentDay: 10, readCount: 1, planId: "1year_sequential" },
+  }));
+  assert(sequential.status === "ready", "sequential scope rejected");
 });
 
 Deno.test("저장된 문항이 있으면 같은 Day의 다른 허용 문항도 거부한다", () => {

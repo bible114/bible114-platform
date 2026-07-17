@@ -6,6 +6,7 @@ import { BOOKS, parseReadingRange } from '../src/utils/quizParsing.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SCHEDULE_PATH = path.join(ROOT, 'src/data/read_schedules.json');
+const SEQUENTIAL_SCHEDULE_PATH = path.join(ROOT, 'src/data/sequential_schedule.json');
 
 // Protestant canon chapter counts. Keep this explicit so a new omission cannot
 // be hidden by deriving expectations from the schedule under test.
@@ -21,9 +22,10 @@ if (BOOKS.length !== 66 || CHAPTER_COUNTS.length !== BOOKS.length) {
 }
 
 const schedules = JSON.parse(fs.readFileSync(SCHEDULE_PATH, 'utf8'));
+const sequentialSchedule = JSON.parse(fs.readFileSync(SEQUENTIAL_SCHEDULE_PATH, 'utf8'));
 
 const validatePlan = ({ key, testament }) => {
-    const entries = schedules[key];
+    const entries = key === 'sequential_schedule' ? sequentialSchedule : schedules[key];
     if (!Array.isArray(entries) || entries.length !== 365) {
         throw new Error(`${key}: 일정은 정확히 365일이어야 합니다.`);
     }
@@ -58,4 +60,5 @@ const validatePlan = ({ key, testament }) => {
 
 validatePlan({ key: 'whole_bible', testament: 'all' });
 validatePlan({ key: 'new_testament', testament: 'new' });
+validatePlan({ key: 'sequential_schedule', testament: 'all' });
 console.log('읽기 일정 66권 전장 커버리지 검사 통과');

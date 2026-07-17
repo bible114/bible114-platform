@@ -1788,7 +1788,7 @@ for (const [key, record] of indexedQuestions) {
 
     assert.ok(Number.isInteger(record?.answerIndex) && record.answerIndex >= 0 && record.answerIndex <= 3, `${key}: answerIndex는 0~3 정수여야 한다.`);
     assert.equal(record?.allowed && typeof record.allowed === 'object', true, `${key}: allowed가 필요하다.`);
-    for (const plan of ['whole', 'nt']) {
+    for (const plan of ['whole', 'nt', 'sequential']) {
         const days = record.allowed?.[plan];
         assert.ok(Array.isArray(days), `${key}: allowed.${plan}은 배열이어야 한다.`);
         assert.ok(days.every(day => Number.isInteger(day) && day >= 1 && day <= 365), `${key}: allowed.${plan}은 Day 1~365만 포함해야 한다.`);
@@ -1796,7 +1796,7 @@ for (const [key, record] of indexedQuestions) {
     }
     if (kind === 'bank') {
         assert.equal(record.legacyBank, true, `${key}: 레거시 은행 문항 표시가 필요하다.`);
-        assert.deepEqual(record.allowed, { whole: [], nt: [] }, `${key}: 은행 문항은 새 위치에 허용하면 안 된다.`);
+        assert.deepEqual(record.allowed, { whole: [], nt: [], sequential: [] }, `${key}: 은행 문항은 새 위치에 허용하면 안 된다.`);
     } else {
         assert.notEqual(record.legacyBank, true, `${key}: 일반 문항을 legacyBank로 표시하면 안 된다.`);
     }

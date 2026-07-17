@@ -10,6 +10,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const QUIZ_DIR = path.join(ROOT, 'src/data/quiz');
 const NT_EASY_DIR = path.join(ROOT, 'src/data/quizNtEasy');
 const SCHEDULE_PATH = path.join(ROOT, 'src/data/read_schedules.json');
+const SEQUENTIAL_SCHEDULE_PATH = path.join(ROOT, 'src/data/sequential_schedule.json');
 const OUTPUT_PATH = path.join(ROOT, 'supabase/functions/platform-api/quiz-answer-index.json');
 const args = process.argv.slice(2);
 const checkMode = args.includes('--check');
@@ -70,7 +71,7 @@ const addRecord = (key, question, allowed, extra = {}) => {
         throw new Error(`${key}: 섞은 뒤 answerIndex가 유효하지 않습니다.`);
     }
 
-    for (const plan of ['whole', 'nt']) {
+    for (const plan of ['whole', 'nt', 'sequential']) {
         if (!Array.isArray(allowed[plan])) throw new Error(`${key}: allowed.${plan}이 배열이 아닙니다.`);
         if (allowed[plan].some(day => !Number.isInteger(day) || day < 1 || day > 365)) {
             throw new Error(`${key}: allowed.${plan}에 1~365 밖의 day가 있습니다.`);
@@ -91,6 +92,7 @@ const schedules = readJson(SCHEDULE_PATH);
 const scheduleItems = {
     whole: buildScheduleItems(schedules.whole_bible, 'whole_bible'),
     nt: buildScheduleItems(schedules.new_testament, 'new_testament'),
+    sequential: buildScheduleItems(readJson(SEQUENTIAL_SCHEDULE_PATH), 'sequential_schedule'),
 };
 
 for (const fileName of jsonFiles(QUIZ_DIR)) {
@@ -128,7 +130,7 @@ for (const fileName of jsonFiles(NT_EASY_DIR)) {
 
         entry.questions.forEach((question, index) => {
             const key = `ntEasy-${day}-${index + 1}`;
-            addRecord(key, question, { whole: [], nt: [day] });
+            addRecord(key, question, { whole: [], nt: [day], sequential: [] });
             counts.ntEasy += 1;
         });
     }
@@ -136,7 +138,7 @@ for (const fileName of jsonFiles(NT_EASY_DIR)) {
 
 QUIZ_BANK.forEach((question, index) => {
     const key = `bank-${index}`;
-    addRecord(key, question, { whole: [], nt: [] }, { legacyBank: true });
+    addRecord(key, question, { whole: [], nt: [], sequential: [] }, { legacyBank: true });
     counts.bank += 1;
 });
 

@@ -107,6 +107,8 @@ const bibleLogic = read('src/hooks/useBibleLogic.js');
 const rankingModal = read('src/components/modals/RankingModal.jsx');
 const membershipCard = read('src/components/dashboard/CommunityMembershipCard.jsx');
 const scheduleAliases = read('src/data/schedules.js');
+assert.match(scheduleAliases, /import sequentialSchedule from '\.\/sequential_schedule\.json'/);
+assert.match(scheduleAliases, /'1year_sequential': sequentialSchedule/);
 const quizEngine = read('src/utils/quizEngine.js');
 const guestStorage = read('src/utils/guestStorage.js');
 const guestReader = read('src/components/GuestReaderView.jsx');

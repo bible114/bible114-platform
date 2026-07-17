@@ -11,6 +11,7 @@ export type QuizIndexRecord = {
   allowed: {
     whole: number[];
     nt: number[];
+    sequential?: number[];
   };
   legacyBank?: true;
 };
@@ -131,8 +132,14 @@ export const parseQuizProgressKey = (
   return { epoch, cycle, day };
 };
 
-export const getQuizPlanScope = (planId: unknown): "nt" | "whole" =>
-  String(planId).split("_")[0] === "nt" ? "nt" : "whole";
+export const getQuizPlanScope = (
+  planId: unknown,
+): "nt" | "whole" | "sequential" =>
+  planId === "1year_sequential"
+    ? "sequential"
+    : String(planId).split("_")[0] === "nt"
+    ? "nt"
+    : "whole";
 
 export const getActualQuizDay = (day: number, dayOffset: number): number => {
   const shifted = day + dayOffset;
@@ -270,11 +277,14 @@ export const validateQuizSubmission = (
     if (stored.quizKey !== input.quizKey) return { status: "invalidQuiz" };
   } else {
     const scope = getQuizPlanScope(input.user.planId);
+    if (scope === "sequential" && !Array.isArray(record.allowed.sequential)) {
+      return { status: "invalidQuiz" };
+    }
     const actualDay = getActualQuizDay(
       position.day,
       integer(input.user.dayOffset, 0),
     );
-    if (!record.allowed[scope].includes(actualDay)) {
+    if (!(record.allowed[scope] as number[]).includes(actualDay)) {
       return { status: "invalidQuiz" };
     }
   }
