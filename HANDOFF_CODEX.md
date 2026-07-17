@@ -8,7 +8,7 @@
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
 > **2026-07-16 저녁 갱신: 보류됐던 정책 결정이 전부 도착했다** — 문서 하단 "🧭 Claude 결정 회신" 참조. 이름 변경=점진 보정, 삭제=복원 가능한 비활성화(5개 세부 답 포함), platformStats 필드 의미 확정, isPlatformAdmin `isDeleted` 결속 수정 허용. **T125e-2c/d·T125e-3 구현 진행 가능.** 새 라운드 27(읽기 일정 결측 — T128a 표기 수정·T128b 커버리지 검사 즉시, T128c는 M-S1 대기)도 하단에 추가됐다.
-> **현재 활성 작업: 라운드 28 (문서 최하단) — T130·T131은 지금 착수 가능, T132(T127 최종 차단 시퀀스)는 2026-07-24 19:00:53 KST 이후 + 사용자 명시 승인 후에만.** T123 읽기·퀴즈, T125d `publicChurches`, T125e 전체, T127a~h, T128·T129와 2026-07-16 Kakao 관리자 가입 묶음은 완료·운영 배포됐다. T126 영상 경로의 기존 관찰 시계는 별도 기록으로 유지하되, 읽기·퀴즈·T125 최신 writer를 포함한 **최종 T127 7일 시계는 새 웹 공개 확인 시각인 2026-07-17 19:00:53 KST부터 다시 시작해 2026-07-24 19:00:53 KST 전에는 닫지 않는다**. 그 전에는 일반 공동체 계정의 보호 필드 호환 상한, roster 직접 진도 writer, legacy `videoAutoConfig.apiKey`를 닫거나 정리하지 않는다.
+> **현재 활성 작업: 라운드 28 (문서 최하단) — T130·T131 무쓰기 감사·제안 완료. 다음 Codex 작업 T132(T127 최종 차단 시퀀스)는 2026-07-24 19:00:53 KST 이후 + 사용자 명시 승인 후에만.** T123 읽기·퀴즈, T125d `publicChurches`, T125e 전체, T127a~h, T128·T129와 2026-07-16 Kakao 관리자 가입 묶음은 완료·운영 배포됐다. T126 영상 경로의 기존 관찰 시계는 별도 기록으로 유지하되, 읽기·퀴즈·T125 최신 writer를 포함한 **최종 T127 7일 시계는 새 웹 공개 확인 시각인 2026-07-17 19:00:53 KST부터 다시 시작해 2026-07-24 19:00:53 KST 전에는 닫지 않는다**. 그 전에는 일반 공동체 계정의 보호 필드 호환 상한, roster 직접 진도 writer, legacy `videoAutoConfig.apiKey`를 닫거나 정리하지 않는다.
 > 사용자 개입이 필요한 잔여는 T124d 실제 공동체 관리자 소액 판매·수령·환불 스모크뿐이다. 안전한 자격증명·대상 구매 없이 운영 지갑과 불변 ledger를 만들 수 있어 Codex가 임의 실행하지 않는다. T123 shadow 확인용 일회용 계정은 생성·검증 직후 Auth와 모든 문서를 삭제했다.
 > T126 운영 관찰 잔여 2건: 오늘 서비스 날짜에 수동 영상 문서가 생길 때 URL·제목·게시일·`autoFilled` 불변 확인, 실제 platformAdmin 계정의 `adminPreviewDailyVideo` 200 확인. 배포 당일에는 오늘 문서가 없어서 자동 fill 문서가 생성됐고 운영 관리자 자격증명을 사용하지 않았으므로 조건부 미검증으로 남긴다.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
@@ -183,6 +183,8 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-18 | T131 운영 테스트 잔재 무쓰기 감사 완료 | `scripts/audit-operational-test-residue.mjs`, `HANDOFF_CODEX.md` | 재인증 후 운영을 읽기 전용으로 집계했다: users 38, churches 9, roster 3, Auth 50, 구매 1. 명백한 테스트 표지 users 8·churches 2, active users-without-Auth 6, Auth-only 18(명백한 테스트 표지 0)이며 종합 검토 후보는 users 14·churches 2·관련 roster 1이다. 후보에 양수 users 지갑 4·roster 지갑 1이 있고 pending 구매는 0이다. 휴리스틱과 Auth 미연결만으로 테스트 잔재를 확정할 수 없고 잔액·소속·완료 구매·불변 원장 손실 위험이 있으므로 **자동 삭제 금지**. 사용자가 정확한 대상·잔액 처리·Auth/Firestore/원장 보존을 결정한 후에도 공동체는 `adminSetChurchLifecycle`, 개별 계정은 기존 삭제 action을 사용한다. 운영 쓰기·정리 0건. |
+| 2026-07-18 | T130 신약 파생 캐시·새번역 품질 무쓰기 감사 완료 | `scripts/audit-{nt-derived-verses-schedule,new-translation-text-quality}.mjs`, `HANDOFF_CODEX.md` | 세 플랜 모두 365/365, title 파싱 365/365, 신약 260장 전체를 보유하지만 canonical exact title 불일치는 새한글 83·쉬움 88·메시지 91일이다. 서로 exact title 일치는 새한글↔쉬움 357일, 새한글↔메시지 350일, 쉬움↔메시지 358일이므로 세 배치는 대체로 같지만 완전히 동일하지 않다. 기존 “Day 136부터 하루 밀림”은 정정: canonical은 Day136 `행 11-12`·Day137 `행 13`을 배치하지만 캐시는 행11/행12를 따로 두고 Day239에서 행13을 재개해 Day239~315 주요 구간이 canonical 대비 대체로 **2일 늦다**(-2 offset 새한글 70·쉬움 69·메시지 65일). 본문 heading은 번역별 형식이 달라 새한글 118일·쉬움 109일·메시지 365일 파싱 불가이므로 일정 원장으로 쓰지 않는다. 권고는 전용 scope가 아니라 canonical `new_testament`기준 번역별 재생성(단순 Day 이동 금지). `1year_new` 365/365·빈 본문 0·100,947줄에서 체계적 절 번호열 0/365, 강한 다중 숫자 잔재 0줄, 고립 숫자 한 줄 9개 문서를 확인했다. 고립 9줄은 결함으로 확정하지 않고 원문 표본 대조 후에만 수리한다. 운영 쓰기 0건. |
 | 2026-07-17 | T131 운영 테스트 잔재 읽기 전용 감사 도구 준비 | `scripts/audit-operational-test-residue.mjs`, `HANDOFF_CODEX.md` | users·churches·collectionGroup roster/talentPurchases·Auth를 읽고, 명백한 test/qa/dummy/probe/한글 테스트 표지·active users↔Auth 고아·후보 관련 roster·양수 지갑·pending 구매를 수와 boolean만 집계하는 무쓰기 도구를 추가했다. 이름·UID·이메일·문서 ID 원문은 출력하지 않고, 시스템 `unaffiliated_v1`과 Auth가 없는 삭제 users는 정리 후보에서 제외해 참고치로 분리한다. 문법·diff·PATCH/PUT/DELETE/commit/Auth delete 미존재 검사는 통과했다. 실제 집계는 같은 Firebase 재인증 차단으로 요청 전 멈췄고 운영 읽기·쓰기 0건이므로 T131은 미완료다. |
 | 2026-07-17 | T130 신약 파생 캐시·새번역 품질 무쓰기 감사 도구 준비 | `scripts/audit-{nt-derived-verses-schedule,new-translation-text-quality}.mjs`, `HANDOFF_CODEX.md` | `nt_saehangul`·`nt_easy`·`nt_message` 365일의 title/본문 장 헤더, 신약 260장 커버리지, canonical Day 불일치·offset, 세 버전 배치 동일성을 결정적으로 집계하는 읽기 전용 도구를 추가했다. `1year_new`는 title/day ID/원문을 출력하지 않고 73일 구간별 절 표식 구조·숫자 잔재 후보 건수만 집계한다. 문법·diff 검사는 통과했으나 Firebase CLI refresh credential이 만료·폐기되어 Firestore 요청 전 `firebase login --reauth` 안내로 멈췄다. 이 시도의 운영 읽기·쓰기는 0건이며 T130은 재인증 후 실행·결과 메모까지 남아 미완료다. |
 | 2026-07-17 | T127 최종 감사 전 운영·정적 writer 기준선 | `scripts/audit-t127-{legacy-state,direct-writers}.mjs`, `HANDOFF_CODEX.md` | 최종 7일 관찰 종료 전 비교 기준선을 재채취했다. users 38(active 37/deleted 1), Day>365 0, percent-encoded UID 0, 미이관 inventory/unlockedRooms 0. personal primary roster 누락·손상 잔액 0, roster 3건의 경로·uid·진도·고아 이상 0으로 이전 기준선과 동일하다. 추가한 보고 전용 정적 감사는 `src` 157파일에서 보호 대상 직접 writer 후보 30건(users 17, roster 7, directory 3, dailyVideos 2, videoAutoConfig 1)을 파일:행·필드로 재현하고, platformStats·talentPurchases 클라이언트 직접 writer는 0건으로 확인했다. 운영 문서는 수정하지 않았다. 2026-07-24 19:00:53 KST 이후 두 감사를 재실행해 drift 0과 각 후보의 이관/제거 여부를 확인한 뒤만 writer/rules 차단을 진행한다. |
@@ -380,10 +382,16 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 
 ## 📮 Codex → Claude 메모
 
-2026-07-17 라운드 28 T130 진행 중·재인증 차단:
-- 신약 파생 3개 캐시 전수 대조와 `1year_new` 숫자/절 표식 품질 집계 도구를 작성했지만, Firebase CLI refresh credential이 만료·폐기되어 `auth.getAccessToken()`에서 종료됐다. Firestore 요청 전이므로 운영 읽기·쓰기 0건이다. **사용자 확인 필요:** 다음 실행 전 `firebase login --reauth`를 진행해도 되는지. 재인증 후 두 스크립을 실행·해석하기 전에는 T130을 완료 처리하지 않는다.
+2026-07-18 라운드 28 T130·T131 무쓰기 감사 종결:
+- Firebase 재인증 완료 후 T130/T131 세 감사를 전부 읽기 전용으로 실행했다. T130 신약 캐시 3종은 모두 365/365·title 파싱 365/365·신약 260장 전체지만, canonical exact title 불일치 83/88/91일이고 서로 exact title은 350~358일만 일치한다. 공통 핵심은 Day136 canonical의 행11-12 병합·Day137 행13 조기 배치를 구 캐시가 반영하지 않고 Day239부터 행13을 재개해 주요 구간이 대체로 2일 늦은 구 일정 drift이다. 번역별 body heading 형식 차이가 커서 본문 heading 수치는 수리 원장으로 사용하지 않는다.
+- **T130 제안(구현 안 함):** 전용 `allowed.nt_*` scope는 기존 오류 일정을 영구화하고 `nt_easy` 승인 문항 1,825개를 다시 배치·검수해야 하므로 비권장. canonical `new_testament`를 유지하고 세 캐시를 번역별 신뢰 원천에서 재생성한다. n±offset 복사는 금지하고 0600 raw backup+SHA-256 manifest, 365 updateTime CAS, exact 절 범위 bijection·27권/260장·누락/중복/말단 소실 0, audioUrl, Day136/137/239/315 gate를 먼저 검증한다. 사후 mismatch 0 후 `v_nt_*` localStorage revision을 올리는 웹을 배포한다. 이 수리는 T130 범위 밖이며 Claude/사용자 확인 전에 시작하지 않는다.
+- `1year_new` 365/365(빈 본문 0, 비헤더 100,947줄)은 보수적 판정에서 체계적 절 번호열 0/365이므로 절 번호가 사실상 생략된 형식이다. 이것은 절 **본문** 누락이나 누락 절 수를 뜻하지 않는다. 이전 `31 32` 유형 강한 다중 숫자 잔재는 0줄이고, 고립 숫자 한 줄 9개 문서는 절 표식/목록/각주/파싱 잔재를 구분할 수 없어 결함으로 확정하지 않았다.
+- T131은 users 14·churches 2·관련 roster 1을 **검토 후보**로 집계했다. 이 중 명백한 테스트 표지 users는 8이고 active users-without-Auth 6은 legacy 계정일 수 있다. Auth-only 18은 명백한 테스트 표지가 0이다. 양수 users 지갑 4·roster 지갑 1, 관련 roster 1이 있고 pending은 0이지만 완료 구매·불변 원장 보존 문제가 남아 **자동 삭제하지 않았다**. 사용자가 정확한 대상, 양수 잔액 처리, roster/완료 구매/원장 보존, 공동체 비활성화, Auth·Firestore 처리 범위를 결정한 후에도 server lifecycle/delete action으로만 정리한다.
+
+2026-07-17 라운드 28 T130 재인증 차단 당시 기록(2026-07-18 해결):
+- 신약 파생 3개 캐시 전수 대조와 `1year_new` 숫자/절 표식 품질 집계 도구를 작성했지만, Firebase CLI refresh credential이 만료·폐기되어 `auth.getAccessToken()`에서 종료됐다. Firestore 요청 전이므로 운영 읽기·쓰기 0건이었다. 2026-07-18 사용자 승인으로 `firebase login --reauth`를 완료하고 위 최신 메모의 결과로 종결했다.
 - 운영 결과 전 임시 설계 권고는 canonical `new_testament`·단일 `allowed.nt`를 유지하고 세 파생 캐시를 재배치/재생성하는 안이다. 전용 scope 분리는 `nt_easy` 승인 문항 1,825개의 Day 의미까지 재배치·재검수해야 하고 클라이언트/서버/인덱스 계약을 확장한다. 단순 Day 이동은 금지하고, 실제 수리 시 title·본문 절 범위·audioUrl·updateTime fence·frozen backup을 포함한 bijection을 먼저 증명해야 한다. 수리 후에는 Firestore보다 먼저 재사용되는 `v_nt_*` localStorage 캐시 revision도 올려야 한다.
-- T131도 독립적으로 진행해 개인정보 원문 없이 테스트 표지·Auth 고아·잔액·pending 구매를 집계하는 `audit-operational-test-residue.mjs`를 준비했다. 시스템 무소속 공동체와 정상 삭제 결과일 수 있는 deleted users-without-auth는 후보에서 제외한다. 재인증 전에는 실제 후보 수·양수 지갑·pending 여부를 알 수 없으므로 T131도 완료 처리하지 않았다. 실제 정리는 감사 실행 후에도 하지 않고, 공동체는 `adminSetChurchLifecycle`, 개별 계정은 기존 삭제 action을 권장 경로로만 제안한다.
+- T131도 독립적으로 진행해 개인정보 원문 없이 테스트 표지·Auth 고아·잔액·pending 구매를 집계하는 `audit-operational-test-residue.mjs`를 준비했다. 시스템 무소속 공동체와 정상 삭제 결과일 수 있는 deleted users-without-auth는 후보에서 제외한다. 2026-07-18 재인증 후 실제 집계를 완료했고, 정리는 실행하지 않은 채 위 최신 메모에 사용자 결정 항목과 서버 권장 경로를 남겼다.
 
 2026-07-17 순서대로 읽기 퀴즈·T127 잔여 감사:
 - T127 최종 감사의 재현성을 위해 `audit-t127-direct-writers.mjs`를 추가했다. compat Firestore 참조를 따라 `src` 157파일을 읽기 전용으로 스캔하고 보호 대상 writer 후보를 target·파일:행·set/update/delete/batch/transaction·필드로 정렬한다. 현재 30건(users 17, roster 7, directory 3, dailyVideos 2, videoAutoConfig 1)이며 platformStats·talentPurchases는 0건이다. 변수명을 서로 다른 scope에서 재사용한 호출은 안전하게 복수 target 후보로 보고하므로, 최종 차단 전 각 파일:행을 코드로 확정해야 한다.
@@ -2446,13 +2454,13 @@ Codex의 5개 질문에 대한 확정 답:
 >
 > **Codex 대상이 아닌 사용자 수동 게이트 (착수 금지, 참고만)**: ① T124d 실관리자 판매·수령·환불 스모크(승인된 일회용 공동체 필요), ② 실제 카카오 계정 로그인 → 대시보드 진입 확인, ③ T126 라이브 2건(당일 수동 영상 문서 불변, 실 platformAdmin `adminPreviewDailyVideo` 200), ④ 달란트 전원 리셋 실행(상점 오픈 시점, T21 버튼), ⑤ apex `bible114.net` DNS A 레코드 추가 여부 결정, ⑥ scrub 이전 백업 번들 삭제.
 
-### [ ] T130. 신약 파생 3개 버전 캐시 하루 밀림 — 무쓰기 감사·설계 제안 (지금 가능)
+### [x] T130. 신약 파생 3개 버전 캐시 하루 밀림 — 무쓰기 감사·설계 제안 (지금 가능)
 
 - 2026-07-17 감사에서 `nt_saehangul`/`nt_easy`/`nt_message` 캐시가 Day 136부터 `new_testament` 일정과 하루 밀림(73일 장 겹침 0)이 확인됐다. 현재 해당 플랜 활성 사용자 0명이지만, 신규 사용자가 선택하는 즉시 T129 이전의 sequential과 동일한 구조(클라이언트 출제 ↔ 서버 allowed 불일치 → invalidQuiz 전면 거부)가 재현된다.
 - **T129 방법론 재사용**: ① 운영 캐시 365일(신약 260장) title·본문 헤더 무쓰기 전수 대조 스크립트 작성·실행, ② 세 버전이 서로 같은 배치인지/버전별로 다른지 확정, ③ 해결안 제안 — 전용 일정 분리(`allowed.nt_*` scope)와 캐시 재배치 중 택일 근거 포함. **구현은 하지 말고** 감사 결과·설계 제안을 "Codex → Claude 메모"에 남겨 Claude/사용자 확인을 받는다.
 - 같은 스크립트 실행 김에 `1year_new` 본문 품질 문제(절 번호 없음·잔재 숫자)의 유형·건수도 개인정보 없이 집계해 첨부한다 (수리는 별도 라운드).
 
-### [ ] T131. 운영 테스트 잔재 정리 준비 — 읽기 전용 감사 (지금 가능)
+### [x] T131. 운영 테스트 잔재 정리 준비 — 읽기 전용 감사 (지금 가능)
 
 - 운영 `users`/`churches`/roster에서 테스트 잔재 후보(예: `클로드테스트교회`, 명백한 테스트 이름 패턴, Auth 미연결 고아 문서)를 **무쓰기**로 집계하는 스크립트를 작성·실행한다. 개인정보는 출력하지 않고 문서 수·유형·달란트 잔액·pending 구매 유무만 보고한다.
 - 실제 정리는 하지 않는다. 삭제 후보 목록과 권장 처리 경로(공동체는 T125e-2d `adminSetChurchLifecycle`, 개별 계정은 기존 삭제 action)를 메모로 회신하고 사용자 결정을 기다린다.

@@ -35,6 +35,9 @@ const headers = { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'appli
 const decodeString = value => typeof value?.stringValue === 'string' ? value.stringValue : '';
 const uniqueChapterKeys = items => [...new Set(items.map(item => `${item.slug}:${item.ch}`))];
 const signature = keys => keys.join('|');
+const exactRangeKeys = items => items.map(item => (
+    `${item.slug}:${item.ch}:${item.vStart ?? '*'}-${item.vEnd ?? '*'}`
+));
 const parseBodyHeadings = text => {
     const items = [];
     for (const line of String(text || '').split(/\r?\n/)) {
@@ -66,9 +69,60 @@ const histogram = values => Object.fromEntries([...values.reduce((counts, value)
     return counts;
 }, new Map())].sort((left, right) => Number(left[0]) - Number(right[0])));
 
+const analyzeOffsets = (rows, canonicalRows, signatureField) => {
+    const nearestOffsets = [];
+    const ambiguousSignatureDays = [];
+    const unmatchedSignatureDays = [];
+    for (const row of rows) {
+        const value = row[signatureField];
+        if (!row.found || !value) continue;
+        const candidateDays = canonicalRows
+            .filter(canonicalRow => canonicalRow[signatureField] === value)
+            .map(canonicalRow => canonicalRow.day);
+        if (candidateDays.length === 0) unmatchedSignatureDays.push(row.day);
+        else {
+            if (candidateDays.length > 1) ambiguousSignatureDays.push(row.day);
+            candidateDays.sort((left, right) => (
+                Math.abs(left - row.day) - Math.abs(right - row.day) || left - right
+            ));
+            nearestOffsets.push(candidateDays[0] - row.day);
+        }
+    }
+    const offsetMatchCounts = [];
+    for (let offset = -(DAY_COUNT - 1); offset <= DAY_COUNT - 1; offset += 1) {
+        let compared = 0;
+        let matches = 0;
+        for (const row of rows) {
+            const canonicalDay = row.day + offset;
+            if (!row.found || !row[signatureField] || canonicalDay < 1 || canonicalDay > DAY_COUNT) continue;
+            compared += 1;
+            if (row[signatureField] === canonicalRows[canonicalDay - 1][signatureField]) matches += 1;
+        }
+        if (matches > 0) offsetMatchCounts.push({ offset, matches, compared });
+    }
+    offsetMatchCounts.sort((left, right) => (
+        right.matches - left.matches || Math.abs(left.offset) - Math.abs(right.offset) || left.offset - right.offset
+    ));
+    return {
+        nearestCanonicalOffsetHistogram: histogram(nearestOffsets),
+        ambiguousSignatureCount: ambiguousSignatureDays.length,
+        ambiguousSignatureDays,
+        unmatchedSignatureCount: unmatchedSignatureDays.length,
+        unmatchedSignatureDays,
+        strongestGlobalOffsets: offsetMatchCounts.slice(0, 10),
+    };
+};
+
 const canonical = schedules.new_testament.map((entry, index) => {
-    const keys = uniqueChapterKeys(parseReadingRange(entry?.range));
-    return { day: index + 1, keys, signature: signature(keys) };
+    const items = parseReadingRange(entry?.range);
+    const keys = uniqueChapterKeys(items);
+    return {
+        day: index + 1,
+        keys,
+        chapterSignature: signature(keys),
+        exactTitleSignature: signature(exactRangeKeys(items)),
+        bodySignature: signature(keys),
+    };
 });
 if (canonical.length !== DAY_COUNT) {
     throw new Error(`canonical new_testament 일정이 ${DAY_COUNT}일이 아닙니다: ${canonical.length}`);
@@ -109,47 +163,42 @@ for (const planId of PLAN_IDS) {
     const bodyHeadingUnparsedDays = [];
     const titleBodyMismatchDays = [];
     const titleCanonicalMismatchDays = [];
+    const titleExactCanonicalMismatchDays = [];
     const bodyCanonicalMismatchDays = [];
     const titleCoverage = new Set();
     const bodyCoverage = new Set();
-    const nearestOffsets = [];
-    const ambiguousSignatureDays = [];
-    const unmatchedSignatureDays = [];
 
     for (let day = 1; day <= DAY_COUNT; day += 1) {
         const fields = documents.get(`${documentBase}/verses/${planId}_${day}`);
         if (!fields) {
             missingDays.push(day);
-            rows.push({ day, found: false, titleSignature: '', bodySignature: '' });
+            rows.push({
+                day,
+                found: false,
+                titleSignature: '',
+                exactTitleSignature: '',
+                bodySignature: '',
+            });
             continue;
         }
         foundDays.push(day);
-        const titleKeys = uniqueChapterKeys(parseReadingRange(decodeString(fields.title)));
+        const titleItems = parseReadingRange(decodeString(fields.title));
+        const titleKeys = uniqueChapterKeys(titleItems);
         const bodyKeys = uniqueChapterKeys(parseBodyHeadings(decodeString(fields.text)));
         const titleSignature = signature(titleKeys);
+        const exactTitleSignature = signature(exactRangeKeys(titleItems));
         const bodySignature = signature(bodyKeys);
-        rows.push({ day, found: true, titleSignature, bodySignature });
+        rows.push({ day, found: true, titleSignature, exactTitleSignature, bodySignature });
         titleKeys.forEach(key => titleCoverage.add(key));
         bodyKeys.forEach(key => bodyCoverage.add(key));
         if (titleKeys.length === 0) titleUnparsedDays.push(day);
         if (bodyKeys.length === 0) bodyHeadingUnparsedDays.push(day);
         if (titleSignature !== bodySignature) titleBodyMismatchDays.push(day);
-        if (titleSignature !== canonical[day - 1].signature) titleCanonicalMismatchDays.push(day);
-        if (bodySignature !== canonical[day - 1].signature) bodyCanonicalMismatchDays.push(day);
-
-        if (bodySignature) {
-            const candidateDays = canonical
-                .filter(row => row.signature === bodySignature)
-                .map(row => row.day);
-            if (candidateDays.length === 0) unmatchedSignatureDays.push(day);
-            else {
-                if (candidateDays.length > 1) ambiguousSignatureDays.push(day);
-                candidateDays.sort((left, right) => (
-                    Math.abs(left - day) - Math.abs(right - day) || left - right
-                ));
-                nearestOffsets.push(candidateDays[0] - day);
-            }
+        if (titleSignature !== canonical[day - 1].chapterSignature) titleCanonicalMismatchDays.push(day);
+        if (exactTitleSignature !== canonical[day - 1].exactTitleSignature) {
+            titleExactCanonicalMismatchDays.push(day);
         }
+        if (bodySignature !== canonical[day - 1].bodySignature) bodyCanonicalMismatchDays.push(day);
     }
 
     const coverageReport = coverage => ({
@@ -158,22 +207,6 @@ for (const planId of PLAN_IDS) {
         missingChapters: [...canonicalCoverage].filter(key => !coverage.has(key)).sort(),
         unexpectedChapters: [...coverage].filter(key => !canonicalCoverage.has(key)).sort(),
     });
-    const offsetMatchCounts = [];
-    for (let offset = -(DAY_COUNT - 1); offset <= DAY_COUNT - 1; offset += 1) {
-        let compared = 0;
-        let matches = 0;
-        for (const row of rows) {
-            const canonicalDay = row.day + offset;
-            if (!row.found || !row.bodySignature || canonicalDay < 1 || canonicalDay > DAY_COUNT) continue;
-            compared += 1;
-            if (row.bodySignature === canonical[canonicalDay - 1].signature) matches += 1;
-        }
-        if (matches > 0) offsetMatchCounts.push({ offset, matches, compared });
-    }
-    offsetMatchCounts.sort((left, right) => (
-        right.matches - left.matches || Math.abs(left.offset) - Math.abs(right.offset) || left.offset - right.offset
-    ));
-
     rowsByPlan.set(planId, rows);
     planReports[planId] = {
         found: foundDays.length,
@@ -188,6 +221,8 @@ for (const planId of PLAN_IDS) {
         titleBodyMismatchDays,
         titleCanonicalMismatchCount: titleCanonicalMismatchDays.length,
         titleCanonicalMismatchDays,
+        titleExactCanonicalMismatchCount: titleExactCanonicalMismatchDays.length,
+        titleExactCanonicalMismatchDays,
         bodyCanonicalMismatchCount: bodyCanonicalMismatchDays.length,
         bodyCanonicalMismatchDays,
         coverage: {
@@ -195,12 +230,8 @@ for (const planId of PLAN_IDS) {
             body: coverageReport(bodyCoverage),
         },
         offsetAnalysis: {
-            nearestCanonicalOffsetHistogram: histogram(nearestOffsets),
-            ambiguousSignatureCount: ambiguousSignatureDays.length,
-            ambiguousSignatureDays,
-            unmatchedSignatureCount: unmatchedSignatureDays.length,
-            unmatchedSignatureDays,
-            strongestGlobalOffsets: offsetMatchCounts.slice(0, 10),
+            exactTitle: analyzeOffsets(rows, canonical, 'exactTitleSignature'),
+            bodyChapterHeadings: analyzeOffsets(rows, canonical, 'bodySignature'),
         },
     };
 }
@@ -215,12 +246,17 @@ for (let leftIndex = 0; leftIndex < PLAN_IDS.length; leftIndex += 1) {
         const comparableDays = [];
         const sameBodyDays = [];
         const differentBodyDays = [];
+        const sameExactTitleDays = [];
+        const differentExactTitleDays = [];
         for (let index = 0; index < DAY_COUNT; index += 1) {
             if (!leftRows[index].found || !rightRows[index].found) continue;
             const day = index + 1;
             comparableDays.push(day);
             if (leftRows[index].bodySignature === rightRows[index].bodySignature) sameBodyDays.push(day);
             else differentBodyDays.push(day);
+            if (leftRows[index].exactTitleSignature === rightRows[index].exactTitleSignature) {
+                sameExactTitleDays.push(day);
+            } else differentExactTitleDays.push(day);
         }
         pairwise.push({
             plans: [leftPlan, rightPlan],
@@ -228,6 +264,9 @@ for (let leftIndex = 0; leftIndex < PLAN_IDS.length; leftIndex += 1) {
             sameBodyDayCount: sameBodyDays.length,
             differentBodyDayCount: differentBodyDays.length,
             differentBodyDays,
+            sameExactTitleDayCount: sameExactTitleDays.length,
+            differentExactTitleDayCount: differentExactTitleDays.length,
+            differentExactTitleDays,
         });
     }
 }
