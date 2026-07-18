@@ -8,7 +8,7 @@
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
 > **2026-07-16 저녁 갱신: 보류됐던 정책 결정이 전부 도착했다** — 문서 하단 "🧭 Claude 결정 회신" 참조. 이름 변경=점진 보정, 삭제=복원 가능한 비활성화(5개 세부 답 포함), platformStats 필드 의미 확정, isPlatformAdmin `isDeleted` 결속 수정 허용. **T125e-2c/d·T125e-3 구현 진행 가능.** 새 라운드 27(읽기 일정 결측 — T128a 표기 수정·T128b 커버리지 검사 즉시, T128c는 M-S1 대기)도 하단에 추가됐다.
-> **현재 활성 작업: 라운드 28 (문서 최하단) — T130·T131 무쓰기 감사·제안 완료. 다음 Codex 작업 T132(T127 최종 차단 시퀀스)는 2026-07-24 19:00:53 KST 이후 + 사용자 명시 승인 후에만.** T123 읽기·퀴즈, T125d `publicChurches`, T125e 전체, T127a~h, T128·T129와 2026-07-16 Kakao 관리자 가입 묶음은 완료·운영 배포됐다. T126 영상 경로의 기존 관찰 시계는 별도 기록으로 유지하되, 읽기·퀴즈·T125 최신 writer를 포함한 **최종 T127 7일 시계는 새 웹 공개 확인 시각인 2026-07-17 19:00:53 KST부터 다시 시작해 2026-07-24 19:00:53 KST 전에는 닫지 않는다**. 그 전에는 일반 공동체 계정의 보호 필드 호환 상한, roster 직접 진도 writer, legacy `videoAutoConfig.apiKey`를 닫거나 정리하지 않는다.
+> **현재 활성 작업: 라운드 28 (문서 최하단) — 사용자 승인으로 T133 신약 파생 캐시 수리 준비를 시작했으며, 안전 도구와 원천 감사는 완료했지만 `nt_message` 절 단위 신뢰 원천 부재로 운영 적용은 잠겨 있다. T132(T127 최종 차단 시퀀스)는 별개로 2026-07-24 19:00:53 KST 이후 + 사용자 명시 승인 후에만.** T123 읽기·퀴즈, T125d `publicChurches`, T125e 전체, T127a~h, T128·T129와 2026-07-16 Kakao 관리자 가입 묶음은 완료·운영 배포됐다. T126 영상 경로의 기존 관찰 시계는 별도 기록으로 유지하되, 읽기·퀴즈·T125 최신 writer를 포함한 **최종 T127 7일 시계는 새 웹 공개 확인 시각인 2026-07-17 19:00:53 KST부터 다시 시작해 2026-07-24 19:00:53 KST 전에는 닫지 않는다**. 그 전에는 일반 공동체 계정의 보호 필드 호환 상한, roster 직접 진도 writer, legacy `videoAutoConfig.apiKey`를 닫거나 정리하지 않는다.
 > 사용자 개입이 필요한 잔여는 T124d 실제 공동체 관리자 소액 판매·수령·환불 스모크뿐이다. 안전한 자격증명·대상 구매 없이 운영 지갑과 불변 ledger를 만들 수 있어 Codex가 임의 실행하지 않는다. T123 shadow 확인용 일회용 계정은 생성·검증 직후 Auth와 모든 문서를 삭제했다.
 > T126 운영 관찰 잔여 2건: 오늘 서비스 날짜에 수동 영상 문서가 생길 때 URL·제목·게시일·`autoFilled` 불변 확인, 실제 platformAdmin 계정의 `adminPreviewDailyVideo` 200 확인. 배포 당일에는 오늘 문서가 없어서 자동 fill 문서가 생성됐고 운영 관리자 자격증명을 사용하지 않았으므로 조건부 미검증으로 남긴다.
 > 이전 라운드들의 "검증 체크리스트"에 남은 `[ ]`는 배포 후 사용자가 하는 실환경 검증이므로 Codex 대상이 아니다.
@@ -183,6 +183,7 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-18 | T133 신약 파생 캐시 수리 원천 감사·안전 도구 준비 | `scripts/{repair-nt-derived-verses-cache,export-nt-sword-staging}.mjs`, `scripts/read-nt-sword-source.py`, `package.json`, `HANDOFF_CODEX.md` | 사용자 승인 뒤 세 에이전트로 운영 preflight·원천 조사·도구 설계를 병렬 수행했다. 운영 1,095문서는 365×3, 활성 사용자 0, `audioUrl` 전부 null이며 수정 필드는 title/text로만 제한했다. 기존 Notion/static 365일 캐시는 같은 구 일정이라 원천으로 재사용 금지. 현 SWORD에서 새한글 licensed NKT는 구조 7,957절 중 빈 slot 3, 쉬운성경은 판본 절 구분 7,959 slot/본문 7,958(계12:18 포함), 메시지는 절 단위 원천 없음. 번역별 절수·명시적 omitted slot·27권/260장·canonical **집합** bijection·frozen SHA·apply/rollback 승인 SHA 하드락·적용 직전 1,095 재조회·0600 backup·updateTime CAS를 갖춘 기본 dry-run 도구를 추가했다. 새한글/쉬움 staging v2는 저장소 밖 0700/0600으로 생성했고 manifest SHA-256은 `11566bb41cfa9e27169825da0c4bec63bcc5735c9a272985789c97796767367e`다. 승인 source SHA는 null이라 `--apply` 불가이고 운영 쓰기·배포 0건. renderer 결과 변경이 450건을 넘으면 고정 ID 단일 commit 대신 versioned collection+pointer 설계를 사용한다. |
 | 2026-07-18 | T131 운영 테스트 잔재 무쓰기 감사 완료 | `scripts/audit-operational-test-residue.mjs`, `HANDOFF_CODEX.md` | 재인증 후 운영을 읽기 전용으로 집계했다: users 38, churches 9, roster 3, Auth 50, 구매 1. 명백한 테스트 표지 users 8·churches 2, active users-without-Auth 6, Auth-only 18(명백한 테스트 표지 0)이며 종합 검토 후보는 users 14·churches 2·관련 roster 1이다. 후보에 양수 users 지갑 4·roster 지갑 1이 있고 pending 구매는 0이다. 휴리스틱과 Auth 미연결만으로 테스트 잔재를 확정할 수 없고 잔액·소속·완료 구매·불변 원장 손실 위험이 있으므로 **자동 삭제 금지**. 사용자가 정확한 대상·잔액 처리·Auth/Firestore/원장 보존을 결정한 후에도 공동체는 `adminSetChurchLifecycle`, 개별 계정은 기존 삭제 action을 사용한다. 운영 쓰기·정리 0건. |
 | 2026-07-18 | T130 신약 파생 캐시·새번역 품질 무쓰기 감사 완료 | `scripts/audit-{nt-derived-verses-schedule,new-translation-text-quality}.mjs`, `HANDOFF_CODEX.md` | 세 플랜 모두 365/365, title 파싱 365/365, 신약 260장 전체를 보유하지만 canonical exact title 불일치는 새한글 83·쉬움 88·메시지 91일이다. 서로 exact title 일치는 새한글↔쉬움 357일, 새한글↔메시지 350일, 쉬움↔메시지 358일이므로 세 배치는 대체로 같지만 완전히 동일하지 않다. 기존 “Day 136부터 하루 밀림”은 정정: canonical은 Day136 `행 11-12`·Day137 `행 13`을 배치하지만 캐시는 행11/행12를 따로 두고 Day239에서 행13을 재개해 Day239~315 주요 구간이 canonical 대비 대체로 **2일 늦다**(-2 offset 새한글 70·쉬움 69·메시지 65일). 본문 heading은 번역별 형식이 달라 새한글 118일·쉬움 109일·메시지 365일 파싱 불가이므로 일정 원장으로 쓰지 않는다. 권고는 전용 scope가 아니라 canonical `new_testament`기준 번역별 재생성(단순 Day 이동 금지). `1year_new` 365/365·빈 본문 0·100,947줄에서 체계적 절 번호열 0/365, 강한 다중 숫자 잔재 0줄, 고립 숫자 한 줄 9개 문서를 확인했다. 고립 9줄은 결함으로 확정하지 않고 원문 표본 대조 후에만 수리한다. 운영 쓰기 0건. |
 | 2026-07-17 | T131 운영 테스트 잔재 읽기 전용 감사 도구 준비 | `scripts/audit-operational-test-residue.mjs`, `HANDOFF_CODEX.md` | users·churches·collectionGroup roster/talentPurchases·Auth를 읽고, 명백한 test/qa/dummy/probe/한글 테스트 표지·active users↔Auth 고아·후보 관련 roster·양수 지갑·pending 구매를 수와 boolean만 집계하는 무쓰기 도구를 추가했다. 이름·UID·이메일·문서 ID 원문은 출력하지 않고, 시스템 `unaffiliated_v1`과 Auth가 없는 삭제 users는 정리 후보에서 제외해 참고치로 분리한다. 문법·diff·PATCH/PUT/DELETE/commit/Auth delete 미존재 검사는 통과했다. 실제 집계는 같은 Firebase 재인증 차단으로 요청 전 멈췄고 운영 읽기·쓰기 0건이므로 T131은 미완료다. |
@@ -381,6 +382,15 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-18 T133 신약 파생 캐시 수리 착수 후 source gate:
+- 사용자가 T130 권고안의 실제 진행을 승인해 운영 preflight와 로컬 원천 감사를 수행했다. 운영은 세 플랜 각 365문서, 활성 사용자 0이며 title exact mismatch 83/88/91은 그대로다. `date`는 canonical과 300일 다르지만 서비스 메타이므로 보존하고, 모든 `audioUrl`도 null인 기존 값을 보존한다. 수리 대상은 title/text뿐이다.
+- 성서교회 앱의 `public/bible-cache/nt_*`와 Notion proxy export는 운영과 같은 구 일정(D136 행11, D137 행12, D239 행13:1-25)이므로 frozen source가 아니라 재업로드 금지다. `nt_message`는 별도 절 단위 원천을 로컬에서 찾지 못했고 본문에 절 번호가 없어 canonical 분할 경계를 안전하게 복원할 수 없다.
+- 현 SWORD 새한글 모듈은 2026-07-16 갱신된 licensed NKT Version 2.0으로 260장/7,957 절 slot이지만 행19:41·행24:7·고후13:14 세 slot이 비어 있다. 쉬운성경은 260장/7,959 slot, 본문 7,958이며 계12:18을 포함하는 판본 절 구분이다. 이를 일률적으로 7,957절에 맞추면 본문 손실이므로 도구는 plan별 절수와 `omitted:true` 빈 slot을 명시적으로 허용한다. 새한글 빈 3절의 원판상 의미 확인과 Message 신뢰 원천 확보 전에는 source manifest를 승인하지 않는다.
+- `export-nt-sword-staging.mjs`와 read-only Python bridge를 추가해 새한글/쉬움만 저장소 밖 `/Users/jaeam/Library/Application Support/bible114-platform-private/nt-source-staging-20260718-v2`에 0700 디렉터리·0600 JSON으로 고정했다. staging manifest는 `approvedForRepair:false`, `missingPlans:["nt_message"]`이며 SHA-256 `11566bb41cfa9e27169825da0c4bec63bcc5735c9a272985789c97796767367e`다. 본문은 stdout·git에 출력/저장하지 않았다. canonical 일정은 정경 권 순서와 달리 여러 구간을 교차하므로 전체 절 검증은 입력 순서 비교가 아니라 structural slot 집합의 정확한 1회 소비로 수정했다.
+- `repair-nt-derived-verses-cache.mjs`는 기본 dry-run이고 `APPROVED_SOURCE_MANIFEST_SHA256 = null` 하드락으로 `--apply`를 인증/commit 전에 거부한다. frozen source SHA, canonical 전체 절 소비의 누락/중복 0, 27권/260장, Day136/137/239/315, audioUrl 불변, 운영 1,095 재조회 hash, 0600 raw backup, title/text-only updateMask, updateTime CAS와 rollback receipt를 요구한다. 현재 renderer는 450개 초과 문서를 바꿀 가능성이 커 그런 경우 versioned collection+단일 pointer 전환 없이는 적용하지 않는다. 운영 쓰기·웹 배포는 0건이다.
+- 450건 초과 시 설계는 `verseCacheReleases/{releaseId}/days/{planId_day}` immutable staging + `verseCachePointers/nt-derived` 한 문서 CAS 전환이다. pointer-aware 웹과 read-only rules를 먼저 `mode:legacy`로 배포하고, 1,095 release 전수 검증 뒤 pointer 한 건만 바꾼다. reader와 `quizEngine.getCachedTitle`은 같은 release-aware localStorage key를 써야 하며 active release의 item 누락 시 legacy fallback은 금지한다. 구버전 열린 탭은 pointer를 모르므로 switch 직전 활성 사용자 0을 재확인하고 필요하면 검증 후 legacy mirror를 별도로 수행한다. 새 인덱스는 필요 없다.
+- **Claude/사용자 결정 필요:** (1) Message의 합법적·신뢰 가능한 절 단위 원천을 어디서 받을지, (2) 새한글 빈 3 slot을 licensed 원판의 의도적 공절로 승인할지, (3) dry-run 변경 수가 450을 넘으면 versioned collection+pointer 전환을 허용할지. 이 세 결정 전에는 운영 수리와 localStorage revision 배포를 진행하지 않는다.
 
 2026-07-18 라운드 28 T130·T131 무쓰기 감사 종결:
 - Firebase 재인증 완료 후 T130/T131 세 감사를 전부 읽기 전용으로 실행했다. T130 신약 캐시 3종은 모두 365/365·title 파싱 365/365·신약 260장 전체지만, canonical exact title 불일치 83/88/91일이고 서로 exact title은 350~358일만 일치한다. 공통 핵심은 Day136 canonical의 행11-12 병합·Day137 행13 조기 배치를 구 캐시가 반영하지 않고 Day239부터 행13을 재개해 주요 구간이 대체로 2일 늦은 구 일정 drift이다. 번역별 body heading 형식 차이가 커서 본문 heading 수치는 수리 원장으로 사용하지 않는다.
@@ -2464,6 +2474,17 @@ Codex의 5개 질문에 대한 확정 답:
 
 - 운영 `users`/`churches`/roster에서 테스트 잔재 후보(예: `클로드테스트교회`, 명백한 테스트 이름 패턴, Auth 미연결 고아 문서)를 **무쓰기**로 집계하는 스크립트를 작성·실행한다. 개인정보는 출력하지 않고 문서 수·유형·달란트 잔액·pending 구매 유무만 보고한다.
 - 실제 정리는 하지 않는다. 삭제 후보 목록과 권장 처리 경로(공동체는 T125e-2d `adminSetChurchLifecycle`, 개별 계정은 기존 삭제 action)를 메모로 회신하고 사용자 결정을 기다린다.
+
+### [ ] T133. 신약 파생 3개 캐시 canonical 재생성·교체 (2026-07-18 사용자 승인, source gate 대기)
+
+- [x] 운영 1,095문서 구조·활성 사용자·updateTime·크기·음원 메타를 무쓰기 preflight하고, 기존 Notion/static 365일 캐시가 같은 구 일정임을 확인한다.
+- [x] 번역별 로컬 절 원천을 감사하고, 판본별 절수와 빈 절 slot을 임의 보충·삭제하지 않는 frozen manifest 계약을 정한다.
+- [x] 기본 dry-run, 승인 source SHA 하드락, 0600 raw backup, title/text-only update, updateTime CAS, 사후 non-target 불변, rollback receipt를 갖춘 수리 도구를 준비한다.
+- [x] 새한글·쉬운성경 SWORD를 저장소 밖 private staging으로 export하고 source 파일·일정·manifest SHA와 권한을 검증한다. staging은 Message 미포함과 repair 미승인을 명시한다.
+- [ ] `nt_message`의 합법적·신뢰 가능한 절 단위 원천을 확보한다. 현재 날짜별 본문은 절 경계가 없어 source로 사용 금지.
+- [ ] 새한글의 빈 slot 3개가 licensed NKT 원판의 의도적 versification임을 확인하고, 세 번역 frozen source manifest를 생성·교차검증한다.
+- [ ] 전체 dry-run의 changed count를 확인한다. 450 이하만 기존 고정 ID에 단일 atomic commit 가능하며, 초과하면 사용자 승인 아래 versioned collection+pointer 전환을 먼저 설계·구현한다.
+- [ ] 운영 적용·사후 mismatch 0·Day136/137/239/315 본문/퀴즈 smoke가 모두 통과한 뒤에만 `v_nt_*` localStorage revision 웹을 배포한다. 음원은 별도 완료 조건으로 기록한다.
 
 ### [ ] T132. T127 최종 차단 시퀀스 (**2026-07-24 19:00:53 KST 이후 + 사용자 명시 승인 후에만**)
 

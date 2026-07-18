@@ -20,6 +20,8 @@
     "validate:roster-multimembership": "node scripts/validate-roster-multimembership.mjs",
     "validate:department-talent": "node scripts/validate-department-talent.mjs",
     "validate:nt-easy": "node scripts/validate-nt-easy-candidates.mjs",
+    "export:nt-sword-staging": "node scripts/export-nt-sword-staging.mjs",
+    "repair:nt-derived-cache": "node scripts/repair-nt-derived-verses-cache.mjs",
     "review:nt-easy": "node scripts/build-nt-easy-review.mjs",
     "promote:nt-easy": "node scripts/promote-nt-easy.mjs",
     "generate:quiz-answer-index": "node scripts/generate-quiz-answer-index.mjs",
