@@ -184,6 +184,7 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-18 | T133 성도용 가입 안내문 A4 2면 확장 | `src/components/ChurchAdminView.jsx`, `scripts/{render-round29-guide,validate-round29}.mjs`, `scripts/validate-round24.mjs`, `package.json`, `test-artifacts/round29-20260718/` | 기존 QR·가입 4단계·입장코드 자동 채움/빈칸 fallback을 보존하고, 1면에 아이폰/갤럭시 홈 화면 추가 안내, 2면에 매일 5단계·달란트·도움말을 통합했다. 실제 정책(첫 읽기 10+연속 보너스 최대 7, 퀴즈 1차 10/2차 5·하루 1회)과 대조했다. A4 210×297mm 브라우저 렌더에서 두 면 모두 overflow 0px, 잘림·고아 줄 없음을 페이지별 스크린샷으로 확인했다. `npm run validate`(platform-api 446/446)·build·diff-check 통과. **웹 배포·push는 하지 않았다.** |
 | 2026-07-18 | 컴맹 성도 UX P1 3건 수정 (Claude 실행, 사용자 지시) | `index.html`, `src/components/LoginView.jsx` (`86599a8`, 감사: `review/UX_NOVICE_AUDIT_2026-07-18.md`) | ① 교인 로그인·가입 생년월일이 8자리가 아니면 "등록되지 않은 사용자" 대신 형식 안내를 먼저 표시하고 `1956-03-15` 구분자는 자동 제거(로그인은 정규화 값으로 인증, 가입은 `isValidBirthdate` 실날짜 검증). ② 하단 고정 카카오 광고가 버튼을 가리지 않게 body에 `calc(env(safe-area-inset-bottom)+64px)` 하단 여백 — 광고는 유지(사용자 지시). ③ 모바일 탭 전환 시 히어로 아래 로그인 카드로 스크롤(smooth는 전환 직후 레이아웃 재계산에 끊겨 80ms 지연 후 즉시 이동). 셋 다 로컬 브라우저 375px에서 실검증: 6자리→형식 안내, 구분자→정상 인증 경로, 등록 클릭→카드 상단 정렬, 최하단 콘텐츠가 광고 위에 놓임. build·round11/18 검증 통과. **웹 배포·push는 하지 않았다.** |
 | 2026-07-18 | 미운영 성경 버전(쉬운성경·새한글·메시지) 클라이언트 코드 제거 (Claude 실행, 사용자 지시) | `src/data/{bible_options,schedules}.js`, `src/{App,components/{PlanSelectionView,GuestReaderView}}.jsx`, `src/hooks/useBibleContent.js`, `src/utils/quizProgress.js`, `src/utils/saehangulParser.js`(삭제), `scripts/{test-saehangul-parser.mjs(삭제),validate-round18.mjs}`, `package.json` | 사용자가 세 버전 미운영을 확정해 관련 코드를 제거했다. BIBLE_VERSIONS 5개 항목·`allowedChurchIds` 노출 제한 장치·schedules 별칭 4개(`1year_saehangul`,`nt_saehangul`,`nt_easy`,`nt_message`)·새한글 파서·`nt_easy` 플랜의 기본 easy 난이도 분기를 삭제했다. **이 결정으로 T130 캐시 재생성 제안은 불필요해짐**(해당 캐시는 고아 데이터 — 운영 verses 문서 삭제 여부는 별도 결정). 쉬운 **난이도** 퀴즈(quizNtEasy, 라운드 23)는 별개 기능이라 유지. 서버 allowedPlans는 원래 4개뿐이라 무변경. 레거시 planId는 `isPlanIdAllowedForUser` false·게스트 `1year_revised` 폴백으로 안전. 전체 validate·build·게스트 UI(드롭다운 4개 플랜, 본문·신약 전환 정상, 콘솔 오류 0) 확인. 운영 쓰기·배포·push 없음. |
 | 2026-07-18 | T124 재처리 P1 운영 릴리스 + T124d 다음 실행 설계 | `HANDOFF_CODEX.md` (배포 대상 `a801815`) | 사용자 명시 승인으로 `main`을 `a801815`까지 push하고 `platform-api` Edge와 GitHub Pages 웹을 배포했다. Edge는 허용 origin OPTIONS 204, 유효 payload 미인증 401, 잘못된 origin 403. 공개 웹은 `assets/index-Dc3p7dCd.js`, 로컬/공개 SHA-256 `a712838ee8a6b876a777ea107e6e6e0997436c63da159b76dfd8a6228ef28f1c` 일치, HTML 참조 9개 모두 HTTP 200. 다음 T124d는 현재 runner를 `prepare(일반 pending 2건만) → 실제 공개 관리자 UI에서 창구판매/수령/환불 → dynamic ledger 독립 audit → cleanup`으로 분리해 Network가 `platform-api` action을 호출한 증거와 결과 화면 스크린샷을 남긴다. 서버 직접 action만으로 T124d를 완료 처리하지 않는다. rules·운영 기존 교회 데이터 변경 없음. |
@@ -390,6 +391,11 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-18 T133 성도용 가입 안내문 2면 완료:
+- 기존 `printMemberGuide` 한 버튼 안에서 1면 회원가입+홈 화면 추가, 2면 매일 사용법+달란트+도움말로 확장했다. 별도 “매일 사용법 인쇄” 버튼은 만들지 않았고 입장코드 현재 세션 자동 채움/빈칸 손글씨 fallback도 그대로다.
+- 첫 시각 측정에서 1면이 26px 넘쳐 QR을 62→55mm로 조정했다. 최종 A4 210×297mm 렌더는 두 면 모두 `scrollHeight === clientHeight`(1123px), overflow 0px이며 `test-artifacts/round29-20260718/member-guide-page{1,2}.png`에 남겼다.
+- `validate:round29`을 전체 validate 체인에 추가해 안내 문구·정확히 2면·입장코드 fallback·별도 인쇄 버튼 금지·실제 읽기/퀴즈 정책 결속을 검사한다. 전체 validate(platform-api 446/446), build, diff-check 통과. 배포·push는 하지 않았다. 다음 첫 미완료는 T134 성도용 FAQ다.
 
 2026-07-18 `a801815` 운영 배포 완료·T124d UI-first 실행 설계:
 - 사용자 명시 승인으로 `main` push, `platform-api` Edge 배포, GitHub Pages 웹 재배포를 완료했다. Edge 무쓰기 프로브는 OPTIONS 204·유효 payload 미인증 401·bad origin 403이다. 공개 웹 `assets/index-Dc3p7dCd.js`는 로컬과 SHA-256 `a712838ee8a6b876a777ea107e6e6e0997436c63da159b76dfd8a6228ef28f1c` 일치, HTML 참조 9개 모두 200이다.
@@ -2510,7 +2516,7 @@ Codex의 5개 질문에 대한 확정 답:
 
 > 배경: 컴맹 성도 UX 감사(`review/UX_NOVICE_AUDIT_2026-07-18.md`) 후속. 사용자 확정 사항: ① 매일 사용법은 **별도 인쇄물이 아니라 기존 가입 안내문에 추가**, ② FAQ는 **성도용·관리자용 분리**. 시각 시안(사용자 확인 완료): `review/mockups/guide-faq-mockup-2026-07-18.html` — 카피는 아래와 시안 중 시안을 우선하되 수치·기능 문구는 코드 정책과 대조 후 확정한다. T132 날짜 게이트와 무관하게 지금 진행 가능. rules·서버·운영 데이터 변경 없음(전부 클라이언트 문구/인쇄물).
 
-### [ ] T133. 성도용 가입 안내문 2면 확장 (`ChurchAdminView.printMemberGuide`)
+### [x] T133. 성도용 가입 안내문 2면 확장 (`ChurchAdminView.printMemberGuide`)
 
 - 1면: 기존 헤더·QR·"1️⃣ 회원가입(4단계)" 유지 + 새 섹션 **"2️⃣ 홈 화면에 추가 — 다음부터 한 번에 열려요"**: 두 컬럼(🍎 아이폰 사파리: 공유 ⬆︎ → 홈 화면에 추가 → 추가 / 🤖 갤럭시 크롬·삼성인터넷: ⋮ → 홈 화면에 추가 → 추가) + 초록 하이라이트 "이제 바탕화면의 114 아이콘만 누르면 바로 열려요. 로그인도 유지됩니다!". 기존 "다음부터 — 로그인" 섹션은 2면 상단으로 이동해도 좋다.
 - 2면(`page-break-before`): **"3️⃣ 매일 이렇게 해요 (5분이면 충분해요)"** 5단계(아이콘 접속→영상(선택)→본문 읽기(듣기 ▶️·글씨 + 안내)→파란 "오늘 읽기 완료" 버튼→성경퀴즈 한 문제 2번 도전) + **"⭐ 달란트는 이렇게 모여요"**(첫 읽기 10 달란트+연속 보너스, 퀴즈 정답 하루 1번, 상점 구매→상품은 교회에서 수령) + **"❓ 막힐 때는"**(화면 위 물음표 버튼, 그래도 안 되면 교회 관리자).

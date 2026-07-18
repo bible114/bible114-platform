@@ -1323,7 +1323,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         }
     };
 
-    // ── 성도용 가입 안내문 A4 인쇄 (교회 QR + 가입/로그인 방법, 어르신 큰 글씨) ──
+    // ── 성도용 가입 안내문 A4 2면 인쇄 (가입·홈 화면 추가 + 매일 사용법) ──
     const printMemberGuide = async () => {
         // QR 생성은 비동기라 완료 후 window.open()을 호출하면 브라우저가 팝업으로 차단할 수 있다.
         // 사용자 클릭이 살아 있을 때 빈 창을 먼저 확보한 뒤 생성된 인쇄물을 채운다.
@@ -1359,7 +1359,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
   .header h1 { font-size: 34px; }
   .header p { font-size: 17px; color: #475569; margin-top: 2.5mm; }
   .qr { text-align: center; border: 2px solid #cbd5e1; border-radius: 16px; padding: 6mm; margin-bottom: 7mm; }
-  .qr img { width: 62mm; height: 62mm; }
+  .qr img { width: 55mm; height: 55mm; }
   .qr .big { font-size: 20px; font-weight: 800; margin-top: 2mm; }
   .qr .url { font-size: 14px; color: #64748b; margin-top: 1.5mm; word-break: break-all; }
   .section { margin-bottom: 6mm; }
@@ -1369,30 +1369,78 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
   .code { font-size: 22px; font-weight: 900; letter-spacing: 2px; background: #fef3c7; border: 1.5px dashed #d97706; border-radius: 8px; padding: 1mm 4mm; }
   .code.blank { min-width: 30mm; display: inline-block; }
   .hint { font-size: 13px; color: #94a3b8; }
+  .twocol { display: flex; gap: 4mm; }
+  .device { flex: 1; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 4mm; break-inside: avoid; }
+  .device h3 { font-size: 17px; margin-bottom: 2.5mm; }
+  .device .step { font-size: 16px; gap: 2.5mm; margin-bottom: 1.8mm; padding-left: 0; }
+  .share-icon { border: 1.5px solid #64748b; border-radius: 4px; padding: 0 1.5mm; white-space: nowrap; }
+  .highlight { background: #ecfdf5; border: 1.5px solid #34d399; border-radius: 12px; padding: 3.5mm 4mm; font-size: 17px; font-weight: 700; color: #065f46; margin-top: 3mm; break-inside: avoid; }
+  .page-two { break-before: page; page-break-before: always; padding-top: 2mm; }
+  .page-two .section { break-inside: avoid; margin-bottom: 8mm; }
+  .page-two .section h2 { font-size: 23px; }
+  .page-two .step { font-size: 19px; margin-bottom: 3.5mm; }
   .footer { text-align: center; font-size: 15px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 4mm; margin-top: 2mm; }
 </style></head><body>
-  <div class="header">
-    <h1>📖 ${churchName} 성경 읽기</h1>
-    <p>매일 함께 성경을 읽고 달란트 ⭐ 를 모아요</p>
-  </div>
-  <div class="qr">
-    <img src="${qrDataUrl}" alt="QR" />
-    <div class="big">휴대폰 카메라로 이 네모(QR)를 비춰주세요</div>
-    <div class="url">인터넷 주소: ${esc(SITE_URL)}</div>
-  </div>
-  <div class="section">
-    <h2>1️⃣ 처음 오신 분 — 회원가입 (딱 한 번만)</h2>
-    <div class="step"><span class="num">①</span><span>QR로 접속한 뒤 <b>"${churchName}"</b>을 검색해서 선택해주세요</span></div>
-    <div class="step"><span class="num">②</span><span>"처음 오셨나요? <b>회원가입</b>"을 눌러주세요</span></div>
-    <div class="step"><span class="num">③</span><span><b>이름</b> · <b>생년월일 8자리</b>(예: 19560315) · <b>비밀번호</b>(6자리 이상)를 넣어주세요</span></div>
-    <div class="step"><span class="num">④</span><span>교회 입장코드: ${codeBlock}</span></div>
-  </div>
-  <div class="section">
-    <h2>2️⃣ 다음부터 — 로그인</h2>
-    <div class="step"><span class="num">①</span><span><b>이름 + 생년월일 + 비밀번호</b>만 넣고 "오늘의 본문 펼치기"</span></div>
-    <div class="step"><span class="num">②</span><span>본문을 다 읽고 <b>"읽기 완료"</b> 버튼을 누르면 달란트 ⭐ 가 쌓여요</span></div>
-  </div>
-  <div class="footer">막히는 부분이 있으면 언제든 관리자에게 말씀해주세요 😊</div>
+  <main>
+    <div class="header">
+      <h1>📖 ${churchName} 성경 읽기</h1>
+      <p>매일 함께 성경을 읽고 달란트 ⭐ 를 모아요</p>
+    </div>
+    <div class="qr">
+      <img src="${qrDataUrl}" alt="성경통독114 접속 QR" />
+      <div class="big">휴대폰 카메라로 이 네모(QR)를 비춰주세요</div>
+      <div class="url">인터넷 주소: ${esc(SITE_URL)}</div>
+    </div>
+    <div class="section">
+      <h2>1️⃣ 처음 오신 분 — 회원가입 (딱 한 번만)</h2>
+      <div class="step"><span class="num">①</span><span>QR로 접속한 뒤 <b>"${churchName}"</b>을 검색해서 선택해주세요</span></div>
+      <div class="step"><span class="num">②</span><span>"처음 오셨나요? <b>회원가입</b>"을 눌러주세요</span></div>
+      <div class="step"><span class="num">③</span><span><b>이름</b> · <b>생년월일 8자리</b>(예: 19560315) · <b>비밀번호</b>(6자리 이상)를 넣어주세요</span></div>
+      <div class="step"><span class="num">④</span><span>교회 입장코드: ${codeBlock}</span></div>
+    </div>
+    <div class="section">
+      <h2>2️⃣ 홈 화면에 추가 — 다음부터 한 번에 열려요</h2>
+      <div class="twocol">
+        <div class="device">
+          <h3>🍎 아이폰 (사파리)</h3>
+          <div class="step"><span class="num">①</span><span>화면 아래 <b>공유 버튼</b> <span class="share-icon">⬆︎</span> 누르기</span></div>
+          <div class="step"><span class="num">②</span><span><b>"홈 화면에 추가"</b> 찾아 누르기</span></div>
+          <div class="step"><span class="num">③</span><span>오른쪽 위 <b>추가</b> 누르기</span></div>
+        </div>
+        <div class="device">
+          <h3>🤖 갤럭시 (크롬·삼성인터넷)</h3>
+          <div class="step"><span class="num">①</span><span>오른쪽 위 <b>점 세 개 ⋮</b> (또는 ☰) 누르기</span></div>
+          <div class="step"><span class="num">②</span><span><b>"홈 화면에 추가"</b> 누르기</span></div>
+          <div class="step"><span class="num">③</span><span><b>추가</b> 누르기</span></div>
+        </div>
+      </div>
+      <div class="highlight">✅ 이제 바탕화면의 <b>114 아이콘</b>만 누르면 바로 열려요. 로그인도 유지됩니다!</div>
+    </div>
+    <div class="footer">뒷면에 "매일 이렇게 해요"가 있어요 →</div>
+  </main>
+
+  <main class="page-two">
+    <div class="section">
+      <h2>3️⃣ 매일 이렇게 해요 (5분이면 충분해요)</h2>
+      <div class="step"><span class="num">①</span><span>바탕화면 <b>114 아이콘</b>을 눌러 들어와요 (자동 로그인)</span></div>
+      <div class="step"><span class="num">②</span><span>🎬 <b>매일성경 영상</b>을 봐도 좋아요 (선택)</span></div>
+      <div class="step"><span class="num">③</span><span>📖 <b>오늘 본문</b>을 읽어요 — 눈이 침침하면 <b>듣기 ▶️</b> 버튼, 글씨는 <b>+</b> 버튼으로 크게</span></div>
+      <div class="step"><span class="num">④</span><span>다 읽으면 파란 <b>"오늘 읽기 완료"</b> 버튼을 꼭 눌러요 → 달란트 ⭐ 적립!</span></div>
+      <div class="step"><span class="num">⑤</span><span>❓ <b>성경퀴즈</b>를 풀어요 — 한 문제, 2번까지 도전. 정답이면 달란트 ⭐ 추가!</span></div>
+    </div>
+    <div class="section">
+      <h2>⭐ 달란트는 이렇게 모여요</h2>
+      <div class="step"><span class="num">·</span><span>매일 첫 읽기 완료: <b>10 달란트</b> + 연속으로 읽으면 보너스가 커져요</span></div>
+      <div class="step"><span class="num">·</span><span>퀴즈 정답 (하루 1번): <b>추가 달란트</b></span></div>
+      <div class="step"><span class="num">·</span><span>모은 달란트로 <b>달란트 상점</b>에서 상품을 사요 → <b>상품은 교회에서 받아요!</b></span></div>
+    </div>
+    <div class="section">
+      <h2>❓ 막힐 때는</h2>
+      <div class="step"><span class="num">·</span><span>화면 위 <b>물음표(?) 버튼</b>을 누르면 사용법과 자주 묻는 질문이 나와요</span></div>
+      <div class="step"><span class="num">·</span><span>그래도 안 되면 <b>교회 관리자(담당 선생님)</b>에게 말씀해주세요 😊</span></div>
+    </div>
+    <div class="footer">${churchName} · 성경통독 114 (${esc(SITE_URL)})</div>
+  </main>
   <script>window.onload = function(){ window.print(); };<\/script>
 </body></html>`;
         openPrintWindow(html, printWindow);
