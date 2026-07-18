@@ -2989,7 +2989,7 @@ const adminBranches = [
 ];
 for (const [label, branch, validatorPattern] of adminBranches) {
     for (const pattern of [/beginTransaction\(/, /talentAdminActions\/\$\{parsed\.requestId\}/,
-        /requireOrganizationAdmin\(/, /ledgerResult\(/, validatorPattern,
+        /requireOrganizationAdmin\(/, /validateAdminPurchaseReplay\(/, validatorPattern,
         /await commitWrites\([\s\S]*updateWrite\(service\.projectId, ledgerPath,[\s\S]*\{ exists: false \}\),[\s\S]*\], \{ transaction \}\);/]) {
         assert.match(branch, pattern, `관리자 ${label} 분기는 자체 transaction·권한 재검증·ledger·commit을 가져야 한다.`);
     }
@@ -2997,10 +2997,10 @@ for (const [label, branch, validatorPattern] of adminBranches) {
 const counterBranch = adminBranches[0][1];
 const deliverBranch = adminBranches[1][1];
 const refundBranch = adminBranches[2][1];
-assert.match(counterBranch, /replayWallet\s*\?[\s\S]*readAdminTalentBalance\(replayWallet\.talent\)[\s\S]*nextTalent:\s*latestTalent/);
+assert.match(counterBranch, /validateAdminPurchaseReplay\(\{[\s\S]*purchase:\s*existingPurchase\?\.data[\s\S]*user:\s*targetUser\?\.data[\s\S]*roster:\s*targetRoster\?\.data/);
 assert.match(deliverBranch, /adminActionRequestId:\s*parsed\.requestId[\s\S]*updateMask:[\s\S]*"adminActionRequestId"/);
 assert.match(refundBranch, /migratedWalletConfirmed:\s*parsed\.migratedWalletConfirmed[\s\S]*Promise\.all\(\[[\s\S]*userPath[\s\S]*rosterPath[\s\S]*validateAdminPurchaseRefund\(/);
-assert.match(refundBranch, /readAdminTalentBalance\([\s\S]*nextTalent:\s*latestTalent/);
+assert.match(refundBranch, /validateAdminPurchaseReplay\(\{[\s\S]*purchase:\s*purchaseDocument\?\.data[\s\S]*user:\s*replayUser\?\.data[\s\S]*roster:\s*replayRoster\?\.data/);
 assert.match(refundBranch, /balanceBefore:[\s\S]*balanceAfter:[\s\S]*result,[\s\S]*at:\s*now/);
 assert.match(churchAdminView, /ADMIN_TALENT_REQUEST_STORAGE_PREFIX[\s\S]*getOrCreateAdminTalentRequestId/);
 assert.match(churchAdminView, /adminCounterSale\([\s\S]*adminRefundPurchase\([\s\S]*adminDeliverPurchase\(/);

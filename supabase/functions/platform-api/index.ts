@@ -68,6 +68,7 @@ import {
   validateAdminCounterSale,
   validateAdminPurchaseDelivery,
   validateAdminPurchaseRefund,
+  validateAdminPurchaseReplay,
 } from "./adminPurchaseCore.ts";
 import {
   buildJoinRateLimitScopes,
@@ -128,7 +129,7 @@ type JoinRateLimitDocument = {
   resetAt?: unknown;
 };
 
-type TalentAdminActionDocument = {
+type TalentAdminActionDocument = AdminPurchaseRecord & {
   action?: unknown;
   actorUid?: unknown;
   churchId?: unknown;
@@ -529,26 +530,11 @@ const adminPurchaseValidationError = (
       return new PlatformError("CONFLICT", {
         message: "환불할 지갑을 안전하게 확인할 수 없습니다.",
       });
+    case "PURCHASE_REPLAY_CONFLICT":
+      return new PlatformError("CONFLICT", {
+        message: "완료된 관리자 작업의 저장 상태가 일치하지 않습니다.",
+      });
   }
-};
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === "object" && !Array.isArray(value);
-
-const ledgerResult = (
-  ledger: TalentAdminActionDocument | null,
-  expected: Record<string, unknown>,
-) => {
-  if (!ledger) return null;
-  const matches = Object.entries(expected).every(([key, value]) =>
-    ledger[key as keyof TalentAdminActionDocument] === value
-  );
-  if (!matches || !isRecord(ledger.result)) {
-    throw new PlatformError("CONFLICT", {
-      message: "같은 요청 번호가 다른 관리자 작업에 사용되었습니다.",
-    });
-  }
-  return ledger.result;
 };
 
 const readJsonBody = async (request: Request): Promise<unknown> => {
@@ -1537,22 +1523,25 @@ Deno.serve(async (request) => {
           itemName: parsed.itemName,
           price: parsed.price,
         };
-        const replay = ledgerResult(
-          existingLedger?.data || null,
-          expectedLedger,
-        );
-        if (replay) {
-          const replayWallet = replay.walletKind === "roster"
-            ? targetRoster?.data
-            : replay.walletKind === "user"
-            ? targetUser?.data
-            : null;
-          const latestTalent = replayWallet
-            ? readAdminTalentBalance(replayWallet.talent)
-            : null;
-          const replayResult = latestTalent === null
-            ? replay
-            : { ...replay, nextTalent: latestTalent };
+        if (existingLedger) {
+          let replayResult;
+          try {
+            replayResult = validateAdminPurchaseReplay({
+              action: parsed.action,
+              requestId: parsed.requestId,
+              churchId: parsed.churchId,
+              expectedLedger,
+              ledger: existingLedger.data,
+              purchase: existingPurchase?.data || null,
+              user: targetUser?.data || null,
+              roster: targetRoster?.data || null,
+            });
+          } catch (error) {
+            if (error instanceof AdminPurchaseValidationError) {
+              throw adminPurchaseValidationError(error);
+            }
+            throw error;
+          }
           await rollbackTransaction(
             service.token,
             service.projectId,
@@ -1707,11 +1696,25 @@ Deno.serve(async (request) => {
           churchId: parsed.churchId,
           purchaseId: parsed.purchaseId,
         };
-        const replay = ledgerResult(
-          existingLedger?.data || null,
-          expectedLedger,
-        );
-        if (replay) {
+        if (existingLedger) {
+          let replay;
+          try {
+            replay = validateAdminPurchaseReplay({
+              action: parsed.action,
+              requestId: parsed.requestId,
+              churchId: parsed.churchId,
+              expectedLedger,
+              ledger: existingLedger.data,
+              purchase: purchaseDocument?.data || null,
+              user: null,
+              roster: null,
+            });
+          } catch (error) {
+            if (error instanceof AdminPurchaseValidationError) {
+              throw adminPurchaseValidationError(error);
+            }
+            throw error;
+          }
           await rollbackTransaction(
             service.token,
             service.projectId,
@@ -1826,38 +1829,53 @@ Deno.serve(async (request) => {
           legacyWalletKind: parsed.legacyWalletKind,
           migratedWalletConfirmed: parsed.migratedWalletConfirmed,
         };
-        const replay = ledgerResult(
-          existingLedger?.data || null,
-          expectedLedger,
-        );
-        if (replay) {
+        if (existingLedger) {
           const replayTargetUid = typeof existingLedger?.data.targetUid ===
               "string"
             ? existingLedger.data.targetUid.trim()
             : "";
           const replayWalletKind = existingLedger?.data.walletKind;
-          let replayResult = replay;
           if (
-            replayTargetUid && replayTargetUid.length <= 128 &&
-            !replayTargetUid.includes("/") &&
-            !/[\u0000-\u001f\u007f]/.test(replayTargetUid) &&
-            (replayWalletKind === "user" || replayWalletKind === "roster")
+            !replayTargetUid || replayTargetUid.length > 128 ||
+            replayTargetUid.includes("/") ||
+            /[\u0000-\u001f\u007f]/.test(replayTargetUid) ||
+            (replayWalletKind !== "user" && replayWalletKind !== "roster")
           ) {
-            const replayWalletPath = replayWalletKind === "roster"
-              ? `${churchPath}/roster/${replayTargetUid}`
-              : `users/${replayTargetUid}`;
-            const replayWallet = await getDocument<AdminPurchaseRecord>(
+            throw adminPurchaseValidationError(
+              new AdminPurchaseValidationError("PURCHASE_REPLAY_CONFLICT"),
+            );
+          }
+          const [replayUser, replayRoster] = await Promise.all([
+            getDocument<AdminPurchaseRecord>(
               service.token,
               service.projectId,
-              replayWalletPath,
+              `users/${replayTargetUid}`,
               { transaction },
-            );
-            const latestTalent = replayWallet
-              ? readAdminTalentBalance(replayWallet.data.talent)
-              : null;
-            if (latestTalent !== null) {
-              replayResult = { ...replay, nextTalent: latestTalent };
+            ),
+            getDocument<AdminPurchaseRecord>(
+              service.token,
+              service.projectId,
+              `${churchPath}/roster/${replayTargetUid}`,
+              { transaction },
+            ),
+          ]);
+          let replayResult;
+          try {
+            replayResult = validateAdminPurchaseReplay({
+              action: parsed.action,
+              requestId: parsed.requestId,
+              churchId: parsed.churchId,
+              expectedLedger,
+              ledger: existingLedger.data,
+              purchase: purchaseDocument?.data || null,
+              user: replayUser?.data || null,
+              roster: replayRoster?.data || null,
+            });
+          } catch (error) {
+            if (error instanceof AdminPurchaseValidationError) {
+              throw adminPurchaseValidationError(error);
             }
+            throw error;
           }
           await rollbackTransaction(
             service.token,

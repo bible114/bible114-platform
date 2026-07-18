@@ -4,6 +4,7 @@ import {
   validateAdminCounterSale,
   validateAdminPurchaseDelivery,
   validateAdminPurchaseRefund,
+  validateAdminPurchaseReplay,
 } from "./adminPurchaseCore.ts";
 
 const assert = (condition: unknown, message: string) => {
@@ -310,5 +311,240 @@ Deno.test("개인 전환 환불은 활성 사용자와 동일 uid 명부를 모�
       user: { role: "member", accountType: "personal", churchId: null },
       roster: { uid: "u1", talent: 6 },
       migratedWalletConfirmed: true,
+    }));
+});
+
+const counterReplay = () => ({
+  action: "adminCounterSale" as const,
+  requestId: "00000000-0000-4000-8000-000000000001",
+  churchId: "c1",
+  expectedLedger: {
+    action: "adminCounterSale",
+    actorUid: "admin-1",
+    churchId: "c1",
+    targetUid: "u1",
+    departmentId: "adult",
+    marketId: "shared",
+    itemName: "세탁세제",
+    price: 7,
+  },
+  ledger: {
+    action: "adminCounterSale",
+    actorUid: "admin-1",
+    churchId: "c1",
+    targetUid: "u1",
+    departmentId: "adult",
+    marketId: "shared",
+    itemName: "세탁세제",
+    price: 7,
+    purchaseId: "00000000-0000-4000-8000-000000000001",
+    walletKind: "user",
+    balanceBefore: 10,
+    balanceAfter: 3,
+    result: {
+      nextTalent: 3,
+      walletKind: "user",
+      purchase: {
+        id: "00000000-0000-4000-8000-000000000001",
+        requestId: "00000000-0000-4000-8000-000000000001",
+        uid: "u1",
+        status: "delivered",
+        walletKind: "user",
+        departmentId: "adult",
+        marketId: "shared",
+        itemName: "세탁세제",
+        price: 7,
+      },
+    },
+  },
+  purchase: {
+    schemaVersion: 2,
+    uid: "u1",
+    departmentId: "adult",
+    marketId: "shared",
+    walletKind: "user",
+    walletOrgId: "c1",
+    walletBalanceAfter: 3,
+    itemId: "manual",
+    itemName: "세탁세제",
+    price: 7,
+    status: "delivered",
+    sourceAction: "adminCounterSale",
+    requestId: "00000000-0000-4000-8000-000000000001",
+    createdBy: "admin-1",
+    deliveredBy: "admin-1",
+  },
+  user: { churchId: "c1", accountType: "church", talent: 9 },
+  roster: null,
+});
+
+const deliveryReplay = () => ({
+  action: "adminDeliverPurchase" as const,
+  requestId: "00000000-0000-4000-8000-000000000002",
+  churchId: "c1",
+  expectedLedger: {
+    action: "adminDeliverPurchase",
+    actorUid: "admin-1",
+    churchId: "c1",
+    purchaseId: "purchase-1",
+  },
+  ledger: {
+    action: "adminDeliverPurchase",
+    actorUid: "admin-1",
+    churchId: "c1",
+    purchaseId: "purchase-1",
+    targetUid: "u1",
+    result: {
+      purchase: {
+        id: "purchase-1",
+        status: "delivered",
+        deliveredBy: "admin-1",
+        adminActionRequestId: "00000000-0000-4000-8000-000000000002",
+      },
+    },
+  },
+  purchase: {
+    uid: "u1",
+    status: "delivered",
+    deliveredBy: "admin-1",
+    adminActionRequestId: "00000000-0000-4000-8000-000000000002",
+  },
+  user: null,
+  roster: null,
+});
+
+const refundReplay = () => ({
+  action: "adminRefundPurchase" as const,
+  requestId: "00000000-0000-4000-8000-000000000003",
+  churchId: "c1",
+  expectedLedger: {
+    action: "adminRefundPurchase",
+    actorUid: "admin-1",
+    churchId: "c1",
+    purchaseId: "purchase-2",
+    legacyWalletKind: "",
+    migratedWalletConfirmed: false,
+  },
+  ledger: {
+    action: "adminRefundPurchase",
+    actorUid: "admin-1",
+    churchId: "c1",
+    purchaseId: "purchase-2",
+    legacyWalletKind: "",
+    migratedWalletConfirmed: false,
+    targetUid: "u1",
+    walletKind: "user",
+    refundAmount: 4,
+    balanceBefore: 6,
+    balanceAfter: 10,
+    result: {
+      nextTalent: 10,
+      walletKind: "user",
+      purchase: {
+        id: "purchase-2",
+        uid: "u1",
+        status: "cancelled",
+        deliveredBy: "admin-1",
+        adminActionRequestId: "00000000-0000-4000-8000-000000000003",
+      },
+    },
+  },
+  purchase: {
+    schemaVersion: 2,
+    uid: "u1",
+    walletKind: "user",
+    walletOrgId: "c1",
+    price: 4,
+    status: "cancelled",
+    deliveredBy: "admin-1",
+    adminActionRequestId: "00000000-0000-4000-8000-000000000003",
+  },
+  user: { churchId: "c1", accountType: "church", talent: 12 },
+  roster: null,
+});
+
+Deno.test("관리자 판매·수령·환불 replay는 canonical 상태와 최신 잔액만 반환한다", () => {
+  const counter = validateAdminPurchaseReplay(counterReplay());
+  const delivery = validateAdminPurchaseReplay(deliveryReplay());
+  const refund = validateAdminPurchaseReplay(refundReplay());
+  assert(counter.nextTalent === 9, "counter latest balance expected");
+  assert(
+    (delivery.purchase as Record<string, unknown>).status === "delivered",
+    "delivery replay expected",
+  );
+  assert(refund.nextTalent === 12, "refund latest balance expected");
+});
+
+Deno.test("관리자 replay는 missing·상태 역전·requestId 불일치·지갑 손상을 거부한다", () => {
+  rejects(
+    "PURCHASE_REPLAY_CONFLICT",
+    () => validateAdminPurchaseReplay({ ...counterReplay(), purchase: null }),
+  );
+  rejects("PURCHASE_REPLAY_CONFLICT", () =>
+    validateAdminPurchaseReplay({
+      ...deliveryReplay(),
+      purchase: { ...deliveryReplay().purchase, status: "cancelled" },
+    }));
+  rejects("PURCHASE_REPLAY_CONFLICT", () =>
+    validateAdminPurchaseReplay({
+      ...refundReplay(),
+      purchase: {
+        ...refundReplay().purchase,
+        adminActionRequestId: "00000000-0000-4000-8000-000000000099",
+      },
+    }));
+  rejects("PURCHASE_REPLAY_CONFLICT", () =>
+    validateAdminPurchaseReplay({
+      ...refundReplay(),
+      user: { churchId: "c1", accountType: "church", talent: "12" },
+    }));
+});
+
+Deno.test("관리자 replay는 같은 UUID의 다른 payload와 손상 result를 거부한다", () => {
+  rejects("PURCHASE_REPLAY_CONFLICT", () =>
+    validateAdminPurchaseReplay({
+      ...counterReplay(),
+      ledger: { ...counterReplay().ledger, itemName: "다른 물품" },
+    }));
+  rejects("PURCHASE_REPLAY_CONFLICT", () =>
+    validateAdminPurchaseReplay({
+      ...counterReplay(),
+      ledger: {
+        ...counterReplay().ledger,
+        result: { ...counterReplay().ledger.result, nextTalent: undefined },
+      },
+    }));
+});
+
+Deno.test("v2 환불 replay는 구매 당시 지갑 snapshot drift를 거부한다", () => {
+  const migrated = refundReplay();
+  const migratedReplay = validateAdminPurchaseReplay({
+    ...migrated,
+    expectedLedger: {
+      ...migrated.expectedLedger,
+      migratedWalletConfirmed: true,
+    },
+    ledger: {
+      ...migrated.ledger,
+      migratedWalletConfirmed: true,
+      walletKind: "roster",
+      result: { ...migrated.ledger.result, walletKind: "roster" },
+    },
+    user: { role: "member", accountType: "personal", churchId: null },
+    roster: { uid: "u1", talent: 14 },
+  });
+  assert(
+    migratedReplay.nextTalent === 14,
+    "confirmed user-to-roster migration replay expected",
+  );
+  rejects("PURCHASE_REPLAY_CONFLICT", () =>
+    validateAdminPurchaseReplay({
+      ...refundReplay(),
+      purchase: { ...refundReplay().purchase, walletKind: "roster" },
+    }));
+  rejects("PURCHASE_REPLAY_CONFLICT", () =>
+    validateAdminPurchaseReplay({
+      ...refundReplay(),
+      purchase: { ...refundReplay().purchase, walletOrgId: "c2" },
     }));
 });

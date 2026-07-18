@@ -11,7 +11,8 @@ export type AdminPurchaseValidationCode =
   | "PURCHASE_ALREADY_PROCESSED"
   | "REFUND_MIGRATION_CONFIRM_REQUIRED"
   | "REFUND_WALLET_UNRESOLVED"
-  | "INVALID_PURCHASE_PRICE";
+  | "INVALID_PURCHASE_PRICE"
+  | "PURCHASE_REPLAY_CONFLICT";
 
 export class AdminPurchaseValidationError extends Error {
   constructor(readonly code: AdminPurchaseValidationCode) {
@@ -57,6 +58,191 @@ export const readAdminTalentBalance = (value: unknown) => {
       balance <= MAX_TALENT_VALUE
     ? balance
     : null;
+};
+
+type AdminPurchaseReplayAction =
+  | "adminCounterSale"
+  | "adminDeliverPurchase"
+  | "adminRefundPurchase";
+
+const replayConflict = (): never => {
+  throw new AdminPurchaseValidationError("PURCHASE_REPLAY_CONFLICT");
+};
+
+const sameFields = (
+  source: AdminPurchaseRecord,
+  expected: AdminPurchaseRecord,
+) => Object.entries(expected).every(([key, value]) => source[key] === value);
+
+const safeReplayTargetUid = (value: unknown) => {
+  const uid = text(value);
+  return uid && uid.length <= 128 && !uid.includes("/") &&
+      !/[\u0000-\u001f\u007f]/.test(uid)
+    ? uid
+    : null;
+};
+
+const requiredReplayBalance = (value: unknown) =>
+  typeof value === "number" ? readAdminTalentBalance(value) : null;
+
+const canonicalReplayWallet = (
+  walletKind: string,
+  wallet: AdminPurchaseRecord | null,
+  churchId: string,
+  targetUid: string,
+) => {
+  if (!wallet || wallet.isDeleted === true) return false;
+  if (walletKind === "user") {
+    return text(wallet.churchId) === churchId &&
+      text(wallet.accountType) !== "personal";
+  }
+  if (walletKind === "roster") {
+    const rosterUid = text(wallet.uid);
+    return !rosterUid || rosterUid === targetUid;
+  }
+  return false;
+};
+
+/**
+ * Replays only an exact immutable admin ledger whose canonical purchase and
+ * current wallet still agree with the committed result. The wallet balance may
+ * have changed after the original action; that latest safe value is returned.
+ */
+export const validateAdminPurchaseReplay = (input: {
+  action: AdminPurchaseReplayAction;
+  requestId: string;
+  churchId: string;
+  expectedLedger: AdminPurchaseRecord;
+  ledger: AdminPurchaseRecord;
+  purchase: AdminPurchaseRecord | null;
+  user: AdminPurchaseRecord | null;
+  roster: AdminPurchaseRecord | null;
+}): AdminPurchaseRecord => {
+  const { ledger, purchase } = input;
+  const result = record(ledger.result);
+  const resultPurchase = record(result?.purchase);
+  if (
+    !sameFields(ledger, input.expectedLedger) || !result || !resultPurchase ||
+    !purchase
+  ) replayConflict();
+  const replayResult = result as AdminPurchaseRecord;
+  const replayPurchase = resultPurchase as AdminPurchaseRecord;
+  const storedPurchase = purchase as AdminPurchaseRecord;
+
+  if (input.action === "adminCounterSale") {
+    const replayTargetUid = safeReplayTargetUid(ledger.targetUid);
+    if (!replayTargetUid) replayConflict();
+    const targetUid = replayTargetUid as string;
+    const walletKind = text(ledger.walletKind);
+    const initialTalent = requiredReplayBalance(replayResult.nextTalent);
+    const price = ledger.price;
+    if (
+      targetUid !== text(input.expectedLedger.targetUid) ||
+      !VALID_WALLET_KINDS.has(walletKind) ||
+      initialTalent === null ||
+      typeof price !== "number" || !Number.isSafeInteger(price) || price <= 0 ||
+      ledger.purchaseId !== input.requestId ||
+      ledger.balanceAfter !== initialTalent ||
+      ledger.balanceBefore !== initialTalent + price ||
+      replayResult.walletKind !== walletKind ||
+      !sameFields(storedPurchase, {
+        schemaVersion: 2,
+        uid: targetUid,
+        departmentId: input.expectedLedger.departmentId,
+        marketId: input.expectedLedger.marketId,
+        walletKind,
+        walletOrgId: input.churchId,
+        walletBalanceAfter: initialTalent,
+        itemId: "manual",
+        itemName: input.expectedLedger.itemName,
+        price,
+        status: "delivered",
+        sourceAction: input.action,
+        requestId: input.requestId,
+        createdBy: input.expectedLedger.actorUid,
+        deliveredBy: input.expectedLedger.actorUid,
+      }) ||
+      !sameFields(replayPurchase, {
+        id: input.requestId,
+        requestId: input.requestId,
+        uid: targetUid,
+        status: "delivered",
+        walletKind,
+        departmentId: input.expectedLedger.departmentId,
+        marketId: input.expectedLedger.marketId,
+        itemName: input.expectedLedger.itemName,
+        price,
+      })
+    ) replayConflict();
+    const wallet = walletKind === "roster" ? input.roster : input.user;
+    const latestTalent = canonicalReplayWallet(
+        walletKind,
+        wallet,
+        input.churchId,
+        targetUid,
+      )
+      ? readAdminTalentBalance(wallet?.talent)
+      : null;
+    if (latestTalent === null) replayConflict();
+    return { ...replayResult, nextTalent: latestTalent };
+  }
+
+  const replayTargetUid = safeReplayTargetUid(ledger.targetUid);
+  if (!replayTargetUid) replayConflict();
+  const targetUid = replayTargetUid as string;
+  if (
+    targetUid !== text(storedPurchase.uid) ||
+    storedPurchase.adminActionRequestId !== input.requestId ||
+    storedPurchase.deliveredBy !== input.expectedLedger.actorUid ||
+    replayPurchase.id !== input.expectedLedger.purchaseId ||
+    replayPurchase.adminActionRequestId !== input.requestId
+  ) replayConflict();
+
+  if (input.action === "adminDeliverPurchase") {
+    if (
+      storedPurchase.status !== "delivered" ||
+      replayPurchase.status !== "delivered" ||
+      replayPurchase.deliveredBy !== input.expectedLedger.actorUid
+    ) replayConflict();
+    return replayResult;
+  }
+
+  const walletKind = text(ledger.walletKind);
+  const initialTalent = requiredReplayBalance(replayResult.nextTalent);
+  const refundAmount = ledger.refundAmount;
+  const snapshotWalletKind = text(storedPurchase.walletKind);
+  const migratedWalletReplay = input.expectedLedger.migratedWalletConfirmed ===
+      true && snapshotWalletKind === "user" && walletKind === "roster";
+  const canonicalV2Snapshot = storedPurchase.schemaVersion !== 2 ||
+    (VALID_WALLET_KINDS.has(snapshotWalletKind) &&
+      text(storedPurchase.walletOrgId) === input.churchId &&
+      (snapshotWalletKind === walletKind || migratedWalletReplay));
+  if (
+    storedPurchase.status !== "cancelled" ||
+    replayPurchase.status !== "cancelled" ||
+    replayPurchase.uid !== targetUid ||
+    replayPurchase.deliveredBy !== input.expectedLedger.actorUid ||
+    !VALID_WALLET_KINDS.has(walletKind) ||
+    replayResult.walletKind !== walletKind ||
+    !canonicalV2Snapshot ||
+    initialTalent === null ||
+    typeof refundAmount !== "number" || !Number.isSafeInteger(refundAmount) ||
+    refundAmount <= 0 || initialTalent < refundAmount ||
+    storedPurchase.price !== refundAmount ||
+    ledger.balanceAfter !== initialTalent ||
+    ledger.balanceBefore !== initialTalent - refundAmount
+  ) replayConflict();
+  const wallet = walletKind === "roster" ? input.roster : input.user;
+  const latestTalent = canonicalReplayWallet(
+      walletKind,
+      wallet,
+      input.churchId,
+      targetUid,
+    )
+    ? readAdminTalentBalance(wallet?.talent)
+    : null;
+  if (latestTalent === null) replayConflict();
+  return { ...replayResult, nextTalent: latestTalent };
 };
 
 export const validateAdminCounterSale = (input: {

@@ -265,13 +265,13 @@ assert.ok(counterBranchStart >= 0 && deliverBranchStart > counterBranchStart && 
     && memberPurchaseBranchStart > refundBranchStart, '관리자 판매·수령·환불 서버 분기가 순서대로 필요하다.');
 const counterBranch = platformApiServer.slice(counterBranchStart, deliverBranchStart);
 for (const pattern of [/beginTransaction\(/, /talentAdminActions\/\$\{parsed\.requestId\}/,
-    /requireOrganizationAdmin\(/, /validateAdminCounterSale\(/,
+    /requireOrganizationAdmin\(/, /validateAdminCounterSale\(/, /validateAdminPurchaseReplay\(/,
     /await commitWrites\([\s\S]*updateWrite\(service\.projectId, ledgerPath,[\s\S]*\{ exists: false \}\),[\s\S]*\], \{ transaction \}\);/]) {
     assert.match(counterBranch, pattern, '창구 판매는 최신 관리자 권한·대상 지갑·불변 ledger를 한 transaction에서 처리해야 한다.');
 }
 const deliverBranch = platformApiServer.slice(deliverBranchStart, refundBranchStart);
 for (const pattern of [/beginTransaction\(/, /talentAdminActions\/\$\{parsed\.requestId\}/,
-    /requireOrganizationAdmin\(/, /validateAdminPurchaseDelivery\(/, /ledgerResult\(/,
+    /requireOrganizationAdmin\(/, /validateAdminPurchaseDelivery\(/, /validateAdminPurchaseReplay\(/,
     /adminActionRequestId:\s*parsed\.requestId/,
     /await commitWrites\([\s\S]*updateWrite\(service\.projectId, ledgerPath,[\s\S]*\{ exists: false \}\),[\s\S]*\], \{ transaction \}\);/]) {
     assert.match(deliverBranch, pattern, '수령 처리는 최신 관리자 권한·불변 ledger·완료 요청 ID를 자체 transaction에서 처리해야 한다.');
@@ -279,6 +279,7 @@ for (const pattern of [/beginTransaction\(/, /talentAdminActions\/\$\{parsed\.re
 const refundBranch = platformApiServer.slice(refundBranchStart, memberPurchaseBranchStart);
 for (const pattern of [/beginTransaction\(/, /talentAdminActions\/\$\{parsed\.requestId\}/,
     /requireOrganizationAdmin\(/, /resolveAdminRefundWalletKind\(/, /validateAdminPurchaseRefund\(/,
+    /validateAdminPurchaseReplay\(/,
     /migratedWalletConfirmed:\s*parsed\.migratedWalletConfirmed/, /balanceBefore:/,
     /balanceAfter:/, /adminActionRequestId:\s*parsed\.requestId/,
     /await commitWrites\([\s\S]*updateWrite\(service\.projectId, ledgerPath,[\s\S]*\{ exists: false \}\),[\s\S]*\], \{ transaction \}\);/]) {
