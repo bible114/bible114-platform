@@ -184,6 +184,7 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-18 | 전체 기능·20명 동시 읽기/퀴즈/달란트 상점 운영 점검 | `review/SITE_FULL_AUDIT_2026-07-18.md`, `scripts/{manage-site-audit-fixture,prepare-concurrent-site-audit,run-concurrent-member-flow,audit-concurrent-site-run}.mjs`, `scripts/concurrent-member-flow.manifest.example.json`, `test-artifacts/site-audit-20260718/` | 일회용 교회와 관리자 1명·회원 20명(개역개정 10, 새번역 10)을 만들어 배포된 API에서 `읽기 완료 → 정답 퀴즈 → 1달란트 상품 구매` 60건을 동시 실행했다. 60/60 성공, p95 656ms, 원장 독립 재조회 누락·중복 0, 전원 DAY2·점수10·달란트20을 확인했다. 종료 후 교회·공개 목록·users·Auth·하위 원장을 모두 삭제했고 platformStats 차이 0이다. 별도 `클로드테스트교회`는 건드리지 않았다. 비로그인 `ChurchPicker`가 운영 교회 전체를 검색 결과 0건으로 표시해 이름·생년월일 기존 회원 로그인을 막는 P1을 재현했으며 원인 진단·수정·배포는 다음 독립 작업으로 남겼다. build/validate 통과, 초기 번들 약 1.47MB 경고는 P3로 기록했다. |
 | 2026-07-18 | 운영 번역 범위 정정 | `HANDOFF_CODEX.md` | 사용자 확인에 따라 이 프로젝트의 운영 번역을 개역개정·새번역 2종으로 고정했다. 비활성 `nt_easy`·`nt_saehangul`·`nt_message` 캐시를 수리 대상으로 잘못 확장한 `e680af1`은 `d5b3d04`로 revert했고, 운영 쓰기·웹 배포는 없었다. 저장소 밖에 만든 두 staging 디렉터리는 복구 가능한 휴지통으로 이동했다. |
 | 2026-07-18 | T131 운영 테스트 잔재 무쓰기 감사 완료 | `scripts/audit-operational-test-residue.mjs`, `HANDOFF_CODEX.md` | 재인증 후 운영을 읽기 전용으로 집계했다: users 38, churches 9, roster 3, Auth 50, 구매 1. 명백한 테스트 표지 users 8·churches 2, active users-without-Auth 6, Auth-only 18(명백한 테스트 표지 0)이며 종합 검토 후보는 users 14·churches 2·관련 roster 1이다. 후보에 양수 users 지갑 4·roster 지갑 1이 있고 pending 구매는 0이다. 휴리스틱과 Auth 미연결만으로 테스트 잔재를 확정할 수 없고 잔액·소속·완료 구매·불변 원장 손실 위험이 있으므로 **자동 삭제 금지**. 사용자가 정확한 대상·잔액 처리·Auth/Firestore/원장 보존을 결정한 후에도 공동체는 `adminSetChurchLifecycle`, 개별 계정은 기존 삭제 action을 사용한다. 운영 쓰기·정리 0건. |
 | 2026-07-18 | T130 신약 파생 캐시·새번역 품질 무쓰기 감사 완료 | `scripts/audit-{nt-derived-verses-schedule,new-translation-text-quality}.mjs`, `HANDOFF_CODEX.md` | 세 플랜 모두 365/365, title 파싱 365/365, 신약 260장 전체를 보유하지만 canonical exact title 불일치는 새한글 83·쉬움 88·메시지 91일이다. 서로 exact title 일치는 새한글↔쉬움 357일, 새한글↔메시지 350일, 쉬움↔메시지 358일이므로 세 배치는 대체로 같지만 완전히 동일하지 않다. 기존 “Day 136부터 하루 밀림”은 정정: canonical은 Day136 `행 11-12`·Day137 `행 13`을 배치하지만 캐시는 행11/행12를 따로 두고 Day239에서 행13을 재개해 Day239~315 주요 구간이 canonical 대비 대체로 **2일 늦다**(-2 offset 새한글 70·쉬움 69·메시지 65일). 본문 heading은 번역별 형식이 달라 새한글 118일·쉬움 109일·메시지 365일 파싱 불가이므로 일정 원장으로 쓰지 않는다. 권고는 전용 scope가 아니라 canonical `new_testament`기준 번역별 재생성(단순 Day 이동 금지). `1year_new` 365/365·빈 본문 0·100,947줄에서 체계적 절 번호열 0/365, 강한 다중 숫자 잔재 0줄, 고립 숫자 한 줄 9개 문서를 확인했다. 고립 9줄은 결함으로 확정하지 않고 원문 표본 대조 후에만 수리한다. 운영 쓰기 0건. |
@@ -383,6 +384,11 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-18 전체 기능·20명 동시성 점검:
+- 일회용 `e2e_full_20260718_audit02`에 관리자 1명과 회원 20명(개역개정 10·새번역 10), v2 통합 달란트 상점과 1달란트 상품을 만들었다. 배포된 API로 20명이 동시에 읽기 완료·정답 퀴즈·상품 구매를 실행해 60/60 성공(p50 534ms, p95 656ms, max 747ms)했고, 독립 재조회에서 누락·중복·첫 403 사전 실행 잔재가 모두 0이었다. 전원 DAY2·readCount1·streak1·score10·talent20, 구매 20건 pending 및 원장 잔액 일치를 확인했다.
+- 종료 후 테스트 교회·공개 목록·users·Auth·읽기/퀴즈/구매 원장을 모두 삭제했고 platformStats 재계산 차이도 0이다. 다른 작업의 `클로드테스트교회`는 읽기 외에 건드리지 않았다. 재현 도구와 상세 결과는 `review/SITE_FULL_AUDIT_2026-07-18.md`에 있다.
+- **P1 미수정:** 비로그인 `ChurchPicker`에서 테스트 교회와 기존 운영 교회를 검색해도 결과 버튼이 0개다. `settings/churchDirectory`에는 당시 9개 교회가 있었고 비인증 REST 읽기는 200이지만, `publicDirectoryMeta/current`는 없고 비인증 읽기가 403이다. 앱의 레거시 폴백을 포함해 정확히 어디서 빈 배열이 확정되는지는 추가 계측이 필요하다. 이름·생년월일 기존 회원 로그인을 막고 가입/추가 공동체 선택에도 영향을 줄 수 있으므로, 다음 독립 작업은 `getChurchDirectory()` 상태 계측 → meta 누락 회귀 fixture → ChurchPicker 브라우저 회귀 테스트 → 수정 후 비인증 운영 검색 검증 순서가 안전하다. 이번 점검에서는 사이트 코드 수정·배포·push를 하지 않았다.
 
 2026-07-18 라운드 28 T130·T131 무쓰기 감사 종결:
 - Firebase 재인증 완료 후 T130/T131 세 감사를 전부 읽기 전용으로 실행했다. T130 신약 캐시 3종은 모두 365/365·title 파싱 365/365·신약 260장 전체지만, canonical exact title 불일치 83/88/91일이고 서로 exact title은 350~358일만 일치한다. 공통 핵심은 Day136 canonical의 행11-12 병합·Day137 행13 조기 배치를 구 캐시가 반영하지 않고 Day239부터 행13을 재개해 주요 구간이 대체로 2일 늦은 구 일정 drift이다. 번역별 body heading 형식 차이가 커서 본문 heading 수치는 수리 원장으로 사용하지 않는다.
