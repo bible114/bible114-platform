@@ -7,6 +7,7 @@ const exists = path => fs.existsSync(new URL(`../${path}`, import.meta.url));
 const constants = read('src/data/constants.js');
 const envExample = read('.env.example');
 const client = read('src/utils/platformApi.js');
+const platformAuthSource = read('src/utils/platformAuth.js');
 const userBibleActions = read('src/hooks/useUserBibleActions.js');
 const useMemosSource = read('src/hooks/useMemos.js');
 const helpersSource = read('src/utils/helpers.js');
@@ -35,6 +36,21 @@ assert.match(
     /npm run validate:round24 && npm run validate:daily-video-server && npm run validate:public-directory && npm run validate:church-lifecycle && npm run validate:platform-api$/,
 );
 assert.match(packageJson.scripts['validate:platform-api'], /deno test[\s\S]*deno check[\s\S]*deno fmt --check/);
+assert.match(
+    client,
+    /const loadAuth = async \(\) => \(await import\('\.\/platformAuth\.js'\)\)\.getPlatformAuth\(\);/,
+    'platformApi의 Node-safe 지연 경계는 브라우저 전용 platformAuth 모듈이어야 한다.',
+);
+assert.doesNotMatch(
+    client,
+    /import\('\.\/firebase\.js'\)/,
+    'firebase.js를 직접 동적 import하면 정적 import와 겹쳐 Vite chunk 경고가 재발한다.',
+);
+assert.match(
+    platformAuthSource,
+    /import \{ auth \} from '\.\/firebase\.js';[\s\S]*export const getPlatformAuth = \(\) => auth;/,
+    '브라우저 전용 경계는 초기화된 Firebase Auth 인스턴스만 반환해야 한다.',
+);
 
 // 플랫폼 관리자 회원 편집은 일반 비개인 회원의 조직만 바꿀 수 있다.
 const memberOrganizationGuard = /editingUser\.role === 'member' && editingUser\.accountType !== 'personal'/g;

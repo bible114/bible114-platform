@@ -171,7 +171,7 @@ const QUIZ_PROGRESS_KEY_PATTERN = /^(?:e([1-9]\d*)_)?r([1-9]\d*)_d([1-9]\d*)$/;
 const QUIZ_KEY_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const LEGACY_CALENDAR_DATE_PATTERN = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (0[1-9]|[12]\d|3[01]) (\d{4})$/;
 const MAX_TALENT_BALANCE = 1_000_000_000;
-const loadAuth = async () => (await import('./firebase.js')).auth;
+const loadAuth = async () => (await import('./platformAuth.js')).getPlatformAuth();
 const isResponseRecord = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 export class PlatformApiError extends Error {
