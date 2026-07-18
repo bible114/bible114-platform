@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#1e293b" />
-  <meta name="bible114-build" content="2026-07-18-0802" />
+  <meta name="bible114-build" content="2026-07-18-2211" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="성경통독 114" />
@@ -22,6 +22,10 @@
   <!-- Pretendard -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
   <style>
+    /* 하단 고정 광고(50px + 여백)가 버튼·본문을 가리지 않도록 페이지 전체에 광고 높이만큼 공간을 준다. */
+    body {
+      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 64px);
+    }
     #kakao-static-ad-layer {
       position: fixed;
       left: 0;
@@ -39,8 +43,20 @@
       max-width: 100vw;
       pointer-events: auto;
     }
+    /* 작은 화면에서는 광고를 문서 맨 아래에 배치한다. 읽는 동안 본문·버튼 위를 덮지 않고,
+       읽기 완료까지 내려왔을 때 기존 AdFit 배너가 그대로 노출된다. */
+    @media (max-width: 767px) {
+      body {
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+      }
+      #kakao-static-ad-layer {
+        position: static;
+        min-height: 56px;
+        padding: 0 0 calc(env(safe-area-inset-bottom, 0px) + 6px);
+      }
+    }
   </style>
-  <script type="module" crossorigin src="/assets/index-Dc3p7dCd.js"></script>
+  <script type="module" crossorigin src="/assets/index-EzROXLkP.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/vendor-react-Ds7D3P6J.js">
   <link rel="modulepreload" crossorigin href="/assets/vendor-Bg_btqvK.js">
   <link rel="modulepreload" crossorigin href="/assets/vendor-firebase-core-CD9lI5Ki.js">
@@ -48,7 +64,7 @@
   <link rel="modulepreload" crossorigin href="/assets/vendor-firebase-firestore-BfZ8nGY4.js">
   <link rel="modulepreload" crossorigin href="/assets/app-catalog-Dq5Do3BC.js">
   <link rel="modulepreload" crossorigin href="/assets/app-schedules-DPvgT2CV.js">
-  <link rel="stylesheet" crossorigin href="/assets/index-Cirqwptw.css">
+  <link rel="stylesheet" crossorigin href="/assets/index-CKJmUzGq.css">
 </head>
 
 <body>
