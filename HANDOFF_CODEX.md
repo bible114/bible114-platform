@@ -184,6 +184,7 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-19 | T136 초보 성도 모바일 2차 점검·개선 | `src/components/{GuestReaderView,DashboardView}.jsx`, `src/components/dashboard/{BibleReader,DashboardHeader,DailyVideoCard,BibleQuizCard,MemoSection,index}.js{x,}`, `scripts/validate-novice-mobile-controls.mjs`, `package.json` | 공개 375px과 로컬 320px에서 추가 점검해 ① 게스트 번역 선택창이 긴 옵션 때문에 화면 밖으로 밀리는 문제 ② 가입/나가기·날짜 이동·글씨/속도·영상 전환/구간·퀴즈 건너뛰기·묵상 기록 보기의 작은 터치 영역 ③ 느린 본문 로딩이 멈춘 화면처럼 보이는 문제를 수정했다. 번역 선택은 모바일 세로 배치·전체 폭·명시 라벨, 핵심 조작은 최소 44px, 로딩은 이유와 대기 행동을 안내한다. 회원 전용 `TalentShop`을 지연 로딩해 메인 번들을 500.65→483.34kB로 줄이고 빌드 경고를 제거했다. 320×700 실제 DOM에서 긴 번역 옵션·DAY 이동·본문·조작부를 확인했고 전용 검사·round15/18·reading-flow·build·diff-check 통과. rules·서버·운영 데이터 변경 없음. |
 | 2026-07-19 | T134~T135·컴퓨터 초보 성도 실사용 UX 보완·퀴즈 선택화 | `src/components/{LoginView,DashboardView,GuestReaderView,TutorialOverlay,ChurchAdminView}.jsx`, `src/components/dashboard/{BibleReader,BibleQuizCard,TalentShop,DashboardHeader,HomeScreenHelpBanner}.jsx`, `src/components/modals/ReadingGuideModal.jsx`, `src/hooks/{useTTS,useUserBibleActions}.js`, `index.html`, 검증 스크립트·안내문 | **퀴즈는 완전히 선택 사항**으로 확정해 현재 DAY의 `읽기 완료`가 퀴즈 상태와 무관하게 바로 진행되도록 gate를 제거했다. 다른 DAY는 둘러보기만 허용하고 내 진도로 돌아가는 버튼을 제공한다. 로그인 직행·도움말/FAQ 우선·오류별 안내·교회 문의 경로·홈 화면 추가 1회 안내·TTS/본문/퀴즈 재시도·상점 잠금/수령/환불 설명·모바일 광고 비가림·44px 터치 영역을 보강했다. 성도 FAQ 7항목과 관리자 FAQ 8항목, 입장코드 변경 직후 인쇄 안내를 완료했다. 375×812 브라우저에서 로그인·FAQ·게스트 본문·다른 DAY·모바일 광고 위치를 확인했고, 안내문 기존 2면 스크린샷을 재대조했다. `npm run validate`(platform-api 446/446)·build·diff-check 통과. rules·서버·운영 데이터 변경, 웹 배포·push 없음. |
 | 2026-07-18 | T133 성도용 가입 안내문 A4 2면 확장 | `src/components/ChurchAdminView.jsx`, `scripts/{render-round29-guide,validate-round29}.mjs`, `scripts/validate-round24.mjs`, `package.json`, `test-artifacts/round29-20260718/` | 기존 QR·가입 4단계·입장코드 자동 채움/빈칸 fallback을 보존하고, 1면에 아이폰/갤럭시 홈 화면 추가 안내, 2면에 매일 5단계·달란트·도움말을 통합했다. 실제 정책(첫 읽기 10+연속 보너스 최대 7, 퀴즈 1차 10/2차 5·하루 1회)과 대조했다. A4 210×297mm 브라우저 렌더에서 두 면 모두 overflow 0px, 잘림·고아 줄 없음을 페이지별 스크린샷으로 확인했다. `npm run validate`(platform-api 446/446)·build·diff-check 통과. **웹 배포·push는 하지 않았다.** |
 | 2026-07-18 | 컴맹 성도 UX P1 3건 수정 (Claude 실행, 사용자 지시) | `index.html`, `src/components/LoginView.jsx` (`86599a8`, 감사: `review/UX_NOVICE_AUDIT_2026-07-18.md`) | ① 교인 로그인·가입 생년월일이 8자리가 아니면 "등록되지 않은 사용자" 대신 형식 안내를 먼저 표시하고 `1956-03-15` 구분자는 자동 제거(로그인은 정규화 값으로 인증, 가입은 `isValidBirthdate` 실날짜 검증). ② 하단 고정 카카오 광고가 버튼을 가리지 않게 body에 `calc(env(safe-area-inset-bottom)+64px)` 하단 여백 — 광고는 유지(사용자 지시). ③ 모바일 탭 전환 시 히어로 아래 로그인 카드로 스크롤(smooth는 전환 직후 레이아웃 재계산에 끊겨 80ms 지연 후 즉시 이동). 셋 다 로컬 브라우저 375px에서 실검증: 6자리→형식 안내, 구분자→정상 인증 경로, 등록 클릭→카드 상단 정렬, 최하단 콘텐츠가 광고 위에 놓임. build·round11/18 검증 통과. **웹 배포·push는 하지 않았다.** |
@@ -392,6 +393,11 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-19 T136 초보 성도 모바일 2차 점검 완료:
+- `17d89e9`를 main push·GitHub Pages 배포했고 공개 `index-EzROXLkP.js` SHA-256 `d04e6d9b73882f93efd72baaf2199743cc996fddb30fc660ac4dd4a641a12ea9`가 로컬과 일치했다.
+- 후속 점검에서 320~375px 게스트 번역 선택 overflow, 44px 미만의 반복 조작부, 애매한 본문 로딩 안내를 찾아 수정했다. 긴 선택창은 세로 전체 폭, 상단 CTA는 모바일 축약, 날짜/글씨/속도/영상/퀴즈/묵상 조작부는 최소 44px, 로딩에는 느린 인터넷과 대기 행동을 명시했다.
+- 회원 전용 달란트 상점을 지연 로딩해 메인 JS를 500.65→483.34kB로 줄이고 500kB 빌드 경고를 없앴다. rules·서버·운영 데이터 변경 없음. T132 날짜·승인 게이트와 T124d 수동 실스모크는 그대로다.
 
 2026-07-19 T134~T135·컴퓨터 초보 성도 실사용 UX 완료:
 - 사용자 결정에 따라 퀴즈를 읽기 완료의 선행 조건에서 제거했다. 현재 DAY는 퀴즈를 풀지 않아도 `읽기 완료`로 다음 DAY에 진행하며, 퀴즈는 추가 달란트를 받는 선택 활동이다. 다른 DAY 완료는 막고 `내 진도 DAY N로 돌아가기`를 제공한다.
@@ -2545,6 +2551,13 @@ Codex의 5개 질문에 대한 확정 답:
 - [x] `npm run validate`·`npm run build` 통과, 기존 인쇄물 회귀(입장코드 채움/빈칸) 확인.
 - [x] 가입 안내문 인쇄 미리보기 2면 스크린샷, 도움말 모달 FAQ 스크린샷을 작업 로그에 남긴다.
 - [x] 안내 문구 속 규칙(달란트·퀴즈 횟수)이 `quizProgress.js`·서버 정책과 모순 없는지 대조표 1줄.
+
+### [x] T136. 초보 성도 모바일 2차 점검·개선 (2026-07-19 사용자 지시)
+
+- 320~375px 게스트 화면에서 번역 선택·상단 CTA·본문 로딩·매일 반복 조작을 재점검한다.
+- 긴 번역 옵션은 화면 안에서 보이도록 모바일 전체 폭으로 배치하고, 주요 반복 조작은 최소 44px 터치 영역을 보장한다.
+- 느린 본문 로딩에는 기다릴 이유와 행동을 안내하고, 신규 번들 경고가 생기면 실제 분할로 해소한다.
+- 전용 정적 검사, round15/18·reading-flow 회귀, build·실제 320px 화면 확인을 통과한다.
 
 ### [ ] T132. T127 최종 차단 시퀀스 (**2026-07-24 19:00:53 KST 이후 + 사용자 명시 승인 후에만**)
 

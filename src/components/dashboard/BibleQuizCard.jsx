@@ -695,7 +695,7 @@ const BibleQuizCard = ({
                         <button
                             type="button"
                             onClick={skipToday}
-                            className="text-xs font-bold text-slate-400 underline underline-offset-2 hover:text-slate-600"
+                            className="min-h-11 rounded-xl px-3 py-2 text-sm font-bold text-slate-500 underline underline-offset-2 hover:bg-slate-50 hover:text-slate-700"
                         >
                             이 DAY는 건너뛰기
                         </button>

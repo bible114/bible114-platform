@@ -548,13 +548,13 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
                     <div className="flex items-center bg-white/20 backdrop-blur-md rounded-full p-1 shrink-0">
                         <button
                             onClick={() => handleModeChange('adult')}
-                            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${mode === 'adult' ? 'bg-white text-indigo-700 shadow-sm' : 'text-white/80'}`}
+                            className={`min-h-11 rounded-full px-3 py-2 text-sm font-bold transition-all ${mode === 'adult' ? 'bg-white text-indigo-700 shadow-sm' : 'text-white/80'}`}
                         >
                             성인용
                         </button>
                         <button
                             onClick={() => handleModeChange('kids')}
-                            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${mode === 'kids' ? 'bg-white text-indigo-700 shadow-sm' : 'text-white/80'}`}
+                            className={`min-h-11 rounded-full px-3 py-2 text-sm font-bold transition-all ${mode === 'kids' ? 'bg-white text-indigo-700 shadow-sm' : 'text-white/80'}`}
                         >
                             어린이용
                         </button>
@@ -608,7 +608,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
                                 <button
                                     key={key}
                                     onClick={() => handleChapterClick(chapter.sec)}
-                                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-2xl font-bold text-sm active:scale-95 transition-all ${
+                                    className={`flex min-h-11 items-center gap-1.5 rounded-2xl px-4 py-2.5 text-sm font-bold transition-all active:scale-95 ${
                                         key === '기도'
                                             ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 hover:bg-indigo-700'
                                             : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'

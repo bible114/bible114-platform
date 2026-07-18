@@ -9,7 +9,6 @@ export { default as ReadingChampionSection } from './ReadingChampionSection';
 export { default as KakaoChannelButton } from './KakaoChannelButton';
 export { default as BibleQuizCard } from './BibleQuizCard';
 export { QuizLevelToggle } from './BibleQuizCard';
-export { default as TalentShop } from './TalentShop';
 export { default as CompletionCelebration } from './CompletionCelebration';
 export { default as CommunityMembershipCard } from './CommunityMembershipCard';
 export { default as PersonalAccountMigrationCard } from './PersonalAccountMigrationCard';

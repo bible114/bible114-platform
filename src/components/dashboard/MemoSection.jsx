@@ -48,7 +48,7 @@ const MemoSection = ({
                         e.stopPropagation();
                         setShowMemoList(true);
                     }}
-                    className="text-xs text-purple-500 underline hover:text-purple-700"
+                    className="min-h-11 rounded-xl px-3 py-2 text-sm font-bold text-purple-600 underline hover:bg-white hover:text-purple-800"
                 >
                     내 기록 보기
                 </button>

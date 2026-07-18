@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { TOTAL_DAYS, UNAFFILIATED_CHURCH_ID } from '../data/constants';
 import { BIBLE_VERSIONS, PLAN_TYPES } from '../data/bible_options';
 import { getLevelInfo } from '../data/levels';
@@ -37,16 +37,23 @@ import {
     SubgroupRankingCard,
     ReadingChampionSection,
     KakaoChannelButton,
-    BibleQuizCard,
-    TalentShop,
     CompletionCelebration,
     CommunityMembershipCard,
     PersonalAccountMigrationCard,
     SocialLinkBanner,
     ChurchAdminReaderGuide,
     HomeScreenHelpBanner,
+    BibleQuizCard,
 } from './dashboard';
 import TutorialOverlay from './TutorialOverlay';
+
+const TalentShop = lazy(() => import('./dashboard/TalentShop'));
+
+const DeferredSectionFallback = ({ label }) => (
+    <div className="rounded-2xl border border-slate-200 bg-white px-5 py-6 text-center text-sm font-bold text-slate-500" role="status">
+        {label}을 준비하고 있어요...
+    </div>
+);
 
 const CHURCH_ADMIN_READER_GUIDE_KEY_PREFIX = 'b114_church_admin_reader_guide_v1';
 
@@ -675,14 +682,16 @@ const DashboardView = ({
 
                     {hasCommunity && <ReadingChampionSection getWeeklyMVP={getWeeklyMVP} />}
 
-                    {hasCommunity && <TalentShop
-                        currentUser={currentUser}
-                        setCurrentUser={setCurrentUser}
-                        organizations={talentOrganizations}
-                        onOrganizationChange={selectActiveOrganization}
-                        showUnlockModal={showSecretShopUnlocked}
-                        onCloseUnlockModal={() => setShowSecretShopUnlocked(false)}
-                    />}
+                    {hasCommunity && <Suspense fallback={<DeferredSectionFallback label="달란트 상점" />}>
+                        <TalentShop
+                            currentUser={currentUser}
+                            setCurrentUser={setCurrentUser}
+                            organizations={talentOrganizations}
+                            onOrganizationChange={selectActiveOrganization}
+                            showUnlockModal={showSecretShopUnlocked}
+                            onCloseUnlockModal={() => setShowSecretShopUnlocked(false)}
+                        />
+                    </Suspense>}
 
                     {currentUser.role === 'member' && currentUser.accountType !== 'personal' && (
                         <CommunityMembershipCard

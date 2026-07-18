@@ -55,14 +55,14 @@ const BibleReader = ({
                     <button
                         onClick={() => setViewingDay(prev => Math.max(1, prev - 1))}
                         aria-label={`이전 본문 DAY ${Math.max(1, viewingDay - 1)} 보기`}
-                        className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors disabled:opacity-30"
+                        className="flex min-h-11 min-w-11 items-center justify-center rounded-full bg-white/20 p-2 text-white transition-colors hover:bg-white/30 disabled:opacity-30"
                         disabled={viewingDay <= 1}
                     >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
                     </button>
 
                     <div className="text-center">
-                        <h2 className="text-xl font-bold leading-tight mb-1 sm:text-2xl">{verseData.loading ? '로딩중...' : verseData.title}</h2>
+                        <h2 className="mb-1 text-xl font-bold leading-tight sm:text-2xl">{verseData.loading ? '말씀을 불러오는 중' : verseData.title}</h2>
                         <div className="flex items-center justify-center gap-2">
                             {(currentUser.readCount || 1) > 1 && (
                                 <span className="text-xs bg-purple-500/90 px-2 py-0.5 rounded-full">🏆 {currentUser.readCount - 1}독 완료</span>
@@ -77,7 +77,7 @@ const BibleReader = ({
                     <button
                         onClick={() => setViewingDay(prev => Math.min(365, prev + 1))}
                         aria-label={`다음 본문 DAY ${Math.min(365, viewingDay + 1)} 보기`}
-                        className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors disabled:opacity-30"
+                        className="flex min-h-11 min-w-11 items-center justify-center rounded-full bg-white/20 p-2 text-white transition-colors hover:bg-white/30 disabled:opacity-30"
                         disabled={viewingDay >= 365}
                     >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
@@ -106,7 +106,7 @@ const BibleReader = ({
                                 setFontSize(newSize);
                                 localStorage.setItem('bible_fontSize', newSize);
                             }}
-                            className="w-7 h-7 rounded-full bg-white/30 hover:bg-white/50 flex items-center justify-center text-white font-bold"
+                            className="flex min-h-11 min-w-11 items-center justify-center rounded-full bg-white/30 font-bold text-white hover:bg-white/50"
                             aria-label="본문 글자 작게"
                         >
                             −
@@ -121,7 +121,7 @@ const BibleReader = ({
                                 setFontSize(newSize);
                                 localStorage.setItem('bible_fontSize', newSize);
                             }}
-                            className="w-7 h-7 rounded-full bg-white/30 hover:bg-white/50 flex items-center justify-center text-white font-bold"
+                            className="flex min-h-11 min-w-11 items-center justify-center rounded-full bg-white/30 font-bold text-white hover:bg-white/50"
                             aria-label="본문 글자 크게"
                         >
                             +
@@ -152,7 +152,7 @@ const BibleReader = ({
                                         <button
                                             onClick={() => handleSpeedChange(-0.1)}
                                             disabled={ttsSpeed <= 0.6}
-                                            className="min-h-9 min-w-9 flex items-center justify-center text-white/80 hover:text-white disabled:opacity-30"
+                                            className="flex min-h-11 min-w-11 items-center justify-center text-white/80 hover:text-white disabled:opacity-30"
                                             aria-label="낭독 속도 느리게"
                                         >
                                             -
@@ -163,7 +163,7 @@ const BibleReader = ({
                                         <button
                                             onClick={() => handleSpeedChange(0.1)}
                                             disabled={ttsSpeed >= 2.0}
-                                            className="min-h-9 min-w-9 flex items-center justify-center text-white/80 hover:text-white disabled:opacity-30"
+                                            className="flex min-h-11 min-w-11 items-center justify-center text-white/80 hover:text-white disabled:opacity-30"
                                             aria-label="낭독 속도 빠르게"
                                         >
                                             +
@@ -239,7 +239,8 @@ const BibleReader = ({
                     {verseData.loading ? (
                         <div className="flex flex-col items-center justify-center py-20 space-y-4">
                             <div className="w-12 h-12 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin"></div>
-                            <p className="text-slate-400 font-bold animate-pulse">말씀을 가져오고 있습니다...</p>
+                            <p className="font-bold text-slate-600">말씀을 불러오고 있습니다</p>
+                            <p className="text-center text-sm leading-relaxed text-slate-500">인터넷이 느리면 잠시 걸릴 수 있어요.<br />화면을 닫지 말고 조금만 기다려 주세요.</p>
                         </div>
                     ) : hasContentError ? (
                         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-6 text-center">
@@ -285,7 +286,7 @@ const BibleReader = ({
                             </p>
                         )}
                         {completionForViewingDay.talentProgramEnabled && !completionForViewingDay.isFirstReadToday && <p className="mt-1 text-sm font-bold text-emerald-700">추가 읽기는 점수와 달란트가 더 적립되지 않아요.</p>}
-                        <button type="button" onClick={handleRead} disabled={readSubmitting || !isCurrentProgressDay} className="mt-4 rounded-full border border-emerald-300 bg-white px-5 py-2.5 text-sm font-bold text-emerald-800 disabled:opacity-50">
+                        <button type="button" onClick={handleRead} disabled={readSubmitting || !isCurrentProgressDay} className="mt-4 min-h-11 rounded-full border border-emerald-300 bg-white px-5 py-2.5 text-sm font-bold text-emerald-800 disabled:opacity-50">
                             {readSubmitting ? '기록 중...' : '한 장 더 읽기'}
                         </button>
                     </div>
@@ -305,7 +306,7 @@ const BibleReader = ({
                                 {readSubmitting ? '기록 중...' : readButtonLabel}
                             </button>
                         </div>
-                        <p className="text-center text-xs text-slate-400 mt-4 font-medium">
+                        <p className="mt-4 text-center text-sm font-medium leading-relaxed text-slate-500">
                             {readButtonHelp}
                         </p>
                     </div>

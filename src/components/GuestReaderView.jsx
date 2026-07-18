@@ -112,14 +112,15 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
                         <button
                             type="button"
                             onClick={onSignupClick}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors"
+                            className="min-h-11 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-700"
                         >
-                            가입하고 기록 지키기
+                            <span className="sm:hidden">가입하고 저장</span>
+                            <span className="hidden sm:inline">가입하고 기록 지키기</span>
                         </button>
                         <button
                             type="button"
                             onClick={handleLogout}
-                            className="text-xs font-bold text-slate-400 hover:text-red-500 px-1"
+                            className="min-h-11 rounded-xl px-2 py-2 text-sm font-bold text-slate-500 hover:bg-red-50 hover:text-red-600"
                         >
                             나가기
                         </button>
@@ -134,15 +135,16 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
                 <HomeScreenHelpBanner />
 
                 {versionOptions.length > 1 && (
-                    <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3">
+                    <div className="flex flex-col items-stretch gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center">
                         <div className="min-w-0">
-                            <p className="text-xs font-bold text-slate-500">읽는 버전</p>
-                            <p className="text-[11px] text-slate-400">순서·번역을 자유롭게 골라보세요.</p>
+                            <p className="text-sm font-bold text-slate-600">읽는 버전</p>
+                            <p className="text-sm text-slate-500">읽을 순서와 번역을 골라보세요.</p>
                         </div>
                         <select
+                            aria-label="읽는 순서와 성경 번역 선택"
                             value={currentPlanId}
                             onChange={(e) => handleGuestVersionChange(e.target.value)}
-                            className="ml-auto shrink-0 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            className="min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 sm:ml-auto sm:w-auto sm:max-w-[65%]"
                         >
                             {versionOptions.map(opt => (
                                 <option key={opt.planId} value={opt.planId}>
@@ -154,10 +156,10 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
                 )}
 
                 {currentPlanId.startsWith('nt_') && (
-                    <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                    <div className="flex flex-col items-stretch gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                         <div className="min-w-0">
-                            <p className="text-xs font-bold text-slate-500">퀴즈 난이도</p>
-                            <p className="text-[11px] text-slate-400">이 기기에 선택이 저장돼요.</p>
+                            <p className="text-sm font-bold text-slate-600">퀴즈 난이도</p>
+                            <p className="text-sm text-slate-500">선택한 난이도는 이 기기에 저장돼요.</p>
                         </div>
                         <QuizLevelToggle currentUser={currentUser} setCurrentUser={setCurrentUser} />
                     </div>

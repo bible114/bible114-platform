@@ -66,7 +66,7 @@ const DashboardHeader = ({
                                 </div>
                             )}
                             {isChurchAdmin && (
-                                <button type="button" onClick={(e) => { e.stopPropagation(); setView('church_admin'); }} className="p-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 shrink-0 flex items-center gap-1" title="공동체 관리">⚙️ <span>관리</span></button>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); setView('church_admin'); }} className="flex min-h-11 shrink-0 items-center gap-1 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-100" title="공동체 관리">⚙️ <span>관리</span></button>
                             )}
                             <button id="tut-achievements" type="button" aria-label="나의 업적과 기록" onClick={(e) => { e.stopPropagation(); setShowAchievements(true); }} className="min-h-11 min-w-11 p-2 text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-100 rounded-xl hover:bg-yellow-100 shrink-0">🏅</button>
                             <button id="tut-date-settings" type="button" aria-label="날짜 설정" onClick={(e) => { e.stopPropagation(); setShowDateSettings(true); }} className="min-h-11 min-w-11 p-2 text-xs font-bold text-purple-600 bg-purple-50 border border-purple-100 rounded-xl hover:bg-purple-100 shrink-0">📅</button>
@@ -85,7 +85,7 @@ const DashboardHeader = ({
                     <button
                         id="tut-version-btn"
                         onClick={handleChangeVersionStart}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-100/80 hover:bg-slate-200 rounded-full transition-colors group shrink-0 md:order-1 self-start md:self-center"
+                        className="group flex min-h-11 shrink-0 items-center gap-2 self-start rounded-full bg-slate-100/80 px-3 py-2 transition-colors hover:bg-slate-200 md:order-1 md:self-center"
                     >
                         <span className="text-[11px] font-bold text-slate-500 tracking-tight">읽는 버전 바꾸기</span>
                         <div className="flex items-center gap-1.5">
@@ -95,7 +95,7 @@ const DashboardHeader = ({
                             <Icon name="refresh" size={10} className="text-slate-400 group-hover:rotate-180 transition-transform duration-500" />
                         </div>
                     </button>
-                    {onOpenMemberships && <button type="button" onClick={onOpenMemberships} className="flex min-w-0 max-w-[210px] shrink items-center gap-1 self-start rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 md:order-1 md:self-center md:max-w-[170px]" title="내 단체 관리"><span>⛪</span><span className="truncate">{currentOrganizationName || '소속 관리'}</span><span>▾</span></button>}
+                    {onOpenMemberships && <button type="button" onClick={onOpenMemberships} className="flex min-h-11 min-w-0 max-w-[210px] shrink items-center gap-1 self-start rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 md:order-1 md:self-center md:max-w-[170px]" title="내 단체 관리"><span>⛪</span><span className="truncate">{currentOrganizationName || '소속 관리'}</span><span>▾</span></button>}
                 </div>
             </div>
 
@@ -118,7 +118,7 @@ const DashboardHeader = ({
                                 <span className="text-sm font-bold text-slate-400">누적 랭킹</span>
                             </div>
                         </div>
-                        <button onClick={() => setShowFullRanking(true)} className="flex items-center gap-1 px-4 py-2 bg-slate-50 hover:bg-blue-50 text-blue-600 text-xs font-bold rounded-2xl transition-all border border-transparent hover:border-blue-100">
+                        <button onClick={() => setShowFullRanking(true)} className="flex min-h-11 items-center gap-1 rounded-2xl border border-transparent bg-slate-50 px-4 py-2 text-xs font-bold text-blue-600 transition-all hover:border-blue-100 hover:bg-blue-50">
                             전체보기 <Icon name="right" size={10} />
                         </button>
                     </div>
