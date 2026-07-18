@@ -33,7 +33,6 @@ export const userAllowsQuizProgressKey = (user, progressKey, calendarDate) => {
 };
 
 export const getDefaultQuizLevel = (user) => {
-    if (user?.planId === 'nt_easy') return 'easy';
     if (user?.videoMode === 'kids' || user?.videoType === 'kids') return 'easy';
     if (['elementary', 'kinder'].includes(user?.departmentId)) return 'easy';
     return 'standard';

@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { db, auth, firebase } from './utils/firebase';
 import { DEFAULT_DEPARTMENTS } from './data/departments';
-import { BIBLE_VERSIONS, isBibleVersionVisibleForUser } from './data/bible_options';
+import { BIBLE_VERSIONS } from './data/bible_options';
 import { userDocToState, dateToOffset } from './utils/helpers';
 import { completeMemberOnboarding } from './utils/platformApi';
 import { setMemberPasswordByAdmin } from './utils/adminPassword';
@@ -585,9 +585,8 @@ const App = () => {
 
     const handleVersionSelect = async (versionId) => {
         const versionInfo = (BIBLE_VERSIONS[selectedPlanType] || []).find(v => v.id === versionId);
-        const versionUser = tempUser || currentUser;
-        if (!versionInfo || !isBibleVersionVisibleForUser(versionInfo, versionUser)) {
-            alert('이 성경 버전은 현재 교회에서 사용할 수 없습니다.');
+        if (!versionInfo) {
+            alert('이 성경 버전은 현재 사용할 수 없습니다.');
             return;
         }
         const fullPlanId = `${selectedPlanType}_${versionId}`;

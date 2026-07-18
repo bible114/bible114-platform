@@ -31,7 +31,6 @@
     "validate:reading-flow-scroll": "node scripts/validate-reading-flow-scroll.mjs",
     "validate:service-policies": "node scripts/validate-service-policies.mjs",
     "validate:signup-consent": "node scripts/validate-signup-consent.mjs",
-    "test:saehangul": "node scripts/test-saehangul-parser.mjs",
     "test:kakao-auth": "node scripts/validate-kakao-custom-auth.mjs",
     "preview": "vite preview",
     "deploy": "npm run build && gh-pages -d dist"

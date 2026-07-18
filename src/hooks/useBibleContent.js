@@ -3,7 +3,6 @@ import { db } from '../utils/firebase';
 import { GENESIS_1, AUDIO_BASE_URL } from '../data/constants';
 import { BIBLE_VERSIONS, PLAN_TYPES } from '../data/bible_options';
 import { getActualDay } from '../utils/helpers';
-import { formatSaehangulText } from '../utils/saehangulParser';
 
 const CACHE_LOOKUP_TIMEOUT_MS = 8000;
 
@@ -104,12 +103,7 @@ export const useBibleContent = (currentUser) => {
         const readCountBadge = readCount > 1 ? ` (${readCount - 1}독 완료)` : '';
 
         if (cachedContent && cachedContent.text && !cachedContent.text.startsWith('[오류]')) {
-            let processedText = cachedContent.text;
-
-            // 새한글 버전일 경우 절 표시 처리
-            if (version && version.startsWith('saehangul')) {
-                processedText = formatSaehangulText(processedText);
-            }
+            const processedText = cachedContent.text;
 
             let finalAudioUrl = cachedContent.audioUrl || null;
             if (!finalAudioUrl && AUDIO_BASE_URL && AUDIO_BASE_URL.startsWith('http')) {
@@ -128,14 +122,9 @@ export const useBibleContent = (currentUser) => {
         } else {
             const versionName = getVersionName(planType, version);
             const isMissingCache = cachedContent && cachedContent.error === 'missing_cache';
-            let displayText = actualDay === 1 && !isMissingCache
+            const displayText = actualDay === 1 && !isMissingCache
                 ? GENESIS_1
                 : ((cachedContent && cachedContent.text) || createMissingContentMessage(versionName, dayToShow));
-
-            // 새한글 버전일 경우 절 표시 처리
-            if (version && version.startsWith('saehangul') && !isMissingCache) {
-                displayText = formatSaehangulText(displayText);
-            }
 
             setVerseData({
                 title: `${planTypeName} DAY ${dayToShow}일${readCountBadge}`,

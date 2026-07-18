@@ -45,11 +45,10 @@ assert.equal(getQuizRewardForAnswer({ attempts: 2, isCorrect: true, rewardDate: 
 assert.equal(getQuizRewardForAnswer({ attempts: 1, isCorrect: true, rewardDate: 'today', todayKey: 'today' }), 0);
 assert.equal(getQuizRewardForAnswer({ attempts: 1, isCorrect: true, rewardDate: 'yesterday', todayKey: 'today' }), 10);
 assert.equal(getQuizRewardForAnswer({ attempts: 1, isCorrect: true, rewardDate: null, todayKey: 'today', legacyRewardedToday: true }), 0);
-assert.equal(getDefaultQuizLevel({ planId: 'nt_easy' }), 'easy');
 assert.equal(getDefaultQuizLevel({ planId: 'nt_new', videoMode: 'kids' }), 'easy');
 assert.equal(getDefaultQuizLevel({ planId: 'nt_new', departmentId: 'elementary' }), 'easy');
 assert.equal(getDefaultQuizLevel({ planId: 'nt_new' }), 'standard');
-assert.equal(getQuizLevel({ planId: 'nt_easy', quizLevel: 'standard' }), 'standard');
+assert.equal(getQuizLevel({ planId: 'nt_new', departmentId: 'elementary', quizLevel: 'standard' }), 'standard');
 
 const personalWalletFixture = {
     uid: 'personal-1', accountType: 'personal', churchId: 'org-b', primaryOrgId: 'org-b', talent: 99,
@@ -64,11 +63,13 @@ assert.deepEqual(
 );
 assert.equal(getViewedTalent({ ...personalWalletFixture, accountType: 'church', talent: 99 }), 99);
 
-assert.deepEqual(getVisibleBibleVersions('1year', null).map(version => version.id), ['sequential', 'revised', 'new']);
-assert.deepEqual(getVisibleBibleVersions('nt', null).map(version => version.id), ['new']);
-assert.equal(isPlanIdAllowedForUser('1year_saehangul', null), false);
-assert.equal(isPlanIdAllowedForUser('nt_message', null), false);
-assert.equal(isPlanIdAllowedForUser('1year_revised', null), true);
+assert.deepEqual(getVisibleBibleVersions('1year').map(version => version.id), ['sequential', 'revised', 'new']);
+assert.deepEqual(getVisibleBibleVersions('nt').map(version => version.id), ['new']);
+// 쉬운성경·새한글·메시지 버전은 2026-07-18 코드에서 제거 — 레거시 planId는 계속 비허용
+assert.equal(isPlanIdAllowedForUser('1year_saehangul'), false);
+assert.equal(isPlanIdAllowedForUser('nt_easy'), false);
+assert.equal(isPlanIdAllowedForUser('nt_message'), false);
+assert.equal(isPlanIdAllowedForUser('1year_revised'), true);
 
 const login = read('src/components/LoginView.jsx');
 const reader = read('src/components/dashboard/BibleReader.jsx');
@@ -138,8 +139,8 @@ assert.match(membershipCard, /activeOrgId[\s\S]*onSelectOrg/);
 assert.match(membershipCard, /aria-current=\{isActive \? 'page'[\s\S]*aria-pressed=\{isActive\}/);
 assert.match(membershipCard, /현재 보고 있음/);
 assert.doesNotMatch(membershipCard, /🏆 순위|onViewOrgRanking/);
-assert.match(scheduleAliases, /'nt_easy': schedules\.new_testament/);
-assert.match(scheduleAliases, /'nt_message': schedules\.new_testament/);
+assert.doesNotMatch(scheduleAliases, /nt_easy|nt_message|saehangul/);
+assert.match(scheduleAliases, /'nt_new': schedules\.new_testament/);
 assert.match(quizEngine, /import\.meta\.glob\('\.\.\/data\/quizNtEasy\/\*\.json'\)/);
 assert.match(quizEngine, /loadNtEasyPoolForDay[\s\S]*`ntEasy-\$\{day\}-\$\{index \+ 1\}`/);
 assert.match(quizEngine, /loadNtEasyQuestionByKey[\s\S]*\^ntEasy-/);

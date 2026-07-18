@@ -1,6 +1,6 @@
 import React from 'react';
 import Icon from './Icon';
-import { PLAN_TYPES, BIBLE_VERSIONS, isBibleVersionVisibleForUser } from '../data/bible_options';
+import { PLAN_TYPES, BIBLE_VERSIONS } from '../data/bible_options';
 import ReadingGuideModal from './modals/ReadingGuideModal';
 
 
@@ -71,9 +71,7 @@ const PlanSelectionView = ({
     }
 
     if (view === 'bible_version_select') {
-        const versionUser = tempUser || currentUser;
-        const versions = (BIBLE_VERSIONS[selectedPlanType] || [])
-            .filter(version => isBibleVersionVisibleForUser(version, versionUser));
+        const versions = BIBLE_VERSIONS[selectedPlanType] || [];
         const planTypeData = PLAN_TYPES.find(t => t.id === selectedPlanType);
         return (
             <div

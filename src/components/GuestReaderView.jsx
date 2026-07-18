@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { TOTAL_DAYS } from '../data/constants';
-import { PLAN_TYPES, BIBLE_VERSIONS, isBibleVersionVisibleForUser } from '../data/bible_options';
+import { PLAN_TYPES, BIBLE_VERSIONS } from '../data/bible_options';
 import { useBibleContent } from '../hooks/useBibleContent';
 import { useTTS } from '../hooks/useTTS';
 import { recordGuestRead, saveGuestState } from '../utils/guestStorage';
@@ -9,23 +9,20 @@ import { DailyVideoCard, BibleReader, QuizLevelToggle } from './dashboard';
 const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupClick }) => {
     const { verseData, viewingDay, setViewingDay, loadContent } = useBibleContent(currentUser);
 
-    // 게스트가 고를 수 있는 버전 목록 — 특정 교회 전용(쉬운성경·새한글·메시지)은
-    // isBibleVersionVisibleForUser가 걸러내므로 공개 버전만 남는다.
+    // 게스트가 고를 수 있는 버전 목록 (운영 번역: 개역개정·새번역)
     const versionOptions = useMemo(() => {
         const options = [];
         PLAN_TYPES.forEach(plan => {
-            (BIBLE_VERSIONS[plan.id] || [])
-                .filter(version => isBibleVersionVisibleForUser(version, currentUser))
-                .forEach(version => {
-                    options.push({
-                        planId: `${plan.id}_${version.id}`,
-                        planTitle: plan.title,
-                        versionName: version.name,
-                    });
+            (BIBLE_VERSIONS[plan.id] || []).forEach(version => {
+                options.push({
+                    planId: `${plan.id}_${version.id}`,
+                    planTitle: plan.title,
+                    versionName: version.name,
                 });
+            });
         });
         return options;
-    }, [currentUser]);
+    }, []);
 
     const currentPlanId = currentUser?.planId || '1year_revised';
 
