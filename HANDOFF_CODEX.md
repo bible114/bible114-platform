@@ -184,6 +184,7 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-18 | 교회 검색 복구·번들 개선 운영 배포 + 인증 지연 경계 정리 | `src/utils/platformAuth.js`, `src/utils/platformApi.js`, `scripts/validate-round24.mjs`, `review/SITE_FULL_AUDIT_2026-07-18.md`, `test-artifacts/site-audit-20260718/05-live-church-search-deployed.png` | `b4f4df9`와 `a6c72c3`을 `main`에 push하고 GitHub Pages에 배포했다. 공개 새 브라우저에서 `서부제일교회` 검색과 게스트 개역개정·새번역 본문을 확인했다. 최종 메인 JS는 `index-Dc3p7dCd.js` 485.80kB(gzip 151.97kB), 로컬/공개 SHA-256 `a712838ee8a6b876a777ea107e6e6e0997436c63da159b76dfd8a6228ef28f1c` 일치, HTML 참조 9개와 `platformAuth-CDVLXWGr.js` 모두 HTTP 200. `firebase.js` 정적·동적 중복 import 경고는 브라우저 전용 지연 경계로 제거해 build 경고 0건. 전체 validate 442/442 통과. rules·Edge·운영 데이터 쓰기 없음. |
 | 2026-07-18 | 교회 검색 오류 복구 UX + 초기 번들 분할 로컬 완료 | `src/utils/churchDirectory.js`, `src/components/{ChurchPicker,LoginView}.jsx`, `scripts/validate-church-directory-fallback.mjs`, `package.json`, `vite.config.js`, `review/SITE_FULL_AUDIT_2026-07-18.md`, `test-artifacts/site-audit-20260718/04-local-church-search-fixed.png` | 운영 재검사에서 비인증 SDK·공개 UI 모두 레거시 8건과 `서부제일교회` 결과가 정상이라 상시 0건 장애는 정정했다. 확정 결함은 최종 읽기 오류를 `[]`로 삼켜 일시 실패를 실제 0건으로 고정한 구조다. 최대 2회 자동 재시도, 실패 캐시 제거·오류 전달, ChurchPicker 로딩/오류/실제 없음 분리와 수동 재시도를 추가했다. 규칙·운영 데이터 쓰기 0건. Vite vendor/data chunk 분할로 메인 JS 1,465.19→485.87kB(gzip 389.81→152.01kB), 500kB 경고 제거. 신규 회귀 검사, 전체 validate 442/442, build, 로컬 브라우저 검색·게스트 개역개정 진입 통과. 배포·push 없음. |
 | 2026-07-18 | 전체 기능·20명 동시 읽기/퀴즈/달란트 상점 운영 점검 | `review/SITE_FULL_AUDIT_2026-07-18.md`, `scripts/{manage-site-audit-fixture,prepare-concurrent-site-audit,run-concurrent-member-flow,audit-concurrent-site-run}.mjs`, `scripts/concurrent-member-flow.manifest.example.json`, `test-artifacts/site-audit-20260718/` | 일회용 교회와 관리자 1명·회원 20명(개역개정 10, 새번역 10)을 만들어 배포된 API에서 `읽기 완료 → 정답 퀴즈 → 1달란트 상품 구매` 60건을 동시 실행했다. 60/60 성공, p95 656ms, 원장 독립 재조회 누락·중복 0, 전원 DAY2·점수10·달란트20을 확인했다. 종료 후 교회·공개 목록·users·Auth·하위 원장을 모두 삭제했고 platformStats 차이 0이다. 별도 `클로드테스트교회`는 건드리지 않았다. 비로그인 `ChurchPicker`가 운영 교회 전체를 검색 결과 0건으로 표시해 이름·생년월일 기존 회원 로그인을 막는 P1을 재현했으며 원인 진단·수정·배포는 다음 독립 작업으로 남겼다. build/validate 통과, 초기 번들 약 1.47MB 경고는 P3로 기록했다. |
 | 2026-07-18 | 운영 번역 범위 정정 | `HANDOFF_CODEX.md` | 사용자 확인에 따라 이 프로젝트의 운영 번역을 개역개정·새번역 2종으로 고정했다. 비활성 `nt_easy`·`nt_saehangul`·`nt_message` 캐시를 수리 대상으로 잘못 확장한 `e680af1`은 `d5b3d04`로 revert했고, 운영 쓰기·웹 배포는 없었다. 저장소 밖에 만든 두 staging 디렉터리는 복구 가능한 휴지통으로 이동했다. |
@@ -385,6 +386,12 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-18 교회 검색 P1·번들 P3 운영 릴리스 완료:
+- 사용자 명시 지시로 `b4f4df9`와 후속 `a6c72c3`을 `main`에 push하고 GitHub Pages를 두 차례 배포했다. 공개 새 브라우저에서 `서부제일교회` 검색 결과와 게스트 개역개정·새번역 본문을 확인했다. 스크린샷은 `test-artifacts/site-audit-20260718/05-live-church-search-deployed.png`다.
+- 다음 독립 작업으로 `platformApi`가 `firebase.js`를 직접 동적 import하던 마지막 빌드 안내를 정리했다. Auth 초기화는 새 브라우저 전용 `platformAuth.js` 경계에서만 반환하므로 Node 검증의 순수 import 계약과 Firebase compat를 모두 유지한다. round24 회귀 계약을 추가했고 전체 validate 442/442, 최종 build 경고 0건이다.
+- 최종 공개 메인 파일은 `assets/index-Dc3p7dCd.js`이며 로컬/공개 SHA-256 `a712838ee8a6b876a777ea107e6e6e0997436c63da159b76dfd8a6228ef28f1c` 일치, HTML 참조 9개와 lazy `platformAuth-CDVLXWGr.js` 모두 HTTP 200이다. rules·Edge·운영 데이터는 변경하지 않았다.
+- T132는 `2026-07-24 19:00:53 KST 이후 + 사용자 명시 승인` 게이트를 그대로 유지하며 이번 릴리스에서 시작하지 않았다.
 
 2026-07-18 교회 검색 P1 후속 원인 확정·로컬 해결 + P3 번들 개선:
 - 운영을 다시 읽어보니 비인증 Firebase compat와 공개 웹 모두 `settings/churchDirectory` 8건을 반환하고 `서부제일교회` 검색 결과를 표시했다. `publicDirectoryMeta/current` 누락/403 뒤 레거시 폴백도 정상이다. 따라서 이전 보고의 “항상 0건”은 현재 데이터·rules의 상시 장애가 아니다. 최초 브라우저 감사의 정확한 하위 실패는 기존 코드가 오류를 삼켜 사후 확정할 수 없다.
