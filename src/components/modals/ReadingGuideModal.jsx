@@ -1,7 +1,72 @@
 import React from 'react';
 import Icon from '../Icon';
 
+const MEMBER_FAQ_ITEMS = [
+    {
+        question: '로그인이 안 돼요',
+        answer: <>교회에서 가입했다면 <strong>교회 선택 → 이름 → 생년월일 8자리</strong>(예: 19560315) → 비밀번호 순서로 확인해주세요. 카카오·구글로 시작했다면 처음 화면에서 같은 카카오·구글 버튼을 누르세요. 로그인 없이 둘러본 기록은 게스트 기록이라 이 휴대폰에만 남아요.</>,
+    },
+    {
+        question: '비밀번호를 잊었어요',
+        answer: <>처음 화면의 <strong>비밀번호 찾기·문의</strong>를 누르세요. 교회 관리자(담당 선생님)가 새 비밀번호로 바꿔줄 수 있어요. 연락처를 모르면 교회 주보, 교회 단체방, 평소 연락하는 담당 선생님을 통해 문의해주세요.</>,
+    },
+    {
+        question: '며칠 밀렸어요 / 날짜가 안 맞아요',
+        answer: <>괜찮아요! 밀린 날 것부터 이어서 읽으면 돼요. 화면의 날짜는 일정표 날짜라 오늘과 다를 수 있어요.</>,
+    },
+    {
+        question: '듣기 소리가 안 나와요',
+        answer: <>카카오톡·네이버·구글 앱 안의 브라우저에서는 듣기가 제한될 수 있어요. 화면 메뉴에서 <strong>외부 브라우저로 열기</strong>를 고른 뒤, 갤럭시는 크롬·삼성인터넷, 아이폰은 사파리로 열어주세요. 휴대폰 무음 모드와 음량도 확인해주세요.</>,
+    },
+    {
+        question: '달란트가 안 늘어요',
+        answer: <>달란트는 <strong>하루 첫 읽기 완료</strong>와 <strong>하루 첫 퀴즈 정답</strong>에만 쌓여요. 그날 이미 완료한 뒤의 <strong>추가 읽기는 0점·0달란트</strong>이며, 퀴즈 보상도 하루 한 번만 받아요.</>,
+    },
+    {
+        question: '상점에서 샀는데 물건은 어디서?',
+        answer: <>상품은 교회 관리자(선생님)에게 직접 받아요. 구매를 잘못했거나 취소하려면 관리자에게 바로 말씀해주세요. 상점은 <strong>7일 연속 읽으면 열리고, 한 번 열리면 계속 유지</strong>돼요. 그래도 <strong>상점이 안 보이면</strong> 소속 공동체나 부서에서 상점을 사용하지 않는 경우예요. 달란트 잔액과 상품은 <strong>공동체마다 따로</strong>이므로 현재 선택한 공동체도 확인해주세요.</>,
+    },
+    {
+        question: '휴대폰을 바꿨어요',
+        answer: <>교회 계정은 교회 선택 → 이름·생년월일·비밀번호로, 카카오·구글 계정은 예전에 누른 것과 같은 버튼으로 로그인하면 기록이 이어져요. 게스트 기록은 이전 휴대폰에만 있어 옮겨지지 않아요. 자주 쓰려면 브라우저 메뉴에서 <strong>홈 화면에 추가</strong>해두세요.</>,
+    },
+];
+
 const ReadingGuideModal = ({ show, onClose, onStartTutorial }) => {
+    const closeButtonRef = React.useRef(null);
+    const dialogRef = React.useRef(null);
+
+    React.useEffect(() => {
+        if (!show) return undefined;
+        const previouslyFocused = document.activeElement;
+        const previousBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        const handleKeyDown = event => {
+            if (event.key === 'Escape') onClose();
+            if (event.key !== 'Tab') return;
+            const focusable = dialogRef.current?.querySelectorAll(
+                'button:not([disabled]), a[href], summary, input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            );
+            if (!focusable?.length) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        closeButtonRef.current?.focus();
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown);
+            document.body.style.overflow = previousBodyOverflow;
+            previouslyFocused?.focus?.();
+        };
+    }, [show, onClose]);
+
     if (!show) return null;
 
     const handleStartTutorial = () => {
@@ -11,10 +76,10 @@ const ReadingGuideModal = ({ show, onClose, onStartTutorial }) => {
 
     return (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="reading-guide-title" className="bg-white rounded-2xl p-6 w-full max-w-sm max-h-[92vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-4 border-b pb-2">
-                    <h3 className="text-xl font-bold text-slate-800">📖 성경통독 114 가이드</h3>
-                    <button onClick={onClose} className="text-slate-400"><Icon name="close" /></button>
+                    <h3 id="reading-guide-title" className="text-xl font-bold text-slate-800">📖 성경통독 114 가이드</h3>
+                    <button ref={closeButtonRef} type="button" aria-label="도움말 닫기" onClick={onClose} className="min-w-11 min-h-11 flex items-center justify-center text-slate-400"><Icon name="close" /></button>
                 </div>
 
                 {/* 앱 투어 버튼 */}
@@ -31,7 +96,7 @@ const ReadingGuideModal = ({ show, onClose, onStartTutorial }) => {
                     앱 화면 사용법 투어 시작하기
                     <span className="text-base opacity-80">→</span>
                 </button>
-                <p className={`text-center text-xs mb-4 ${onStartTutorial ? 'text-slate-400' : 'text-amber-500'}`}>
+                <p className={`text-center text-sm mb-4 ${onStartTutorial ? 'text-slate-500' : 'text-amber-600'}`}>
                     {onStartTutorial
                         ? '앱의 주요 기능을 화면 상단부터 순서대로 안내해 드립니다.'
                         : '로그인 후 이용 가능합니다'}
@@ -40,7 +105,26 @@ const ReadingGuideModal = ({ show, onClose, onStartTutorial }) => {
                 <a href="https://www.bible114.net/8e616cd9-5ca0-4dd3-9e63-64280fc66f38" target="_blank" rel="noopener noreferrer" className="block w-full mb-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-center py-3 rounded-xl font-bold shadow-md hover:from-blue-600 hover:to-blue-700 transition-all">
                     🎥 성경통독 114 설명 영상 보기
                 </a>
-                <div className="space-y-3 overflow-y-auto max-h-[60vh] text-xs">
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto text-sm">
+                    <section aria-labelledby="member-faq-title" className="text-sm">
+                        <h4 id="member-faq-title" className="text-lg font-bold text-slate-800 mb-2">❓ 자주 묻는 질문</h4>
+                        <div className="space-y-2">
+                            {MEMBER_FAQ_ITEMS.map(({ question, answer }, index) => (
+                                <details key={question} open={index === 0} className="group rounded-xl border border-slate-200 bg-white overflow-hidden">
+                                    <summary className="min-h-11 px-3 py-2.5 flex items-center justify-between gap-3 cursor-pointer font-bold text-slate-700 list-none [&::-webkit-details-marker]:hidden">
+                                        <span>{question}</span>
+                                        <span aria-hidden="true" className="text-violet-500 text-lg transition-transform group-open:rotate-180">⌄</span>
+                                    </summary>
+                                    <p className="px-3 pb-3 text-sm leading-relaxed text-slate-600 border-t border-slate-100 pt-2">
+                                        {answer}
+                                    </p>
+                                </details>
+                            ))}
+                        </div>
+                        <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-3 text-sm font-bold leading-relaxed text-violet-800 shadow-sm">
+                            💬 여기 없는 문제는 우리 교회 관리자(선생님)에게 말씀해주세요
+                        </div>
+                    </section>
                     <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
                         <h4 className="font-bold text-blue-700 mb-2">💡 성경통독 114란?</h4>
                         <p className="text-slate-600 leading-relaxed">
@@ -73,22 +157,22 @@ const ReadingGuideModal = ({ show, onClose, onStartTutorial }) => {
                     </div>
                     <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
                         <h4 className="font-bold text-slate-700 mb-2">✍️ 성경통독 114를 만든 이유</h4>
-                        <p className="text-xs text-slate-500 mb-2 font-medium">조병수 (합동신학대학원대학교 명예교수)</p>
-                        <p className="text-slate-600 leading-relaxed text-xs mb-2">
+                        <p className="text-sm text-slate-500 mb-2 font-medium">조병수 (합동신학대학원대학교 명예교수)</p>
+                        <p className="text-slate-600 leading-relaxed text-sm mb-2">
                             나는 어릴 때부터 스코틀랜드의 개혁파 목사였던 맥체인(Robert Murray M'Cheyne, 1813-1843)의 1년 성경통독표를 따라 성경을 읽었다. 그런데 나는 언제부턴가 주위의 사람들로부터 이 표를 따라가는 데 실패한다는 말을 듣게 되었고, 나 자신도 이 표에서 지루함을 느끼기 시작했다. 그 이유는 간단했다. 예를 들어, 맥체인 표는 모세오경을 계속 읽어야 하고, 사복음서도 이어 읽어야 한다. 그러다 보니 출애굽 이후 사건들이나 예수님의 활동에 관한 이야기가 자꾸 반복되어 지루함을 가져다주는 것이었다.
                         </p>
-                        <p className="text-slate-600 leading-relaxed text-xs mb-2">
+                        <p className="text-slate-600 leading-relaxed text-sm mb-2">
                             나는 이런 문제점을 풀기 위해서 지루한 반복을 피하는 방법을 찾게 되었다. 가장 좋은 단서는 사복음서였다. 1년을 사분기로 나누어 사복음서를 각 분기에 배치하면 좋겠다는 생각이 들었다. 그러고 보니 창세기 이후 4권의 책들도 결국은 모두 출애굽 이후 이스라엘의 광야생활을 다루고 있으므로 각 분기에 나누어두는 것이 가능했다.
                         </p>
-                        <p className="text-slate-600 leading-relaxed text-xs mb-2">
+                        <p className="text-slate-600 leading-relaxed text-sm mb-2">
                             나는 이런 전제 아래 구약성경과 신약성경을 사분기로 읽을 수 있도록 도표로 나누어보았다. 나는 이것에 편의상 <strong>"성경통독 114"</strong>라는 이름을 붙였다. 그 뜻은 성경전체를 1년에 1번 통독하지만(1년 1독) 4번 읽는 효과를 낸다는 것이다. 달리 말하자면, 3개월마다 성경을 한 번씩 읽는 것과 같다.
                         </p>
-                        <p className="text-slate-600 leading-relaxed text-xs">
+                        <p className="text-slate-600 leading-relaxed text-sm">
                             성경통독 114는 성경을 읽는 사람들에게 최소한 두 가지 유익을 준다. <strong>첫째는 속도이다.</strong> 이 표를 따라 읽으면 한 분기(3개월)라는 짧은 시일 안에 창세기부터 요한계시록까지 읽는 듯한 느낌을 얻는다. <strong>둘째는 재기이다.</strong> 이 표는 성경을 사분기로 반복하여 읽도록 고안되어 있어서 4번의 기회를 주기 때문에 실패해도 다시 시도할 수 있다.
                         </p>
                     </div>
                 </div>
-                <button onClick={onClose} className="w-full bg-slate-100 font-bold py-3 rounded-xl mt-4 text-slate-600">닫기</button>
+                <button type="button" onClick={onClose} className="w-full bg-slate-100 font-bold py-3 rounded-xl mt-4 text-slate-600">닫기</button>
             </div>
         </div>
     );

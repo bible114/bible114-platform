@@ -13,6 +13,7 @@ export const useTTS = (verseText) => {
         return localStorage.getItem('bible_selectedVoiceURI') || '';
     });
     const [activeChunkIndex, setActiveChunkIndex] = useState(-1);
+    const [ttsError, setTtsError] = useState('');
     const [ttsUnavailableApp] = useState(() => getTTSUnavailableApp(navigator.userAgent));
     const [ttsLegacyBlockedApp] = useState(() => getTTSLegacyBlockedApp(navigator.userAgent));
 
@@ -161,6 +162,7 @@ export const useTTS = (verseText) => {
             }
             console.error("TTS Error:", event);
             handleStop();
+            setTtsError('음성 듣기가 중간에 멈췄어요. 휴대폰 무음 모드를 확인한 뒤 다시 듣기를 눌러주세요.');
         };
 
         speechRef.current = utterance;
@@ -168,13 +170,14 @@ export const useTTS = (verseText) => {
     };
 
     const handleSpeak = (text, startFromIndex = 0, overrideSpeed = null) => {
+        setTtsError('');
         if (ttsLegacyBlockedApp === 'kakao') {
-            alert("카카오톡 앱에서는 읽기 기능이 지원되지 않습니다.\n\n화면 하단의 '외부 브라우저 열기'를 통해\n크롬이나 사파리로 접속해주세요.");
+            setTtsError("카카오톡 앱에서는 음성 듣기가 어려워요. ⋯ 메뉴의 '다른 브라우저로 열기'를 누른 뒤 크롬이나 사파리에서 다시 시도해주세요.");
             return;
         }
 
         if (!window.speechSynthesis) {
-            alert("이 브라우저는 음성 듣기를 지원하지 않습니다.");
+            setTtsError('이 브라우저는 음성 듣기를 지원하지 않아요. 크롬·사파리·삼성인터넷에서 다시 열어주세요.');
             return;
         }
 
@@ -253,8 +256,9 @@ export const useTTS = (verseText) => {
 
     return {
         isSpeaking, isPaused, ttsSpeed, availableVoices, selectedVoiceURI, activeChunkIndex,
-        ttsUnavailableApp,
+        ttsUnavailableApp, ttsError,
         handleSpeedChange, handleTogglePause, handleStop, handleSpeak, jumpToChunk,
-        setSelectedVoiceURI
+        setSelectedVoiceURI,
+        clearTtsError: () => setTtsError(''),
     };
 };

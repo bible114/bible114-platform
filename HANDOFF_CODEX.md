@@ -184,6 +184,7 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-19 | T134~T135·컴퓨터 초보 성도 실사용 UX 보완·퀴즈 선택화 | `src/components/{LoginView,DashboardView,GuestReaderView,TutorialOverlay,ChurchAdminView}.jsx`, `src/components/dashboard/{BibleReader,BibleQuizCard,TalentShop,DashboardHeader,HomeScreenHelpBanner}.jsx`, `src/components/modals/ReadingGuideModal.jsx`, `src/hooks/{useTTS,useUserBibleActions}.js`, `index.html`, 검증 스크립트·안내문 | **퀴즈는 완전히 선택 사항**으로 확정해 현재 DAY의 `읽기 완료`가 퀴즈 상태와 무관하게 바로 진행되도록 gate를 제거했다. 다른 DAY는 둘러보기만 허용하고 내 진도로 돌아가는 버튼을 제공한다. 로그인 직행·도움말/FAQ 우선·오류별 안내·교회 문의 경로·홈 화면 추가 1회 안내·TTS/본문/퀴즈 재시도·상점 잠금/수령/환불 설명·모바일 광고 비가림·44px 터치 영역을 보강했다. 성도 FAQ 7항목과 관리자 FAQ 8항목, 입장코드 변경 직후 인쇄 안내를 완료했다. 375×812 브라우저에서 로그인·FAQ·게스트 본문·다른 DAY·모바일 광고 위치를 확인했고, 안내문 기존 2면 스크린샷을 재대조했다. `npm run validate`(platform-api 446/446)·build·diff-check 통과. rules·서버·운영 데이터 변경, 웹 배포·push 없음. |
 | 2026-07-18 | T133 성도용 가입 안내문 A4 2면 확장 | `src/components/ChurchAdminView.jsx`, `scripts/{render-round29-guide,validate-round29}.mjs`, `scripts/validate-round24.mjs`, `package.json`, `test-artifacts/round29-20260718/` | 기존 QR·가입 4단계·입장코드 자동 채움/빈칸 fallback을 보존하고, 1면에 아이폰/갤럭시 홈 화면 추가 안내, 2면에 매일 5단계·달란트·도움말을 통합했다. 실제 정책(첫 읽기 10+연속 보너스 최대 7, 퀴즈 1차 10/2차 5·하루 1회)과 대조했다. A4 210×297mm 브라우저 렌더에서 두 면 모두 overflow 0px, 잘림·고아 줄 없음을 페이지별 스크린샷으로 확인했다. `npm run validate`(platform-api 446/446)·build·diff-check 통과. **웹 배포·push는 하지 않았다.** |
 | 2026-07-18 | 컴맹 성도 UX P1 3건 수정 (Claude 실행, 사용자 지시) | `index.html`, `src/components/LoginView.jsx` (`86599a8`, 감사: `review/UX_NOVICE_AUDIT_2026-07-18.md`) | ① 교인 로그인·가입 생년월일이 8자리가 아니면 "등록되지 않은 사용자" 대신 형식 안내를 먼저 표시하고 `1956-03-15` 구분자는 자동 제거(로그인은 정규화 값으로 인증, 가입은 `isValidBirthdate` 실날짜 검증). ② 하단 고정 카카오 광고가 버튼을 가리지 않게 body에 `calc(env(safe-area-inset-bottom)+64px)` 하단 여백 — 광고는 유지(사용자 지시). ③ 모바일 탭 전환 시 히어로 아래 로그인 카드로 스크롤(smooth는 전환 직후 레이아웃 재계산에 끊겨 80ms 지연 후 즉시 이동). 셋 다 로컬 브라우저 375px에서 실검증: 6자리→형식 안내, 구분자→정상 인증 경로, 등록 클릭→카드 상단 정렬, 최하단 콘텐츠가 광고 위에 놓임. build·round11/18 검증 통과. **웹 배포·push는 하지 않았다.** |
 | 2026-07-18 | 미운영 성경 버전(쉬운성경·새한글·메시지) 클라이언트 코드 제거 (Claude 실행, 사용자 지시) | `src/data/{bible_options,schedules}.js`, `src/{App,components/{PlanSelectionView,GuestReaderView}}.jsx`, `src/hooks/useBibleContent.js`, `src/utils/quizProgress.js`, `src/utils/saehangulParser.js`(삭제), `scripts/{test-saehangul-parser.mjs(삭제),validate-round18.mjs}`, `package.json` | 사용자가 세 버전 미운영을 확정해 관련 코드를 제거했다. BIBLE_VERSIONS 5개 항목·`allowedChurchIds` 노출 제한 장치·schedules 별칭 4개(`1year_saehangul`,`nt_saehangul`,`nt_easy`,`nt_message`)·새한글 파서·`nt_easy` 플랜의 기본 easy 난이도 분기를 삭제했다. **이 결정으로 T130 캐시 재생성 제안은 불필요해짐**(해당 캐시는 고아 데이터 — 운영 verses 문서 삭제 여부는 별도 결정). 쉬운 **난이도** 퀴즈(quizNtEasy, 라운드 23)는 별개 기능이라 유지. 서버 allowedPlans는 원래 4개뿐이라 무변경. 레거시 planId는 `isPlanIdAllowedForUser` false·게스트 `1year_revised` 폴백으로 안전. 전체 validate·build·게스트 UI(드롭다운 4개 플랜, 본문·신약 전환 정상, 콘솔 오류 0) 확인. 운영 쓰기·배포·push 없음. |
@@ -391,6 +392,11 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-19 T134~T135·컴퓨터 초보 성도 실사용 UX 완료:
+- 사용자 결정에 따라 퀴즈를 읽기 완료의 선행 조건에서 제거했다. 현재 DAY는 퀴즈를 풀지 않아도 `읽기 완료`로 다음 DAY에 진행하며, 퀴즈는 추가 달란트를 받는 선택 활동이다. 다른 DAY 완료는 막고 `내 진도 DAY N로 돌아가기`를 제공한다.
+- 성도 FAQ 7항목·관리자 FAQ 8항목, 로그인/비밀번호 문의 직행, 홈 화면 추가 1회 안내, TTS·본문·퀴즈 오류 복구, 상점 잠금·구매·수령·환불 설명, 모바일 광고 비가림과 44px 터치 영역을 반영했다. 375×812 실제 화면에서 로그인·FAQ 아코디언·게스트 읽기·날짜 둘러보기·광고 위치를 확인했다.
+- 전체 validate(platform-api 446/446)·build·diff-check 통과. rules·서버·운영 데이터 변경, 배포·push 없음. 날짜 게이트 작업 T132는 **2026-07-24 19:00:53 KST 이후에도 사용자 명시 승인 전까지 실행 금지**이며, T124d 실관리자 UI 스모크는 별도 미완료다.
 
 2026-07-18 T133 성도용 가입 안내문 2면 완료:
 - 기존 `printMemberGuide` 한 버튼 안에서 1면 회원가입+홈 화면 추가, 2면 매일 사용법+달란트+도움말로 확장했다. 별도 “매일 사용법 인쇄” 버튼은 만들지 않았고 입장코드 현재 세션 자동 채움/빈칸 손글씨 fallback도 그대로다.
@@ -2523,22 +2529,22 @@ Codex의 5개 질문에 대한 확정 답:
 - 수치 문구는 배포 전 `src/utils/quizProgress.js`(getQuizRewardForAnswer: 첫 정답 10·2차 정답 5·하루 1회)와 talent 정책(연속 보너스 상한 7)에 대조하고, 안내문에는 단순 문구("보너스가 커져요")만 유지해 정책 변경에 둔감하게 만든다.
 - 인쇄 검증: A4 2면 미리보기에서 잘림·고아 줄 없음, 입장코드 자동 채움/빈칸 fallback 기존 동작 불변.
 
-### [ ] T134. 성도용 FAQ — 앱 도움말 모달에 "자주 묻는 질문" 섹션 (`ReadingGuideModal`)
+### [x] T134. 성도용 FAQ — 앱 도움말 모달에 "자주 묻는 질문" 섹션 (`ReadingGuideModal`)
 
 - 정적 아코디언 7문항(서버 조회 없음), 시안 카피 그대로: ① 로그인이 안 돼요(8자리 예시+관리자 재설정) ② 비밀번호를 잊었어요 ③ 며칠 밀렸어요/날짜가 안 맞아요(밀린 날부터 이어 읽기, 화면 날짜는 일정표 날짜) ④ 듣기 소리가 안 나와요(카톡·네이버 인앱→크롬/사파리, 무음 확인) ⑤ 달란트가 안 늘어요(하루 첫 읽기·첫 퀴즈 정답만) ⑥ 상점에서 샀는데 물건은?(교회에서 수령) ⑦ 휴대폰을 바꿨어요(같은 방법 재로그인, 기록 유지).
 - 하단 고정 배너: "💬 여기 없는 문제는 우리 교회 관리자(선생님)에게 말씀해주세요".
 - 접근성: 네이티브 `<details>/<summary>` 또는 버튼+`aria-expanded`. 큰 글씨(최소 14px)·터치 target 44px.
 
-### [ ] T135. 관리자 매뉴얼 FAQ 확장 (`ChurchAdminView.printAdminManual`)
+### [x] T135. 관리자 매뉴얼 FAQ 확장 (`ChurchAdminView.printAdminManual`)
 
 - 기존 ❓ 3항목을 시안의 8항목으로 교체: ① 교인 로그인 안 됨(8자리 확인→비밀번호 재설정) ② **가입 안내문 입장코드 칸이 비어 있음**(코드 원문 미저장 — 설정 탭에서 코드 입력/변경한 그 자리에서 바로 인쇄해야 자동 포함, 아니면 손글씨) ③ 교인이 날짜가 밀림(밀린 날부터 이어 읽기·불이익 없음·연속 보너스만 초기화, 시작일 변경은 교인 화면 날짜 설정) ④ 수령 완료 오조작(취소·환불로 복구) ⑤ 상점이 안 보임(스위치 ON+7일 연속 조건) ⑥ 어르신 구매 대행(창구 판매) ⑦ 홈 화면 추가 도와주기(안내문 1면 참조) ⑧ 랭킹 안 보임(새로고침→카카오 채널).
 - `SettingsTab`의 "성도용 가입 안내문 인쇄" 버튼 옆에 한 줄 도움말 추가: "입장코드를 입력/변경한 직후 인쇄하면 코드가 자동으로 들어갑니다."
 
 ### 검증 체크리스트 (라운드 29)
 
-- [ ] `npm run validate`·`npm run build` 통과, 기존 인쇄물 회귀(입장코드 채움/빈칸) 확인.
-- [ ] 가입 안내문 인쇄 미리보기 2면 스크린샷, 도움말 모달 FAQ 스크린샷을 작업 로그에 남긴다.
-- [ ] 안내 문구 속 규칙(달란트·퀴즈 횟수)이 `quizProgress.js`·서버 정책과 모순 없는지 대조표 1줄.
+- [x] `npm run validate`·`npm run build` 통과, 기존 인쇄물 회귀(입장코드 채움/빈칸) 확인.
+- [x] 가입 안내문 인쇄 미리보기 2면 스크린샷, 도움말 모달 FAQ 스크린샷을 작업 로그에 남긴다.
+- [x] 안내 문구 속 규칙(달란트·퀴즈 횟수)이 `quizProgress.js`·서버 정책과 모순 없는지 대조표 1줄.
 
 ### [ ] T132. T127 최종 차단 시퀀스 (**2026-07-24 19:00:53 KST 이후 + 사용자 명시 승인 후에만**)
 

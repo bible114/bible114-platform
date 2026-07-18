@@ -10,7 +10,6 @@ import { resolveTalentProgram } from '../utils/talentProgram';
 import {
     getQuizTerminalSignalToken,
     scheduleScrollIntoView,
-    shouldScrollToReadAction,
     shouldScrollToReadingHeader,
 } from '../utils/readingFlowScroll';
 
@@ -45,6 +44,7 @@ import {
     PersonalAccountMigrationCard,
     SocialLinkBanner,
     ChurchAdminReaderGuide,
+    HomeScreenHelpBanner,
 } from './dashboard';
 import TutorialOverlay from './TutorialOverlay';
 
@@ -90,6 +90,8 @@ const DashboardView = ({
     activeChunkIndex,
     jumpToChunk,
     ttsUnavailableApp,
+    ttsError,
+    clearTtsError,
     readSubmitting,
     handleRead,
     saveMemo,
@@ -143,15 +145,8 @@ const DashboardView = ({
     const [showTutorial, setShowTutorial] = useState(false);
     const [showChurchAdminReaderGuide, setShowChurchAdminReaderGuide] = useState(false);
     const [showMemberships, setShowMemberships] = useState(false);
-    const [quizGate, setQuizGate] = useState({
-        loading: true,
-        hasQuestion: false,
-        gateOpen: false,
-    });
-    const [highlightQuiz, setHighlightQuiz] = useState(false);
     const [talentProgramEnabled, setTalentProgramEnabled] = useState(true);
     const [quizTerminalVersion, setQuizTerminalVersion] = useState(0);
-    const quizSectionRef = useRef(null);
     const bibleHeaderRef = useRef(null);
     const readActionRef = useRef(null);
     const pendingQuizTerminalRef = useRef(null);
@@ -224,17 +219,12 @@ const DashboardView = ({
 
     useEffect(() => {
         const pendingTerminal = pendingQuizTerminalRef.current;
-        const currentGate = {
-            uid: currentUser?.uid || null,
-            contextKey: quizScrollContextKey,
-            hasQuestion: quizGate.hasQuestion,
-            gateOpen: quizGate.gateOpen,
-        };
         if (pendingTerminal && pendingTerminal.contextKey !== quizScrollContextKey) {
             pendingQuizTerminalRef.current = null;
             return;
         }
-        if (!shouldScrollToReadAction(pendingTerminal, currentGate)
+        if (!pendingTerminal
+            || pendingTerminal.uid !== currentUser?.uid
             || handledQuizTerminalTokenRef.current === pendingTerminal.token) return;
 
         const expectedContextKey = quizScrollContextKey;
@@ -247,8 +237,6 @@ const DashboardView = ({
         });
     }, [
         currentUser?.uid,
-        quizGate.gateOpen,
-        quizGate.hasQuestion,
         quizScrollContextKey,
         quizTerminalVersion,
     ]);
@@ -444,10 +432,9 @@ const DashboardView = ({
     const racers = combinedRacers.sort((a, b) => a.day - b.day);
     const progressRanking = getProgressRanking();
     const topProgressGroups = progressRanking.slice(0, 3);
-    const handleQuizGateLocked = () => {
-        quizSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        setHighlightQuiz(true);
-        window.setTimeout(() => setHighlightQuiz(false), 2000);
+    const jumpToTodayReading = () => {
+        setViewingDay(currentDay);
+        scheduleScrollIntoView(() => bibleHeaderRef.current, { block: 'start', frameCount: 2 });
     };
 
     return (
@@ -595,6 +582,18 @@ const DashboardView = ({
                     onGoogleLink={onGoogleLink}
                     onKakaoLink={onKakaoLink}
                 />
+                <div className="px-4 pb-4">
+                    <HomeScreenHelpBanner />
+                </div>
+                <div className="px-4 pb-4">
+                    <button
+                        type="button"
+                        onClick={jumpToTodayReading}
+                        className="min-h-12 w-full rounded-2xl bg-indigo-600 px-5 py-3 text-base font-black text-white shadow-lg hover:bg-indigo-700"
+                    >
+                        📖 오늘 말씀 DAY {currentDay} 바로가기 ↓
+                    </button>
+                </div>
                 {hasCommunity && <RaceMap racers={racers} departmentChampions={departmentChampions} getSubgroupDisplay={getSubgroupDisplay} />}
 
                 <main className="px-4 space-y-6">
@@ -603,6 +602,13 @@ const DashboardView = ({
                     <DailyVideoCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
 
                     {isReadingPeople && <section className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm"><div className="mb-3 flex items-center justify-between"><div><h2 className="font-black text-slate-800">성경 읽는 사람들</h2><p className="mt-1 text-xs text-slate-500">전국에서 혼자 읽는 분들의 평면 랭킹이에요.</p></div><span className="text-xs font-bold text-emerald-600">{allRacersSorted.length}명</span></div><div className="space-y-2">{allRacersSorted.slice(0, 10).map((member, index) => <div key={member.uid} className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm ${member.isMe ? 'bg-emerald-50' : 'bg-slate-50'}`}><span className="w-6 font-black text-slate-400">{index + 1}</span><span className="min-w-0 flex-1 truncate font-bold text-slate-700">{member.name}</span><span className="font-black text-emerald-700">DAY {member.day}</span></div>)}</div></section>}
+
+                    {completionSummary?.completedDay && completionSummary.completedDay !== viewingDay && (
+                        <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-center text-emerald-900 shadow-sm">
+                            <p className="text-lg font-black">DAY {completionSummary.completedDay} 읽기 완료! 🎉</p>
+                            <p className="mt-1 text-sm font-bold">진도가 DAY {currentDay}(으)로 이동했습니다.</p>
+                        </div>
+                    )}
 
                     <BibleReader
                         verseData={verseData}
@@ -626,11 +632,11 @@ const DashboardView = ({
                         activeChunkIndex={activeChunkIndex}
                         jumpToChunk={jumpToChunk}
                         ttsUnavailableApp={ttsUnavailableApp}
+                        ttsError={ttsError}
+                        clearTtsError={clearTtsError}
                         hasReadToday={hasReadToday}
                         readSubmitting={readSubmitting}
                         handleRead={handleRead}
-                        quizGateOpen={quizGate.gateOpen}
-                        onQuizGateLocked={handleQuizGateLocked}
                         completionSummary={completionSummary}
                         bibleHeaderRef={bibleHeaderRef}
                         readActionRef={readActionRef}
@@ -639,9 +645,6 @@ const DashboardView = ({
                                 currentUser={currentUser}
                                 setCurrentUser={setCurrentUser}
                                 viewingDay={viewingDay}
-                                onGateStateChange={setQuizGate}
-                                sectionRef={quizSectionRef}
-                                highlight={highlightQuiz}
                                 talentProgramEnabled={talentProgramEnabled}
                                 onQuizTerminal={handleQuizTerminal}
                             />

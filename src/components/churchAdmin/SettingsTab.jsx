@@ -13,6 +13,7 @@ const SettingsTab = ({
                 <button onClick={printMemberGuide} className="bg-emerald-600 text-white font-bold px-4 py-2.5 rounded-xl text-sm hover:bg-emerald-700">📱 성도용 가입 안내문 인쇄</button>
                 <button onClick={printAdminManual} className="bg-slate-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm hover:bg-slate-800">📘 관리자 매뉴얼 인쇄</button>
             </div>
+            <p className="mt-2 text-xs font-bold text-amber-700">입장코드를 입력하거나 변경한 직후 인쇄하면 코드가 자동으로 들어갑니다. 나중에 인쇄하면 빈칸에 직접 적어주세요.</p>
         </div>
         <div className="bg-white rounded-2xl p-4 border border-slate-100">
             <p className="font-bold text-slate-700 mb-1">교회 입장코드 변경</p>

@@ -43,6 +43,18 @@
       max-width: 100vw;
       pointer-events: auto;
     }
+    /* 작은 화면에서는 광고를 문서 맨 아래에 배치한다. 읽는 동안 본문·버튼 위를 덮지 않고,
+       읽기 완료까지 내려왔을 때 기존 AdFit 배너가 그대로 노출된다. */
+    @media (max-width: 767px) {
+      body {
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+      }
+      #kakao-static-ad-layer {
+        position: static;
+        min-height: 56px;
+        padding: 0 0 calc(env(safe-area-inset-bottom, 0px) + 6px);
+      }
+    }
   </style>
 </head>
 

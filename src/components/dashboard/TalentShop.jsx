@@ -63,9 +63,15 @@ const reconcilePurchaseRequestIds = completedRequestIds => {
 };
 
 const statusLabel = {
-    pending: '대기',
+    pending: '수령 대기',
     delivered: '수령 완료',
-    cancelled: '취소',
+    cancelled: '취소·환불 완료',
+};
+
+const statusHelp = {
+    pending: '구매 신청과 달란트 차감이 끝났어요. 교회에서 상품을 받은 뒤 담당 선생님이 완료 처리해요.',
+    delivered: '교회에서 상품 전달이 완료된 기록이에요. 아직 받지 못했다면 담당 선생님께 말씀해주세요.',
+    cancelled: '관리자가 구매를 취소하고 구매한 공동체의 달란트로 돌려드렸어요.',
 };
 
 const statusClass = {
@@ -86,6 +92,88 @@ const formatDate = (value) => {
     const date = value.toDate ? value.toDate() : new Date(value);
     if (Number.isNaN(date.getTime())) return '-';
     return `${date.getFullYear()}. ${date.getMonth() + 1}. ${date.getDate()}.`;
+};
+
+const getShopUnavailableNotice = ({ program, currentUser }) => {
+    if (!program.shopEnabled) {
+        return {
+            title: '우리 교회 상점은 지금 준비 중이에요',
+            description: '상점이 열리면 이곳에서 상품을 확인할 수 있어요. 이용 시기는 담당 선생님에게 확인해주세요.',
+        };
+    }
+
+    const departmentIds = Array.from(new Set(
+        getMembershipList(currentUser)
+            .map(membership => membership.departmentId)
+            .filter(Boolean)
+    ));
+    if (departmentIds.length === 0) {
+        return {
+            title: '내 소속을 확인해주세요',
+            description: '상점을 이용하려면 교회 소속 부서 확인이 필요해요. 담당 선생님에게 확인해주세요.',
+        };
+    }
+
+    const departmentSettings = departmentIds.map(departmentId => program.departmentSettings?.[departmentId]);
+    const enabledSettings = departmentSettings.filter(setting => setting?.enabled === true);
+    if (enabledSettings.length === 0) {
+        return {
+            title: '내 소속 상점은 지금 준비 중이에요',
+            description: '다른 성도에게 상점이 보여도 소속에 따라 이용 시기가 다를 수 있어요. 담당 선생님에게 확인해주세요.',
+        };
+    }
+
+    const connectedMarkets = enabledSettings
+        .map(setting => setting.marketId && program.markets?.[setting.marketId])
+        .filter(Boolean);
+    if (connectedMarkets.length === 0) {
+        return {
+            title: '내 소속 상품을 준비하고 있어요',
+            description: '이용할 상품이 연결되면 상점이 열려요. 담당 선생님에게 확인해주세요.',
+        };
+    }
+
+    return {
+        title: '달란트 상점을 잠시 이용할 수 없어요',
+        description: '상품을 다시 준비하고 있어요. 잠시 뒤 다시 확인하거나 담당 선생님에게 문의해주세요.',
+    };
+};
+
+const ShopUnavailableCard = ({ notice }) => (
+    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-2xl" aria-hidden="true">🏪</div>
+            <div>
+                <p className="text-xs font-black text-violet-600">달란트 상점</p>
+                <h2 className="mt-1 text-lg font-black text-slate-800">{notice.title}</h2>
+                <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500">{notice.description}</p>
+            </div>
+        </div>
+    </section>
+);
+
+const ShopLockedCard = ({ streak }) => {
+    const progress = Math.min(7, Math.max(0, Number.isFinite(Number(streak)) ? Math.floor(Number(streak)) : 0));
+    return (
+        <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-violet-950 via-violet-800 to-violet-600 p-5 text-white shadow-xl">
+            <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-2xl" aria-hidden="true">🔒</div>
+                <div className="min-w-0 flex-1">
+                    <p className="text-xs font-black text-amber-300">비밀 달란트 상점</p>
+                    <h2 className="mt-1 text-xl font-black">7일 연속 읽으면 열려요</h2>
+                    <p className="mt-2 text-sm font-semibold leading-relaxed text-violet-100">현재 {progress}일째예요. 매일 읽기를 완료해 상점을 발견해보세요.</p>
+                    <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-white/15" role="progressbar" aria-label="달란트 상점 해금 진행률" aria-valuemin="0" aria-valuemax="7" aria-valuenow={progress}>
+                        <div className="h-full rounded-full bg-amber-300 transition-all" style={{ width: `${(progress / 7) * 100}%` }} />
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-xs font-black text-violet-100">
+                        <span>7일 중 {progress}일</span>
+                        <span>{7 - progress}일 남음</span>
+                    </div>
+                    <p className="mt-3 rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold leading-relaxed text-violet-100">한 번 열리면 연속 기록이 끊겨도 계속 이용할 수 있어요.</p>
+                </div>
+            </div>
+        </section>
+    );
 };
 
 const TalentShop = ({
@@ -208,11 +296,15 @@ const TalentShop = ({
         }
     }, [baseResolution.legacy, effectiveDepartmentId, selectedDepartmentId]);
 
-    if (loading || !enabled) return null;
+    if (loading) return null;
+
+    if (!enabled) {
+        return <ShopUnavailableCard notice={getShopUnavailableNotice({ program, currentUser })} />;
+    }
 
     // 교회 관리자는 7일 연속 해금 없이 항상 볼 수 있다 (상품 구성·교인 화면 확인용).
     const unlocked = currentUser.secretShopUnlocked === true || currentUser.role === 'churchAdmin';
-    if (!unlocked) return null;
+    if (!unlocked) return <ShopLockedCard streak={currentUser.streak} />;
 
     const buyItem = async (item) => {
         if (buyingId) return;
@@ -234,7 +326,12 @@ const TalentShop = ({
             setMessage({ type: 'error', text: '이 부서의 달란트 시장을 이용할 수 없습니다.' });
             return;
         }
-        if (!window.confirm(`${item.name}을(를) ${purchasePrice}달란트로 구매할까요?\n\n구매한 상품은 교회에서 직접 받아요.`)) return;
+        if (!window.confirm(
+            `${item.name}을(를) ${purchasePrice}달란트로 구매할까요?\n\n`
+            + `• 구매하면 ${purchasePrice}달란트가 즉시 차감됩니다.\n`
+            + '• 상품은 교회에서 직접 받아요.\n'
+            + '• 성도 화면에서는 직접 취소할 수 없어요. 취소가 필요하면 담당 선생님께 말씀해주세요.'
+        )) return;
 
         const buyingKey = baseResolution.legacy ? item.id : `${selectedResolution.selectedMarketId}:${item.id}`;
         setBuyingId(buyingKey);
@@ -271,7 +368,7 @@ const TalentShop = ({
                     return { ...prev, talent: result.nextTalent };
                 });
             }
-            setMessage({ type: 'success', text: '구매 완료! 교회에서 상품을 받아가세요.' });
+            setMessage({ type: 'success', text: '구매 완료! 달란트가 차감되었어요. 구매 내역의 “수령 대기”를 확인하고 교회에서 상품을 받아가세요.' });
             setPurchases(prev => [{
                 ...result.purchase,
                 uid: currentUser.uid,
@@ -318,6 +415,7 @@ const TalentShop = ({
                 <p className="text-xs font-black text-amber-300 mb-1">비밀 달란트 상점</p>
                 <h2 className="text-xl font-black">7일의 꾸준함으로 열린 특별한 선물</h2>
                 <p className="mt-2 text-sm font-semibold text-violet-100">모은 달란트로 교회에서 직접 받을 수 있는 상품을 신청하세요.</p>
+                <p className="mt-2 text-xs font-bold text-violet-200">한 번 열린 상점은 연속 기록이 끊겨도 계속 이용할 수 있어요.</p>
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                     <span className="rounded-full bg-white/10 px-4 py-2 text-sm font-black text-amber-200">⭐ {currentUser.talent || 0} 달란트</span>
                     <button
@@ -380,6 +478,7 @@ const TalentShop = ({
                                 <section className="rounded-3xl border border-violet-100 bg-white p-4 shadow-sm">
                                     <h3 className="text-sm font-black text-slate-800">공동체별 내 달란트</h3>
                                     <p className="mt-1 text-xs font-bold text-slate-400">공동체를 누르면 그곳의 상점과 잔액으로 바뀝니다.</p>
+                                    <p className="mt-1 text-xs font-bold text-slate-500">달란트는 공동체마다 따로 쌓이며 서로 합쳐지지 않아요.</p>
                                     <p className="mt-1 text-xs font-bold text-violet-600">★ 기준 공동체는 바뀌지 않아요.</p>
                                     <div className="mt-3 space-y-2">
                                         {organizations.map(org => {
@@ -433,7 +532,11 @@ const TalentShop = ({
                             )}
 
                             {activeItems.length === 0 ? (
-                                <div className="rounded-3xl bg-white p-10 text-center text-sm font-bold text-slate-400">아직 준비된 상품이 없어요.</div>
+                                <div className="rounded-3xl bg-white p-8 text-center shadow-sm">
+                                    <div className="text-4xl" aria-hidden="true">🎁</div>
+                                    <p className="mt-3 text-sm font-black text-slate-600">아직 준비된 상품이 없어요.</p>
+                                    <p className="mt-2 text-xs font-bold leading-relaxed text-slate-400">상품이 등록되면 이곳에 보여요. 이용 시기는 담당 선생님에게 확인해주세요.</p>
+                                </div>
                             ) : (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     {activeItems.map(item => {
@@ -472,6 +575,9 @@ const TalentShop = ({
                                     <h3 className="text-sm font-black text-slate-800">내 구매 내역</h3>
                                     <span className="text-xs font-bold text-slate-400">{purchases.length}건</span>
                                 </div>
+                                <div className="mb-3 rounded-2xl bg-amber-50 px-3 py-2.5 text-xs font-bold leading-relaxed text-amber-800">
+                                    수령 대기는 구매와 달란트 차감이 끝난 상태예요. 성도 화면에서는 직접 취소할 수 없으니 변경이 필요하면 상품을 받기 전에 담당 선생님께 말씀해주세요.
+                                </div>
                                 {purchases.length === 0 ? (
                                     <p className="py-8 text-center text-xs font-bold text-slate-300">아직 구매 내역이 없습니다.</p>
                                 ) : (
@@ -490,6 +596,9 @@ const TalentShop = ({
                                                         {purchase.schemaVersion === 2 && purchaseContext && (
                                                             <p className="mt-1 truncate text-[11px] font-bold text-violet-500">{purchaseContext}</p>
                                                         )}
+                                                        <p className="mt-1 text-[11px] font-semibold leading-relaxed text-slate-400">
+                                                            {statusHelp[purchase.status] || '처리 상태는 담당 선생님에게 확인해주세요.'}
+                                                        </p>
                                                     </div>
                                                     <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${statusClass[purchase.status] || statusClass.pending}`}>
                                                         {statusLabel[purchase.status] || purchase.status}

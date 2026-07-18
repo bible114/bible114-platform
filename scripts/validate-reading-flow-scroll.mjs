@@ -12,10 +12,11 @@ const readSource = path => fs.readFileSync(new URL(`../${path}`, import.meta.url
 const dashboardSource = readSource('src/components/DashboardView.jsx');
 const quizCardSource = readSource('src/components/dashboard/BibleQuizCard.jsx');
 const readerSource = readSource('src/components/dashboard/BibleReader.jsx');
+const tutorialSource = readSource('src/components/TutorialOverlay.jsx');
 const userBibleActionsSource = readSource('src/hooks/useUserBibleActions.js');
 
 assert.match(dashboardSource, /pendingQuizTerminalRef/);
-assert.match(dashboardSource, /quizGate\.gateOpen/);
+assert.doesNotMatch(dashboardSource, /quizGate|setQuizGate|onQuizGateLocked/);
 assert.match(dashboardSource, /frameCount: 2/);
 assert.match(dashboardSource, /onQuizTerminal=\{handleQuizTerminal\}/);
 assert.match(
@@ -29,7 +30,18 @@ assert.match(quizCardSource, /outcome: 'solved'/);
 assert.match(quizCardSource, /outcome: freshProgress\.skipped \? 'skipped' : 'attemptsExhausted'/);
 assert.match(readerSource, /ref=\{bibleHeaderRef\} id="tut-bible-header"/);
 assert.equal((readerSource.match(/ref=\{readActionRef\} id="tut-read-btn"/g) || []).length, 2);
-assert.match(userBibleActionsSource, /setCompletionSummary\(\{\s*uid,\s*requestId: response\.requestId,/);
+assert.match(userBibleActionsSource, /const nextCompletionSummary = \{\s*uid,\s*requestId: response\.requestId,\s*completedDay:/);
+assert.match(userBibleActionsSource, /Number\(requestedDay\) !== Number\(currentProgressDay\)[\s\S]*return;[\s\S]*readSubmittingRef\.current = true/);
+assert.match(readerSource, /퀴즈는 선택입니다/);
+assert.doesNotMatch(readerSource, /isQuizGateLocked|quizGateOpen/);
+assert.match(readerSource, /disabled=\{readSubmitting \|\| !isCurrentProgressDay\}/);
+assert.match(readerSource, /aria-label=\{`이전 본문 DAY/);
+assert.match(readerSource, /aria-label=\{`다음 본문 DAY/);
+assert.match(readerSource, /내 진도 DAY \{currentUser\.currentDay\}로 돌아가기/);
+assert.match(readerSource, /본문 다시 불러오기/);
+assert.match(dashboardSource, /오늘 말씀 DAY \{currentDay\} 바로가기/);
+assert.match(tutorialSource, /id: 'tut-quiz-area'[\s\S]*title: '오늘의 퀴즈 \(선택\)'/);
+assert.match(tutorialSource, /퀴즈를 풀거나 건너뛰지 않아도 읽기 완료와 다음 DAY 진행은 언제든 가능합니다/);
 
 const terminalSignal = {
     uid: 'user-1',

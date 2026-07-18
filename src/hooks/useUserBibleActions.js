@@ -47,12 +47,20 @@ export const useUserBibleActions = (
     const restartSubmittingRef = useRef(false);
     const achievementToastRef = useRef(null);
     const achievementToastScheduleRef = useRef(0);
+    const completionSummaryTimerRef = useRef(null);
 
     useEffect(() => {
         achievementToastScheduleRef.current += 1;
         achievementToastRef.current = null;
         setNewAchievement(null);
+        if (completionSummaryTimerRef.current) clearTimeout(completionSummaryTimerRef.current);
+        completionSummaryTimerRef.current = null;
+        setCompletionSummary(null);
     }, [currentUser?.uid]);
+
+    useEffect(() => () => {
+        if (completionSummaryTimerRef.current) clearTimeout(completionSummaryTimerRef.current);
+    }, []);
 
     const syncLatestUser = useCallback(async (uid) => {
         if (auth.currentUser?.uid !== uid) return null;
@@ -123,10 +131,18 @@ export const useUserBibleActions = (
     const handleRead = useCallback(async () => {
         const requestStartUser = currentUserRef.current;
         if (readSubmittingRef.current || !requestStartUser?.uid) return;
+        const requestedDay = viewingDay || requestStartUser.currentDay || 1;
+        const currentProgressDay = requestStartUser.currentDay || 1;
+        if (Number(requestedDay) !== Number(currentProgressDay)) {
+            setViewingDay(currentProgressDay);
+            setBonusToast(`DAY ${currentProgressDay}(으)로 돌아간 뒤 읽기 완료를 눌러주세요.`);
+            setTimeout(() => setBonusToast(null), 4000);
+            return;
+        }
         readSubmittingRef.current = true;
         setReadSubmitting(true);
         const uid = requestStartUser.uid;
-        const vDay = viewingDay || requestStartUser.currentDay || 1;
+        const vDay = requestedDay;
         const submittedReadCount = requestStartUser.readCount || 1;
         const preferredRosterOrgId = requestStartUser.talentWalletOrgId
             || requestStartUser.churchId
@@ -289,17 +305,28 @@ export const useUserBibleActions = (
                 setTimeout(() => setLevelUpToast(false), 5000);
             }
             setBonusToast(null);
-            setCompletionSummary({
+            const nextCompletionSummary = {
                 uid,
                 requestId: response.requestId,
+                completedDay: activityRequest.payload.day,
                 scoreEarned: summary.scoreEarned,
                 talentEarned: summary.talentEarned > 0
                     ? summary.talentEarned + quizTalentEarned
                     : 0,
+                readingTalentEarned: summary.talentEarned,
+                quizTalentEarned,
                 isFirstReadToday,
                 quizRewardLimited: summary.talentEarned === 0 && quizTalentEarned > 0,
                 talentProgramEnabled: summary.talentProgramEnabled,
-            });
+            };
+            setCompletionSummary(nextCompletionSummary);
+            if (completionSummaryTimerRef.current) clearTimeout(completionSummaryTimerRef.current);
+            completionSummaryTimerRef.current = setTimeout(() => {
+                setCompletionSummary(previous => previous?.requestId === nextCompletionSummary.requestId
+                    ? null
+                    : previous);
+                completionSummaryTimerRef.current = null;
+            }, 10_000);
 
             if (achievementIds.length > 0) {
                 showAchievementToast(
@@ -394,6 +421,8 @@ export const useUserBibleActions = (
                 // 신규 restart commit이 관찰되면 그 뒤 다른 탭이 더 진행했더라도
                 // 이전 epoch의 완료/업적/보너스 UI는 더 이상 유효하지 않다.
                 setCompletionSummary(null);
+                if (completionSummaryTimerRef.current) clearTimeout(completionSummaryTimerRef.current);
+                completionSummaryTimerRef.current = null;
                 achievementToastScheduleRef.current += 1;
                 achievementToastRef.current = null;
                 setNewAchievement(null);

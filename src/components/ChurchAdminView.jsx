@@ -1425,8 +1425,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
       <div class="step"><span class="num">①</span><span>바탕화면 <b>114 아이콘</b>을 눌러 들어와요 (자동 로그인)</span></div>
       <div class="step"><span class="num">②</span><span>🎬 <b>매일성경 영상</b>을 봐도 좋아요 (선택)</span></div>
       <div class="step"><span class="num">③</span><span>📖 <b>오늘 본문</b>을 읽어요 — 눈이 침침하면 <b>듣기 ▶️</b> 버튼, 글씨는 <b>+</b> 버튼으로 크게</span></div>
-      <div class="step"><span class="num">④</span><span>다 읽으면 파란 <b>"오늘 읽기 완료"</b> 버튼을 꼭 눌러요 → 달란트 ⭐ 적립!</span></div>
-      <div class="step"><span class="num">⑤</span><span>❓ <b>성경퀴즈</b>를 풀어요 — 한 문제, 2번까지 도전. 정답이면 달란트 ⭐ 추가!</span></div>
+      <div class="step"><span class="num">④</span><span>❓ <b>성경퀴즈</b>는 선택이에요 — 풀면 달란트 ⭐ 추가! 어려우면 건너뛰어도 돼요</span></div>
+      <div class="step"><span class="num">⑤</span><span>다 읽으면 파란 <b>"오늘 읽기 완료"</b> 버튼을 꼭 눌러요 → 다음 날로 넘어가요</span></div>
     </div>
     <div class="section">
       <h2>⭐ 달란트는 이렇게 모여요</h2>
@@ -1493,13 +1493,18 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
   <div class="sec"><h2>⚙️ 설정 — 인쇄물 · 입장코드</h2><ul>
     <li><b>성도용 가입 안내문 인쇄</b>: QR + 가입 방법이 담긴 A4 — 새 성도에게 나눠주세요.</li>
-    <li>교회 입장코드 변경도 여기서 해요 (가입할 때 교인이 입력하는 코드).</li>
+    <li>교회 입장코드 변경도 여기서 해요 (가입할 때 교인이 입력하는 코드). <b>코드를 입력·변경한 바로 그 자리에서 안내문을 인쇄</b>하면 자동으로 들어갑니다.</li>
   </ul></div>
 
   <div class="sec"><h2>❓ 자주 묻는 질문</h2><ul>
     <li><b>교인이 로그인이 안 된대요</b> → 이름·생년월일 8자리가 가입 때와 똑같은지 확인, 그래도 안 되면 비밀번호 재설정.</li>
-    <li><b>랭킹/달리기가 안 보인대요</b> → 새로고침 후에도 그러면 플랫폼 관리자에게 문의.</li>
-    <li><b>기타 문의</b> → 관리자 화면 상단의 카카오 채널 버튼으로 플랫폼 운영자에게 연락하세요.</li>
+    <li><b>가입 안내문의 입장코드 칸이 비어 있어요</b> → 코드는 원문을 저장하지 않아요. 설정에서 코드를 입력·변경한 직후 인쇄하거나 빈칸에 직접 적어주세요.</li>
+    <li><b>교인이 날짜가 밀렸대요</b> → 밀린 날부터 이어 읽으면 됩니다. 읽기 불이익은 없고 연속 보너스만 다시 시작해요. 날짜는 성도 화면의 📅 날짜 설정에서 맞출 수 있어요.</li>
+    <li><b>수령 완료를 잘못 눌렀어요</b> → 해당 구매를 취소·환불해 달란트를 돌려준 뒤 다시 처리해주세요.</li>
+    <li><b>상점이 안 보인대요</b> → 상점과 소속 부서가 켜져 있는지 확인하세요. 성도는 7일 연속 읽기를 달성하면 상점이 열립니다.</li>
+    <li><b>어르신이 직접 구매하기 어려워요</b> → 상점의 창구 판매에서 교인과 상품을 선택해 대신 기록해주세요.</li>
+    <li><b>홈 화면 추가를 도와달래요</b> → 성도용 가입 안내문 1면의 아이폰·갤럭시 순서를 함께 따라 해주세요.</li>
+    <li><b>랭킹이 안 보인대요</b> → 먼저 새로고침하고, 계속 안 보이면 관리자 화면 상단 카카오 채널로 플랫폼 운영자에게 문의하세요.</li>
   </ul></div>
   <script>window.onload = function(){ window.print(); };<\/script>
 </body></html>`;

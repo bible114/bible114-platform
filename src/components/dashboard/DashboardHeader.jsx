@@ -68,14 +68,15 @@ const DashboardHeader = ({
                             {isChurchAdmin && (
                                 <button type="button" onClick={(e) => { e.stopPropagation(); setView('church_admin'); }} className="p-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 shrink-0 flex items-center gap-1" title="공동체 관리">⚙️ <span>관리</span></button>
                             )}
-                            <button id="tut-achievements" type="button" aria-label="나의 업적과 기록" onClick={(e) => { e.stopPropagation(); setShowAchievements(true); }} className="p-1.5 text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-100 rounded-xl hover:bg-yellow-100 shrink-0">🏅</button>
-                            <button id="tut-date-settings" type="button" aria-label="날짜 설정" onClick={(e) => { e.stopPropagation(); setShowDateSettings(true); }} className="p-1.5 text-xs font-bold text-purple-600 bg-purple-50 border border-purple-100 rounded-xl hover:bg-purple-100 shrink-0">📅</button>
-                            <button id="tut-calendar" type="button" aria-label="읽기 달력" onClick={(e) => { e.stopPropagation(); setShowCalendar(true); }} className="p-1.5 text-xs font-bold text-green-600 bg-green-50 border border-green-100 rounded-xl hover:bg-green-100 shrink-0">📆</button>
-                            <button type="button" aria-label="읽는 방법 도움말" onClick={(e) => { e.stopPropagation(); setShowReadingGuide(true); }} className="p-1.5 text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded-xl hover:bg-slate-200 shrink-0">
+                            <button id="tut-achievements" type="button" aria-label="나의 업적과 기록" onClick={(e) => { e.stopPropagation(); setShowAchievements(true); }} className="min-h-11 min-w-11 p-2 text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-100 rounded-xl hover:bg-yellow-100 shrink-0">🏅</button>
+                            <button id="tut-date-settings" type="button" aria-label="날짜 설정" onClick={(e) => { e.stopPropagation(); setShowDateSettings(true); }} className="min-h-11 min-w-11 p-2 text-xs font-bold text-purple-600 bg-purple-50 border border-purple-100 rounded-xl hover:bg-purple-100 shrink-0">📅</button>
+                            <button id="tut-calendar" type="button" aria-label="읽기 달력" onClick={(e) => { e.stopPropagation(); setShowCalendar(true); }} className="min-h-11 min-w-11 p-2 text-xs font-bold text-green-600 bg-green-50 border border-green-100 rounded-xl hover:bg-green-100 shrink-0">📆</button>
+                            <button type="button" aria-label="읽는 방법 도움말" onClick={(e) => { e.stopPropagation(); setShowReadingGuide(true); }} className="min-h-11 flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 rounded-xl hover:bg-slate-200 shrink-0">
                                 <Icon name="helpbook" size={14} />
+                                <span>도움말</span>
                             </button>
                         <div className="hidden h-4 w-px shrink-0 bg-slate-200 md:block md:mx-1"></div>
-                        <button onClick={handleLogout} className="text-xs font-bold text-slate-400 hover:text-red-500 transition-colors shrink-0 px-1.5 py-1.5">
+                        <button onClick={handleLogout} className="min-h-11 text-xs font-bold text-slate-500 hover:text-red-500 transition-colors shrink-0 px-2 py-2">
                             로그아웃
                         </button>
                     </div>

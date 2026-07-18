@@ -4,7 +4,7 @@ import { PLAN_TYPES, BIBLE_VERSIONS } from '../data/bible_options';
 import { useBibleContent } from '../hooks/useBibleContent';
 import { useTTS } from '../hooks/useTTS';
 import { recordGuestRead, saveGuestState } from '../utils/guestStorage';
-import { DailyVideoCard, BibleReader, QuizLevelToggle } from './dashboard';
+import { DailyVideoCard, BibleReader, QuizLevelToggle, HomeScreenHelpBanner } from './dashboard';
 
 const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupClick }) => {
     const { verseData, viewingDay, setViewingDay, loadContent } = useBibleContent(currentUser);
@@ -42,6 +42,7 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
 
     const {
         isSpeaking, isPaused, ttsSpeed, availableVoices, selectedVoiceURI, activeChunkIndex,
+        ttsError, clearTtsError,
         ttsUnavailableApp,
         handleSpeedChange, handleTogglePause, handleStop, handleSpeak, jumpToChunk,
         setSelectedVoiceURI,
@@ -130,6 +131,7 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-sm text-amber-900 font-medium">
                     기록은 이 기기에만 저장되며, 브라우저 데이터 삭제 시 사라질 수 있어요. 가입하면 안전하게 보관됩니다.
                 </div>
+                <HomeScreenHelpBanner />
 
                 {versionOptions.length > 1 && (
                     <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3">
@@ -183,6 +185,8 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
                     selectedVoiceURI={selectedVoiceURI}
                     setSelectedVoiceURI={setSelectedVoiceURI}
                     activeChunkIndex={activeChunkIndex}
+                    ttsError={ttsError}
+                    clearTtsError={clearTtsError}
                     jumpToChunk={jumpToChunk}
                     ttsUnavailableApp={ttsUnavailableApp}
                     hasReadToday={hasReadToday}

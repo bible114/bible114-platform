@@ -242,6 +242,7 @@ const App = () => {
     // --- [Hooks] Extract Logic ---
     const {
         isSpeaking, isPaused, ttsSpeed, availableVoices, selectedVoiceURI, activeChunkIndex,
+        ttsError, clearTtsError,
         ttsUnavailableApp,
         handleSpeedChange, handleTogglePause, handleStop, handleSpeak, jumpToChunk,
         setSelectedVoiceURI
@@ -935,6 +936,8 @@ const App = () => {
                 selectedVoiceURI={selectedVoiceURI}
                 setSelectedVoiceURI={setSelectedVoiceURI}
                 activeChunkIndex={activeChunkIndex}
+                ttsError={ttsError}
+                clearTtsError={clearTtsError}
                 jumpToChunk={jumpToChunk}
                 ttsUnavailableApp={ttsUnavailableApp}
                 readSubmitting={readSubmitting}

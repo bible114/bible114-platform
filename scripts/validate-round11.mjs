@@ -27,7 +27,7 @@ assert.equal(normalizeChurchEntryCode('123'), '');
 assert.equal(normalizeChurchEntryCode('x'.repeat(129)), '');
 assert.equal(normalizeChurchEntryCode('ab\ncd'), '');
 
-for (const text of ['5초만에 빠른 시작', '카카오로 시작', 'Google', '기존 회원 로그인(이름으로)', '로그인 없이 둘러보기', '공동체 등록하기']) assert.match(login, new RegExp(text.replace(/[()·]/g, '\\$&')));
+for (const text of ['5초만에 빠른 시작', '카카오로 시작', 'Google', '교회에서 가입한 기존 회원 로그인', '로그인 없이 둘러보기', '공동체 등록하기']) assert.match(login, new RegExp(text.replace(/[()·]/g, '\\$&')));
 assert.doesNotMatch(login, /카카오톡으로 로그인|Google로 로그인|기존 회원 로그인 \(이름·생년월일로\)/);
 assert.match(login, /공동체 관리자/);
 assert.match(login, /소셜 계정이 없어요/);

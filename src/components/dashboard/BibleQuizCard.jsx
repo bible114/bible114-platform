@@ -239,7 +239,8 @@ const BibleQuizCard = ({
         setSkipped(nextSkipped);
     }, [currentUser?.uid, persistedSkipped, skipStorageKey]);
 
-    const [quizState, setQuizState] = useState({ loading: true, quiz: null, quizKey: null, badge: '' });
+    const [quizState, setQuizState] = useState({ loading: true, quiz: null, quizKey: null, badge: '', error: '' });
+    const [quizReloadToken, setQuizReloadToken] = useState(0);
     const [selectedIndex, setSelectedIndex] = useState(null);
     const [feedback, setFeedback] = useState(() => {
         if (!finished) return null;
@@ -276,22 +277,22 @@ const BibleQuizCard = ({
 
         const loadQuiz = async () => {
             if (!currentUser || currentUser.role === 'guest') {
-                if (!cancelled) setQuizState({ loading: false, quiz: null, quizKey: null, badge: '' });
+                if (!cancelled) setQuizState({ loading: false, quiz: null, quizKey: null, badge: '', error: '' });
                 return;
             }
-            setQuizState({ loading: true, quiz: null, quizKey: null, badge: '' });
+            setQuizState({ loading: true, quiz: null, quizKey: null, badge: '', error: '' });
             try {
                 const savedKey = progress?.quizKey || null;
                 const resolved = savedKey ? await resolveQuizKey(savedKey, currentUser, progressDay) : null;
                 const nextQuiz = resolved || await buildDayQuiz(currentUser, progressDay);
                 if (!cancelled) {
                     setQuizState(nextQuiz
-                        ? { loading: false, ...nextQuiz }
-                        : { loading: false, quiz: null, quizKey: null, badge: '' });
+                        ? { loading: false, ...nextQuiz, error: '' }
+                        : { loading: false, quiz: null, quizKey: null, badge: '', error: '오늘 퀴즈를 아직 준비하지 못했어요.' });
                 }
             } catch (e) {
                 console.error('본문 기반 퀴즈 로딩 실패:', e);
-                if (!cancelled) setQuizState({ loading: false, quiz: null, quizKey: null, badge: '' });
+                if (!cancelled) setQuizState({ loading: false, quiz: null, quizKey: null, badge: '', error: '퀴즈를 불러오지 못했어요. 읽기 완료는 그대로 할 수 있습니다.' });
             }
         };
 
@@ -307,6 +308,7 @@ const BibleQuizCard = ({
         currentUser?.readCount,
         currentUser?.readingEpoch,
         todayKey,
+        quizReloadToken,
     ]);
 
     const quiz = quizState.quiz;
@@ -323,7 +325,21 @@ const BibleQuizCard = ({
     }, [gateOpen, hasQuestion, onGateStateChange, quizState.loading]);
 
     if (!currentUser || currentUser.role === 'guest') return null;
-    if (!quizState.loading && !hasQuestion) return null;
+    if (!quizState.loading && !hasQuestion) {
+        return (
+            <section ref={sectionRef} className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-center shadow-sm">
+                <p className="text-base font-black text-amber-900">퀴즈는 선택이에요</p>
+                <p className="mt-2 text-sm font-bold leading-relaxed text-amber-800">{quizState.error || '오늘 퀴즈가 준비되지 않았어요. 아래 읽기 완료 버튼은 그대로 누를 수 있습니다.'}</p>
+                <button
+                    type="button"
+                    onClick={() => setQuizReloadToken(value => value + 1)}
+                    className="mt-4 min-h-11 rounded-full border border-amber-300 bg-white px-5 py-2 text-sm font-black text-amber-900"
+                >
+                    퀴즈 다시 불러오기
+                </button>
+            </section>
+        );
+    }
 
     const skipToday = async () => {
         if (submitting || !quizKey) return;
@@ -603,6 +619,9 @@ const BibleQuizCard = ({
 
     return (
         <section ref={sectionRef} className={sectionClassName}>
+            <div className="mb-3 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm font-bold leading-relaxed text-indigo-800">
+                퀴즈는 선택이에요. 풀지 않아도 아래의 읽기 완료 버튼을 누를 수 있어요.
+            </div>
             <div className="mb-3 flex justify-end">
                 <QuizLevelToggle currentUser={currentUser} setCurrentUser={setCurrentUser} finished={finished} />
             </div>
