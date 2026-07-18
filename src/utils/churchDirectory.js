@@ -31,6 +31,8 @@ const PUBLIC_CHURCHES = () => db.collection('publicChurches');
 
 // 모듈 레벨 캐시: 세션(탭)당 1회만 read
 let cachePromise = null;
+const DIRECTORY_READ_MAX_ATTEMPTS = 2;
+const DIRECTORY_RETRY_DELAY_MS = 250;
 
 const compareCodepoint = (left, right) => {
     const leftPoints = Array.from(left, char => char.codePointAt(0));
@@ -107,11 +109,28 @@ const readPreferredDirectory = async () => {
     }
 };
 
+const waitForDirectoryRetry = () => new Promise(resolve => {
+    setTimeout(resolve, DIRECTORY_RETRY_DELAY_MS);
+});
+
+const readDirectoryWithRetry = async () => {
+    let lastError = null;
+    for (let attempt = 1; attempt <= DIRECTORY_READ_MAX_ATTEMPTS; attempt += 1) {
+        try {
+            return await readPreferredDirectory();
+        } catch (error) {
+            lastError = error;
+            if (attempt < DIRECTORY_READ_MAX_ATTEMPTS) await waitForDirectoryRetry();
+        }
+    }
+    throw lastError || new Error('교회 디렉토리를 불러오지 못했습니다.');
+};
+
 export const getChurchDirectory = () => {
     if (!cachePromise) {
-        cachePromise = readPreferredDirectory().catch(() => {
+        cachePromise = readDirectoryWithRetry().catch(error => {
             cachePromise = null; // 실패 시 재시도 허용
-            return [];
+            throw error;
         });
     }
     return cachePromise;

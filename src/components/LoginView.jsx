@@ -162,12 +162,16 @@ const LoginView = ({
                 } else {
                     // platformStats 없으면 공개 디렉토리로 교회 수만 추정
                     // (churches 컬렉션은 Phase 3부터 미인증 read 불가)
-                    getChurchDirectory().then(list => setStats(prev => ({ ...prev, total_churches: list.filter(c => !c.hidden).length })));
+                    getChurchDirectory()
+                        .then(list => setStats(prev => ({ ...prev, total_churches: list.filter(c => !c.hidden).length })))
+                        .catch(() => {});
                 }
             })
             .catch(() => {
                 // 실패 시 디렉토리로 교회 수만 추정
-                getChurchDirectory().then(list => setStats(prev => ({ ...prev, total_churches: list.filter(c => !c.hidden).length })));
+                getChurchDirectory()
+                    .then(list => setStats(prev => ({ ...prev, total_churches: list.filter(c => !c.hidden).length })))
+                    .catch(() => {});
             });
     }, []);
 
@@ -278,27 +282,29 @@ const LoginView = ({
     // URL 파라미터와 최근 교회는 첫 화면을 건너뛰지 않고 안내 뱃지로만 기억한다.
     useEffect(() => {
         let alive = true;
-        getChurchDirectory().then(dir => {
-            if (!alive) return;
-            setDirectory(dir);
-            let preset = null;
-            if (presetChurchId) {
-                preset = dir.find(c => c.id === presetChurchId) || null;
-            }
-            if (!preset) {
-                const last = getLastChurch();
-                if (last?.id === UNAFFILIATED_CHURCH_ID) {
-                    preset = { id: UNAFFILIATED_CHURCH_ID, name: UNAFFILIATED_CHURCH_NAME };
-                } else if (last?.id) {
-                    preset = dir.find(c => c.id === last.id) || null;
+        getChurchDirectory()
+            .then(dir => {
+                if (!alive) return;
+                setDirectory(dir);
+                let preset = null;
+                if (presetChurchId) {
+                    preset = dir.find(c => c.id === presetChurchId) || null;
                 }
-            }
-            if (preset) {
-                setLoginChurchId(preset.id);
-                setMChurchId(preset.id);
-                setRememberedChurch(preset);
-            }
-        });
+                if (!preset) {
+                    const last = getLastChurch();
+                    if (last?.id === UNAFFILIATED_CHURCH_ID) {
+                        preset = { id: UNAFFILIATED_CHURCH_ID, name: UNAFFILIATED_CHURCH_NAME };
+                    } else if (last?.id) {
+                        preset = dir.find(c => c.id === last.id) || null;
+                    }
+                }
+                if (preset) {
+                    setLoginChurchId(preset.id);
+                    setMChurchId(preset.id);
+                    setRememberedChurch(preset);
+                }
+            })
+            .catch(() => {});
         return () => { alive = false; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [presetChurchId]);

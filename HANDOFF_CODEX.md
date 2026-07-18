@@ -184,6 +184,7 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-18 | 교회 검색 오류 복구 UX + 초기 번들 분할 로컬 완료 | `src/utils/churchDirectory.js`, `src/components/{ChurchPicker,LoginView}.jsx`, `scripts/validate-church-directory-fallback.mjs`, `package.json`, `vite.config.js`, `review/SITE_FULL_AUDIT_2026-07-18.md`, `test-artifacts/site-audit-20260718/04-local-church-search-fixed.png` | 운영 재검사에서 비인증 SDK·공개 UI 모두 레거시 8건과 `서부제일교회` 결과가 정상이라 상시 0건 장애는 정정했다. 확정 결함은 최종 읽기 오류를 `[]`로 삼켜 일시 실패를 실제 0건으로 고정한 구조다. 최대 2회 자동 재시도, 실패 캐시 제거·오류 전달, ChurchPicker 로딩/오류/실제 없음 분리와 수동 재시도를 추가했다. 규칙·운영 데이터 쓰기 0건. Vite vendor/data chunk 분할로 메인 JS 1,465.19→485.87kB(gzip 389.81→152.01kB), 500kB 경고 제거. 신규 회귀 검사, 전체 validate 442/442, build, 로컬 브라우저 검색·게스트 개역개정 진입 통과. 배포·push 없음. |
 | 2026-07-18 | 전체 기능·20명 동시 읽기/퀴즈/달란트 상점 운영 점검 | `review/SITE_FULL_AUDIT_2026-07-18.md`, `scripts/{manage-site-audit-fixture,prepare-concurrent-site-audit,run-concurrent-member-flow,audit-concurrent-site-run}.mjs`, `scripts/concurrent-member-flow.manifest.example.json`, `test-artifacts/site-audit-20260718/` | 일회용 교회와 관리자 1명·회원 20명(개역개정 10, 새번역 10)을 만들어 배포된 API에서 `읽기 완료 → 정답 퀴즈 → 1달란트 상품 구매` 60건을 동시 실행했다. 60/60 성공, p95 656ms, 원장 독립 재조회 누락·중복 0, 전원 DAY2·점수10·달란트20을 확인했다. 종료 후 교회·공개 목록·users·Auth·하위 원장을 모두 삭제했고 platformStats 차이 0이다. 별도 `클로드테스트교회`는 건드리지 않았다. 비로그인 `ChurchPicker`가 운영 교회 전체를 검색 결과 0건으로 표시해 이름·생년월일 기존 회원 로그인을 막는 P1을 재현했으며 원인 진단·수정·배포는 다음 독립 작업으로 남겼다. build/validate 통과, 초기 번들 약 1.47MB 경고는 P3로 기록했다. |
 | 2026-07-18 | 운영 번역 범위 정정 | `HANDOFF_CODEX.md` | 사용자 확인에 따라 이 프로젝트의 운영 번역을 개역개정·새번역 2종으로 고정했다. 비활성 `nt_easy`·`nt_saehangul`·`nt_message` 캐시를 수리 대상으로 잘못 확장한 `e680af1`은 `d5b3d04`로 revert했고, 운영 쓰기·웹 배포는 없었다. 저장소 밖에 만든 두 staging 디렉터리는 복구 가능한 휴지통으로 이동했다. |
 | 2026-07-18 | T131 운영 테스트 잔재 무쓰기 감사 완료 | `scripts/audit-operational-test-residue.mjs`, `HANDOFF_CODEX.md` | 재인증 후 운영을 읽기 전용으로 집계했다: users 38, churches 9, roster 3, Auth 50, 구매 1. 명백한 테스트 표지 users 8·churches 2, active users-without-Auth 6, Auth-only 18(명백한 테스트 표지 0)이며 종합 검토 후보는 users 14·churches 2·관련 roster 1이다. 후보에 양수 users 지갑 4·roster 지갑 1이 있고 pending 구매는 0이다. 휴리스틱과 Auth 미연결만으로 테스트 잔재를 확정할 수 없고 잔액·소속·완료 구매·불변 원장 손실 위험이 있으므로 **자동 삭제 금지**. 사용자가 정확한 대상·잔액 처리·Auth/Firestore/원장 보존을 결정한 후에도 공동체는 `adminSetChurchLifecycle`, 개별 계정은 기존 삭제 action을 사용한다. 운영 쓰기·정리 0건. |
@@ -384,6 +385,11 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-18 교회 검색 P1 후속 원인 확정·로컬 해결 + P3 번들 개선:
+- 운영을 다시 읽어보니 비인증 Firebase compat와 공개 웹 모두 `settings/churchDirectory` 8건을 반환하고 `서부제일교회` 검색 결과를 표시했다. `publicDirectoryMeta/current` 누락/403 뒤 레거시 폴백도 정상이다. 따라서 이전 보고의 “항상 0건”은 현재 데이터·rules의 상시 장애가 아니다. 최초 브라우저 감사의 정확한 하위 실패는 기존 코드가 오류를 삼켜 사후 확정할 수 없다.
+- 확정된 구조 결함은 `getChurchDirectory()`가 meta와 legacy 최종 실패를 `[]` 성공으로 바꾸고, `ChurchPicker`가 mount 1회만 읽어 이를 실제 0건으로 고정한 것이다. 최초 포함 최대 2회만 자동 재시도하고 최종 실패는 cache를 비운 뒤 전달한다. Picker는 로딩/오류/실제 없음 상태와 수동 `다시 시도`를 분리했다. Firestore rules, users read, public 전환 mode, 운영 데이터는 건드리지 않았다.
+- 회귀 검사를 `npm run validate`에 편입했고 전체 442/442·build·로컬 실제 검색과 게스트 개역개정 본문 진입이 통과했다. Vite manualChunks로 메인 JS를 1,465.19→485.87kB(gzip 389.81→152.01kB)로 줄여 500kB 경고를 없앴다. Firebase compat는 유지했고 기존 firebase.js 정적/동적 중복 import 안내만 남는다. 스크린샷은 `test-artifacts/site-audit-20260718/04-local-church-search-fixed.png`다. **웹 배포·push는 아직 하지 않았다.**
 
 2026-07-18 전체 기능·20명 동시성 점검:
 - 일회용 `e2e_full_20260718_audit02`에 관리자 1명과 회원 20명(개역개정 10·새번역 10), v2 통합 달란트 상점과 1달란트 상품을 만들었다. 배포된 API로 20명이 동시에 읽기 완료·정답 퀴즈·상품 구매를 실행해 60/60 성공(p50 534ms, p95 656ms, max 747ms)했고, 독립 재조회에서 누락·중복·첫 403 사전 실행 잔재가 모두 0이었다. 전원 DAY2·readCount1·streak1·score10·talent20, 구매 20건 pending 및 원장 잔액 일치를 확인했다.

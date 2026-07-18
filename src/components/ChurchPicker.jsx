@@ -11,13 +11,30 @@ const ChurchPicker = ({ value, onChange, label = '출석 교회' }) => {
     const [directory, setDirectory] = useState([]);
     const [query, setQuery] = useState('');
     const [focused, setFocused] = useState(false);
+    const [directoryLoading, setDirectoryLoading] = useState(true);
+    const [directoryError, setDirectoryError] = useState(false);
+    const [directoryRetry, setDirectoryRetry] = useState(0);
     const containerRef = useRef(null);
 
     useEffect(() => {
         let alive = true;
-        getChurchDirectory().then(list => { if (alive) setDirectory(list); });
+        setDirectoryLoading(true);
+        setDirectoryError(false);
+        getChurchDirectory()
+            .then(list => {
+                if (!alive) return;
+                setDirectory(list);
+            })
+            .catch(() => {
+                if (!alive) return;
+                setDirectory([]);
+                setDirectoryError(true);
+            })
+            .finally(() => {
+                if (alive) setDirectoryLoading(false);
+            });
         return () => { alive = false; };
-    }, []);
+    }, [directoryRetry]);
 
     useEffect(() => {
         const handleClickOutside = (e) => {
@@ -82,7 +99,21 @@ const ChurchPicker = ({ value, onChange, label = '출석 교회' }) => {
                     />
                     {focused && query.trim() && (
                         <div className="absolute z-20 top-full left-0 right-0 mt-1.5 bg-cream-card border border-hairline rounded-lg shadow-lg max-h-64 overflow-y-auto">
-                            {results.length === 0 ? (
+                            {directoryLoading ? (
+                                <p className="text-[12px] text-ink/50 px-3.5 py-3 text-center">교회 목록을 불러오는 중입니다...</p>
+                            ) : directoryError ? (
+                                <div className="px-3.5 py-3 text-center">
+                                    <p className="text-[12px] text-ink/55">교회 목록을 불러오지 못했습니다.</p>
+                                    <button
+                                        type="button"
+                                        onMouseDown={event => event.preventDefault()}
+                                        onClick={() => setDirectoryRetry(value => value + 1)}
+                                        className="mt-2 text-[12px] font-semibold text-accent underline underline-offset-2"
+                                    >
+                                        다시 시도
+                                    </button>
+                                </div>
+                            ) : results.length === 0 ? (
                                 <p className="text-[12px] text-ink/50 px-3.5 py-3 text-center">교회를 찾을 수 없습니다. 공동체 관리자에게 문의해주세요.</p>
                             ) : (
                                 <ul>
