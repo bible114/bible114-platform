@@ -236,6 +236,23 @@ const LoginView = ({
     const activeTabRef = useRef(activeTab);
     const googleAdminSignupCancelRef = useRef(null);
     activeTabRef.current = activeTab;
+    const loginCardRef = useRef(null);
+    const loginCardMountedRef = useRef(false);
+
+    // 모바일은 히어로 아래에 카드가 있어 "공동체 등록" 등을 눌러도 화면이 안 움직인 것처럼 보인다.
+    // 첫 렌더를 제외한 탭 전환에서 카드로 스크롤한다 (데스크톱 2단 레이아웃은 카드가 항상 보임).
+    useEffect(() => {
+        if (!loginCardMountedRef.current) { loginCardMountedRef.current = true; return; }
+        if (window.matchMedia('(min-width: 768px)').matches) return;
+        // smooth 스크롤은 탭 전환 직후 레이아웃 재계산에 끊길 수 있어 위치 계산 후 즉시 이동한다.
+        const timerId = window.setTimeout(() => {
+            const card = loginCardRef.current;
+            if (!card) return;
+            const top = Math.max(0, card.getBoundingClientRect().top + window.scrollY - 12);
+            window.scrollTo({ top, behavior: 'auto' });
+        }, 80);
+        return () => window.clearTimeout(timerId);
+    }, [activeTab]);
 
     useEffect(() => {
         const nextTab = initialTab || 'member';
@@ -411,9 +428,15 @@ const LoginView = ({
     const handleMemberLogin = async (e) => {
         e.preventDefault();
         if (!loginName.trim() || !loginBirthdate.trim() || !loginChurchId || !loginPw.trim()) { setErrorMsg('모든 항목을 입력해주세요.'); return; }
+        // 1956-03-15 / 1956.03.15 같은 구분자는 걷어내고, 자릿수가 다르면 미등록 오류 대신 형식 안내를 먼저 준다.
+        const loginBirthdateDigits = loginBirthdate.replace(/\D/g, '');
+        if (!/^\d{8}$/.test(loginBirthdateDigits)) {
+            setErrorMsg('생년월일은 연도부터 8자리 숫자로 입력해주세요. (예: 1956년 3월 15일 → 19560315)');
+            return;
+        }
         if (isLoginUnaffiliated && !/^\d{4}$/.test(loginPhone4.trim())) { setErrorMsg('전화번호 뒤 4자리를 입력해주세요.'); return; }
         setLoading(true);
-        await onMemberLogin(loginName.trim(), loginBirthdate.trim(), loginPw, loginChurchId, loginPhone4.trim());
+        await onMemberLogin(loginName.trim(), loginBirthdateDigits, loginPw, loginChurchId, loginPhone4.trim());
         setLoading(false);
     };
 
@@ -495,7 +518,12 @@ const LoginView = ({
     const handleMemberSignup = async (e) => {
         e.preventDefault();
         if (!mName.trim() || !mBirthdate.trim() || !mPw || !mChurchId || (!isSignupUnaffiliated && !mChurchCode.trim())) { setErrorMsg('모든 항목을 입력해주세요.'); return; }
-        const consentResult = validateSignupConsent({ birthdate: mBirthdate, consents: memberConsentPayload(), audience: 'member' });
+        const mBirthdateDigits = mBirthdate.replace(/\D/g, '');
+        if (!isValidBirthdate(mBirthdateDigits)) {
+            setErrorMsg('생년월일은 연도부터 8자리 숫자로 입력해주세요. (예: 1956년 3월 15일 → 19560315)');
+            return;
+        }
+        const consentResult = validateSignupConsent({ birthdate: mBirthdateDigits, consents: memberConsentPayload(), audience: 'member' });
         if (!consentResult.ok) { setErrorMsg('생년월일과 필수 동의 항목을 확인해주세요. 만 14세 미만은 보호자 동의가 필요합니다.'); return; }
         if (isSignupUnaffiliated && !/^\d{4}$/.test(mPhone4.trim())) { setErrorMsg('전화번호 뒤 4자리를 입력해주세요.'); return; }
         if (mPw !== mPwConfirm) { setErrorMsg('비밀번호가 일치하지 않습니다.'); return; }
@@ -503,7 +531,7 @@ const LoginView = ({
         setLoading(true);
         await onMemberSignup({
             name: mName.trim(),
-            birthdate: mBirthdate.trim(),
+            birthdate: mBirthdateDigits,
             password: mPw,
             churchId: mChurchId,
             churchCode: mChurchCode.trim(),
@@ -1210,8 +1238,9 @@ const LoginView = ({
             {/* ═══ RIGHT — Login Card ══════════════════════════════════════════ */}
             <div className="relative z-[1] flex flex-col px-5 pb-10 md:pt-[100px] md:pb-10 md:px-7 md:pl-7 md:items-center md:justify-center">
                 <div
+                    ref={loginCardRef}
                     className="w-full max-w-sm md:max-w-none bg-[#fbf7ee] border border-hairline rounded-lg p-7 md:p-9"
-                    style={{ boxShadow: '0 1px 0 rgba(255,255,255,0.6) inset, 0 30px 60px -30px rgba(43,58,42,0.28)' }}
+                    style={{ boxShadow: '0 1px 0 rgba(255,255,255,0.6) inset, 0 30px 60px -30px rgba(43,58,42,0.28)', scrollMarginTop: '12px' }}
                 >
                     {/* Card header */}
                     <div className="mb-5">

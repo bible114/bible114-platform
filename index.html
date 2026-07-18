@@ -22,6 +22,10 @@
   <!-- Pretendard -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
   <style>
+    /* 하단 고정 광고(50px + 여백)가 버튼·본문을 가리지 않도록 페이지 전체에 광고 높이만큼 공간을 준다. */
+    body {
+      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 64px);
+    }
     #kakao-static-ad-layer {
       position: fixed;
       left: 0;
