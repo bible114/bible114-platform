@@ -1392,11 +1392,11 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
       <div class="url">인터넷 주소: ${esc(SITE_URL)}</div>
     </div>
     <div class="section">
-      <h2>1️⃣ 처음 오신 분 — 회원가입 (딱 한 번만)</h2>
-      <div class="step"><span class="num">①</span><span>QR로 접속한 뒤 <b>"${churchName}"</b>을 검색해서 선택해주세요</span></div>
-      <div class="step"><span class="num">②</span><span>"처음 오셨나요? <b>회원가입</b>"을 눌러주세요</span></div>
-      <div class="step"><span class="num">③</span><span><b>이름</b> · <b>생년월일 8자리</b>(예: 19560315) · <b>비밀번호</b>(6자리 이상)를 넣어주세요</span></div>
-      <div class="step"><span class="num">④</span><span>교회 입장코드: ${codeBlock}</span></div>
+      <h2>1️⃣ 처음 오신 분 — 카카오·구글로 시작</h2>
+      <div class="step"><span class="num">①</span><span>QR로 접속한 뒤 <b>카카오로 시작</b> 또는 <b>구글로 시작</b>을 눌러주세요</span></div>
+      <div class="step"><span class="num">②</span><span>새로 가입한다면 <b>처음 시작하기</b> → 이름·생년월일을 입력해주세요</span></div>
+      <div class="step"><span class="num">③</span><span>함께 읽는 단체에서 <b>"${churchName}"</b>을 찾아 선택해주세요</span></div>
+      <div class="step"><span class="num">④</span><span>예전 기록이 있다면 <b>기존 진도·달란트 이어보기</b>를 먼저 누르세요 · 기존 비밀번호 문의: ${codeBlock}</span></div>
     </div>
     <div class="section">
       <h2>2️⃣ 홈 화면에 추가 — 다음부터 한 번에 열려요</h2>
@@ -1464,7 +1464,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
   .tip { background: #fefce8; border-radius: 6px; padding: 1.5mm 3mm; margin-top: 1.5mm; font-size: 11.5px; color: #854d0e; }
 </style></head><body>
   <h1>📘 ${churchName} — 관리자 매뉴얼</h1>
-  <p class="sub">성경통독 114 (www.bible114.net) · 관리자 로그인: 로그인 화면에서 "공동체 관리자" 탭 → 이메일 + 비밀번호</p>
+  <p class="sub">성경통독 114 (www.bible114.net) · 관리자 로그인: 첫 화면에서 연결한 카카오 또는 구글 버튼</p>
 
   <div class="sec"><h2>📊 대시보드 — 매일 아침 한 눈에</h2><ul>
     <li>오늘 읽은 교인 수, 부서별 현황, <b>관심 필요 명단</b>(3일·1주 이상 안 읽은 분)을 확인해요.</li>
@@ -1473,7 +1473,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
   <div class="sec"><h2>👥 교인 관리</h2><ul>
     <li>이름 검색, 부서/읽기 상태 필터, 교인을 클릭하면 상세 정보가 열려요.</li>
-    <li><b>비밀번호를 잊은 교인</b>: 교인 클릭 → "비밀번호 재설정" → 새 비밀번호를 전달해주세요.</li>
+    <li><b>예전 기록을 아직 연결하지 못한 교인</b>: 교인 클릭 → "비밀번호 재설정" → 임시 비밀번호를 전달하고, 소셜 로그인 뒤 기존 기록 연결을 안내해주세요.</li>
     <li>여러 명 선택 후 주 소속 일괄 변경도 가능해요. CSV 내보내기로 명단을 저장할 수 있어요.</li>
   </ul></div>
 
@@ -1497,7 +1497,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
   </ul></div>
 
   <div class="sec"><h2>❓ 자주 묻는 질문</h2><ul>
-    <li><b>교인이 로그인이 안 된대요</b> → 이름·생년월일 8자리가 가입 때와 똑같은지 확인, 그래도 안 되면 비밀번호 재설정.</li>
+    <li><b>교인이 로그인이 안 된대요</b> → 전에 연결한 카카오·구글 버튼이 맞는지 확인하세요. 아직 연결 전이면 소셜 로그인 → 기존 진도·달란트 이어보기에서 이름·생년월일을 확인하고, 필요하면 비밀번호를 재설정하세요.</li>
     <li><b>가입 안내문의 입장코드 칸이 비어 있어요</b> → 코드는 원문을 저장하지 않아요. 설정에서 코드를 입력·변경한 직후 인쇄하거나 빈칸에 직접 적어주세요.</li>
     <li><b>교인이 날짜가 밀렸대요</b> → 밀린 날부터 이어 읽으면 됩니다. 읽기 불이익은 없고 연속 보너스만 다시 시작해요. 날짜는 성도 화면의 📅 날짜 설정에서 맞출 수 있어요.</li>
     <li><b>수령 완료를 잘못 눌렀어요</b> → 해당 구매를 취소·환불해 달란트를 돌려준 뒤 다시 처리해주세요.</li>

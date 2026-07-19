@@ -114,12 +114,11 @@ const AdminContactModal = ({ onClose }) => {
         <div className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
             <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="password-help-title" className="bg-cream-card rounded-t-3xl w-full max-w-md p-6 pb-8 shadow-2xl border border-hairline" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-3">
-                    <h3 id="password-help-title" className="font-serif font-semibold text-ink text-lg">비밀번호 찾기·문의</h3>
-                    <button ref={closeButtonRef} type="button" aria-label="비밀번호 도움말 닫기" onClick={onClose} className="min-h-11 min-w-11 text-ink/40 text-xl leading-none hover:text-ink/70 transition-colors">✕</button>
+                    <h3 id="password-help-title" className="font-serif font-semibold text-ink text-lg">로그인·기록 문의</h3>
+                    <button ref={closeButtonRef} type="button" aria-label="로그인 도움말 닫기" onClick={onClose} className="min-h-11 min-w-11 text-ink/40 text-xl leading-none hover:text-ink/70 transition-colors">✕</button>
                 </div>
                 <p className="text-sm text-ink/70 leading-relaxed mb-3">
-                    비밀번호를 잊으셨다면 <span className="font-semibold text-ink/80">소속 교회의 관리자(담당 선생님)</span>에게
-                    새 비밀번호로 바꿔달라고 말씀해주세요.
+                    예전 기록을 카카오·구글에 연결하지 못했거나 기존 비밀번호를 잊으셨다면 <span className="font-semibold text-ink/80">소속 교회의 관리자(담당 선생님)</span>에게 도움을 요청해주세요.
                 </p>
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-900 mb-4">
                     연락처가 화면에 없다면 <strong>교회 주보</strong>를 확인하거나, <strong>교회 단체방</strong>에 문의하거나,
@@ -278,7 +277,6 @@ const LoginView = ({
     // 재방문자는 preselect(URL 파라미터·최근 교회)가 있으면 바로 'form'으로 건너뛴다.
     const [memberStep, setMemberStep] = useState('entry');
     const [directory, setDirectory] = useState([]);
-    const [rememberedChurch, setRememberedChurch] = useState(null);
 
     const verse = todayVerse();
     const isKakaoTalkBrowser = typeof navigator !== 'undefined' && navigator.userAgent.includes('KAKAOTALK');
@@ -379,7 +377,6 @@ const LoginView = ({
                 if (preset) {
                     setLoginChurchId(preset.id);
                     setMChurchId(preset.id);
-                    setRememberedChurch(preset);
                 }
             })
             .catch(() => {});
@@ -674,14 +671,16 @@ const LoginView = ({
     const handleAdminStep1 = (e) => {
         e.preventDefault();
         const isSocialSignup = !!googleAdminSignupProfile;
+        if (!isSocialSignup) {
+            setErrorMsg('카카오 또는 구글 계정을 먼저 확인해주세요.');
+            return;
+        }
         if (!aName.trim() || !aEmail.trim() || !aChurchName.trim() || !aPastorName.trim() || !aChurchCode.trim()
-            || (isSocialSignup ? !googleAdminSignupProfile.uid : !aPw)) {
+            || !googleAdminSignupProfile.uid) {
             setErrorMsg('모든 항목을 입력해주세요.');
             return;
         }
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(aEmail.trim())) { setErrorMsg('연락받을 수 있는 이메일을 정확히 입력해주세요.'); return; }
-        if (!isSocialSignup && aPw !== aPwConfirm) { setErrorMsg('비밀번호가 일치하지 않습니다.'); return; }
-        if (!isSocialSignup && aPw.length < 6) { setErrorMsg('비밀번호는 6자리 이상이어야 합니다.'); return; }
         if (!normalizeChurchEntryCode(aChurchCode)) {
             setErrorMsg('교회 입장코드는 4~128자로 입력해주세요.');
             return;
@@ -712,7 +711,7 @@ const LoginView = ({
                 name: aName.trim(),
                 email: googleAdminSignupProfile?.email || aEmail.trim(),
                 contactEmail: aEmail.trim().toLowerCase(),
-                password: googleAdminSignupProfile ? null : aPw,
+                password: null,
                 churchName: aChurchName.trim(),
                 pastorName: aPastorName.trim(),
                 denomination: aDenomination.trim(),
@@ -800,25 +799,9 @@ const LoginView = ({
                 5초만에 빠른 시작
                 <span className="absolute -bottom-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-b-2 border-r-2 border-orange-400 bg-orange-50" />
             </div>
-            {rememberedChurch && (
-                <button
-                    type="button"
-                    onClick={() => rememberedChurch.id === UNAFFILIATED_CHURCH_ID ? selectUnaffiliatedChurch() : selectChurchById(rememberedChurch.id)}
-                    className="min-h-11 w-full rounded-2xl border-2 border-emerald-400 bg-emerald-50 px-4 py-3 text-left text-sm font-black text-emerald-900"
-                >
-                    지난번 {rememberedChurch.name}에서 계속 읽기 →
-                </button>
-            )}
-            <button
-                type="button"
-                onClick={() => { setMemberStep('legacy'); clearError(); }}
-                className="min-h-11 w-full rounded-2xl border-2 border-accent/50 bg-white px-4 py-3 text-sm font-black text-ink"
-            >
-                교회에서 가입한 기존 회원 로그인
-            </button>
             <div className="flex items-center gap-3" aria-hidden="true">
                 <span className="h-px flex-1 bg-hairline" />
-                <span className="text-sm font-semibold text-ink/55">개인 계정으로 빠르게 시작</span>
+                <span className="text-sm font-semibold text-ink/55">카카오 또는 구글로 로그인</span>
                 <span className="h-px flex-1 bg-hairline" />
             </div>
             <button type="button" onClick={handleKakaoAccountStart} disabled={loading || kakaoLoading}
@@ -847,6 +830,9 @@ const LoginView = ({
                     </span>
                 )}
             </button>
+            <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-relaxed text-blue-900">
+                <strong>예전에 이름·생년월일로 로그인했나요?</strong><br />위에서 카카오나 구글을 먼저 누르면 기존 진도·달란트를 연결할 수 있어요.
+            </div>
             <div className="text-center text-sm font-semibold text-ink/55">
                 <button type="button" onClick={handleGuestLogin} disabled={loading} className="min-h-11 underline underline-offset-3">로그인 없이 둘러보기</button>
             </div>
@@ -854,9 +840,6 @@ const LoginView = ({
                 <p>⛪ 교회·모임과 함께 읽고 싶으신가요?</p>
                 <p><b>공동체 대표(관리자)가</b> 먼저 공동체를 등록해야 성도들이 찾아서 함께 읽을 수 있어요.</p>
                 <button type="button" onClick={() => { setActiveTab('adminSignup'); clearError(); }} className="mt-1.5 font-black text-accent underline underline-offset-3">공동체 등록하기 →</button>
-            </div>
-            <div className="text-center text-sm text-ink/50">
-                <button type="button" onClick={() => { setActiveTab('admin'); clearError(); }} className="min-h-11 underline underline-offset-3">공동체 관리자</button>
             </div>
             {errorMsg && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-center text-xs text-red-500">{errorMsg}</p>}
         </div>
@@ -1060,7 +1043,7 @@ const LoginView = ({
         // ── Admin Signup Step 1 ──
         if (activeTab === 'adminSignup' && signupStep === 1) return (
             <form onSubmit={handleAdminStep1} className="space-y-3">
-                <button type="button" disabled={loading} onClick={async () => { await resetAdminSignup(); setActiveTab('admin'); }}
+                <button type="button" disabled={loading} onClick={async () => { await resetAdminSignup(); setActiveTab('member'); setMemberStep('entry'); }}
                     className="text-[12px] text-ink/50 hover:text-ink flex items-center gap-1 mb-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50">← 뒤로</button>
                 <div className="flex items-center justify-between mb-1">
                     <span className="text-[11px] font-bold text-accent bg-accent/10 px-2 py-1 rounded-full">1단계 / 2단계</span>
@@ -1106,11 +1089,7 @@ const LoginView = ({
                                 {googleAdminSignupLoading ? '구글 계정 확인 중...' : 'G 구글 계정으로 시작'}
                             </button>
                         )}
-                        <div className="flex items-center gap-3 py-1" aria-hidden="true">
-                            <span className="h-px flex-1 bg-hairline" />
-                            <span className="text-[11px] font-semibold text-ink/35">또는 이메일과 비밀번호로 등록</span>
-                            <span className="h-px flex-1 bg-hairline" />
-                        </div>
+                        <p className="rounded-xl bg-slate-50 px-4 py-3 text-center text-[12px] leading-relaxed text-slate-600">공동체 관리자도 카카오 또는 구글 계정으로만 등록하고 로그인합니다.</p>
                     </>
                 )}
                 {googleAdminSignupProfile && (
@@ -1132,7 +1111,7 @@ const LoginView = ({
                                 disabled={loading}
                                 className="shrink-0 text-[11px] font-semibold text-slate-700 underline underline-offset-2 disabled:opacity-50"
                             >
-                                {googleAdminSignupLoading ? '전환 중...' : '이메일 방식으로 변경'}
+                                {googleAdminSignupLoading ? '전환 중...' : '다른 소셜 계정 선택'}
                             </button>
                         </div>
                     </div>
@@ -1146,13 +1125,6 @@ const LoginView = ({
                     className={inputCls}
                 />
                 <p className="-mt-1 ml-1 text-[10px] text-ink/45">로그인 방식과 관계없이 운영 안내가 필요할 때 이 주소로 연락드립니다.</p>
-                {!googleAdminSignupProfile && (
-                    <>
-                        <input type="password" value={aPw} onChange={e => setAPw(e.target.value)} placeholder="비밀번호 (6자리 이상)" className={inputCls} />
-                        <input type="password" value={aPwConfirm} onChange={e => setAPwConfirm(e.target.value)} placeholder="비밀번호 확인"
-                            className={`w-full bg-cream border rounded-lg px-3.5 py-3 text-sm placeholder-ink/40 focus:outline-none focus:ring-2 transition-all font-sans ${aPwConfirm && aPw !== aPwConfirm ? 'border-red-400 focus:ring-red-400/40' : 'border-hairline focus:ring-accent/40 focus:border-accent/60'}`} />
-                    </>
-                )}
                 <div className="border-t border-hairline pt-3 space-y-2">
                     <p className="text-[11px] text-ink/55 font-semibold uppercase tracking-wide">공동체 정보</p>
                     <input type="text" value={aChurchName} onChange={e => setAChurchName(e.target.value)} placeholder="교회 이름 (예: ○○교회)" className={inputCls} />
@@ -1167,9 +1139,9 @@ const LoginView = ({
                 </label>
                 <PolicyConsent audience="communityAdmin" value={aPolicyConsents} onChange={setAPolicyConsents} disabled={loading} showCompletion />
                 {errorMsg && <p className="text-red-500 text-xs text-center py-1 bg-red-50 rounded-lg px-3">{errorMsg}</p>}
-                <button type="submit" disabled={loading || !adminConsentReady}
+                <button type="submit" disabled={loading || !adminConsentReady || !googleAdminSignupProfile}
                     className="w-full bg-accent text-cream font-semibold py-3.5 rounded-full text-sm flex items-center justify-center gap-2 hover:bg-accent/90 transition-colors disabled:opacity-50">
-                    {loading ? '확인 중...' : '다음: 조직 구성 →'}
+                    {loading ? '확인 중...' : googleAdminSignupProfile ? '다음: 조직 구성 →' : '카카오 또는 구글을 먼저 선택해주세요'}
                 </button>
             </form>
         );
@@ -1346,17 +1318,9 @@ const LoginView = ({
                             onClick={() => setShowAdminContact(true)}
                             className="min-h-11 rounded-xl border border-amber-200 bg-amber-50 px-3 text-sm font-bold text-amber-900"
                         >
-                            비밀번호 찾기·문의
+                            로그인·기록 문의
                         </button>
                     </nav>
-                    {!isSignupTab && activeTab === 'member' && !isEntryStep && (
-                        <div className="mt-5 border-t border-hairline pt-4 text-center text-sm text-ink/55">
-                            <button type="button" onClick={() => { setActiveTab('admin'); clearError(); }} className="min-h-11 underline underline-offset-3">공동체 관리자 로그인</button>
-                        </div>
-                    )}
-                    {!isSignupTab && activeTab === 'admin' && (
-                        <button type="button" onClick={() => { setActiveTab('member'); setMemberStep('entry'); clearError(); }} className="mt-5 w-full border-t border-hairline pt-4 text-center text-[11px] text-ink/45 underline underline-offset-3">다른 방법으로 로그인</button>
-                    )}
                 </div>
 
             </div>

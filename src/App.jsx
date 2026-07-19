@@ -555,6 +555,7 @@ const App = () => {
         handleKakaoStart,
         handleGoogleLink,
         handleKakaoLinkStart,
+        handleLegacySocialRecovery,
         socialLinkNotice,
         setSocialLinkNotice,
         handleSocialOnboardingComplete,
@@ -753,7 +754,7 @@ const App = () => {
     };
 
     const handleGuestSignupStart = () => {
-        setLoginInitialTab('memberSignup');
+        setLoginInitialTab('member');
         if (auth) auth.signOut();
         resetReaderSessionState();
         setCurrentUser(null); setTempUser(null); setChurchCommunities([]);
@@ -869,7 +870,7 @@ const App = () => {
             />
         );
     } else if (view === 'social_onboarding' && tempUser?.uid) {
-        pageContent = <SocialOnboardingView tempUser={tempUser} onComplete={handleSocialOnboardingComplete} />;
+        pageContent = <SocialOnboardingView tempUser={tempUser} onComplete={handleSocialOnboardingComplete} onLegacyLink={handleLegacySocialRecovery} />;
     } else if (view === 'personal_community_onboarding' && tempUser?.accountType === 'personal') {
         pageContent = (
             <div className="min-h-screen bg-slate-50 p-6 flex items-center justify-center" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>

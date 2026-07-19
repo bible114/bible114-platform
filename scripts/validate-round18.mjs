@@ -114,7 +114,7 @@ const quizEngine = read('src/utils/quizEngine.js');
 const guestStorage = read('src/utils/guestStorage.js');
 const guestReader = read('src/components/GuestReaderView.jsx');
 
-for (const text of ['5초만에 빠른 시작', '카카오로 시작', '교회에서 가입한 기존 회원 로그인', '공동체 등록하기']) assert.match(login, new RegExp(text.replace(/[()]/g, '\\$&')));
+for (const text of ['5초만에 빠른 시작', '카카오로 시작', '구글로 시작', '기존 진도·달란트를 연결', '공동체 등록하기']) assert.match(login, new RegExp(text.replace(/[()]/g, '\\$&')));
 for (const text of ['공동체 등록이란?', '성도이신가요?', '무료 · 약 5분 소요']) assert.match(login, new RegExp(text.replace(/[()?]/g, '\\$&')));
 assert.match(read('src/App.jsx'), /공동체 등록 완료![\s\S]*성도용 가입 안내문 인쇄\(QR\)/);
 assert.doesNotMatch(settings, /우리 교회 로그인 링크|\?church=/);

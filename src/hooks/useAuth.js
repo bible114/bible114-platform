@@ -110,6 +110,8 @@ export const useAuth = ({
     const kakaoAdminSignupStartRef = useRef(null);
     const socialProviderRef = useRef(null);
     const passwordPersonalSignupRef = useRef(false);
+    const legacySocialRecoveryRef = useRef(false);
+    const pendingGoogleRecoveryCredentialRef = useRef(null);
 
     const beginGoogleAdminSignupFlow = () => {
         if (!googleAdminSignupFlowRef.current) {
@@ -478,7 +480,22 @@ export const useAuth = ({
                 }
                 openSocialOnboarding(cred.user, 'google.com', {}, signupDraft);
             } catch (error) {
-                if (error?.message === 'NOT_PERSONAL_ACCOUNT') {
+                if (error?.code === 'auth/account-exists-with-different-credential' && error?.credential) {
+                    pendingGoogleRecoveryCredentialRef.current = error.credential;
+                    socialProviderRef.current = 'google.com';
+                    setCurrentUser(null);
+                    setTempUser({
+                        uid: `pending-google-recovery-${Date.now()}`,
+                        name: '',
+                        role: 'member',
+                        accountType: 'personal',
+                        socialProvider: 'google.com',
+                        legacyRecoveryOnly: true,
+                        extraOrgs: [],
+                    });
+                    setView('social_onboarding');
+                    setErrorMsg('');
+                } else if (error?.message === 'NOT_PERSONAL_ACCOUNT') {
                     setErrorMsg('이미 다른 방식으로 등록된 계정입니다. 기존 로그인 방법을 이용해주세요.');
                     if (popupUid && auth.currentUser?.uid === popupUid) {
                         setCurrentUser(null);
@@ -595,6 +612,128 @@ export const useAuth = ({
             sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
             sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
             setSocialLinkNotice({ type: 'error', message: '카카오 연결을 시작하지 못했습니다. 잠시 후 다시 시도해주세요.' });
+        }
+    };
+
+    const signInLegacyMemberForSocialRecovery = async ({ name, birthdate, password, churchId, phone4 }) => {
+        const isUnaffiliated = churchId === UNAFFILIATED_CHURCH_ID;
+        if (!name?.trim() || !/^\d{8}$/.test(String(birthdate || '')) || !password || !churchId) {
+            throw new Error('LEGACY_MEMBER_INPUT_REQUIRED');
+        }
+        if (isUnaffiliated && !/^\d{4}$/.test(String(phone4 || '').trim())) {
+            throw new Error('LEGACY_PHONE4_REQUIRED');
+        }
+        const newEmail = makeMemberEmail(name.trim(), birthdate, churchId, phone4);
+        const oldEmail = makePseudoEmail(name.trim(), birthdate);
+        let credential = await auth.signInWithEmailAndPassword(newEmail, password).catch(() => null);
+        if (!credential && !isUnaffiliated) {
+            credential = await auth.signInWithEmailAndPassword(oldEmail, password).catch(() => null);
+            if (credential) await credential.user.updateEmail(newEmail).catch(() => {});
+        }
+        if (!credential?.user?.uid) throw new Error('LEGACY_CREDENTIAL_MISMATCH');
+        const userDoc = await db.collection('users').doc(credential.user.uid).get({ source: 'server' });
+        const data = userDoc.exists ? userDoc.data() || {} : null;
+        if (!data || data.isDeleted === true || data.role !== 'member') throw new Error('LEGACY_MEMBER_NOT_FOUND');
+        if (data.accountType !== 'personal' && data.churchId !== churchId) throw new Error('LEGACY_CHURCH_MISMATCH');
+        return { credential, userDoc };
+    };
+
+    const signInLegacyAdminForSocialRecovery = async ({ email, password }) => {
+        const normalizedEmail = String(email || '').trim().toLowerCase();
+        if (!normalizedEmail || !password) throw new Error('LEGACY_ADMIN_INPUT_REQUIRED');
+        const credential = await auth.signInWithEmailAndPassword(normalizedEmail, password)
+            .catch(() => null);
+        if (!credential?.user?.uid) throw new Error('LEGACY_CREDENTIAL_MISMATCH');
+        const userDoc = await db.collection('users').doc(credential.user.uid).get({ source: 'server' });
+        const data = userDoc.exists ? userDoc.data() || {} : null;
+        if (!data || data.isDeleted === true || !GOOGLE_ADMIN_ROLES.has(data.role)) {
+            throw new Error('LEGACY_ADMIN_NOT_FOUND');
+        }
+        return { credential, userDoc };
+    };
+
+    const handleLegacySocialRecovery = async ({ accountKind = 'member', ...input }) => {
+        if (legacySocialRecoveryRef.current) return { ok: false, busy: true };
+        legacySocialRecoveryRef.current = true;
+        setErrorMsg('');
+        const flowName = 'legacySocialRecovery';
+        beginInteractiveAuthFlow(flowName);
+        let shouldEndFlow = true;
+        try {
+            await authReady;
+            const provider = String(socialProviderRef.current || input.socialProvider || '').trim();
+            const pendingGoogleCredential = provider === 'google.com'
+                ? pendingGoogleRecoveryCredentialRef.current
+                : null;
+            const pendingSocialUser = auth.currentUser;
+            if ((!pendingSocialUser?.uid && !pendingGoogleCredential)
+                || !['google.com', 'kakao.com'].includes(provider)) {
+                throw new Error('SOCIAL_RECOVERY_SESSION_MISSING');
+            }
+            if (pendingSocialUser?.uid) {
+                const pendingDoc = await db.collection('users').doc(pendingSocialUser.uid).get({ source: 'server' });
+                if (pendingDoc.exists) throw new Error('SOCIAL_RECOVERY_ALREADY_REGISTERED');
+
+                // 아직 users 문서가 없는 방금 만든 소셜 Auth 계정만 제거한다. 기존 기록은
+                // 아래에서 검증한 legacy UID에 공급자를 연결하므로 복사·새 UID 생성이 없다.
+                await pendingSocialUser.delete();
+            }
+
+            const legacy = accountKind === 'admin'
+                ? await signInLegacyAdminForSocialRecovery(input)
+                : await signInLegacyMemberForSocialRecovery(input);
+            const legacyUid = legacy.credential.user.uid;
+            if (auth.currentUser?.uid !== legacyUid) throw new Error('SOCIAL_AUTH_CHANGED');
+
+            if (provider === 'kakao.com') {
+                endInteractiveAuthFlow(flowName);
+                shouldEndFlow = false;
+                await handleKakaoLinkStart();
+                return { ok: true, redirecting: true };
+            }
+
+            if (isKakaoTalkBrowser()) throw new Error('GOOGLE_IN_APP_UNAVAILABLE');
+            if (pendingGoogleCredential) {
+                await legacy.credential.user.linkWithCredential(pendingGoogleCredential);
+                pendingGoogleRecoveryCredentialRef.current = null;
+            } else {
+                await legacy.credential.user.linkWithPopup(new firebase.auth.GoogleAuthProvider());
+            }
+            await db.collection('users').doc(legacyUid).set({
+                authProvider: 'google.com',
+                authProviders: firebase.firestore.FieldValue.arrayUnion('google.com'),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true });
+            const refreshedDoc = await db.collection('users').doc(legacyUid).get({ source: 'server' });
+            if (GOOGLE_ADMIN_ROLES.has(refreshedDoc.data()?.role)) {
+                await finishAdminLogin(legacy.credential, { requireRegisteredAdmin: true });
+            } else {
+                await openExistingSocialUser(legacy.credential.user, refreshedDoc);
+            }
+            setSocialLinkNotice({ type: 'success', message: '기존 기록에 구글 로그인을 연결했습니다.' });
+            return { ok: true, linked: true };
+        } catch (error) {
+            console.error('기존 기록 소셜 연결 실패:', error);
+            const messages = {
+                LEGACY_MEMBER_INPUT_REQUIRED: '교회·이름·생년월일·기존 비밀번호를 모두 입력해주세요.',
+                LEGACY_PHONE4_REQUIRED: '혼자 읽기 계정은 전화번호 뒤 4자리를 입력해주세요.',
+                LEGACY_ADMIN_INPUT_REQUIRED: '관리자 이메일과 기존 비밀번호를 입력해주세요.',
+                LEGACY_CREDENTIAL_MISMATCH: '기존 가입 정보가 맞지 않습니다. 담당 관리자에게 확인해주세요.',
+                LEGACY_MEMBER_NOT_FOUND: '연결할 기존 성도 기록을 찾지 못했습니다.',
+                LEGACY_ADMIN_NOT_FOUND: '연결할 기존 관리자 기록을 찾지 못했습니다.',
+                LEGACY_CHURCH_MISMATCH: '선택한 교회와 기존 기록의 교회가 다릅니다.',
+                SOCIAL_RECOVERY_SESSION_MISSING: '소셜 로그인 확인 시간이 지났습니다. 처음 화면에서 다시 시작해주세요.',
+                SOCIAL_RECOVERY_ALREADY_REGISTERED: '이미 등록된 소셜 계정입니다. 처음 화면에서 바로 로그인해주세요.',
+                GOOGLE_IN_APP_UNAVAILABLE: KAKAO_GOOGLE_AUTH_MESSAGE,
+            };
+            if (auth.currentUser) await auth.signOut().catch(() => {});
+            throw new Error(messages[error?.message]
+                || (error?.code === 'auth/credential-already-in-use'
+                    ? '이 소셜 계정은 이미 다른 기록에 연결되어 있습니다.'
+                    : '기존 기록을 연결하지 못했습니다. 처음 화면에서 다시 시도해주세요.'));
+        } finally {
+            if (shouldEndFlow) endInteractiveAuthFlow(flowName);
+            legacySocialRecoveryRef.current = false;
         }
     };
 
@@ -1607,6 +1746,7 @@ export const useAuth = ({
         handleKakaoStart,
         handleGoogleLink,
         handleKakaoLinkStart,
+        handleLegacySocialRecovery,
         socialLinkNotice,
         setSocialLinkNotice,
         handleSocialOnboardingComplete,

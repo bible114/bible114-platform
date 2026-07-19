@@ -72,7 +72,8 @@ for (const faqText of [
     '달란트가 안 늘어요',
     '상점에서 샀는데 물건은 어디서?',
     '휴대폰을 바꿨어요',
-    '생년월일 8자리</strong>(예: 19560315)',
+    '기존 진도·달란트 이어보기',
+    '다음부터는 소셜 버튼만으로 로그인',
     '하루 첫 읽기 완료',
     '하루 첫 퀴즈 정답',
     '추가 읽기는 0점·0달란트',
@@ -102,9 +103,8 @@ assert.match(readingGuide, /event\.key !== 'Tab'/);
 assert.match(readingGuide, /dialogRef\.current\?\.querySelectorAll/);
 
 for (const loginHelpText of [
-    '교회에서 가입한 기존 회원 로그인',
-    '지난번 {rememberedChurch.name}에서 계속 읽기',
-    '비밀번호 찾기·문의',
+    '기존 진도·달란트를 연결',
+    '로그인·기록 문의',
     '교회 주보',
     '교회 단체방',
     '담당 선생님',
@@ -112,7 +112,7 @@ for (const loginHelpText of [
     '현재 공개된 교회 목록이 없습니다.',
     '이름·생년월일·비밀번호를 다시 확인해주세요.',
 ]) assert.ok(loginView.includes(loginHelpText), `로그인 도움 문구 누락: ${loginHelpText}`);
-assert.match(loginView, /aria-label="로그인 도움"[\s\S]*setShowReadingGuide\(true\)[\s\S]*min-h-11[\s\S]*도움말[\s\S]*setShowAdminContact\(true\)[\s\S]*min-h-11[\s\S]*비밀번호 찾기·문의/);
+assert.match(loginView, /aria-label="로그인 도움"[\s\S]*setShowReadingGuide\(true\)[\s\S]*min-h-11[\s\S]*도움말[\s\S]*setShowAdminContact\(true\)[\s\S]*min-h-11[\s\S]*로그인·기록 문의/);
 assert.match(loginView, /onClick=\{\(\) => setShowReadingGuide\(true\)\}[^>]*>읽는 방법<\/button>/);
 assert.match(loginView, /type=\{showMemberEntryCode \? 'text' : 'password'\}/);
 assert.match(loginView, /aria-label=\{showMemberEntryCode \? '교회 입장코드 숨기기' : '교회 입장코드 보기'\}/);
