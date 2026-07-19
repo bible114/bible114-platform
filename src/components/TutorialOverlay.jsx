@@ -32,15 +32,8 @@ const STEPS = [
     {
         id: 'tut-date-settings',
         emoji: '📅',
-        title: '시작 날짜 조정',
-        text: '통독 시작 날짜를 조정할 수 있어요.\n실제 독서 진도와 날짜가 맞지 않을 때 이 설정으로 맞춰주세요.',
-        position: 'below',
-    },
-    {
-        id: 'tut-calendar',
-        emoji: '📆',
-        title: '읽기 달력',
-        text: '내가 언제 읽었는지 달력으로 확인해요.\n읽은 날은 색깔로 표시되어 한눈에 볼 수 있어요.',
+        title: '날짜·달력',
+        text: '내가 언제 읽었는지 달력으로 확인하거나 통독 시작 날짜를 조정할 수 있어요.\n버튼을 누른 뒤 필요한 메뉴를 골라주세요.',
         position: 'below',
     },
     {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { auth, authReady, db } from '../utils/firebase';
 import OrgEditor from './OrgEditor';
 import DemoTour from './DemoTour';
@@ -35,7 +35,6 @@ const todayVerse = () => {
 };
 
 const MEMBER_LOGIN_RECHECK_MESSAGE = '이름·생년월일·비밀번호를 다시 확인해주세요. 계속 안 되면 비밀번호 찾기·문의를 눌러 도움을 받으세요.';
-const EXISTING_MEMBER_NOTICE_KEY = 'b114_existing_member_social_notice_v1';
 
 // ─── Mock live feed data ───────────────────────────────────────────────────────
 // ─── (PLATFORM mock 제거 — Firestore에서 실시간 로드) ─────────────────────────
@@ -320,11 +319,6 @@ const LoginView = ({
     const [memberStep, setMemberStep] = useState('entry');
     const [directory, setDirectory] = useState([]);
 
-    const dismissExistingMemberNotice = useCallback(() => {
-        try { localStorage.setItem(EXISTING_MEMBER_NOTICE_KEY, 'seen'); } catch { /* 저장 불가 시 현재 화면만 닫는다. */ }
-        setShowExistingMemberNotice(false);
-    }, []);
-
     const verse = todayVerse();
     const isKakaoTalkBrowser = typeof navigator !== 'undefined' && navigator.userAgent.includes('KAKAOTALK');
     const activeTabRef = useRef(activeTab);
@@ -353,15 +347,6 @@ const LoginView = ({
         activeTabRef.current = nextTab;
         setActiveTab(nextTab);
     }, [initialTab]);
-
-    useEffect(() => {
-        if (activeTab !== 'member' || memberStep !== 'entry') return;
-        try {
-            if (localStorage.getItem(EXISTING_MEMBER_NOTICE_KEY) !== 'seen') setShowExistingMemberNotice(true);
-        } catch {
-            setShowExistingMemberNotice(true);
-        }
-    }, [activeTab, memberStep]);
 
     useEffect(() => {
         if (!initialKakaoAdminSignup || typeof initialKakaoAdminSignup !== 'object') return;
@@ -851,15 +836,6 @@ const LoginView = ({
 
     const renderEntryChoice = () => (
         <div className="space-y-4">
-            <div className="relative mx-auto w-fit rounded-full border-2 border-orange-400 bg-orange-50 px-4 py-1.5 text-xs font-black text-orange-700">
-                5초만에 빠른 시작
-                <span className="absolute -bottom-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-b-2 border-r-2 border-orange-400 bg-orange-50" />
-            </div>
-            <div className="flex items-center gap-3" aria-hidden="true">
-                <span className="h-px flex-1 bg-hairline" />
-                <span className="text-sm font-semibold text-ink/55">카카오 또는 구글로 로그인</span>
-                <span className="h-px flex-1 bg-hairline" />
-            </div>
             <button type="button" onClick={handleKakaoAccountStart} disabled={loading || kakaoLoading}
                 className="w-full rounded-2xl bg-[#FEE500] px-5 py-4 text-base font-black text-[#191919] shadow-sm transition-transform active:scale-[0.99] disabled:opacity-50">
                 {kakaoLoading ? '카카오 계정 확인 중...' : (
@@ -886,14 +862,13 @@ const LoginView = ({
                     </span>
                 )}
             </button>
-            <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-relaxed text-blue-900">
-                <strong>예전에 이름·생년월일로 로그인했나요?</strong><br />위에서 카카오나 구글을 먼저 누르면 기존 진도·달란트를 연결할 수 있어요.
-                <button type="button" onClick={() => setShowExistingMemberNotice(true)} className="mt-2 min-h-11 w-full rounded-xl border border-blue-200 bg-white px-3 text-sm font-black text-blue-800">기존 성도 안내 다시 보기</button>
-            </div>
+            <button type="button" onClick={() => setShowExistingMemberNotice(true)} className="min-h-11 w-full rounded-xl border border-blue-200 bg-blue-50 px-3 text-sm font-black text-blue-800">
+                기존 성도이신가요? 안내 보기
+            </button>
             <div className="text-center text-sm font-semibold text-ink/55">
                 <button type="button" onClick={handleGuestLogin} disabled={loading} className="min-h-11 underline underline-offset-3">로그인 없이 둘러보기</button>
             </div>
-            <div className="rounded-xl border border-amber-100 bg-amber-50/70 px-3.5 py-3 text-center text-[12px] leading-relaxed text-ink/65">
+            <div className="rounded-xl border border-amber-100 bg-amber-50/70 px-3.5 py-3 text-center text-[12px] leading-relaxed text-ink/65 md:hidden">
                 <p>⛪ 교회·모임과 함께 읽고 싶으신가요?</p>
                 <p><b>공동체 대표(관리자)가</b> 먼저 공동체를 등록해야 성도들이 찾아서 함께 읽을 수 있어요.</p>
                 <button type="button" onClick={() => { setActiveTab('adminSignup'); clearError(); }} className="mt-1.5 font-black text-accent underline underline-offset-3">공동체 등록하기 →</button>
@@ -1278,24 +1253,18 @@ const LoginView = ({
             </div>
 
             {/* ═══ LEFT — Editorial Hero (desktop) / Hero strip (mobile) ═══════ */}
-            <div className="relative z-[1] flex flex-col pt-16 pb-8 px-6 md:pt-[100px] md:pb-10 md:px-14">
+            <div className="relative z-[1] flex flex-col pt-6 pb-5 px-6 md:pt-[100px] md:pb-10 md:px-14">
 
                 {/* Mobile logo bar */}
-                <div className="flex items-center justify-between mb-6 md:hidden">
+                <div className="flex items-center mb-4 md:hidden">
                     <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-[6px] bg-ink text-cream flex items-center justify-center font-serif font-bold text-[13px]">114</div>
                         <span className="font-serif text-base font-semibold text-ink">성경통독 114</span>
                     </div>
-                    <button
-                        type="button"
-                        onClick={() => { setActiveTab('adminSignup'); clearError(); }}
-                        className="text-[13px] font-semibold text-accent border border-accent/40 bg-accent/8 hover:bg-accent/15 transition-colors px-3 py-1.5 rounded-full">
-                        공동체 등록
-                    </button>
                 </div>
 
                 {/* H1 Headline */}
-                <h1 className="font-serif font-semibold text-4xl md:text-5xl lg:text-[56px] leading-[1.16] tracking-tight mb-4 whitespace-pre-line">
+                <h1 className="font-serif font-semibold text-3xl md:text-5xl lg:text-[56px] leading-[1.16] tracking-tight mb-3 md:mb-4 whitespace-pre-line">
                     {"혼자가 아니라,\n"}
                     <span>
                         <span className="text-accent">같이</span> 펼칩니다.
@@ -1303,14 +1272,17 @@ const LoginView = ({
                 </h1>
 
                 {/* Subhead */}
-                <p className="text-[14px] md:text-[15px] leading-[1.65] text-ink/78 max-w-md mb-5">
-                    전국 <b className="text-ink">{stats.total_churches > 0 ? `${stats.total_churches}개 교회` : '여러 교회'}</b>,{' '}
-                    <b className="text-ink">{stats.total_readers > 0 ? `${stats.total_readers.toLocaleString()}명` : '많은 성도들'}</b>이
-                    오늘도 같은 페이지를 넘기고 있습니다. 함께 걷는 통독의 길, 같이 걸어요.
+                <p className="text-[14px] md:text-[15px] leading-[1.65] text-ink/78 max-w-md mb-4 md:mb-5">
+                    <span className="md:hidden">오늘의 말씀을 함께 읽고 통독의 길을 걸어요.</span>
+                    <span className="hidden md:inline">
+                        전국 <b className="text-ink">{stats.total_churches > 0 ? `${stats.total_churches}개 교회` : '여러 교회'}</b>,{' '}
+                        <b className="text-ink">{stats.total_readers > 0 ? `${stats.total_readers.toLocaleString()}명` : '많은 성도들'}</b>이
+                        오늘도 같은 페이지를 넘기고 있습니다. 함께 걷는 통독의 길, 같이 걸어요.
+                    </span>
                 </p>
 
                 {/* Stat strip */}
-                <div className="grid grid-cols-4 border-t border-b border-hairline py-4 mb-5">
+                <div className="hidden md:grid grid-cols-4 border-t border-b border-hairline py-4 mb-5">
                     {[
                         { num: statsLoading ? '…' : stats.total_churches.toString(), label: '함께하는 교회' },
                         { num: statsLoading ? '…' : stats.total_readers.toLocaleString(), label: '참여 성도' },
@@ -1325,7 +1297,7 @@ const LoginView = ({
                 </div>
 
                 {/* Today's passage card */}
-                <div className="bg-cream-card border border-hairline rounded-sm px-5 py-4 max-w-lg relative mb-5">
+                <div className="hidden md:block bg-cream-card border border-hairline rounded-sm px-5 py-4 max-w-lg relative mb-5">
                     <div className="absolute top-[-1px] left-[22px] w-9 h-3 bg-accent rounded-b-sm" />
                     <p className="font-serif text-[14px] md:text-[16px] leading-[1.65] text-ink/85 italic font-medium mb-2">
                         "{verse.text}"
@@ -1362,11 +1334,11 @@ const LoginView = ({
 
                     {/* Form content */}
                     {renderCard()}
-                    <nav aria-label="로그인 도움" className="mt-5 grid grid-cols-2 gap-2 border-t border-hairline pt-4">
+                    <nav aria-label="로그인 도움" className="mt-5 grid grid-cols-2 gap-2 border-t border-hairline pt-4 md:grid-cols-1">
                         <button
                             type="button"
                             onClick={() => setShowReadingGuide(true)}
-                            className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700"
+                            className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 md:hidden"
                         >
                             도움말
                         </button>
@@ -1383,7 +1355,7 @@ const LoginView = ({
             </div>
 
             {showAdminContact && <AdminContactModal onClose={() => setShowAdminContact(false)} />}
-            {showExistingMemberNotice && <ExistingMemberNoticeModal onClose={dismissExistingMemberNotice} />}
+            {showExistingMemberNotice && <ExistingMemberNoticeModal onClose={() => setShowExistingMemberNotice(false)} />}
 
             {showDemoTour && (
                 <DemoTour

@@ -31,13 +31,12 @@ const SocialLinkBanner = ({ currentUser, notice, onNoticeClear, onGoogleLink, on
     };
 
     return (
-        <section className="mx-4 mb-5 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-yellow-50 p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
+        <section className="mb-4 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-yellow-50 p-4 shadow-sm">
+            <div className="flex items-start gap-3">
                 <div>
                     <p className="text-base font-black text-slate-800">다음부터 카카오/구글로 3초 로그인</p>
                     <p className="mt-1 text-xs leading-relaxed text-slate-600">지금 쓰는 기록은 그대로 두고, 빠른 로그인만 연결해요.</p>
                 </div>
-                <button type="button" onClick={dismiss} aria-label="7일 동안 숨기기" className="shrink-0 rounded-full px-2 py-1 text-slate-400 hover:bg-white">✕</button>
             </div>
             {notice && <p role="status" className={`mt-3 rounded-xl px-3 py-2 text-sm font-bold ${notice.type === 'success' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700'}`}>{notice.message}</p>}
             <div className="mt-3 grid grid-cols-2 gap-2">

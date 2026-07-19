@@ -13,8 +13,7 @@ const entry = login.slice(
 );
 assert.match(entry, /카카오로 시작/);
 assert.match(entry, /구글로 시작/);
-assert.match(entry, /기존 진도·달란트를 연결/);
-assert.match(entry, /기존 성도 안내 다시 보기/);
+assert.match(entry, /기존 성도이신가요\? 안내 보기/);
 assert.doesNotMatch(entry, /교인 로그인|관리자 로그인|비밀번호로 로그인/);
 
 const adminSignup = login.slice(
@@ -27,11 +26,10 @@ assert.doesNotMatch(adminSignup, /이메일과 비밀번호로 등록|placeholde
 assert.doesNotMatch(adminSignup, /setActiveTab\('admin'\)/);
 assert.match(login, /if \(!isSocialSignup\)[\s\S]{0,160}카카오 또는 구글 계정을 먼저 확인/);
 assert.match(login, /password: null/);
-assert.match(login, /b114_existing_member_social_notice_v1/);
 assert.match(login, /기존 성도님 필독/);
 assert.match(login, /새로 가입하거나 교회를 다시 찾지 마세요/);
 assert.match(login, /‘처음 시작하기’와 교회 찾기는 신규 성도만/);
-assert.match(login, /localStorage\.setItem\(EXISTING_MEMBER_NOTICE_KEY, 'seen'\)/);
+assert.doesNotMatch(login, /setShowExistingMemberNotice\(true\)[\s\S]{0,300}localStorage|EXISTING_MEMBER_NOTICE_KEY/);
 
 assert.match(onboarding, /기존 진도·달란트 이어보기/);
 assert.match(onboarding, /처음 시작하기/);

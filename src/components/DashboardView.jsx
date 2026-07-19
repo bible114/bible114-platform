@@ -439,11 +439,6 @@ const DashboardView = ({
     const racers = combinedRacers.sort((a, b) => a.day - b.day);
     const progressRanking = getProgressRanking();
     const topProgressGroups = progressRanking.slice(0, 3);
-    const jumpToTodayReading = () => {
-        setViewingDay(currentDay);
-        scheduleScrollIntoView(() => bibleHeaderRef.current, { block: 'start', frameCount: 2 });
-    };
-
     return (
         <div className="min-h-screen bg-slate-50 overflow-hidden relative font-sans">
             {completionCelebration && (
@@ -579,37 +574,10 @@ const DashboardView = ({
             />
 
             <div
-                className="max-w-5xl mx-auto w-full mt-8"
+                className="max-w-5xl mx-auto w-full mt-4"
                 style={{ paddingBottom: 'var(--app-fixed-bottom-clearance)' }}
             >
-                <SocialLinkBanner
-                    currentUser={currentUser}
-                    notice={socialLinkNotice}
-                    onNoticeClear={onSocialLinkNoticeClear}
-                    onGoogleLink={onGoogleLink}
-                    onKakaoLink={onKakaoLink}
-                />
-                <div className="px-4 pb-4">
-                    <HomeScreenHelpBanner />
-                </div>
-                <div className="px-4 pb-4">
-                    <button
-                        type="button"
-                        onClick={jumpToTodayReading}
-                        className="min-h-12 w-full rounded-2xl bg-indigo-600 px-5 py-3 text-base font-black text-white shadow-lg hover:bg-indigo-700"
-                    >
-                        📖 오늘 말씀 DAY {currentDay} 바로가기 ↓
-                    </button>
-                </div>
-                {hasCommunity && <RaceMap racers={racers} departmentChampions={departmentChampions} getSubgroupDisplay={getSubgroupDisplay} />}
-
                 <main className="px-4 space-y-6">
-                    {hasCommunity && <AnnouncementBanner announcement={announcement} />}
-
-                    <DailyVideoCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
-
-                    {isReadingPeople && <section className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm"><div className="mb-3 flex items-center justify-between"><div><h2 className="font-black text-slate-800">성경 읽는 사람들</h2><p className="mt-1 text-xs text-slate-500">전국에서 혼자 읽는 분들의 평면 랭킹이에요.</p></div><span className="text-xs font-bold text-emerald-600">{allRacersSorted.length}명</span></div><div className="space-y-2">{allRacersSorted.slice(0, 10).map((member, index) => <div key={member.uid} className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm ${member.isMe ? 'bg-emerald-50' : 'bg-slate-50'}`}><span className="w-6 font-black text-slate-400">{index + 1}</span><span className="min-w-0 flex-1 truncate font-bold text-slate-700">{member.name}</span><span className="font-black text-emerald-700">DAY {member.day}</span></div>)}</div></section>}
-
                     {completionSummary?.completedDay && completionSummary.completedDay !== viewingDay && (
                         <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-center text-emerald-900 shadow-sm">
                             <p className="text-lg font-black">DAY {completionSummary.completedDay} 읽기 완료! 🎉</p>
@@ -658,7 +626,48 @@ const DashboardView = ({
                         )}
                     />
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {hasCommunity && <AnnouncementBanner announcement={announcement} />}
+
+                    <DailyVideoCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
+
+                    {socialLinkNotice ? (
+                        <SocialLinkBanner
+                            currentUser={currentUser}
+                            notice={socialLinkNotice}
+                            onNoticeClear={onSocialLinkNoticeClear}
+                            onGoogleLink={onGoogleLink}
+                            onKakaoLink={onKakaoLink}
+                        />
+                    ) : (
+                        <details className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                            <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-4 text-sm font-black text-slate-700 [&::-webkit-details-marker]:hidden">
+                                <span>💡 로그인·홈 화면 이용 안내</span>
+                                <span aria-hidden="true" className="text-slate-400">▾</span>
+                            </summary>
+                            <div className="space-y-3 border-t border-slate-100 p-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowReadingGuide(true)}
+                                    className="flex min-h-12 w-full items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50 px-4 text-sm font-black text-indigo-700 hover:bg-indigo-100"
+                                >
+                                    <span>📖 성경 읽는 방법 보기</span>
+                                    <span aria-hidden="true">›</span>
+                                </button>
+                                <SocialLinkBanner
+                                    currentUser={currentUser}
+                                    notice={null}
+                                    onNoticeClear={onSocialLinkNoticeClear}
+                                    onGoogleLink={onGoogleLink}
+                                    onKakaoLink={onKakaoLink}
+                                />
+                                <HomeScreenHelpBanner />
+                            </div>
+                        </details>
+                    )}
+
+                    {isReadingPeople && <section className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm"><div className="mb-3 flex items-center justify-between"><div><h2 className="font-black text-slate-800">성경 읽는 사람들</h2><p className="mt-1 text-xs text-slate-500">전국에서 혼자 읽는 분들의 통합 랭킹이에요.</p></div><span className="text-xs font-bold text-emerald-600">{allRacersSorted.length}명</span></div><div className="space-y-2">{allRacersSorted.slice(0, 10).map((member, index) => <div key={member.uid} className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm ${member.isMe ? 'bg-emerald-50' : 'bg-slate-50'}`}><span className="w-6 font-black text-slate-400">{index + 1}</span><span className="min-w-0 flex-1 truncate font-bold text-slate-700">{member.name}</span><span className="font-black text-emerald-700">DAY {member.day}</span></div>)}</div></section>}
+
+                    <div>
                         <MemoSection
                             currentMemo={currentMemo}
                             setCurrentMemo={setCurrentMemo}
@@ -670,17 +679,31 @@ const DashboardView = ({
                             memos={memos}
                             memoLoadError={memoLoadError}
                         />
-
-                        {hasCommunity && !isReadingPeople && <SubgroupRankingCard
-                            departmentName={departmentName}
-                            getSubgroupRanking={getSubgroupRanking}
-                            subgroupId={subgroupId}
-                            departmentId={currentUser ? currentUser.departmentId : null}
-                            extraMemberships={additionalMemberships}
-                        />}
                     </div>
 
-                    {hasCommunity && <ReadingChampionSection getWeeklyMVP={getWeeklyMVP} />}
+                    {hasCommunity && !isReadingPeople && (
+                        <details className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                            <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between px-5 text-base font-black text-slate-800 [&::-webkit-details-marker]:hidden">
+                                <span>🏆 공동체 현황·랭킹 모아보기</span>
+                                <span aria-hidden="true" className="text-sm text-blue-600">펼치기 ▾</span>
+                            </summary>
+                            <div className="space-y-6 border-t border-slate-100 py-5">
+                                <RaceMap racers={racers} departmentChampions={departmentChampions} getSubgroupDisplay={getSubgroupDisplay} />
+                                <div className="px-4">
+                                    <SubgroupRankingCard
+                                        departmentName={departmentName}
+                                        getSubgroupRanking={getSubgroupRanking}
+                                        subgroupId={subgroupId}
+                                        departmentId={currentUser ? currentUser.departmentId : null}
+                                        extraMemberships={additionalMemberships}
+                                    />
+                                </div>
+                                <div className="px-4">
+                                    <ReadingChampionSection getWeeklyMVP={getWeeklyMVP} />
+                                </div>
+                            </div>
+                        </details>
+                    )}
 
                     {hasCommunity && <Suspense fallback={<DeferredSectionFallback label="달란트 상점" />}>
                         <TalentShop
