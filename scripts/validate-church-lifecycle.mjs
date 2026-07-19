@@ -62,7 +62,7 @@ assert.match(renameContract, /invalidateChurchDirectoryCache\(\)/);
 assert.doesNotMatch(renameContract, /db\.|\.update\(|\.set\(/, '이름 변경 UI가 브라우저에서 직접 쓰면 안 됩니다.');
 assert.match(normalizeService, /`churches\/\$\{user\.churchId\}`[\s\S]*churchNameNeedsRepair/);
 assert.match(normalizeService, /churchNameNeedsRepair \? \{ churchName: authoritativeChurchName \} : \{\}/);
-assert.match(userAuth, /normalizedData\.churchName[\s\S]*user\.churchName = normalizedData\.churchName/);
+assert.match(userAuth, /normalizedData\.churchName[\s\S]*sessionPatch\.churchName = normalizedData\.churchName/);
 
 assert.match(index, /completeChurchAdminSignup[\s\S]*churchAdminSignupIdentityFromVerifiedUser\(\{[\s\S]*uid: verifiedUser\.uid,[\s\S]*signInProvider: verifiedUser\.signInProvider,[\s\S]*claims: verifiedUser\.claims/);
 assert.match(signupService, /churchLifecycleActions\/\$\{signup\.requestId\}/);

@@ -369,15 +369,19 @@ export const useAuth = ({
     const finishSocialStart = async (cred, provider, profile = {}, loginTiming = null, signupDraft = null) => {
         const firebaseUser = cred?.user;
         if (!firebaseUser?.uid || auth.currentUser?.uid !== firebaseUser.uid) throw new Error('INVALID_SOCIAL_PROFILE');
-        const doc = await db.collection('users').doc(firebaseUser.uid).get();
+        const doc = await db.collection('users').doc(firebaseUser.uid).get({ source: 'server' });
         if (auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
         if (doc.exists) {
             // Google 큰 버튼(T112b)과 동일하게 저장된 관리자 역할을 먼저 판정한다.
             // 연결된 카카오가 플랫폼/슈퍼관리자 uid로 커스텀 토큰을 받으면
             // 일반 교인 열기(NOT_MEMBER_ACCOUNT)로는 로그인할 수 없기 때문이다.
-            // finishAdminLogin이 source-server 재조회로 역할을 다시 증명한다.
+            // source-server 문서를 finishAdminLogin에 넘겨 같은 문서를 다시 읽지 않는다.
             if (['platformAdmin', 'superAdmin'].includes(doc.data()?.role)) {
-                await finishAdminLogin(cred, { requireRegisteredAdmin: true, loginTiming });
+                await finishAdminLogin(cred, {
+                    requireRegisteredAdmin: true,
+                    loginTiming,
+                    verifiedUserDoc: doc,
+                });
                 return;
             }
             await openExistingSocialUser(firebaseUser, doc, loginTiming);
@@ -465,7 +469,11 @@ export const useAuth = ({
                     // 첫 화면의 큰 Google 버튼으로 들어와도 저장된 관리자 역할을 먼저
                     // 판정한다. 이메일 추측 없이 인증 uid의 서버 원본 역할만 신뢰한다.
                     if (GOOGLE_ADMIN_ROLES.has(existingDoc.data()?.role)) {
-                        await finishAdminLogin(cred, { requireRegisteredAdmin: true, loginTiming });
+                        await finishAdminLogin(cred, {
+                            requireRegisteredAdmin: true,
+                            loginTiming,
+                            verifiedUserDoc: existingDoc,
+                        });
                         return;
                     }
                     await openExistingSocialUser(cred.user, existingDoc, loginTiming);
@@ -1053,8 +1061,16 @@ export const useAuth = ({
 
     // 이메일/비밀번호와 Google 관리자가 공유하는 문서 로드·마이그레이션·화면 전환 경로.
     // requireRegisteredAdmin은 Google 로그인에만 적용해 기존 이메일 로그인 동작을 보존한다.
-    const finishAdminLogin = async (cred, { requireRegisteredAdmin = false, loginTiming = null } = {}) => {
-        const doc = await db.collection('users').doc(cred.user.uid).get({ source: 'server' });
+    const finishAdminLogin = async (cred, {
+        requireRegisteredAdmin = false,
+        loginTiming = null,
+        verifiedUserDoc = null,
+    } = {}) => {
+        if (verifiedUserDoc && verifiedUserDoc.id !== cred.user.uid) {
+            throw new Error('ADMIN_AUTH_CHANGED');
+        }
+        const doc = verifiedUserDoc
+            || await db.collection('users').doc(cred.user.uid).get({ source: 'server' });
         if (auth.currentUser?.uid !== cred.user.uid) throw new Error('ADMIN_AUTH_CHANGED');
         if (!doc.exists) {
             if (requireRegisteredAdmin) {

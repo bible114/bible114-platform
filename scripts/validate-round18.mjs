@@ -304,7 +304,7 @@ const googlePersonalStart = authFlow.slice(
 assert.match(googlePersonalStart, /existingDoc = await userRef\.get\(\{ source: 'server' \}\)/);
 assert.match(googlePersonalStart, /existingDoc = await userRef\.get\(\{ source: 'server' \}\);\s*if \(auth\.currentUser\?\.uid !== cred\.user\.uid\) throw new Error\('SOCIAL_AUTH_CHANGED'\);\s*if \(existingDoc\.exists\)/);
 assert.match(googlePersonalStart, /let popupUid = null[\s\S]*popupUid = cred\?\.user\?\.uid \|\| null/);
-assert.match(googlePersonalStart, /if \(GOOGLE_ADMIN_ROLES\.has\(existingDoc\.data\(\)\?\.role\)\) \{\s*await finishAdminLogin\(cred, \{ requireRegisteredAdmin: true, loginTiming \}\);\s*return;\s*\}\s*await openExistingSocialUser/);
+assert.match(googlePersonalStart, /if \(GOOGLE_ADMIN_ROLES\.has\(existingDoc\.data\(\)\?\.role\)\) \{\s*await finishAdminLogin\(cred, \{[\s\S]*requireRegisteredAdmin: true,[\s\S]*verifiedUserDoc: existingDoc,[\s\S]*\}\);\s*return;\s*\}\s*await openExistingSocialUser/);
 assert.match(googlePersonalStart, /popupUid && auth\.currentUser\?\.uid === popupUid[\s\S]*setCurrentUser\(null\)[\s\S]*setTempUser\(null\)[\s\S]*await auth\.signOut/);
 assert.ok(
     googlePersonalStart.indexOf('finishAdminLogin(cred') < googlePersonalStart.indexOf('openExistingSocialUser(cred.user'),
@@ -315,6 +315,7 @@ const finishAdminLoginStart = authFlow.indexOf('const finishAdminLogin = async')
 const finishAdminLoginEnd = authFlow.indexOf('// ── 교회 관리자 / 슈퍼 관리자 로그인', finishAdminLoginStart);
 const finishAdminLogin = authFlow.slice(finishAdminLoginStart, finishAdminLoginEnd);
 assert.match(finishAdminLogin, /doc\(cred\.user\.uid\)\.get\(\{ source: 'server' \}\)/);
+assert.match(finishAdminLogin, /verifiedUserDoc && verifiedUserDoc\.id !== cred\.user\.uid[\s\S]*const doc = verifiedUserDoc[\s\S]*\|\| await db\.collection\('users'\)/);
 assert.match(finishAdminLogin, /user\.role === 'superAdmin' \|\| user\.role === 'platformAdmin'[\s\S]*await loadSuperAdminData\(\{ expectedUid: cred\.user\.uid \}\)[\s\S]*auth\.currentUser\?\.uid !== cred\.user\.uid[\s\S]*setCurrentUser\(user\)/);
 assert.match(finishAdminLogin, /const targetView = requiresOnboarding\s*\? 'plan_type_select'\s*: 'dashboard';\s*if \(requiresOnboarding\) setTempUser\(user\);\s*setView\(targetView\)/);
 assert.match(authFlow, /const handleChurchAdminLogin = async[\s\S]*await finishAdminLogin\(cred, \{ loginTiming \}\)/);
