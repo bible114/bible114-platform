@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { auth, authReady, db } from '../utils/firebase';
 import OrgEditor from './OrgEditor';
 import DemoTour from './DemoTour';
@@ -35,6 +35,7 @@ const todayVerse = () => {
 };
 
 const MEMBER_LOGIN_RECHECK_MESSAGE = '이름·생년월일·비밀번호를 다시 확인해주세요. 계속 안 되면 비밀번호 찾기·문의를 눌러 도움을 받으세요.';
+const EXISTING_MEMBER_NOTICE_KEY = 'b114_existing_member_social_notice_v1';
 
 // ─── Mock live feed data ───────────────────────────────────────────────────────
 // ─── (PLATFORM mock 제거 — Firestore에서 실시간 로드) ─────────────────────────
@@ -149,6 +150,46 @@ const AdminContactModal = ({ onClose }) => {
     );
 };
 
+const ExistingMemberNoticeModal = ({ onClose }) => {
+    const confirmButtonRef = useRef(null);
+
+    useEffect(() => {
+        const previousBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        const handleKeyDown = event => {
+            if (event.key === 'Escape') onClose();
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        confirmButtonRef.current?.focus();
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown);
+            document.body.style.overflow = previousBodyOverflow;
+        };
+    }, [onClose]);
+
+    return (
+        <div className="fixed inset-0 z-[140] flex items-end justify-center bg-black/55 p-0 sm:items-center sm:p-5">
+            <section role="dialog" aria-modal="true" aria-labelledby="existing-member-notice-title" className="w-full max-w-md rounded-t-3xl bg-white p-6 pb-8 shadow-2xl sm:rounded-3xl">
+                <p className="text-sm font-black text-red-600">기존 성도님 필독</p>
+                <h2 id="existing-member-notice-title" className="mt-1 text-2xl font-black leading-tight text-slate-900">새로 가입하거나 교회를 다시 찾지 마세요</h2>
+                <p className="mt-3 text-sm leading-relaxed text-slate-600">예전에 이름·생년월일·비밀번호로 읽었다면 기존 진도와 달란트를 그대로 연결할 수 있습니다.</p>
+                <ol className="mt-5 space-y-3 rounded-2xl bg-blue-50 p-4 text-sm leading-relaxed text-blue-950">
+                    <li><b>1.</b> 카카오 또는 구글로 시작</li>
+                    <li><b>2.</b> <strong>기존 진도·달란트 이어보기</strong> 선택</li>
+                    <li><b>3.</b> 기존 교회·이름·생년월일·비밀번호를 한 번 확인</li>
+                </ol>
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold leading-relaxed text-amber-900">
+                    ‘처음 시작하기’와 교회 찾기는 신규 성도만 이용해주세요. 기존 성도가 누르면 기록이 나뉠 수 있습니다.
+                </div>
+                <p className="mt-3 text-xs leading-relaxed text-slate-500">기존 비밀번호를 모르면 교회 관리자(담당 선생님)에게 문의해주세요.</p>
+                <button ref={confirmButtonRef} type="button" onClick={onClose} className="mt-5 min-h-14 w-full rounded-2xl bg-blue-600 px-5 py-4 text-base font-black text-white">
+                    확인했습니다
+                </button>
+            </section>
+        </div>
+    );
+};
+
 // ─── Input style helper ────────────────────────────────────────────────────────
 const inputCls = "w-full bg-cream border border-hairline rounded-lg px-3.5 py-3 text-sm text-ink placeholder-ink/40 focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent/60 transition-all font-sans";
 
@@ -177,6 +218,7 @@ const LoginView = ({
     const [showAdminContact, setShowAdminContact] = useState(false);
     const [showDemoTour, setShowDemoTour] = useState(false);
     const [showReadingGuide, setShowReadingGuide] = useState(false);
+    const [showExistingMemberNotice, setShowExistingMemberNotice] = useState(false);
     const [openPublicPolicyId, setOpenPublicPolicyId] = useState(null);
 
     // Platform stats (Firestore)
@@ -278,6 +320,11 @@ const LoginView = ({
     const [memberStep, setMemberStep] = useState('entry');
     const [directory, setDirectory] = useState([]);
 
+    const dismissExistingMemberNotice = useCallback(() => {
+        try { localStorage.setItem(EXISTING_MEMBER_NOTICE_KEY, 'seen'); } catch { /* 저장 불가 시 현재 화면만 닫는다. */ }
+        setShowExistingMemberNotice(false);
+    }, []);
+
     const verse = todayVerse();
     const isKakaoTalkBrowser = typeof navigator !== 'undefined' && navigator.userAgent.includes('KAKAOTALK');
     const activeTabRef = useRef(activeTab);
@@ -306,6 +353,15 @@ const LoginView = ({
         activeTabRef.current = nextTab;
         setActiveTab(nextTab);
     }, [initialTab]);
+
+    useEffect(() => {
+        if (activeTab !== 'member' || memberStep !== 'entry') return;
+        try {
+            if (localStorage.getItem(EXISTING_MEMBER_NOTICE_KEY) !== 'seen') setShowExistingMemberNotice(true);
+        } catch {
+            setShowExistingMemberNotice(true);
+        }
+    }, [activeTab, memberStep]);
 
     useEffect(() => {
         if (!initialKakaoAdminSignup || typeof initialKakaoAdminSignup !== 'object') return;
@@ -832,6 +888,7 @@ const LoginView = ({
             </button>
             <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-relaxed text-blue-900">
                 <strong>예전에 이름·생년월일로 로그인했나요?</strong><br />위에서 카카오나 구글을 먼저 누르면 기존 진도·달란트를 연결할 수 있어요.
+                <button type="button" onClick={() => setShowExistingMemberNotice(true)} className="mt-2 min-h-11 w-full rounded-xl border border-blue-200 bg-white px-3 text-sm font-black text-blue-800">기존 성도 안내 다시 보기</button>
             </div>
             <div className="text-center text-sm font-semibold text-ink/55">
                 <button type="button" onClick={handleGuestLogin} disabled={loading} className="min-h-11 underline underline-offset-3">로그인 없이 둘러보기</button>
@@ -1326,6 +1383,7 @@ const LoginView = ({
             </div>
 
             {showAdminContact && <AdminContactModal onClose={() => setShowAdminContact(false)} />}
+            {showExistingMemberNotice && <ExistingMemberNoticeModal onClose={dismissExistingMemberNotice} />}
 
             {showDemoTour && (
                 <DemoTour

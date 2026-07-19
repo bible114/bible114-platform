@@ -728,7 +728,7 @@ const App = () => {
         try {
             const migratedUser = await migrateChurchMemberToPersonal({ currentUser, phone4 });
             setCurrentUser(migratedUser);
-            alert("전환 완료! 다음 로그인부터는 '시작하기'에서 이름+생년월일+전화 뒤 4자리로 로그인해주세요.");
+            alert("전환 완료! 다음 로그인은 카카오·구글 → '기존 진도·달란트 이어보기' → '소속 교회 없이 혼자 읽었어요' 순서로 연결해주세요.");
         } catch (error) {
             console.error('개인 계정 전환 실패:', error);
             alert(error?.message || '전환을 완료하지 못했습니다. 잠시 후 다시 시도해주세요.');
@@ -900,7 +900,7 @@ const App = () => {
                     <h1 className="mt-4 text-2xl font-black text-slate-900">공동체 등록 완료!</h1>
                     <p className="mt-3 text-base font-bold leading-relaxed text-slate-700">이제 성도들에게 알려주세요.</p>
                     <div className="mt-4 rounded-2xl bg-emerald-50 px-4 py-4 text-left text-sm font-bold leading-7 text-emerald-900">
-                        관리 화면 → 설정 탭 → 성도용 가입 안내문 인쇄(QR)
+                        관리 화면 → 설정 탭 → 성도용 로그인·가입 안내문 인쇄(QR)
                     </div>
                     <button type="button" onClick={() => setView('church_admin')} className="mt-6 w-full rounded-2xl bg-indigo-600 px-5 py-4 text-base font-black text-white">관리 화면 열기 →</button>
                 </section>

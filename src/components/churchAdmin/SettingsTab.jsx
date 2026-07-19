@@ -7,12 +7,13 @@ const SettingsTab = ({
         <div className="bg-white rounded-2xl p-4 border border-slate-100">
             <p className="font-bold text-slate-700 mb-1">🖨️ 인쇄물</p>
             <p className="text-xs text-slate-400 mb-3">
-                A4 용지에 인쇄해서 사용하세요. 성도용 안내문에는 우리 교회 QR과 가입·로그인 방법이 큰 글씨로 담기고{churchInfo?.churchCode ? ' 입장코드도 함께 인쇄돼요' : ' 입장코드 자리는 빈칸이라 직접 적어주시면 돼요'}. 관리자 매뉴얼은 책상에 두고 보는 용도예요.
+                A4 용지에 인쇄해서 사용하세요. 성도용 안내문에는 기존 성도의 기록 연결과 신규 성도의 가입 방법이 큰 글씨로 담기고{churchInfo?.churchCode ? ' 입장코드도 함께 인쇄돼요' : ' 입장코드 자리는 빈칸이라 직접 적어주시면 돼요'}. 관리자 매뉴얼은 책상에 두고 보는 용도예요.
             </p>
             <div className="flex flex-wrap gap-2">
-                <button onClick={printMemberGuide} className="bg-emerald-600 text-white font-bold px-4 py-2.5 rounded-xl text-sm hover:bg-emerald-700">📱 성도용 가입 안내문 인쇄</button>
+                <button onClick={printMemberGuide} className="bg-emerald-600 text-white font-bold px-4 py-2.5 rounded-xl text-sm hover:bg-emerald-700">📱 성도용 로그인·가입 안내문 인쇄</button>
                 <button onClick={printAdminManual} className="bg-slate-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm hover:bg-slate-800">📘 관리자 매뉴얼 인쇄</button>
             </div>
+            <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold leading-relaxed text-rose-700">기존 성도에게는 “카카오·구글 → 기존 진도·달란트 이어보기”를 안내해주세요. “처음 시작하기 → 교회 찾기”는 신규 성도용입니다.</p>
             <p className="mt-2 text-xs font-bold text-amber-700">입장코드를 입력하거나 변경한 직후 인쇄하면 코드가 자동으로 들어갑니다. 나중에 인쇄하면 빈칸에 직접 적어주세요.</p>
         </div>
         <div className="bg-white rounded-2xl p-4 border border-slate-100">

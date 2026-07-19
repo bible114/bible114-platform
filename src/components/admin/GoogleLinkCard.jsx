@@ -128,7 +128,7 @@ const GoogleLinkCard = ({ accountUid, accountRole }) => {
             if (mountedRef.current) setProviderData(snapshotProviders(linkedUser));
             setNoticeIfMounted({
                 type: 'success',
-                message: '연결 완료 — 이제 공동체 관리자 로그인에서 구글 버튼으로 로그인할 수 있습니다',
+                message: '연결 완료 — 이제 첫 화면의 구글로 시작 버튼으로 로그인할 수 있습니다',
             });
         } catch (error) {
             if (error?.code === 'auth/provider-already-linked') {

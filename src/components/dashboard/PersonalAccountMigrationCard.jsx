@@ -78,7 +78,7 @@ const PersonalAccountMigrationCard = ({ currentUser, onMigrate }) => {
                     </div>
                     <label className="mt-5 block text-xs font-bold text-slate-600" htmlFor="migration-phone4">전화번호 뒤 4자리</label>
                     <input id="migration-phone4" inputMode="numeric" maxLength={4} value={phone4} onChange={event => setPhone4(event.target.value.replace(/\D/g, ''))} placeholder="예: 1234" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-base" />
-                    <p className="mt-3 text-xs leading-5 text-amber-700">전환 후 로그인은 첫 화면 ‘시작하기’에서 이름·생년월일·전화 뒤 4자리로 해주세요.</p>
+                    <p className="mt-3 text-xs leading-5 text-amber-700">전환 후 첫 로그인은 카카오·구글 → <b>기존 진도·달란트 이어보기</b> → <b>소속 교회 없이 혼자 읽었어요</b>를 선택하고 이름·생년월일·전화 뒤 4자리·기존 비밀번호를 한 번 확인해주세요.</p>
                     {error && <p role="alert" className="mt-3 text-xs font-bold text-red-600">{error}</p>}
                     <button type="submit" className="mt-5 w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white">개인 계정으로 전환하기</button>
                 </form>

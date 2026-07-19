@@ -43,9 +43,9 @@ import {
 } from '../utils/platformApi';
 
 const GOOGLE_ADMIN_ROLES = new Set(['churchAdmin', 'platformAdmin', 'superAdmin']);
-const GOOGLE_ADMIN_NOT_FOUND_MESSAGE = "이 구글 계정으로 등록된 관리자가 없습니다. 기존 관리자는 이메일·비밀번호로 로그인하시고, 새 교회는 '교회 등록'을 이용하세요.";
+const GOOGLE_ADMIN_NOT_FOUND_MESSAGE = "이 구글 계정으로 등록된 관리자가 없습니다. 기존 관리자는 첫 화면에서 구글로 시작한 뒤 '기존 진도·달란트 이어보기'를 선택해주세요.";
 const GOOGLE_ADMIN_SIGNUP_FLOW_NAME = 'googleAdminSignup';
-const GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE = '이미 등록된 계정입니다. 공동체 관리자 로그인에서 구글로 로그인해주세요.';
+const GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE = '이미 등록된 계정입니다. 첫 화면에서 구글로 시작해주세요.';
 const KAKAO_GOOGLE_AUTH_MESSAGE = "카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 우측 하단 ⋯ 메뉴에서 '다른 브라우저로 열기'를 눌러주세요.";
 const KAKAO_SIGNUP_DRAFT_KEY = 'b114_kakao_signup_consent_v1';
 
@@ -142,7 +142,7 @@ export const useAuth = ({
             return;
         }
         if (err?.code === 'auth/account-exists-with-different-credential') {
-            setErrorMsg('이미 이메일·비밀번호로 등록된 계정입니다. 기존 관리자는 이메일·비밀번호로 로그인해주세요.');
+            setErrorMsg("이미 기존 정보로 등록된 계정입니다. 첫 화면에서 구글로 시작한 뒤 '기존 진도·달란트 이어보기'를 선택해주세요.");
             return;
         }
         if (err?.code === 'auth/unauthorized-domain') {
@@ -431,7 +431,7 @@ export const useAuth = ({
             console.error('개인 계정 시작 실패:', error);
             if (error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential') setErrorMsg('이미 등록된 정보입니다. 기존 비밀번호를 확인해주세요.');
             else if (error?.code === 'auth/weak-password') setErrorMsg('비밀번호는 6자리 이상이어야 합니다.');
-            else if (error?.message === 'NOT_PERSONAL_ACCOUNT') setErrorMsg('기존 교인 계정은 아래 교인 로그인으로 들어가주세요.');
+            else if (error?.message === 'NOT_PERSONAL_ACCOUNT') setErrorMsg("기존 교인 계정은 카카오·구글로 시작한 뒤 '기존 진도·달란트 이어보기'에서 연결해주세요.");
             else setErrorMsg('개인 계정을 시작하지 못했습니다. 잠시 후 다시 시도해주세요.');
         } finally {
             if (!completed && auth.currentUser) await auth.signOut().catch(() => {});
@@ -496,7 +496,7 @@ export const useAuth = ({
                     setView('social_onboarding');
                     setErrorMsg('');
                 } else if (error?.message === 'NOT_PERSONAL_ACCOUNT') {
-                    setErrorMsg('이미 다른 방식으로 등록된 계정입니다. 기존 로그인 방법을 이용해주세요.');
+                    setErrorMsg("이미 기존 기록이 있는 계정입니다. 첫 화면에서 다시 시작해 '기존 진도·달란트 이어보기'를 선택해주세요.");
                     if (popupUid && auth.currentUser?.uid === popupUid) {
                         setCurrentUser(null);
                         setTempUser(null);
@@ -904,7 +904,7 @@ export const useAuth = ({
                 console.error('카카오 커스텀 토큰 처리 실패:', error);
                 if (!alive) return;
                 if (error?.message === 'NOT_MEMBER_ACCOUNT') {
-                    setErrorMsg('이미 다른 방식으로 등록된 계정입니다. 기존 로그인 방법을 이용해주세요.');
+                    setErrorMsg("이미 기존 기록이 있는 계정입니다. 첫 화면에서 다시 시작해 '기존 진도·달란트 이어보기'를 선택해주세요.");
                     await auth.signOut().catch(() => {});
                 } else {
                     setErrorMsg(`카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요. (진단: TOKEN_${describeKakaoAuthError(error)})`);
@@ -1682,12 +1682,12 @@ export const useAuth = ({
                                 return finalResult;
                             }
                             if (resumedDoc.exists) {
-                                setErrorMsg('이미 다른 유형으로 등록된 이메일입니다. 기존 로그인 화면을 이용해주세요.');
+                                setErrorMsg('이미 등록된 계정입니다. 첫 화면에서 카카오 또는 구글로 로그인한 뒤 기존 기록 이어보기를 이용해주세요.');
                                 return finalResult;
                             }
                         } catch (resumeError) {
                             console.error('기존 이메일 교회 등록 재개 실패:', resumeError);
-                            setErrorMsg('이미 사용 중인 이메일입니다. 비밀번호를 확인하거나 관리자 로그인에서 먼저 로그인해주세요.');
+                            setErrorMsg('이미 사용 중인 이메일입니다. 첫 화면에서 카카오 또는 구글로 로그인한 뒤 기존 기록 이어보기를 이용해주세요.');
                             return finalResult;
                         }
                     } else if (createError?.code === 'auth/weak-password') {

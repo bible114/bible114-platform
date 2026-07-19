@@ -116,7 +116,7 @@ const guestReader = read('src/components/GuestReaderView.jsx');
 
 for (const text of ['5초만에 빠른 시작', '카카오로 시작', '구글로 시작', '기존 진도·달란트를 연결', '공동체 등록하기']) assert.match(login, new RegExp(text.replace(/[()]/g, '\\$&')));
 for (const text of ['공동체 등록이란?', '성도이신가요?', '무료 · 약 5분 소요']) assert.match(login, new RegExp(text.replace(/[()?]/g, '\\$&')));
-assert.match(read('src/App.jsx'), /공동체 등록 완료![\s\S]*성도용 가입 안내문 인쇄\(QR\)/);
+assert.match(read('src/App.jsx'), /공동체 등록 완료![\s\S]*성도용 로그인·가입 안내문 인쇄\(QR\)/);
 assert.doesNotMatch(settings, /우리 교회 로그인 링크|\?church=/);
 assert.match(dashboard, /quizContent=\{\(/);
 assert.match(reader, /quizContent[\s\S]*tut-read-btn/);
@@ -196,7 +196,7 @@ assert.match(shop, /★ 기준 공동체는 바뀌지 않아요/);
 assert.match(header, /title="공동체 관리">⚙️ <span>관리<\/span>/);
 assert.match(socialBanner, /\['member', 'churchAdmin'\]\.includes/);
 assert.doesNotMatch(settings, /GoogleLinkCard/);
-assert.doesNotMatch(login, /교회 관리자/);
+assert.doesNotMatch(login, /setActiveTab\('admin'\)/);
 assert.match(authFlow, /\['member', 'churchAdmin'\]\.includes\(data\.role\)/);
 assert.match(socialOnboarding, /getVisibleBibleVersions\(planType, \{ \.\.\.tempUser, name \}\)/);
 assert.doesNotMatch(socialOnboarding, /\(BIBLE_VERSIONS\[planType\] \|\| \[\]\)\.map/);

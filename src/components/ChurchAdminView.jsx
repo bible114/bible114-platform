@@ -1355,16 +1355,16 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
   @page { size: A4 portrait; margin: 15mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; color: #1e293b; }
-  .header { text-align: center; margin-bottom: 7mm; }
-  .header h1 { font-size: 34px; }
-  .header p { font-size: 17px; color: #475569; margin-top: 2.5mm; }
-  .qr { text-align: center; border: 2px solid #cbd5e1; border-radius: 16px; padding: 6mm; margin-bottom: 7mm; }
-  .qr img { width: 55mm; height: 55mm; }
+  .header { text-align: center; margin-bottom: 4mm; }
+  .header h1 { font-size: 32px; }
+  .header p { font-size: 16px; color: #475569; margin-top: 1.5mm; }
+  .qr { text-align: center; border: 2px solid #cbd5e1; border-radius: 16px; padding: 4mm; margin-bottom: 4mm; }
+  .qr img { width: 45mm; height: 45mm; }
   .qr .big { font-size: 20px; font-weight: 800; margin-top: 2mm; }
   .qr .url { font-size: 14px; color: #64748b; margin-top: 1.5mm; word-break: break-all; }
-  .section { margin-bottom: 6mm; }
-  .section h2 { font-size: 21px; background: #f1f5f9; border-radius: 10px; padding: 2.5mm 4mm; margin-bottom: 3mm; }
-  .step { display: flex; gap: 4mm; align-items: baseline; font-size: 18px; line-height: 1.55; margin-bottom: 2.5mm; padding-left: 2mm; }
+  .section { margin-bottom: 4mm; }
+  .section h2 { font-size: 20px; background: #f1f5f9; border-radius: 10px; padding: 2mm 4mm; margin-bottom: 2mm; }
+  .step { display: flex; gap: 3mm; align-items: baseline; font-size: 17px; line-height: 1.45; margin-bottom: 1.8mm; padding-left: 2mm; }
   .num { font-weight: 900; color: #7c3aed; flex-shrink: 0; }
   .code { font-size: 22px; font-weight: 900; letter-spacing: 2px; background: #fef3c7; border: 1.5px dashed #d97706; border-radius: 8px; padding: 1mm 4mm; }
   .code.blank { min-width: 30mm; display: inline-block; }
@@ -1375,6 +1375,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
   .device .step { font-size: 16px; gap: 2.5mm; margin-bottom: 1.8mm; padding-left: 0; }
   .share-icon { border: 1.5px solid #64748b; border-radius: 4px; padding: 0 1.5mm; white-space: nowrap; }
   .highlight { background: #ecfdf5; border: 1.5px solid #34d399; border-radius: 12px; padding: 3.5mm 4mm; font-size: 17px; font-weight: 700; color: #065f46; margin-top: 3mm; break-inside: avoid; }
+  .legacy-alert { background: #fff1f2; border: 2px solid #fb7185; border-radius: 12px; padding: 2.5mm 4mm; margin-bottom: 2mm; font-size: 16px; line-height: 1.4; color: #9f1239; break-inside: avoid; }
   .page-two { break-before: page; page-break-before: always; padding-top: 2mm; }
   .page-two .section { break-inside: avoid; margin-bottom: 8mm; }
   .page-two .section h2 { font-size: 23px; }
@@ -1392,11 +1393,12 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
       <div class="url">인터넷 주소: ${esc(SITE_URL)}</div>
     </div>
     <div class="section">
-      <h2>1️⃣ 처음 오신 분 — 카카오·구글로 시작</h2>
+      <h2>1️⃣ 카카오·구글로 시작</h2>
+      <div class="legacy-alert"><b>기존 성도님:</b> 새로 가입하거나 교회를 다시 찾지 마세요. 소셜 로그인 뒤 <b>"기존 진도·달란트 이어보기"</b>를 누르면 기록이 그대로 연결됩니다.</div>
       <div class="step"><span class="num">①</span><span>QR로 접속한 뒤 <b>카카오로 시작</b> 또는 <b>구글로 시작</b>을 눌러주세요</span></div>
-      <div class="step"><span class="num">②</span><span>새로 가입한다면 <b>처음 시작하기</b> → 이름·생년월일을 입력해주세요</span></div>
-      <div class="step"><span class="num">③</span><span>함께 읽는 단체에서 <b>"${churchName}"</b>을 찾아 선택해주세요</span></div>
-      <div class="step"><span class="num">④</span><span>예전 기록이 있다면 <b>기존 진도·달란트 이어보기</b>를 먼저 누르세요 · 기존 비밀번호 문의: ${codeBlock}</span></div>
+      <div class="step"><span class="num">②</span><span><b>기존 성도</b>: <b>기존 진도·달란트 이어보기</b> → 기존 교회·이름·생년월일·비밀번호를 한 번 확인</span></div>
+      <div class="step"><span class="num">③</span><span><b>신규 성도만</b>: <b>처음 시작하기</b> → 이름·생년월일 입력 → <b>"${churchName}"</b> 찾기</span></div>
+      <div class="step"><span class="num">④</span><span>신규 성도의 교회 입장코드: ${codeBlock}</span></div>
     </div>
     <div class="section">
       <h2>2️⃣ 홈 화면에 추가 — 다음부터 한 번에 열려요</h2>
@@ -1492,12 +1494,13 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
   </ul></div>
 
   <div class="sec"><h2>⚙️ 설정 — 인쇄물 · 입장코드</h2><ul>
-    <li><b>성도용 가입 안내문 인쇄</b>: QR + 가입 방법이 담긴 A4 — 새 성도에게 나눠주세요.</li>
+    <li><b>성도용 로그인·가입 안내문 인쇄</b>: 기존 성도의 기록 연결과 신규 성도의 가입 방법이 담긴 A4 — 전체 성도에게 다시 안내해주세요.</li>
     <li>교회 입장코드 변경도 여기서 해요 (가입할 때 교인이 입력하는 코드). <b>코드를 입력·변경한 바로 그 자리에서 안내문을 인쇄</b>하면 자동으로 들어갑니다.</li>
   </ul></div>
 
   <div class="sec"><h2>❓ 자주 묻는 질문</h2><ul>
-    <li><b>교인이 로그인이 안 된대요</b> → 전에 연결한 카카오·구글 버튼이 맞는지 확인하세요. 아직 연결 전이면 소셜 로그인 → 기존 진도·달란트 이어보기에서 이름·생년월일을 확인하고, 필요하면 비밀번호를 재설정하세요.</li>
+    <li><b>기존 성도가 어떻게 들어가나요?</b> → 카카오·구글 시작 → <b>기존 진도·달란트 이어보기</b>입니다. "처음 시작하기"와 교회 찾기는 누르지 않도록 안내하세요.</li>
+    <li><b>교인이 로그인이 안 된대요</b> → 전에 연결한 카카오·구글 버튼이 맞는지 확인하세요. 아직 연결 전이면 기존 교회·이름·생년월일을 확인하고, 필요하면 임시 비밀번호를 재설정하세요.</li>
     <li><b>가입 안내문의 입장코드 칸이 비어 있어요</b> → 코드는 원문을 저장하지 않아요. 설정에서 코드를 입력·변경한 직후 인쇄하거나 빈칸에 직접 적어주세요.</li>
     <li><b>교인이 날짜가 밀렸대요</b> → 밀린 날부터 이어 읽으면 됩니다. 읽기 불이익은 없고 연속 보너스만 다시 시작해요. 날짜는 성도 화면의 📅 날짜 설정에서 맞출 수 있어요.</li>
     <li><b>수령 완료를 잘못 눌렀어요</b> → 해당 구매를 취소·환불해 달란트를 돌려준 뒤 다시 처리해주세요.</li>

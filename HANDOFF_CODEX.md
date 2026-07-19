@@ -184,6 +184,7 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-19 | T138 기존 성도 전환 공지·안내 전수 개정 | `src/{App.jsx,hooks/useAuth.js,components/{LoginView,ChurchAdminView}.jsx}`, `src/components/{admin/GoogleLinkCard,churchAdmin/SettingsTab,dashboard/PersonalAccountMigrationCard,modals/ReadingGuideModal}.jsx`, `scripts/validate-{social-only-login,round18,round29}.mjs`, `test-artifacts/{existing-member-notice-mobile,existing-member-guide-updated}.png` | 비로그인 첫 화면에서 기기·공지 버전당 한 번 자동으로 뜨는 기존 성도 전용 팝업을 추가하고, 닫은 뒤에도 `기존 성도 안내 다시 보기`로 재확인할 수 있게 했다. 기존 성도는 새 가입·교회 검색을 하지 않고 `카카오/구글 → 기존 진도·달란트 이어보기 → 예전 정보 1회 확인`, 신규 성도만 `처음 시작하기 → 교회 찾기`를 이용하도록 첫 화면·FAQ·개인 전환·오류 안내·관리자 설정/매뉴얼·성도 인쇄 안내를 전수 통일했다. A4 안내문은 기존/신규 경로와 신규 전용 입장코드를 분리했고 2면 모두 794×1123 overflow 0, 모바일 390×844 팝업은 버튼까지 화면 안에 들어옴을 실제 렌더와 스크린샷으로 확인했다. 전체 validate(platform-api 446/446)·build·diff-check 통과. rules·서버·운영 데이터 변경 및 웹 배포·push 없음. |
 | 2026-07-19 | T137 카카오·구글 전용 로그인·기존 기록 연결 | `src/{App.jsx,hooks/useAuth.js,components/{LoginView,SocialOnboardingView,ChurchAdminView}.jsx}`, `src/components/modals/ReadingGuideModal.jsx`, `scripts/validate-{social-only-login,round11,round18,round29}.mjs`, `package.json`, `test-artifacts/{login-social-only-mobile,admin-signup-social-only-mobile}.png` | 일반 첫 화면의 이름·생년월일·비밀번호 및 관리자 이메일 로그인 입구를 제거하고 카카오·구글만 남겼다. 미등록 소셜 인증 뒤 `기존 진도·달란트 이어보기`에서 성도 또는 관리자 legacy 자격을 한 번 확인한 후 **기존 UID에** Google credential 또는 Kakao link를 연결한다. users 문서가 있는 인증 계정은 절대 삭제하지 않고, 방금 만든 users 문서 없는 소셜 Auth 계정만 source-server 확인 후 정리한다. Google 동일 이메일의 `account-exists-with-different-credential`도 기존 기록 연결 전용으로 회수한다. 신규 공동체 등록도 소셜 계정 선택을 필수화하고 이메일·비밀번호 등록을 제거했다. 도움말·FAQ·성도 인쇄 안내·관리자 매뉴얼을 새 흐름에 맞췄다. 390×844 실제 DOM/스크린샷에서 첫 화면 소셜 버튼만 노출, 공동체 등록의 소셜 미선택 진행 차단을 확인했다. 전체 validate(platform-api 446/446)·build·diff-check 통과. OAuth 최종 승인과 실제 기존 계정 연결은 운영 계정 변경을 피하려고 미실행했고 웹 배포·push 없음. |
 | 2026-07-19 | T136 초보 성도 모바일 2차 점검·개선 | `src/components/{GuestReaderView,DashboardView}.jsx`, `src/components/dashboard/{BibleReader,DashboardHeader,DailyVideoCard,BibleQuizCard,MemoSection,index}.js{x,}`, `scripts/validate-novice-mobile-controls.mjs`, `package.json` | 공개 375px과 로컬 320px에서 추가 점검해 ① 게스트 번역 선택창이 긴 옵션 때문에 화면 밖으로 밀리는 문제 ② 가입/나가기·날짜 이동·글씨/속도·영상 전환/구간·퀴즈 건너뛰기·묵상 기록 보기의 작은 터치 영역 ③ 느린 본문 로딩이 멈춘 화면처럼 보이는 문제를 수정했다. 번역 선택은 모바일 세로 배치·전체 폭·명시 라벨, 핵심 조작은 최소 44px, 로딩은 이유와 대기 행동을 안내한다. 회원 전용 `TalentShop`을 지연 로딩해 메인 번들을 500.65→483.34kB로 줄이고 빌드 경고를 제거했다. 320×700 실제 DOM에서 긴 번역 옵션·DAY 이동·본문·조작부를 확인했고 전용 검사·round15/18·reading-flow·build·diff-check 통과. rules·서버·운영 데이터 변경 없음. |
 | 2026-07-19 | T134~T135·컴퓨터 초보 성도 실사용 UX 보완·퀴즈 선택화 | `src/components/{LoginView,DashboardView,GuestReaderView,TutorialOverlay,ChurchAdminView}.jsx`, `src/components/dashboard/{BibleReader,BibleQuizCard,TalentShop,DashboardHeader,HomeScreenHelpBanner}.jsx`, `src/components/modals/ReadingGuideModal.jsx`, `src/hooks/{useTTS,useUserBibleActions}.js`, `index.html`, 검증 스크립트·안내문 | **퀴즈는 완전히 선택 사항**으로 확정해 현재 DAY의 `읽기 완료`가 퀴즈 상태와 무관하게 바로 진행되도록 gate를 제거했다. 다른 DAY는 둘러보기만 허용하고 내 진도로 돌아가는 버튼을 제공한다. 로그인 직행·도움말/FAQ 우선·오류별 안내·교회 문의 경로·홈 화면 추가 1회 안내·TTS/본문/퀴즈 재시도·상점 잠금/수령/환불 설명·모바일 광고 비가림·44px 터치 영역을 보강했다. 성도 FAQ 7항목과 관리자 FAQ 8항목, 입장코드 변경 직후 인쇄 안내를 완료했다. 375×812 브라우저에서 로그인·FAQ·게스트 본문·다른 DAY·모바일 광고 위치를 확인했고, 안내문 기존 2면 스크린샷을 재대조했다. `npm run validate`(platform-api 446/446)·build·diff-check 통과. rules·서버·운영 데이터 변경, 웹 배포·push 없음. |
@@ -394,6 +395,11 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-19 T138 기존 성도 전환 공지·안내 전수 개정 완료:
+- 신규 가입은 `소셜 로그인 → 처음 시작하기 → 교회 찾기`, 기존 성도는 `소셜 로그인 → 기존 진도·달란트 이어보기 → 예전 정보 1회 확인`으로 분리했다. 기존 성도에게 새 가입이나 교회 검색을 지시하는 문구는 첫 화면·FAQ·개인 계정 전환·오류 메시지·관리자 설정/매뉴얼·성도 인쇄물에서 제거했다.
+- 비로그인 첫 화면에 기기·공지 버전당 1회 자동 공지 팝업을 추가했고, 배너의 `기존 성도 안내 다시 보기`로 언제든 다시 열 수 있다. localStorage 실패 시에도 화면을 막지 않는다.
+- 390×844 모바일 팝업과 A4 2면 인쇄물을 실제 렌더링했다. 인쇄물 두 면 모두 overflow 0이며 입장코드는 신규 성도 전용임을 분리했다. rules·서버·운영 데이터 변경, 배포·push 없음. T132 날짜·승인 게이트는 그대로다.
 
 2026-07-19 T137 카카오·구글 전용 로그인 완료:
 - 일반 성도·관리자 legacy 로그인 입구와 신규 관리자 이메일·비밀번호 등록을 UI에서 제거했다. 신규/기존 모두 첫 화면에서 카카오 또는 구글로 시작한다.
@@ -2572,6 +2578,13 @@ Codex의 5개 질문에 대한 확정 답:
 - 예전 password 계정은 미등록 소셜 인증 뒤 기존 정보로 한 번 본인 확인하고 기존 UID에 공급자를 연결해 진도·달란트·역할을 보존한다.
 - 신규 공동체 관리자 등록도 카카오·구글 계정 선택을 필수화하며, 도움말·FAQ·인쇄 안내를 새 흐름과 일치시킨다.
 - users 문서가 있는 Auth 계정은 삭제하지 않고 신규 빈 소셜 Auth만 서버 원본 확인 후 정리한다. 전용 회귀 검사·전체 validate·build·모바일 실제 화면 확인을 통과한다.
+
+### [x] T138. 기존 성도 전환 공지·안내 전수 개정 (2026-07-19 사용자 지시)
+
+- 비로그인 첫 화면에 기존 성도 대상 1회 공지 팝업과 상시 다시 보기 버튼을 제공한다.
+- 기존 성도는 새 가입·교회 검색 대신 소셜 로그인 뒤 `기존 진도·달란트 이어보기`를 이용한다고 명확히 안내한다. 신규 성도만 `처음 시작하기 → 교회 찾기`를 이용한다.
+- 첫 화면·FAQ·개인 전환·인증 오류·관리자 설정/매뉴얼·성도 인쇄 안내를 전수 점검하고 새 흐름으로 통일한다.
+- 모바일 390px 공지 팝업과 A4 2면 안내문의 잘림·재열기·공지 1회 동작을 실제 화면에서 확인하고 전용 회귀 검사·build를 통과한다.
 
 ### [ ] T132. T127 최종 차단 시퀀스 (**2026-07-24 19:00:53 KST 이후 + 사용자 명시 승인 후에만**)
 

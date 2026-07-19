@@ -39,6 +39,9 @@ for (const pattern of [
     /상품은 교회에서 받아요/,
     /물음표\(\?\) 버튼/,
     /교회 관리자\(담당 선생님\)/,
+    /기존 성도님:[\s\S]*새로 가입하거나 교회를 다시 찾지 마세요/,
+    /신규 성도만[\s\S]*처음 시작하기/,
+    /신규 성도의 교회 입장코드/,
 ]) assert.match(guide, pattern);
 
 assert.equal((guide.match(/<main/g) || []).length, 2, '가입 안내문은 정확히 A4 2면이어야 한다.');
@@ -47,6 +50,7 @@ assert.match(guide, /window\.onload = function\(\)\{ window\.print\(\); \}/);
 assert.doesNotMatch(churchAdmin, /매일 사용법 인쇄/, '매일 사용법을 별도 인쇄 버튼으로 분리하면 안 된다.');
 
 for (const adminFaqText of [
+    '기존 성도가 어떻게 들어가나요?',
     '교인이 로그인이 안 된대요',
     '가입 안내문의 입장코드 칸이 비어 있어요',
     '교인이 날짜가 밀렸대요',
