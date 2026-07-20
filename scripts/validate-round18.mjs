@@ -79,6 +79,7 @@ const quiz = read('src/components/dashboard/BibleQuizCard.jsx');
 const quizSubmission = read('supabase/functions/platform-api/quizSubmission.ts');
 const header = read('src/components/dashboard/DashboardHeader.jsx');
 const achievements = read('src/components/modals/AchievementsModal.jsx');
+const calendarModal = read('src/components/modals/CalendarModal.jsx');
 const actions = read('src/hooks/useUserBibleActions.js');
 const userStateSync = read('src/utils/userStateSync.js');
 const rosterSource = read('src/utils/roster.js');
@@ -169,6 +170,9 @@ assert.match(achievements, /h-\[100dvh\][\s\S]*overflow-y-auto/, '모바일 업�
 assert.match(achievements, /min-h-0 flex-1 overflow-y-auto/, '업적 목록만 스크롤되고 하단 닫기 버튼은 고정되어야 한다.');
 assert.match(achievements, /role="dialog"[\s\S]*aria-modal="true"/, '업적 창은 접근 가능한 모달이어야 한다.');
 assert.match(achievements, /document\.body\.style\.overflow = 'hidden'/, '업적 창이 열리면 배경 스크롤을 막아야 한다.');
+assert.match(calendarModal, /while \(days\.length < 42\) days\.push\(null\)/, '달을 넘겨도 캘린더 높이가 바뀌지 않아야 한다.');
+assert.match(calendarModal, /if \(!day\) return <div key=\{idx\} className="aspect-square"/, '빈 날짜 칸도 같은 높이를 유지해야 한다.');
+assert.match(calendarModal, /z-\[160\]/, '읽기 캘린더는 상단 메뉴보다 위에 표시되어야 한다.');
 assert.doesNotMatch(actions, /\{ \.\.\.previous, \.\.\.response\.state\.user \}/);
 assert.match(actions, /loadCanonicalUserStateFromServer\(uid\)/);
 assert.match(userStateSync, /loadCanonicalRosterRefsFromServer/);

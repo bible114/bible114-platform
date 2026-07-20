@@ -21,6 +21,8 @@ const CalendarModal = ({
     const days = [];
     for (let i = 0; i < firstDay; i++) days.push(null);
     for (let i = 1; i <= daysInMonth; i++) days.push(i);
+    // 모든 달을 6주(42칸) 높이로 유지해 월 이동 시 모달이 위아래로 흔들리지 않게 한다.
+    while (days.length < 42) days.push(null);
 
     const getDateFromItem = (item) => typeof item === 'string' ? item : item.date;
 
@@ -41,7 +43,7 @@ const CalendarModal = ({
     }).length;
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div className="fixed inset-0 z-[160] bg-black/50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
             <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-4 border-b pb-2">
                     <h3 className="text-xl font-bold text-slate-800">📅 읽기 캘린더</h3>
@@ -63,7 +65,7 @@ const CalendarModal = ({
                     </div>
                     <div className="grid grid-cols-7 gap-1">
                         {days.map((day, idx) => {
-                            if (!day) return <div key={idx}></div>;
+                            if (!day) return <div key={idx} className="aspect-square" aria-hidden="true"></div>;
                             const isToday = isCurrentMonth && day === today.getDate();
                             const didRead = readDaysThisMonth.indexOf(day) !== -1;
                             const dayOfWeek = new Date(year, month, day).getDay();
