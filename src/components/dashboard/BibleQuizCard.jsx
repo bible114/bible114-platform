@@ -97,18 +97,15 @@ const resolveQuizKey = async (quizKey, currentUser, viewingDay) => {
         return {
             quiz: shuffleQuizChoices({ ...QUIZ_BANK[index], key: quizKey }),
             quizKey,
-            badge: '성경 상식 문제',
         };
     }
 
     if (quizKey.startsWith('ntEasy-')) {
         const quiz = await loadNtEasyQuestionByKey(quizKey);
         if (!quiz) return null;
-        const range = getReadingRangeForDay(currentUser, viewingDay);
         return {
             quiz,
             quizKey,
-            badge: `오늘 본문에서 쉬운 문제로 나왔어요 · ${range.displayText || range.sourceText || '오늘 본문'}`,
         };
     }
 
@@ -117,7 +114,6 @@ const resolveQuizKey = async (quizKey, currentUser, viewingDay) => {
     return {
         quiz,
         quizKey,
-        badge: '오늘 읽은 본문에서 나왔어요',
     };
 };
 
@@ -134,7 +130,6 @@ const buildDayQuiz = async (currentUser, viewingDay) => {
                 return {
                     quiz: easyQuiz,
                     quizKey: easyQuiz.key,
-                    badge: `오늘 본문에서 쉬운 문제로 나왔어요 · ${range.displayText || range.sourceText || '오늘 본문'}`,
                 };
             }
             console.warn('신약일독 쉬운 문제 풀이 비어 있어 표준 문제로 전환합니다.', { actualDay: range.actualDay });
@@ -149,7 +144,6 @@ const buildDayQuiz = async (currentUser, viewingDay) => {
         return {
             quiz: selected,
             quizKey: selected.key,
-            badge: `오늘 읽은 본문에서 나왔어요 · ${range.displayText || range.sourceText || '오늘 본문'}`,
         };
     }
     return null;
@@ -255,7 +249,7 @@ const BibleQuizCard = ({
         setSkipped(nextSkipped);
     }, [currentUser?.uid, persistedSkipped, skipStorageKey]);
 
-    const [quizState, setQuizState] = useState({ loading: true, quiz: null, quizKey: null, badge: '', error: '' });
+    const [quizState, setQuizState] = useState({ loading: true, quiz: null, quizKey: null, error: '' });
     const [quizReloadToken, setQuizReloadToken] = useState(0);
     const [selectedIndex, setSelectedIndex] = useState(null);
     const [feedback, setFeedback] = useState(() => {
@@ -292,10 +286,10 @@ const BibleQuizCard = ({
 
         const loadQuiz = async () => {
             if (!currentUser || currentUser.role === 'guest') {
-                if (!cancelled) setQuizState({ loading: false, quiz: null, quizKey: null, badge: '', error: '' });
+                if (!cancelled) setQuizState({ loading: false, quiz: null, quizKey: null, error: '' });
                 return;
             }
-            setQuizState({ loading: true, quiz: null, quizKey: null, badge: '', error: '' });
+            setQuizState({ loading: true, quiz: null, quizKey: null, error: '' });
             try {
                 const savedKey = progress?.quizKey || null;
                 const resolved = savedKey ? await resolveQuizKey(savedKey, currentUser, progressDay) : null;
@@ -303,11 +297,11 @@ const BibleQuizCard = ({
                 if (!cancelled) {
                     setQuizState(nextQuiz
                         ? { loading: false, ...nextQuiz, error: '' }
-                        : { loading: false, quiz: null, quizKey: null, badge: '', error: '오늘 퀴즈를 아직 준비하지 못했어요.' });
+                        : { loading: false, quiz: null, quizKey: null, error: '오늘 퀴즈를 아직 준비하지 못했어요.' });
                 }
             } catch (e) {
                 console.error('본문 기반 퀴즈 로딩 실패:', e);
-                if (!cancelled) setQuizState({ loading: false, quiz: null, quizKey: null, badge: '', error: '퀴즈를 불러오지 못했어요. 읽기 완료는 그대로 할 수 있습니다.' });
+                if (!cancelled) setQuizState({ loading: false, quiz: null, quizKey: null, error: '퀴즈를 불러오지 못했어요. 읽기 완료는 그대로 할 수 있습니다.' });
             }
         };
 
@@ -595,9 +589,6 @@ const BibleQuizCard = ({
             </div>
             <div className="flex items-start justify-between gap-4 mb-4">
                 <div>
-                    <div className="mb-2 inline-flex rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-black text-indigo-600">
-                        {quizState.badge || '성경 상식 문제'}
-                    </div>
                     <h2 className="text-lg font-black text-slate-800 leading-snug">
                         {quizState.loading ? '문제를 준비하고 있어요...' : quiz?.q}
                     </h2>
