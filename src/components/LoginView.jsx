@@ -11,6 +11,7 @@ import { GuardianConsent, PolicyConsent, PolicyDialog } from './policies';
 import { SERVICE_POLICIES, createEmptyPolicyConsents, isPolicyConsentComplete } from '../data/servicePolicies';
 import { validateSignupConsent } from '../utils/signupConsent';
 import { normalizeChurchEntryCode } from '../utils/entryCode';
+import { KAKAO_RETURNING_KEY } from '../utils/kakaoAuth';
 
 // ─── Daily verse data ─────────────────────────────────────────────────────────
 const DAILY_VERSES = [
@@ -35,6 +36,17 @@ const todayVerse = () => {
 };
 
 const MEMBER_LOGIN_RECHECK_MESSAGE = '이름·생년월일·비밀번호를 다시 확인해주세요. 계속 안 되면 비밀번호 찾기·문의를 눌러 도움을 받으세요.';
+
+const isPendingKakaoLoginReturn = () => {
+    if (typeof window === 'undefined') return false;
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const hasCallback = params.has('code') || params.has('error');
+        return hasCallback && sessionStorage.getItem(KAKAO_RETURNING_KEY) === 'pending';
+    } catch {
+        return false;
+    }
+};
 
 // ─── Mock live feed data ───────────────────────────────────────────────────────
 // ─── (PLATFORM mock 제거 — Firestore에서 실시간 로드) ─────────────────────────
@@ -219,6 +231,8 @@ const LoginView = ({
     const [showReadingGuide, setShowReadingGuide] = useState(false);
     const [showExistingMemberNotice, setShowExistingMemberNotice] = useState(false);
     const [openPublicPolicyId, setOpenPublicPolicyId] = useState(null);
+    const pendingKakaoReturnRef = useRef(isPendingKakaoLoginReturn());
+    const [loginTransitioning, setLoginTransitioning] = useState(pendingKakaoReturnRef.current);
 
     // Platform stats (Firestore)
     const [stats, setStats] = useState({
@@ -313,6 +327,12 @@ const LoginView = ({
     const [kakaoAdminSignupLoading, setKakaoAdminSignupLoading] = useState(false);
     const [googleAdminSignupProfile, setGoogleAdminSignupProfile] = useState(null);
     const [guestMigrationPreview, setGuestMigrationPreview] = useState(null);
+
+    useEffect(() => {
+        if (!pendingKakaoReturnRef.current || !errorMsg) return;
+        pendingKakaoReturnRef.current = false;
+        setLoginTransitioning(false);
+    }, [errorMsg]);
 
     // 첫 화면 입구 선택: 'entry'(교회와 함께 / 혼자 읽기 카드) → 'form'(로그인 폼).
     // 재방문자는 preselect(URL 파라미터·최근 교회)가 있으면 바로 'form'으로 건너뛴다.
@@ -535,25 +555,37 @@ const LoginView = ({
         }
         if (isLoginUnaffiliated && !/^\d{4}$/.test(loginPhone4.trim())) { setErrorMsg('전화번호 뒤 4자리를 입력해주세요.'); return; }
         setLoading(true);
-        await onMemberLogin(loginName.trim(), loginBirthdateDigits, loginPw, loginChurchId, loginPhone4.trim());
-        setLoading(false);
+        setLoginTransitioning(true);
+        try {
+            await onMemberLogin(loginName.trim(), loginBirthdateDigits, loginPw, loginChurchId, loginPhone4.trim());
+        } finally {
+            setLoginTransitioning(false);
+            setLoading(false);
+        }
     };
 
     const handleAdminLogin = async (e) => {
         e.preventDefault();
         if (!loginEmail.trim() || !loginPw.trim()) { setErrorMsg('이메일과 비밀번호를 입력해주세요.'); return; }
         setLoading(true);
-        await onChurchAdminLogin(loginEmail.trim(), loginPw);
-        setLoading(false);
+        setLoginTransitioning(true);
+        try {
+            await onChurchAdminLogin(loginEmail.trim(), loginPw);
+        } finally {
+            setLoginTransitioning(false);
+            setLoading(false);
+        }
     };
 
     const handleGoogleAdminLogin = async () => {
         clearError();
         setLoading(true);
         setGoogleAdminLoading(true);
+        setLoginTransitioning(true);
         try {
             await onGoogleAdminLogin();
         } finally {
+            setLoginTransitioning(false);
             setGoogleAdminLoading(false);
             setLoading(false);
         }
@@ -665,8 +697,9 @@ const LoginView = ({
 
     const handleGoogleAccountStart = async () => {
         clearError(); setLoading(true); setGooglePersonalLoading(true);
+        setLoginTransitioning(true);
         try { await onGooglePersonalSignup(); }
-        finally { setGooglePersonalLoading(false); setLoading(false); }
+        finally { setLoginTransitioning(false); setGooglePersonalLoading(false); setLoading(false); }
     };
 
     const handleGooglePersonalSignup = async () => {
@@ -679,6 +712,7 @@ const LoginView = ({
 
     const handleKakaoAccountStart = async () => {
         clearError(); setLoading(true); setKakaoLoading(true);
+        setLoginTransitioning(true);
         try { await onKakaoStart(); }
         finally { setKakaoLoading(false); setLoading(false); }
     };
@@ -687,6 +721,7 @@ const LoginView = ({
         const consentResult = validateSignupConsent({ birthdate: pBirthdate, consents: personalConsentPayload(), audience: 'personal' });
         if (!consentResult.ok) { setErrorMsg('생년월일과 필수 동의 항목을 확인해주세요. 만 14세 미만은 보호자 동의가 필요합니다.'); return; }
         clearError(); setLoading(true); setKakaoLoading(true);
+        setLoginTransitioning(true);
         try { await onKakaoStart({ birthdate: pBirthdate, consents: personalConsentPayload() }); }
         finally { setKakaoLoading(false); setLoading(false); }
     };
@@ -1220,6 +1255,16 @@ const LoginView = ({
             className="min-h-screen bg-cream relative md:grid md:grid-cols-[1.15fr_1fr]"
             style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}
         >
+
+            {loginTransitioning && (
+                <div role="status" aria-live="polite" className="fixed inset-0 z-[200] flex items-center justify-center bg-cream px-6">
+                    <div className="text-center">
+                        <div className="mx-auto mb-5 h-12 w-12 animate-spin rounded-full border-4 border-accent/20 border-t-accent" aria-hidden="true" />
+                        <p className="font-serif text-2xl font-semibold text-ink">로그인 확인 중…</p>
+                        <p className="mt-2 text-sm text-ink/60">잠시만 기다려주세요.</p>
+                    </div>
+                </div>
+            )}
 
             {/* paper warmth gradient overlay */}
             <div className="absolute inset-0 pointer-events-none opacity-55"
