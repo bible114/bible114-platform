@@ -1075,6 +1075,7 @@ const PlatformAdminView = ({
                                         });
                                         return sorted.map((u, idx) => {
                                             const readToday = u.lastReadDate === todayStr;
+                                            const rc = u.readCount || 1;
                                             const totalDays = getDaysRead(u);
                                             const churchName = churches.find(c => c.id === u.churchId)?.name || u.churchName || '-';
                                             return (

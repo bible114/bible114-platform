@@ -56,6 +56,11 @@ assert.doesNotMatch(actions, /users[^\n]*\.set\([^\n]*\.\.\.currentUser/);
 assert.match(header, /grid-cols-\[minmax\(0,1fr\)_auto\]/);
 assert.doesNotMatch(header, /overflow-x-auto|scrollbar-hide|justify-between md:justify-end/);
 assert.match(header, /☰ <span>메뉴<\/span>[\s\S]*읽기 달력[\s\S]*읽기 날짜 설정[\s\S]*읽는 방법·FAQ/);
+assert.equal(
+    (platformAdmin.match(/const rc = u\.readCount \|\| 1;/g) || []).length,
+    2,
+    '공동체별 교인 목록과 전체 회원 목록 모두 읽기 회차를 행 안에서 계산해야 한다.',
+);
 
 // 기존 공동체의 입장코드 변경은 클라이언트 Firestore 쓰기가 아니라 서버
 // authority를 통해서만 수행해야 한다. 클라이언트는 서버 원본 version을 읽고,
