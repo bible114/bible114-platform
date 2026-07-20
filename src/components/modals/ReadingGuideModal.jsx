@@ -83,8 +83,7 @@ const ReadingGuideModal = ({ show, onClose, mode = 'guide' }) => {
                 )}
                 <div className="min-h-0 flex-1 space-y-3 overflow-y-auto text-sm">
                     {isFaq ? (
-                        <section aria-labelledby="member-faq-title" className="text-sm">
-                        <h4 id="member-faq-title" className="text-lg font-bold text-slate-800 mb-2">❓ 자주 묻는 질문</h4>
+                        <section aria-label="자주 묻는 질문 목록" className="text-sm">
                         <div className="space-y-2">
                             {MEMBER_FAQ_ITEMS.map(({ question, answer }, index) => (
                                 <details key={question} open={index === 0} className="group rounded-xl border border-slate-200 bg-white overflow-hidden">

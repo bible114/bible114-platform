@@ -92,11 +92,12 @@ assert.doesNotMatch(readingGuide, /며칠 밀렸어요|날짜가 안 맞아요|�
 assert.equal((readingGuide.match(/question: '/g) || []).length, 6, '성도용 FAQ는 정확히 6문항이어야 한다.');
 assert.match(readingGuide, /<details key=\{question\}/);
 assert.match(readingGuide, /<summary className="min-h-11[^"]*text-slate-700/);
-assert.match(readingGuide, /<section aria-labelledby="member-faq-title" className="text-sm">/);
+assert.match(readingGuide, /<section aria-label="자주 묻는 질문 목록" className="text-sm">/);
 assert.match(readingGuide, /mode = 'guide'/);
 assert.match(readingGuide, /const isFaq = mode === 'faq'/);
 assert.match(readingGuide, /\{isFaq \? '❓ 자주 묻는 질문' : '📖 성경통독 114 가이드'\}/);
-assert.match(readingGuide, /\{isFaq \? \([\s\S]*member-faq-title[\s\S]*\) : \([\s\S]*💡 성경통독 114란\?/);
+assert.match(readingGuide, /\{isFaq \? \([\s\S]*자주 묻는 질문 목록[\s\S]*\) : \([\s\S]*💡 성경통독 114란\?/);
+assert.equal((readingGuide.match(/❓ 자주 묻는 질문/g) || []).length, 1, 'FAQ 제목은 모달 상단에 한 번만 표시되어야 한다.');
 assert.doesNotMatch(readingGuide, /onStartTutorial|앱 화면 사용법 투어 시작하기/);
 assert.match(readingGuide, /role="dialog" aria-modal="true" aria-labelledby="reading-guide-title"/);
 assert.match(readingGuide, /max-h-\[92vh\] flex flex-col/);
