@@ -55,7 +55,7 @@
       "dependencies": [
         "npm:@vitejs/plugin-react@^4.3.1",
         "npm:autoprefixer@^10.4.19",
-        "npm:firebase@^10.13.0",
+        "npm:firebase@^12.16.0",
         "npm:gh-pages@^6.1.1",
         "npm:postcss@^8.4.40",
         "npm:qrcode@^1.5.4",

@@ -296,6 +296,9 @@ assert.match(existingPersonalFlow, /const openExistingPersonalUser = async \(fir
 assert.match(existingSocialFlow, /const openExistingSocialUser = async \(firebaseUser, doc, loginTiming = null\) => \{\s*if \(auth\.currentUser\?\.uid !== firebaseUser\.uid\) throw new Error\('SOCIAL_AUTH_CHANGED'\);\s*const data = doc\.data\(\)/);
 assert.match(existingPersonalFlow, /migratePersonalWallet\(user\)[\s\S]*auth\.currentUser\?\.uid !== firebaseUser\.uid[\s\S]*throw new Error\('SOCIAL_AUTH_CHANGED'\)[\s\S]*setCurrentUser\(user\)/);
 assert.match(existingSocialFlow, /migratePersonalWallet\(user\)[\s\S]*auth\.currentUser\?\.uid !== firebaseUser\.uid[\s\S]*throw new Error\('SOCIAL_AUTH_CHANGED'\)[\s\S]*setCurrentUser\(user\)/);
+assert.match(authFlow, /const canDeferPersonalWalletAudit = user => \{[\s\S]*user\.talentWalletMigrated !== true[\s\S]*user\.talent !== 0[\s\S]*primaryRoster\.talent <= 1_000_000_000/);
+assert.match(authFlow, /const auditPersonalWalletAfterLogin = user => \{[\s\S]*const initialExtraOrgs = user\.extraOrgs;[\s\S]*auth\.currentUser\?\.uid !== user\.uid[\s\S]*current\.extraOrgs !== initialExtraOrgs[\s\S]*extraOrgs: auditedUser\.extraOrgs/);
+assert.match(existingPersonalFlow, /user\.extraOrgs = await extraOrgsPromise;[\s\S]*const deferWalletAudit = canDeferPersonalWalletAudit\(user\);[\s\S]*if \(!deferWalletAudit\) user = await migratePersonalWallet\(user\);[\s\S]*setCurrentUser\(user\)[\s\S]*if \(deferWalletAudit\) auditPersonalWalletAfterLogin\(user\)/);
 
 const googlePersonalStart = authFlow.slice(
     authFlow.indexOf('const handleGooglePersonalSignup = async'),

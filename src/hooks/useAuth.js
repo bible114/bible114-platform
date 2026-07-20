@@ -100,6 +100,43 @@ export const useAuth = ({
             talentWalletMigrated: true,
         }, { [result.orgId]: result.talent });
     };
+
+    const canDeferPersonalWalletAudit = user => {
+        if (user?.accountType !== 'personal'
+            || user.talentWalletMigrated !== true
+            || user.talent !== 0
+            || !user.primaryOrgId
+            || !Array.isArray(user.extraOrgs)) {
+            return false;
+        }
+        const primaryRoster = user.extraOrgs.find(org => org?.orgId === user.primaryOrgId);
+        return Boolean(
+            primaryRoster
+            && Number.isSafeInteger(primaryRoster.talent)
+            && primaryRoster.talent >= 0
+            && primaryRoster.talent <= 1_000_000_000
+        );
+    };
+
+    const auditPersonalWalletAfterLogin = user => {
+        const initialExtraOrgs = user.extraOrgs;
+        void migratePersonalWallet(user).then(auditedUser => {
+            if (auth.currentUser?.uid !== user.uid) return;
+            setCurrentUser(current => {
+                if (current?.uid !== user.uid || current.extraOrgs !== initialExtraOrgs) return current;
+                return {
+                    ...current,
+                    talent: auditedUser.talent,
+                    talentWalletMigrated: auditedUser.talentWalletMigrated,
+                    extraOrgs: auditedUser.extraOrgs,
+                };
+            });
+        }).catch(error => {
+            if (auth.currentUser?.uid === user.uid) {
+                console.error('로그인 후 개인 달란트 지갑 감사 실패:', error);
+            }
+        });
+    };
     const googleAdminSignupFlowRef = useRef(null);
     const googleAdminSignupAttemptRef = useRef(0);
     const googleAdminSignupStartingRef = useRef(false);
@@ -306,12 +343,14 @@ export const useAuth = ({
             user.talentMigrated = true;
         }
         user.extraOrgs = await extraOrgsPromise;
-        user = await migratePersonalWallet(user);
+        const deferWalletAudit = canDeferPersonalWalletAudit(user);
+        if (!deferWalletAudit) user = await migratePersonalWallet(user);
         if (auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
         setCurrentUser(user);
         setTempUser(null);
         setView('dashboard');
         finishLoginTiming(loginTiming, 'dashboard');
+        if (deferWalletAudit) auditPersonalWalletAfterLogin(user);
         return true;
     };
 
