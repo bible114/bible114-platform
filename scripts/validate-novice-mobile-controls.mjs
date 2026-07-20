@@ -25,6 +25,8 @@ assert.match(reader, /!isCurrentProgressDay[\s\S]*다른 DAY 보는 중/);
 
 assert.match(header, /grid-cols-\[minmax\(0,1fr\)_auto\][\s\S]*group flex min-h-11 min-w-0[\s\S]*읽는 버전/);
 assert.match(header, /☰ <span>메뉴<\/span>[\s\S]*로그인·홈 화면 안내[\s\S]*로그아웃/);
+assert.match(header, /<header className="relative z-\[90\][\s\S]*공동체 선택/);
+assert.doesNotMatch(header, />\{currentOrganizationName \|\| '내 단체 관리'\}<\/span>/);
 assert.doesNotMatch(header, /md:flex-nowrap md:justify-end/);
 
 assert.equal((video.match(/min-h-11/g) || []).length >= 3, true);

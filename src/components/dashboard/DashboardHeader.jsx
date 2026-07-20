@@ -46,7 +46,7 @@ const DashboardHeader = ({
         .filter(membership => !sameMembership(membership, primaryMembership));
 
     return (
-        <header className="space-y-3 mb-4">
+        <header className="relative z-[90] mb-4 space-y-3">
             {/* 자주 확인하는 정보만 남기고, 조작 메뉴는 한곳에 모은다. */}
             <div className="bg-white/95 backdrop-blur-md border-b border-slate-200/60 shadow-sm">
                 <div className="mx-auto grid w-full max-w-5xl grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 py-2 md:flex md:gap-3">
@@ -80,7 +80,7 @@ const DashboardHeader = ({
                             ☰ <span>메뉴</span> <span aria-hidden="true" className="text-[10px]">▾</span>
                         </summary>
                         <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
-                            {onOpenMemberships && <button type="button" onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); onOpenMemberships(); }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50"><span>⛪</span><span className="min-w-0 flex-1 truncate">{currentOrganizationName || '내 단체 관리'}</span></button>}
+                            {onOpenMemberships && <button type="button" title={currentOrganizationName || undefined} onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); onOpenMemberships(); }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50"><span>⛪</span><span className="min-w-0 flex-1 truncate">공동체 선택</span></button>}
                             <button id="tut-achievements" type="button" onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); setShowAchievements(true); }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-yellow-50">🏅 나의 업적·기록</button>
                             <button type="button" onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); setShowCalendar(true); }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-green-50">📆 읽기 달력</button>
                             <button id="tut-date-settings" type="button" onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); setShowDateSettings(true); }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-purple-50">⚙️ 읽기 날짜 설정</button>
