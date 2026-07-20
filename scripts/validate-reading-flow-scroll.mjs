@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
-    getQuizTerminalSignalToken,
     scheduleScrollIntoView,
     scrollElementIntoView,
-    shouldScrollToReadAction,
     shouldScrollToReadingHeader,
 } from '../src/utils/readingFlowScroll.js';
 
@@ -15,24 +13,15 @@ const readerSource = readSource('src/components/dashboard/BibleReader.jsx');
 const tutorialSource = readSource('src/components/TutorialOverlay.jsx');
 const userBibleActionsSource = readSource('src/hooks/useUserBibleActions.js');
 
-assert.match(dashboardSource, /pendingQuizTerminalRef/);
+assert.doesNotMatch(dashboardSource, /pendingQuizTerminalRef|onQuizTerminal=|readActionRef/);
 assert.doesNotMatch(dashboardSource, /quizGate|setQuizGate|onQuizGateLocked/);
-assert.match(dashboardSource, /frameCount: 2/);
-assert.match(dashboardSource, /onQuizTerminal=\{handleQuizTerminal\}/);
-assert.match(
-    dashboardSource,
-    /const expectedContextKey = currentScrollContextRef\.current;[\s\S]*currentUserUidRef\.current === expectedUid[\s\S]*currentScrollContextRef\.current === expectedContextKey/,
-    '읽기 완료 뒤 예약된 이동도 같은 UID뿐 아니라 같은 읽기 문맥에 결속해야 합니다.',
-);
-assert.equal((quizCardSource.match(/onQuizTerminal\?\.\(/g) || []).length, 3,
-    '서버 원본으로 확정한 정답·2회 소진·건너뛰기 경로만 종료 신호를 보내야 합니다.');
-assert.match(quizCardSource, /outcome: 'solved'/);
-assert.match(quizCardSource, /outcome: freshProgress\.skipped \? 'skipped' : 'attemptsExhausted'/);
+assert.doesNotMatch(quizCardSource, /onQuizTerminal|outcome: 'solved'|outcome: 'attemptsExhausted'/);
 assert.match(readerSource, /ref=\{bibleHeaderRef\} id="tut-bible-header"/);
-assert.equal((readerSource.match(/ref=\{readActionRef\} id="tut-read-btn"/g) || []).length, 2);
+assert.equal((readerSource.match(/id="tut-read-btn"/g) || []).length, 2);
 assert.match(userBibleActionsSource, /const nextCompletionSummary = \{\s*uid,\s*requestId: response\.requestId,\s*completedDay:/);
 assert.match(userBibleActionsSource, /Number\(requestedDay\) !== Number\(currentProgressDay\)[\s\S]*return;[\s\S]*readSubmittingRef\.current = true/);
-assert.match(readerSource, /퀴즈는 선택입니다/);
+assert.doesNotMatch(readerSource, /선택 활동 · 퀴즈를 풀지 않아도/);
+assert.match(quizCardSource, /선택 퀴즈예요\. 풀지 않아도 읽기 완료를 누를 수 있어요/);
 assert.doesNotMatch(readerSource, /isQuizGateLocked|quizGateOpen/);
 assert.match(readerSource, /disabled=\{readSubmitting \|\| !isCurrentProgressDay\}/);
 assert.match(readerSource, /aria-label=\{`이전 본문 DAY/);
@@ -50,52 +39,6 @@ assert.ok(
 assert.doesNotMatch(dashboardSource, /오늘 말씀 DAY \{currentDay\} 바로가기/);
 assert.match(tutorialSource, /id: 'tut-quiz-area'[\s\S]*title: '오늘의 퀴즈 \(선택\)'/);
 assert.match(tutorialSource, /퀴즈를 풀거나 건너뛰지 않아도 읽기 완료와 다음 DAY 진행은 언제든 가능합니다/);
-
-const terminalSignal = {
-    uid: 'user-1',
-    progressKey: 'epoch0-cycle1-day7',
-    requestId: 'request-1',
-    outcome: 'solved',
-};
-const pendingTerminal = {
-    ...terminalSignal,
-    token: getQuizTerminalSignalToken(terminalSignal),
-    contextKey: 'user-1:nt:1:7',
-};
-const openGate = {
-    uid: 'user-1',
-    contextKey: 'user-1:nt:1:7',
-    hasQuestion: true,
-    gateOpen: true,
-};
-
-assert.equal(shouldScrollToReadAction(pendingTerminal, openGate), true,
-    '현재 클릭이 종료 상태로 확정되고 gate가 열리면 읽기 버튼으로 이동해야 합니다.');
-
-assert.equal(shouldScrollToReadAction(null, {
-    ...openGate,
-}), false, '이미 완료한 퀴즈로 첫 렌더링할 때는 자동 이동하지 않아야 합니다.');
-
-assert.equal(shouldScrollToReadAction(pendingTerminal, {
-    ...openGate,
-    uid: 'user-2',
-    contextKey: 'user-2:nt:1:7',
-}), false, '계정이 바뀐 뒤 도착한 이전 퀴즈 결과로는 이동하지 않아야 합니다.');
-
-assert.equal(shouldScrollToReadAction(pendingTerminal, {
-    ...openGate,
-    hasQuestion: false,
-}), false, '문항이 없어 gate가 열린 경우는 퀴즈 완료 이동으로 취급하지 않아야 합니다.');
-
-assert.equal(shouldScrollToReadAction(pendingTerminal, {
-    ...openGate,
-    gateOpen: false,
-}), false, '종료 신호가 먼저 도착해도 gate가 열릴 때까지 기다려야 합니다.');
-
-assert.equal(getQuizTerminalSignalToken({
-    ...terminalSignal,
-    outcome: 'retry',
-}), null, '첫 오답은 종료 신호가 아닙니다.');
 
 const completedRead = {
     uid: 'user-1',

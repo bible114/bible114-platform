@@ -171,7 +171,6 @@ const BibleQuizCard = ({
     setCurrentUser,
     viewingDay,
     onGateStateChange,
-    onQuizTerminal,
     sectionRef,
     highlight = false,
     talentProgramEnabled = true,
@@ -248,7 +247,6 @@ const BibleQuizCard = ({
         return { type: 'done', message: `DAY ${progressDay}의 두 번 시도가 끝났습니다.` };
     });
     const [submitting, setSubmitting] = useState(false);
-    const [reviewExpanded, setReviewExpanded] = useState(false);
 
     // 사용자/날짜/진행 본문이 바뀌면 이전 문항에서 고른 답과 피드백이 새 문항에 남지 않게 한다.
     // quizState.quizKey는 제출 후 재조회 중 잠시 null이 되므로 의존성에서 제외한다.
@@ -363,7 +361,6 @@ const BibleQuizCard = ({
                 activityRequest.payload.quizKey,
                 { requestId: activityRequest.requestId, expectedUid: submittedUid },
             );
-            const submittedRequestId = activityRequest.requestId;
             clearActivityRequest(activityRequest);
             if (auth?.currentUser?.uid !== submittedUid) return;
             let freshUser;
@@ -418,14 +415,6 @@ const BibleQuizCard = ({
                 }
             }
             setSkipped(entry.skipped === true);
-            if (entry.skipped === true) {
-                onQuizTerminal?.({
-                    uid: submittedUid,
-                    progressKey: submittedProgressKey,
-                    requestId: submittedRequestId,
-                    outcome: 'skipped',
-                });
-            }
         } catch (error) {
             const outcomeUncertain = error instanceof PlatformApiError
                 && (error.retryable === true || (error.status >= 200 && error.status < 300));
@@ -479,7 +468,6 @@ const BibleQuizCard = ({
                 payload.attemptSlot,
                 { requestId, expectedUid: submittedUid },
             );
-            const submittedRequestId = requestId;
             clearActivityRequest(activityRequest);
             if (auth?.currentUser?.uid !== submittedUid) return;
             let freshUser;
@@ -530,12 +518,6 @@ const BibleQuizCard = ({
             setSkipped(freshProgress.skipped === true);
 
             if (freshProgress.solved) {
-                onQuizTerminal?.({
-                    uid: submittedUid,
-                    progressKey: submittedProgressKey,
-                    requestId: submittedRequestId,
-                    outcome: 'solved',
-                });
                 setFeedback({
                     type: 'success',
                     message: freshProgress.reward > 0
@@ -543,15 +525,9 @@ const BibleQuizCard = ({
                         : '정답이에요! 퀴즈 달란트는 하루 1번만 적립돼요.',
                 });
             } else if (freshProgress.skipped || freshProgress.attempts >= 2) {
-                onQuizTerminal?.({
-                    uid: submittedUid,
-                    progressKey: submittedProgressKey,
-                    requestId: submittedRequestId,
-                    outcome: freshProgress.skipped ? 'skipped' : 'attemptsExhausted',
-                });
                 setFeedback({ type: 'done', message: '아쉽지만 오늘의 시도는 끝났습니다. 정답을 확인해보세요.' });
             } else {
-                setFeedback({ type: 'retry', message: '아쉬워요. 한 번 더 도전할 수 있습니다.' });
+                setFeedback({ type: 'retry', message: '아쉬워요. 다시 선택해 보세요. 한 번 더 도전할 수 있어요.' });
                 setSelectedIndex(null);
             }
         } catch (e) {
@@ -587,40 +563,10 @@ const BibleQuizCard = ({
     const showAnswer = currentProgress.solved === true || currentAttempts >= 2;
     const sectionClassName = `bg-white rounded-3xl border shadow-sm p-5 overflow-hidden transition-[border-color,box-shadow] duration-300 ${highlight ? 'border-indigo-500 ring-4 ring-indigo-200 shadow-indigo-100' : 'border-slate-100'}`;
 
-    if (solved) {
-        return (
-            <section ref={sectionRef} className={sectionClassName}>
-                <div className="flex items-start justify-between gap-3">
-                    <p className="pt-2 text-base font-black text-emerald-700">정답!</p>
-                    <QuizLevelToggle currentUser={currentUser} setCurrentUser={setCurrentUser} finished />
-                </div>
-            </section>
-        );
-    }
-
-    if (finished && !reviewExpanded) {
-        return (
-            <section ref={sectionRef} className={sectionClassName}>
-                <div className="mb-3 flex justify-end">
-                    <QuizLevelToggle currentUser={currentUser} setCurrentUser={setCurrentUser} finished />
-                </div>
-                <button
-                    type="button"
-                    onClick={() => setReviewExpanded(true)}
-                    className="w-full text-left"
-                    aria-expanded="false"
-                >
-                    <p className="text-base font-black text-slate-700">오늘의 퀴즈가 끝났습니다.</p>
-                    <p className="mt-2 text-xs font-bold text-slate-400">탭해서 정답과 해설 다시 보기</p>
-                </button>
-            </section>
-        );
-    }
-
     return (
         <section ref={sectionRef} className={sectionClassName}>
             <div className="mb-3 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm font-bold leading-relaxed text-indigo-800">
-                퀴즈는 선택이에요. 풀지 않아도 아래의 읽기 완료 버튼을 누를 수 있어요.
+                선택 퀴즈예요. 풀지 않아도 읽기 완료를 누를 수 있어요.
             </div>
             <div className="mb-3 flex justify-end">
                 <QuizLevelToggle currentUser={currentUser} setCurrentUser={setCurrentUser} finished={finished} />

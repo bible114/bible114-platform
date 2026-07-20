@@ -31,7 +31,6 @@ const BibleReader = ({
     quizContent,
     completionSummary,
     bibleHeaderRef,
-    readActionRef,
 }) => {
     const hasContentError = !!verseData.error;
     const isCurrentProgressDay = viewingDay === currentUser.currentDay;
@@ -46,7 +45,7 @@ const BibleReader = ({
         ? '오늘 분량은 완료했습니다. 원하면 다음 본문을 미리 읽을 수 있습니다.'
         : (!isCurrentProgressDay
             ? '다른 DAY는 살펴보기만 할 수 있습니다. 내 진도로 돌아간 뒤 완료해주세요.'
-            : '오늘 본문을 다 읽은 뒤 눌러주세요. 퀴즈는 선택입니다.');
+            : '오늘 본문을 다 읽은 뒤 눌러주세요.');
 
     return (
         <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
@@ -68,7 +67,7 @@ const BibleReader = ({
                                 <span className="text-xs bg-purple-500/90 px-2 py-0.5 rounded-full">🏆 {currentUser.readCount - 1}독 완료</span>
                             )}
                             <span className={`text-xs px-2 py-0.5 rounded-full ${isCurrentProgressDay ? 'bg-emerald-400/90' : 'bg-amber-400/90'}`}>
-                                {isCurrentProgressDay ? '오늘 내 진도' : `살펴보는 DAY · 내 진도 ${currentUser.currentDay}`}
+                                {isCurrentProgressDay ? '내가 읽을 차례' : `다른 DAY 보는 중 · 읽을 차례 ${currentUser.currentDay}`}
                             </span>
                             <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">🏁 D-{daysRemaining}</span>
                         </div>
@@ -266,15 +265,12 @@ const BibleReader = ({
 
                 {!verseData.loading && !hasContentError && quizContent && (
                     <div id="tut-quiz-area">
-                        <div className="mb-3 rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-800">
-                            🧩 선택 활동 · 퀴즈를 풀지 않아도 읽기 완료와 다음 DAY 진행이 가능합니다.
-                        </div>
                         {quizContent}
                     </div>
                 )}
 
                 {!verseData.loading && !hasContentError && completionForViewingDay ? (
-                    <div ref={readActionRef} id="tut-read-btn" className="scroll-mt-4 mt-8 rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-center">
+                    <div id="tut-read-btn" className="scroll-mt-4 mt-8 rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-center">
                         <p className="text-xl font-black text-emerald-900">DAY {completionForViewingDay.completedDay} {completionForViewingDay.isFirstReadToday ? '읽기 완료! 🎉' : '추가 읽기 완료! 🎉'}</p>
                         <p className="mt-2 text-lg font-bold text-emerald-700">
                             +{completionForViewingDay.scoreEarned}점
@@ -291,7 +287,7 @@ const BibleReader = ({
                         </button>
                     </div>
                 ) : !verseData.loading && !hasContentError && (
-                    <div ref={readActionRef} id="tut-read-btn" className="scroll-mt-4 mt-8 pt-6 border-t border-slate-100">
+                    <div id="tut-read-btn" className="scroll-mt-4 mt-8 pt-6 border-t border-slate-100">
                         <div className="relative">
                             <button
                                 onClick={handleRead}

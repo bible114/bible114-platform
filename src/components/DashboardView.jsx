@@ -8,7 +8,6 @@ import { getDaysRead } from '../utils/helpers';
 import { db } from '../utils/firebase';
 import { resolveTalentProgram } from '../utils/talentProgram';
 import {
-    getQuizTerminalSignalToken,
     scheduleScrollIntoView,
     shouldScrollToReadingHeader,
 } from '../utils/readingFlowScroll';
@@ -34,7 +33,6 @@ import {
     DailyVideoCard,
     BibleReader,
     MemoSection,
-    SubgroupRankingCard,
     ReadingChampionSection,
     KakaoChannelButton,
     CompletionCelebration,
@@ -152,12 +150,9 @@ const DashboardView = ({
     const [showTutorial, setShowTutorial] = useState(false);
     const [showChurchAdminReaderGuide, setShowChurchAdminReaderGuide] = useState(false);
     const [showMemberships, setShowMemberships] = useState(false);
+    const [showAccountHelp, setShowAccountHelp] = useState(false);
     const [talentProgramEnabled, setTalentProgramEnabled] = useState(true);
-    const [quizTerminalVersion, setQuizTerminalVersion] = useState(0);
     const bibleHeaderRef = useRef(null);
-    const readActionRef = useRef(null);
-    const pendingQuizTerminalRef = useRef(null);
-    const handledQuizTerminalTokenRef = useRef(null);
     const observedCompletionRef = useRef({
         uid: currentUser?.uid || null,
         summary: completionSummary,
@@ -210,43 +205,6 @@ const DashboardView = ({
         dismissChurchAdminReaderGuide();
         setView('church_admin');
     };
-
-    const handleQuizTerminal = (signal) => {
-        const token = getQuizTerminalSignalToken(signal);
-        const uid = currentUserUidRef.current;
-        const contextKey = currentScrollContextRef.current;
-        if (!token || !uid || signal.uid !== uid || !contextKey) return;
-        pendingQuizTerminalRef.current = {
-            ...signal,
-            token,
-            contextKey,
-        };
-        setQuizTerminalVersion(version => version + 1);
-    };
-
-    useEffect(() => {
-        const pendingTerminal = pendingQuizTerminalRef.current;
-        if (pendingTerminal && pendingTerminal.contextKey !== quizScrollContextKey) {
-            pendingQuizTerminalRef.current = null;
-            return;
-        }
-        if (!pendingTerminal
-            || pendingTerminal.uid !== currentUser?.uid
-            || handledQuizTerminalTokenRef.current === pendingTerminal.token) return;
-
-        const expectedContextKey = quizScrollContextKey;
-        pendingQuizTerminalRef.current = null;
-        handledQuizTerminalTokenRef.current = pendingTerminal.token;
-        scheduleScrollIntoView(() => readActionRef.current, {
-            block: 'center',
-            frameCount: 2,
-            isStillCurrent: () => currentScrollContextRef.current === expectedContextKey,
-        });
-    }, [
-        currentUser?.uid,
-        quizScrollContextKey,
-        quizTerminalVersion,
-    ]);
 
     useEffect(() => {
         const uid = currentUser?.uid || null;
@@ -543,6 +501,33 @@ const DashboardView = ({
                 onClose={dismissChurchAdminReaderGuide}
                 onOpenAdmin={openAdminFromReaderGuide}
             />
+            {showAccountHelp && (
+                <div className="fixed inset-0 z-[130] flex items-end justify-center bg-black/45 sm:items-center sm:p-4" onMouseDown={event => { if (event.target === event.currentTarget) setShowAccountHelp(false); }}>
+                    <section role="dialog" aria-modal="true" aria-label="로그인과 홈 화면 안내" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-slate-50 p-5 shadow-2xl sm:rounded-3xl">
+                        <div className="mb-4 flex items-center justify-between gap-3">
+                            <div>
+                                <h2 className="text-lg font-black text-slate-900">로그인·홈 화면 안내</h2>
+                                <p className="mt-1 text-xs font-bold text-slate-500">빠른 로그인 연결과 휴대폰 바로가기를 한곳에서 확인하세요.</p>
+                            </div>
+                            <button type="button" onClick={() => setShowAccountHelp(false)} className="flex min-h-11 min-w-11 items-center justify-center rounded-full text-xl text-slate-500 hover:bg-white" aria-label="로그인과 홈 화면 안내 닫기">✕</button>
+                        </div>
+                        <div className="space-y-4">
+                            <SocialLinkBanner
+                                currentUser={currentUser}
+                                notice={null}
+                                onNoticeClear={onSocialLinkNoticeClear}
+                                onGoogleLink={onGoogleLink}
+                                onKakaoLink={onKakaoLink}
+                            />
+                            <HomeScreenHelpBanner />
+                            <button type="button" onClick={() => { setShowAccountHelp(false); setShowReadingGuide(true); }} className="flex min-h-12 w-full items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50 px-4 text-sm font-black text-indigo-700 hover:bg-indigo-100">
+                                <span>📖 읽는 방법·자주 묻는 질문</span>
+                                <span aria-hidden="true">›</span>
+                            </button>
+                        </div>
+                    </section>
+                </div>
+            )}
 
             <DashboardHeader
                 handleLogout={handleLogout}
@@ -552,6 +537,7 @@ const DashboardView = ({
                 setShowDateSettings={setShowDateSettings}
                 setShowCalendar={setShowCalendar}
                 setShowReadingGuide={setShowReadingGuide}
+                setShowAccountHelp={setShowAccountHelp}
                 getEncouragementMessage={getEncouragementMessage}
                 departmentName={departmentName}
                 setShowFullRanking={setShowFullRanking}
@@ -577,6 +563,17 @@ const DashboardView = ({
                 className="max-w-5xl mx-auto w-full mt-4"
                 style={{ paddingBottom: 'var(--app-fixed-bottom-clearance)' }}
             >
+                {hasCommunity && !isReadingPeople && (
+                    <section aria-label="함께 읽는 현황" className="mb-6">
+                        <div className="mb-3 px-4">
+                            <h2 className="text-base font-black text-slate-800">🏃 함께 읽는 통독 현황</h2>
+                        </div>
+                        <RaceMap racers={racers} departmentChampions={departmentChampions} getSubgroupDisplay={getSubgroupDisplay} />
+                        <div className="px-4">
+                            <ReadingChampionSection getWeeklyMVP={getWeeklyMVP} />
+                        </div>
+                    </section>
+                )}
                 <main className="px-4 space-y-6">
                     {completionSummary?.completedDay && completionSummary.completedDay !== viewingDay && (
                         <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-center text-emerald-900 shadow-sm">
@@ -614,14 +611,12 @@ const DashboardView = ({
                         handleRead={handleRead}
                         completionSummary={completionSummary}
                         bibleHeaderRef={bibleHeaderRef}
-                        readActionRef={readActionRef}
                         quizContent={(
                             <BibleQuizCard
                                 currentUser={currentUser}
                                 setCurrentUser={setCurrentUser}
                                 viewingDay={viewingDay}
                                 talentProgramEnabled={talentProgramEnabled}
-                                onQuizTerminal={handleQuizTerminal}
                             />
                         )}
                     />
@@ -630,7 +625,7 @@ const DashboardView = ({
 
                     <DailyVideoCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
 
-                    {socialLinkNotice ? (
+                    {socialLinkNotice && (
                         <SocialLinkBanner
                             currentUser={currentUser}
                             notice={socialLinkNotice}
@@ -638,31 +633,6 @@ const DashboardView = ({
                             onGoogleLink={onGoogleLink}
                             onKakaoLink={onKakaoLink}
                         />
-                    ) : (
-                        <details className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                            <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-4 text-sm font-black text-slate-700 [&::-webkit-details-marker]:hidden">
-                                <span>💡 로그인·홈 화면 이용 안내</span>
-                                <span aria-hidden="true" className="text-slate-400">▾</span>
-                            </summary>
-                            <div className="space-y-3 border-t border-slate-100 p-4">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowReadingGuide(true)}
-                                    className="flex min-h-12 w-full items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50 px-4 text-sm font-black text-indigo-700 hover:bg-indigo-100"
-                                >
-                                    <span>📖 성경 읽는 방법 보기</span>
-                                    <span aria-hidden="true">›</span>
-                                </button>
-                                <SocialLinkBanner
-                                    currentUser={currentUser}
-                                    notice={null}
-                                    onNoticeClear={onSocialLinkNoticeClear}
-                                    onGoogleLink={onGoogleLink}
-                                    onKakaoLink={onKakaoLink}
-                                />
-                                <HomeScreenHelpBanner />
-                            </div>
-                        </details>
                     )}
 
                     {isReadingPeople && <section className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm"><div className="mb-3 flex items-center justify-between"><div><h2 className="font-black text-slate-800">성경 읽는 사람들</h2><p className="mt-1 text-xs text-slate-500">전국에서 혼자 읽는 분들의 통합 랭킹이에요.</p></div><span className="text-xs font-bold text-emerald-600">{allRacersSorted.length}명</span></div><div className="space-y-2">{allRacersSorted.slice(0, 10).map((member, index) => <div key={member.uid} className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm ${member.isMe ? 'bg-emerald-50' : 'bg-slate-50'}`}><span className="w-6 font-black text-slate-400">{index + 1}</span><span className="min-w-0 flex-1 truncate font-bold text-slate-700">{member.name}</span><span className="font-black text-emerald-700">DAY {member.day}</span></div>)}</div></section>}
@@ -680,30 +650,6 @@ const DashboardView = ({
                             memoLoadError={memoLoadError}
                         />
                     </div>
-
-                    {hasCommunity && !isReadingPeople && (
-                        <details className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                            <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between px-5 text-base font-black text-slate-800 [&::-webkit-details-marker]:hidden">
-                                <span>🏆 공동체 현황·랭킹 모아보기</span>
-                                <span aria-hidden="true" className="text-sm text-blue-600">펼치기 ▾</span>
-                            </summary>
-                            <div className="space-y-6 border-t border-slate-100 py-5">
-                                <RaceMap racers={racers} departmentChampions={departmentChampions} getSubgroupDisplay={getSubgroupDisplay} />
-                                <div className="px-4">
-                                    <SubgroupRankingCard
-                                        departmentName={departmentName}
-                                        getSubgroupRanking={getSubgroupRanking}
-                                        subgroupId={subgroupId}
-                                        departmentId={currentUser ? currentUser.departmentId : null}
-                                        extraMemberships={additionalMemberships}
-                                    />
-                                </div>
-                                <div className="px-4">
-                                    <ReadingChampionSection getWeeklyMVP={getWeeklyMVP} />
-                                </div>
-                            </div>
-                        </details>
-                    )}
 
                     {hasCommunity && <Suspense fallback={<DeferredSectionFallback label="달란트 상점" />}>
                         <TalentShop
