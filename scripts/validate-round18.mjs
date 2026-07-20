@@ -164,6 +164,11 @@ assert.match(guestReader, /currentPlanId\.startsWith\('nt_'\)[\s\S]*QuizLevelTog
 assert.doesNotMatch(header, /tut-score|\{score \|\| 0\}pt/);
 assert.match(achievements, /총 읽은 날/);
 assert.match(achievements, /최장 연속/);
+assert.match(achievements, /z-\[170\]/, '업적 창은 상단 메뉴보다 위에 표시되어야 한다.');
+assert.match(achievements, /h-\[100dvh\][\s\S]*overflow-y-auto/, '모바일 업적 창은 전체 화면 안에서 본문만 스크롤되어야 한다.');
+assert.match(achievements, /min-h-0 flex-1 overflow-y-auto/, '업적 목록만 스크롤되고 하단 닫기 버튼은 고정되어야 한다.');
+assert.match(achievements, /role="dialog"[\s\S]*aria-modal="true"/, '업적 창은 접근 가능한 모달이어야 한다.');
+assert.match(achievements, /document\.body\.style\.overflow = 'hidden'/, '업적 창이 열리면 배경 스크롤을 막아야 한다.');
 assert.doesNotMatch(actions, /\{ \.\.\.previous, \.\.\.response\.state\.user \}/);
 assert.match(actions, /loadCanonicalUserStateFromServer\(uid\)/);
 assert.match(userStateSync, /loadCanonicalRosterRefsFromServer/);
