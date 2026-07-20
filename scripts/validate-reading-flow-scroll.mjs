@@ -20,6 +20,8 @@ assert.match(readerSource, /ref=\{bibleHeaderRef\} id="tut-bible-header"/);
 assert.equal((readerSource.match(/id="tut-read-btn"/g) || []).length, 2);
 assert.match(userBibleActionsSource, /const nextCompletionSummary = \{\s*uid,\s*requestId: response\.requestId,\s*completedDay:/);
 assert.match(userBibleActionsSource, /Number\(requestedDay\) !== Number\(currentProgressDay\)[\s\S]*return;[\s\S]*readSubmittingRef\.current = true/);
+assert.doesNotMatch(dashboardSource, /currentScrollContextRef|quizScrollContextKey/);
+assert.match(dashboardSource, /const expectedRequestId = completionSummary\.requestId[\s\S]*frameCount: 2[\s\S]*observedCompletionRef\.current\.summary\?\.requestId === expectedRequestId/);
 assert.doesNotMatch(readerSource, /선택 활동 · 퀴즈를 풀지 않아도/);
 assert.doesNotMatch(quizCardSource, /선택 퀴즈예요|풀지 않아도 읽기 완료/);
 assert.doesNotMatch(readerSource, /isQuizGateLocked|quizGateOpen/);

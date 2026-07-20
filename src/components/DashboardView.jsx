@@ -160,21 +160,7 @@ const DashboardView = ({
         summary: completionSummary,
     });
     const currentUserUidRef = useRef(currentUser?.uid || null);
-    const currentScrollContextRef = useRef(null);
-
-    const quizScrollContextKey = JSON.stringify([
-        currentUser?.uid || '',
-        currentUser?.planId || '',
-        currentUser?.dayOffset || 0,
-        currentUser?.quizLevel || '',
-        currentUser?.readCount || 1,
-        currentUser?.readingEpoch || 0,
-        currentUser?.currentDay || 1,
-        viewingDay ?? '',
-        currentUser?.talentWalletOrgId || currentUser?.churchId || '',
-    ]);
     currentUserUidRef.current = currentUser?.uid || null;
-    currentScrollContextRef.current = quizScrollContextKey;
 
     useEffect(() => {
         if (!isChurchAdmin || !currentUser?.uid) {
@@ -217,11 +203,13 @@ const DashboardView = ({
         if (!shouldScrollToReadingHeader(previous, next)) return undefined;
 
         const expectedUid = uid;
-        const expectedContextKey = currentScrollContextRef.current;
+        const expectedRequestId = completionSummary.requestId;
         return scheduleScrollIntoView(() => bibleHeaderRef.current, {
             block: 'start',
+            frameCount: 2,
             isStillCurrent: () => currentUserUidRef.current === expectedUid
-                && currentScrollContextRef.current === expectedContextKey,
+                && observedCompletionRef.current.uid === expectedUid
+                && observedCompletionRef.current.summary?.requestId === expectedRequestId,
         });
     }, [completionSummary, currentUser?.uid]);
 
