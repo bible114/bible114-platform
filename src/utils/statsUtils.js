@@ -107,14 +107,17 @@ export const getWeeklyMVP = (departmentMembers) => {
     const todayEnd = new Date(now);
     todayEnd.setHours(23, 59, 59, 999);
 
-    // 신형 롤링 필드를 기준으로 하되, 남아 있는 레거시 배열의 날짜도 병합한다.
+    // 신형 롤링 필드를 기준으로 하되, 남아 있는 레거시 배열과 단일 날짜도 병합한다.
+    // 외부 교회 명부에는 recentReadDates가 없고 lastReadDate만 동기화되므로
+    // 단일 날짜를 제외하면 그 교회의 주간 읽기왕이 항상 비게 된다.
     const getReadDates = (member) => {
         const recentDates = Array.isArray(member.recentReadDates) ? member.recentReadDates : [];
         const legacyDates = Array.isArray(member.readHistory)
             ? member.readHistory.map(item => (typeof item === 'string' ? item : item?.date))
             : [];
+        const latestDates = [member.lastReadDate, member.dailyAdvanceDate];
 
-        return Array.from(new Map([...recentDates, ...legacyDates].flatMap(value => {
+        return Array.from(new Map([...recentDates, ...legacyDates, ...latestDates].flatMap(value => {
             if (!value) return [];
             const readDate = value?.toDate ? value.toDate() : new Date(value);
             if (Number.isNaN(readDate.getTime())) return [];

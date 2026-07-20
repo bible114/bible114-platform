@@ -320,9 +320,15 @@ Deno.test("첫 읽기는 users·canonical roster·history·ledger·통계를 한
       harness.queryCalls[0]?.limit === 4,
     "fresh reads did not share transaction",
   );
+  const rosterAAfterRead = harness.state.get(`churches/roster-a/roster/${UID}`);
+  const rosterBAfterRead = harness.state.get(`churches/roster-b/roster/${UID}`);
   assert(
-    harness.state.get(`churches/roster-a/roster/${UID}`)?.talent === 18 &&
-      harness.state.get(`churches/roster-b/roster/${UID}`)?.talent === 9,
+    rosterAAfterRead?.talent === 18 &&
+      rosterBAfterRead?.talent === 9 &&
+      Array.isArray(rosterAAfterRead?.recentReadDates) &&
+      rosterAAfterRead.recentReadDates[0] === TODAY &&
+      Array.isArray(rosterBAfterRead?.recentReadDates) &&
+      rosterBAfterRead.recentReadDates[0] === TODAY,
     "per-roster talent routing mismatch",
   );
   assert(

@@ -807,6 +807,7 @@ const executeCompleteRead = async (
       score: result.updateData.score,
       streak: result.updateData.streak,
       lastReadDate: result.updateData.lastReadDate,
+      recentReadDates: result.updateData.recentReadDates,
       updatedAt: now,
     };
     const nextRosters = rosters.map((roster, index) => {

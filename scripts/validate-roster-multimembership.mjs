@@ -42,11 +42,13 @@ const modernSnapshot = { docs: [makeDoc({
     uid: 'user-1',
     departmentId: 'adult',
     subgroupId: 'cell-1',
+    recentReadDates: ['Sun Jul 19 2026', 'Mon Jul 20 2026'],
     extraMemberships: extras,
 })] };
 const modernOrg = rosterSnapshotToExtraOrgs(modernSnapshot, 'user-1')[0];
 const modernMember = rosterSnapshotToMembers(modernSnapshot)[0];
 assert.deepEqual(modernOrg.extraMemberships, modernMember.extraMemberships);
+assert.deepEqual(modernMember.recentReadDates, ['Sun Jul 19 2026', 'Mon Jul 20 2026']);
 assert.deepEqual(
     getMembershipList(modernMember).map(item => [item.departmentId, item.subgroupId]),
     [['adult', 'cell-1'], ['adult', 'cell-2'], ['kids', 'class-1']]

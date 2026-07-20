@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import { auth, authReady, db } from '../utils/firebase';
 import OrgEditor from './OrgEditor';
-import DemoTour from './DemoTour';
 import ReadingGuideModal from './modals/ReadingGuideModal';
 import ChurchPicker from './ChurchPicker';
 import { getChurchDirectory, getLastChurch, saveLastChurch } from '../utils/churchDirectory';
@@ -12,6 +11,8 @@ import { SERVICE_POLICIES, createEmptyPolicyConsents, isPolicyConsentComplete } 
 import { validateSignupConsent } from '../utils/signupConsent';
 import { normalizeChurchEntryCode } from '../utils/entryCode';
 import { KAKAO_RETURNING_KEY } from '../utils/kakaoAuth';
+
+const DemoTour = lazy(() => import('./DemoTour'));
 
 // ─── Daily verse data ─────────────────────────────────────────────────────────
 const DAILY_VERSES = [
@@ -1403,10 +1404,12 @@ const LoginView = ({
             {showExistingMemberNotice && <ExistingMemberNoticeModal onClose={() => setShowExistingMemberNotice(false)} />}
 
             {showDemoTour && (
-                <DemoTour
-                    onClose={() => setShowDemoTour(false)}
-                    onComplete={() => { setShowDemoTour(false); setShowReadingGuide(true); }}
-                />
+                <Suspense fallback={null}>
+                    <DemoTour
+                        onClose={() => setShowDemoTour(false)}
+                        onComplete={() => { setShowDemoTour(false); setShowReadingGuide(true); }}
+                    />
+                </Suspense>
             )}
 
             <ReadingGuideModal

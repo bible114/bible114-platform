@@ -66,9 +66,11 @@ const BibleReader = ({
                             {(currentUser.readCount || 1) > 1 && (
                                 <span className="text-xs bg-purple-500/90 px-2 py-0.5 rounded-full">🏆 {currentUser.readCount - 1}독 완료</span>
                             )}
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${isCurrentProgressDay ? 'bg-emerald-400/90' : 'bg-amber-400/90'}`}>
-                                {isCurrentProgressDay ? '내가 읽을 차례' : `다른 DAY 보는 중 · 읽을 차례 ${currentUser.currentDay}`}
-                            </span>
+                            {!isCurrentProgressDay && (
+                                <span className="rounded-full bg-amber-400/90 px-2 py-0.5 text-xs">
+                                    다른 DAY 보는 중
+                                </span>
+                            )}
                             <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">🏁 D-{daysRemaining}</span>
                         </div>
                     </div>
