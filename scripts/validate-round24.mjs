@@ -750,13 +750,13 @@ const sessionPositionAuditIndex = useUserAuthSource.indexOf(
     'positionAudit = await normalizeLegacyReadingPosition({',
 );
 const sessionRosterRefreshIndex = useUserAuthSource.indexOf(
-    'sessionPatch.extraOrgs = await loadUserExtraOrgs(firebaseUser.uid, {',
+    'user.extraOrgs = await loadUserExtraOrgs(firebaseUser.uid, {',
 );
 assert.ok(
     sessionWalletMigrationIndex >= 0
         && sessionWalletMigrationIndex < sessionPositionAuditIndex
         && sessionPositionAuditIndex < sessionRosterRefreshIndex,
-    '세션 상세 갱신은 primary legacy 지갑 보정 뒤 진도 감사, 최종 명부 재조회 순서여야 한다.',
+    '세션 복원은 primary legacy 지갑 보정, 진도 감사, 최종 명부 재조회 순서여야 한다.',
 );
 assert.match(
     useUserAuthSource.slice(sessionRosterRefreshIndex, sessionRosterRefreshIndex + 180),
@@ -767,16 +767,6 @@ assert.doesNotMatch(
     useUserAuthSource,
     /const extraOrgsPromise = loadUserExtraOrgs/,
     '세션 복원에서 server action 전에 명부 query를 미리 시작하면 안 된다.',
-);
-assert.match(
-    useUserAuthSource,
-    /if \(localUserNeedsNormalization\) \{[\s\S]*await loadSessionDetails\(\)[\s\S]*\} else \{[\s\S]*setCurrentUser\(user\);[\s\S]*setAuthLoading\(false\);[\s\S]*void loadSessionDetails\(\)/,
-    '정상 진도 계정은 상세 감사 전에 화면을 열고, 보정 필요 계정만 상세 확인을 기다려야 한다.',
-);
-assert.match(
-    useUserAuthSource,
-    /if \(current\?\.uid !== firebaseUser\.uid\) return current;[\s\S]*const progressUnchanged = current\.currentDay === user\.currentDay[\s\S]*const nextUser = \{ \.\.\.current \};[\s\S]*current\.extraOrgs === user\.extraOrgs[\s\S]*current\.primaryOrgId === user\.primaryOrgId[\s\S]*if \(progressUnchanged[\s\S]*nextUser\.currentDay = sessionPatch\.currentDay/,
-    '비차단 상세 갱신은 같은 uid의 바뀌지 않은 진도·소속 필드에만 합쳐야 한다.',
 );
 assert.doesNotMatch(useUserAuthSource, /진정희|user\.name\s*===\s*['"][^'"]+['"][\s\S]{0,300}readCount/,
     '특정 이름만으로 운영 진도·완독 횟수를 자동 보정하는 writer가 남으면 안 된다.');
@@ -994,7 +984,7 @@ const normalizePositionStart = useUserAuthSource.indexOf(
     'const localUserNeedsNormalization = Boolean(',
 );
 const normalizePositionEnd = useUserAuthSource.indexOf(
-    '\n                                sessionPatch.extraOrgs =',
+    '\n                            user.extraOrgs =',
     normalizePositionStart,
 );
 assert.ok(
@@ -1013,8 +1003,8 @@ for (const pattern of [
     /Number\.isSafeInteger\(normalizedData\.currentDay\)/,
     /normalizedData\.currentDay > 365/,
     /Number\.isSafeInteger\(normalizedData\.readCount\)/,
-    /sessionPatch\.currentDay = normalizedData\.currentDay/,
-    /sessionPatch\.readCount = normalizedData\.readCount/,
+    /user\.currentDay = normalizedData\.currentDay/,
+    /user\.readCount = normalizedData\.readCount/,
 ]) assert.match(normalizePositionClient, pattern);
 assert.match(
     useUserAuthSource,
@@ -1023,7 +1013,7 @@ assert.match(
 );
 assert.ok(
     normalizePositionClient.indexOf('await normalizeLegacyReadingPosition')
-        < normalizePositionClient.indexOf('sessionPatch.currentDay = normalizedData.currentDay'),
+        < normalizePositionClient.indexOf('user.currentDay = normalizedData.currentDay'),
     '서버 보정과 source-server 검증 전에 로컬 currentDay를 선반영하면 안 된다.',
 );
 assert.doesNotMatch(

@@ -135,117 +135,75 @@ export const useUserAuth = () => {
                                 user.talentWalletMigrated = true;
                             }
 
+                            // [안전장치] 매 로그인마다 users와 canonical roster의 진도 미러를
+                            // 서버에서 감사한다. 로컬 users 자체가 365를 넘은 경우에는 실패를
+                            // 숨기지 않으며, 정상 users의 roster 감사 중 경합·네트워크 실패만
+                            // 로그인과 분리한다.
                             const localUserNeedsNormalization = Boolean(
                                 user.currentDay && user.currentDay > 365
                             );
-                            const loadSessionDetails = async () => {
-                                const sessionPatch = {};
-                                // [안전장치] 매 로그인마다 users와 canonical roster의 진도 미러를
-                                // 서버에서 감사한다. 정상 진도 사용자는 이 작업 때문에 첫 화면
-                                // 진입을 기다리지 않고, 365 초과처럼 보정이 필요한 경우만 차단한다.
-                                let positionAudit = null;
-                                try {
-                                    positionAudit = await normalizeLegacyReadingPosition({
-                                        expectedUid: firebaseUser.uid,
-                                    });
-                                    if (discardStaleEvent()) return null;
-                                } catch (positionAuditError) {
-                                    if (discardStaleEvent()) return null;
-                                    if (localUserNeedsNormalization
-                                        || !isRecoverableReadingPositionAuditError(positionAuditError)) {
-                                        throw positionAuditError;
-                                    }
-                                    console.error('canonical roster 진도 감사 실패:', positionAuditError);
-                                }
-
-                                // users가 실제로 보정되었거나 roster repair 원장이 생긴 경우에는
-                                // stale 응답을 로컬에 적용하지 않고 source-server users만 확인한다.
-                                // 로컬 users가 365 초과였다면 concurrent no-op 응답이어도 재조회한다.
-                                if (positionAudit
-                                    && (localUserNeedsNormalization || positionAudit.committed)) {
-                                    const normalizedUserDoc = await db.collection('users')
-                                        .doc(firebaseUser.uid)
-                                        .get({ source: 'server' });
-                                    if (discardStaleEvent()) return null;
-                                    const normalizedData = normalizedUserDoc.exists
-                                        ? normalizedUserDoc.data() || {}
-                                        : null;
-                                    if (!normalizedData
-                                        || normalizedData.isDeleted === true
-                                        || !Number.isSafeInteger(normalizedData.currentDay)
-                                        || normalizedData.currentDay < 1
-                                        || normalizedData.currentDay > 365
-                                        || !Number.isSafeInteger(normalizedData.readCount)
-                                        || normalizedData.readCount < 1) {
-                                        throw new Error('invalid normalized reading position');
-                                    }
-                                    sessionPatch.currentDay = normalizedData.currentDay;
-                                    sessionPatch.readCount = normalizedData.readCount;
-                                    if (typeof normalizedData.churchName === 'string'
-                                        && normalizedData.churchName === normalizedData.churchName.trim()
-                                        && normalizedData.churchName.length >= 1
-                                        && normalizedData.churchName.length <= 200) {
-                                        sessionPatch.churchName = normalizedData.churchName;
-                                    } else if (normalizedData.churchName === null) {
-                                        sessionPatch.churchName = null;
-                                    }
-                                }
-
-                                sessionPatch.extraOrgs = await loadUserExtraOrgs(firebaseUser.uid, {
-                                    source: 'server',
+                            let positionAudit = null;
+                            try {
+                                positionAudit = await normalizeLegacyReadingPosition({
+                                    expectedUid: firebaseUser.uid,
                                 });
-                                if (user.accountType === 'personal' && user.primaryOrgId) {
-                                    try {
-                                        const primaryChurch = await db.collection('churches').doc(user.primaryOrgId).get({ source: 'server' });
-                                        sessionPatch.primaryOrgInactive = !primaryChurch.exists || primaryChurch.data()?.isDeleted === true;
-                                    } catch (primaryError) {
-                                        console.error('기준 공동체 활성 상태 확인 실패:', primaryError);
-                                        sessionPatch.primaryOrgInactive = null;
-                                    }
+                                if (discardStaleEvent()) return;
+                            } catch (positionAuditError) {
+                                if (discardStaleEvent()) return;
+                                if (localUserNeedsNormalization
+                                    || !isRecoverableReadingPositionAuditError(positionAuditError)) {
+                                    throw positionAuditError;
                                 }
-                                if (discardStaleEvent()) return null;
-                                return sessionPatch;
-                            };
-
-                            if (localUserNeedsNormalization) {
-                                const sessionPatch = await loadSessionDetails();
-                                if (!sessionPatch) return;
-                                setCurrentUser({ ...user, ...sessionPatch });
-                            } else {
-                                // 정상 계정은 기본 사용자·잔액 확인이 끝나는 즉시 화면을 연다.
-                                // 진도 감사와 소속 정보는 뒤에서 안전하게 합친다.
-                                setCurrentUser(user);
-                                setAuthLoading(false);
-                                void loadSessionDetails().then(sessionPatch => {
-                                    if (!sessionPatch || discardStaleEvent()) return;
-                                    setCurrentUser(current => {
-                                        if (current?.uid !== firebaseUser.uid) return current;
-                                        const progressUnchanged = current.currentDay === user.currentDay
-                                            && current.readCount === user.readCount;
-                                        const nextUser = { ...current };
-                                        if (current.extraOrgs === user.extraOrgs) {
-                                            nextUser.extraOrgs = sessionPatch.extraOrgs;
-                                        }
-                                        if (current.primaryOrgId === user.primaryOrgId
-                                            && Object.prototype.hasOwnProperty.call(sessionPatch, 'primaryOrgInactive')) {
-                                            nextUser.primaryOrgInactive = sessionPatch.primaryOrgInactive;
-                                        }
-                                        if (progressUnchanged
-                                            && Object.prototype.hasOwnProperty.call(sessionPatch, 'currentDay')) {
-                                            nextUser.currentDay = sessionPatch.currentDay;
-                                            nextUser.readCount = sessionPatch.readCount;
-                                            if (Object.prototype.hasOwnProperty.call(sessionPatch, 'churchName')) {
-                                                nextUser.churchName = sessionPatch.churchName;
-                                            }
-                                        }
-                                        return nextUser;
-                                    });
-                                }).catch(detailError => {
-                                    if (discardStaleEvent()) return;
-                                    console.error('로그인 후 사용자 정보 갱신 실패:', detailError);
-                                });
-                                return;
+                                console.error('canonical roster 진도 감사 실패:', positionAuditError);
                             }
+
+                            // users가 실제로 보정되었거나 roster repair 원장이 생긴 경우에는
+                            // stale 응답을 로컬에 적용하지 않고 source-server users만 확인한다.
+                            // 로컬 users가 365 초과였다면 concurrent no-op 응답이어도 재조회한다.
+                            if (positionAudit
+                                && (localUserNeedsNormalization || positionAudit.committed)) {
+                                const normalizedUserDoc = await db.collection('users')
+                                    .doc(firebaseUser.uid)
+                                    .get({ source: 'server' });
+                                if (discardStaleEvent()) return;
+                                const normalizedData = normalizedUserDoc.exists
+                                    ? normalizedUserDoc.data() || {}
+                                    : null;
+                                if (!normalizedData
+                                    || normalizedData.isDeleted === true
+                                    || !Number.isSafeInteger(normalizedData.currentDay)
+                                    || normalizedData.currentDay < 1
+                                    || normalizedData.currentDay > 365
+                                    || !Number.isSafeInteger(normalizedData.readCount)
+                                    || normalizedData.readCount < 1) {
+                                    throw new Error('invalid normalized reading position');
+                                }
+                                user.currentDay = normalizedData.currentDay;
+                                user.readCount = normalizedData.readCount;
+                                if (typeof normalizedData.churchName === 'string'
+                                    && normalizedData.churchName === normalizedData.churchName.trim()
+                                    && normalizedData.churchName.length >= 1
+                                    && normalizedData.churchName.length <= 200) {
+                                    user.churchName = normalizedData.churchName;
+                                } else if (normalizedData.churchName === null) {
+                                    user.churchName = null;
+                                }
+                            }
+
+                            user.extraOrgs = await loadUserExtraOrgs(firebaseUser.uid, {
+                                source: 'server',
+                            });
+                            if (user.accountType === 'personal' && user.primaryOrgId) {
+                                try {
+                                    const primaryChurch = await db.collection('churches').doc(user.primaryOrgId).get({ source: 'server' });
+                                    user.primaryOrgInactive = !primaryChurch.exists || primaryChurch.data()?.isDeleted === true;
+                                } catch (primaryError) {
+                                    console.error('기준 공동체 활성 상태 확인 실패:', primaryError);
+                                    user.primaryOrgInactive = null;
+                                }
+                            }
+                            if (discardStaleEvent()) return;
+                            setCurrentUser(user);
                         } else {
                             // Firestore에 데이터가 없으면 로그인 화면으로/초기화
                             if (discardStaleEvent()) return;
