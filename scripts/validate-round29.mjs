@@ -71,7 +71,6 @@ assert.match(readCore, /const baseTalentEarned = isFirstReadToday \? 10 \+ Math\
 for (const faqText of [
     '로그인이 안 돼요',
     '비밀번호를 잊었어요',
-    '며칠 밀렸어요 / 날짜가 안 맞아요',
     '듣기 소리가 안 나와요',
     '달란트가 안 늘어요',
     '상점에서 샀는데 물건은 어디서?',
@@ -89,7 +88,8 @@ for (const faqText of [
     '게스트 기록은 이전 휴대폰에만',
     '여기 없는 문제는 우리 교회 관리자(선생님)에게 말씀해주세요',
 ]) assert.ok(readingGuide.includes(faqText), `성도용 FAQ 문구 누락: ${faqText}`);
-assert.equal((readingGuide.match(/question: '/g) || []).length, 7, '성도용 FAQ는 정확히 7문항이어야 한다.');
+assert.doesNotMatch(readingGuide, /며칠 밀렸어요|날짜가 안 맞아요|밀린 날 것부터/);
+assert.equal((readingGuide.match(/question: '/g) || []).length, 6, '성도용 FAQ는 정확히 6문항이어야 한다.');
 assert.match(readingGuide, /<details key=\{question\}/);
 assert.match(readingGuide, /<summary className="min-h-11[^"]*text-slate-700/);
 assert.match(readingGuide, /<section aria-labelledby="member-faq-title" className="text-sm">/);
