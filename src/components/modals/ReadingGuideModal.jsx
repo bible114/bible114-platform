@@ -28,9 +28,10 @@ const MEMBER_FAQ_ITEMS = [
     },
 ];
 
-const ReadingGuideModal = ({ show, onClose, onStartTutorial }) => {
+const ReadingGuideModal = ({ show, onClose, mode = 'guide' }) => {
     const closeButtonRef = React.useRef(null);
     const dialogRef = React.useRef(null);
+    const isFaq = mode === 'faq';
 
     React.useEffect(() => {
         if (!show) return undefined;
@@ -65,44 +66,24 @@ const ReadingGuideModal = ({ show, onClose, onStartTutorial }) => {
 
     if (!show) return null;
 
-    const handleStartTutorial = () => {
-        onClose();
-        setTimeout(() => onStartTutorial && onStartTutorial(), 80);
-    };
-
     return (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
             <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="reading-guide-title" className="bg-white rounded-2xl p-6 w-full max-w-sm max-h-[92vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-4 border-b pb-2">
-                    <h3 id="reading-guide-title" className="text-xl font-bold text-slate-800">📖 성경통독 114 가이드</h3>
+                    <h3 id="reading-guide-title" className="text-xl font-bold text-slate-800">
+                        {isFaq ? '❓ 자주 묻는 질문' : '📖 성경통독 114 가이드'}
+                    </h3>
                     <button ref={closeButtonRef} type="button" aria-label="도움말 닫기" onClick={onClose} className="min-w-11 min-h-11 flex items-center justify-center text-slate-400"><Icon name="close" /></button>
                 </div>
 
-                {/* 앱 투어 버튼 */}
-                <button
-                    onClick={onStartTutorial ? handleStartTutorial : undefined}
-                    disabled={!onStartTutorial}
-                    className={`w-full mb-2 py-3.5 rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 transition-all
-                        ${onStartTutorial
-                            ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-white hover:from-amber-500 hover:to-yellow-600 cursor-pointer'
-                            : 'bg-amber-50 text-amber-400 border border-amber-200 cursor-default'
-                        }`}
-                >
-                    <span className="text-lg">❓</span>
-                    앱 화면 사용법 투어 시작하기
-                    <span className="text-base opacity-80">→</span>
-                </button>
-                <p className={`text-center text-sm mb-4 ${onStartTutorial ? 'text-slate-500' : 'text-amber-600'}`}>
-                    {onStartTutorial
-                        ? '앱의 주요 기능을 화면 상단부터 순서대로 안내해 드립니다.'
-                        : '로그인 후 이용 가능합니다'}
-                </p>
-
-                <a href="https://www.bible114.net/8e616cd9-5ca0-4dd3-9e63-64280fc66f38" target="_blank" rel="noopener noreferrer" className="block w-full mb-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-center py-3 rounded-xl font-bold shadow-md hover:from-blue-600 hover:to-blue-700 transition-all">
-                    🎥 성경통독 114 설명 영상 보기
-                </a>
+                {!isFaq && (
+                    <a href="https://www.bible114.net/8e616cd9-5ca0-4dd3-9e63-64280fc66f38" target="_blank" rel="noopener noreferrer" className="block w-full mb-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-center py-3 rounded-xl font-bold shadow-md hover:from-blue-600 hover:to-blue-700 transition-all">
+                        🎥 성경통독 114 설명 영상 보기
+                    </a>
+                )}
                 <div className="min-h-0 flex-1 space-y-3 overflow-y-auto text-sm">
-                    <section aria-labelledby="member-faq-title" className="text-sm">
+                    {isFaq ? (
+                        <section aria-labelledby="member-faq-title" className="text-sm">
                         <h4 id="member-faq-title" className="text-lg font-bold text-slate-800 mb-2">❓ 자주 묻는 질문</h4>
                         <div className="space-y-2">
                             {MEMBER_FAQ_ITEMS.map(({ question, answer }, index) => (
@@ -120,7 +101,9 @@ const ReadingGuideModal = ({ show, onClose, onStartTutorial }) => {
                         <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-3 text-sm font-bold leading-relaxed text-violet-800 shadow-sm">
                             💬 여기 없는 문제는 우리 교회 관리자(선생님)에게 말씀해주세요
                         </div>
-                    </section>
+                        </section>
+                    ) : (
+                        <>
                     <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
                         <h4 className="font-bold text-blue-700 mb-2">💡 성경통독 114란?</h4>
                         <p className="text-slate-600 leading-relaxed">
@@ -167,6 +150,8 @@ const ReadingGuideModal = ({ show, onClose, onStartTutorial }) => {
                             성경통독 114는 성경을 읽는 사람들에게 최소한 두 가지 유익을 준다. <strong>첫째는 속도이다.</strong> 이 표를 따라 읽으면 한 분기(3개월)라는 짧은 시일 안에 창세기부터 요한계시록까지 읽는 듯한 느낌을 얻는다. <strong>둘째는 재기이다.</strong> 이 표는 성경을 사분기로 반복하여 읽도록 고안되어 있어서 4번의 기회를 주기 때문에 실패해도 다시 시도할 수 있다.
                         </p>
                     </div>
+                        </>
+                    )}
                 </div>
                 <button type="button" onClick={onClose} className="w-full bg-slate-100 font-bold py-3 rounded-xl mt-4 text-slate-600">닫기</button>
             </div>

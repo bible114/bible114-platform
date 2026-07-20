@@ -148,6 +148,7 @@ const DashboardView = ({
     onKakaoLink,
 }) => {
     const [showTutorial, setShowTutorial] = useState(false);
+    const [showFaq, setShowFaq] = useState(false);
     const [showChurchAdminReaderGuide, setShowChurchAdminReaderGuide] = useState(false);
     const [showMemberships, setShowMemberships] = useState(false);
     const [showAccountHelp, setShowAccountHelp] = useState(false);
@@ -447,7 +448,8 @@ const DashboardView = ({
 
             {/* Modals */}
             <ScoreInfoModal show={showScoreInfo} onClose={() => setShowScoreInfo(false)} myLevel={myLevel} score={score} />
-            <ReadingGuideModal show={showReadingGuide} onClose={() => setShowReadingGuide(false)} onStartTutorial={() => setShowTutorial(true)} />
+            <ReadingGuideModal show={showReadingGuide} onClose={() => setShowReadingGuide(false)} mode="guide" />
+            <ReadingGuideModal show={showFaq} onClose={() => setShowFaq(false)} mode="faq" />
             <AchievementsModal show={showAchievements} onClose={() => setShowAchievements(false)} currentUser={currentUser} />
             <CalendarModal show={showCalendar} onClose={() => setShowCalendar(false)} calendarDate={calendarDate} setCalendarDate={setCalendarDate} readHistory={readHistory} />
             <MonthlyContestInfoModal show={showMonthlyContestInfo} onClose={() => setShowMonthlyContestInfo(false)} />
@@ -493,7 +495,7 @@ const DashboardView = ({
             {showTutorial && (
                 <TutorialOverlay
                     onClose={() => setShowTutorial(false)}
-                    onComplete={() => { setShowTutorial(false); setShowReadingGuide(true); }}
+                    onComplete={() => setShowTutorial(false)}
                 />
             )}
             <ChurchAdminReaderGuide
@@ -521,7 +523,7 @@ const DashboardView = ({
                             />
                             <HomeScreenHelpBanner />
                             <button type="button" onClick={() => { setShowAccountHelp(false); setShowReadingGuide(true); }} className="flex min-h-12 w-full items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50 px-4 text-sm font-black text-indigo-700 hover:bg-indigo-100">
-                                <span>📖 읽는 방법·자주 묻는 질문</span>
+                                <span>📖 성경통독 114 가이드</span>
                                 <span aria-hidden="true">›</span>
                             </button>
                         </div>
@@ -537,6 +539,8 @@ const DashboardView = ({
                 setShowDateSettings={setShowDateSettings}
                 setShowCalendar={setShowCalendar}
                 setShowReadingGuide={setShowReadingGuide}
+                setShowFaq={setShowFaq}
+                setShowTutorial={setShowTutorial}
                 setShowAccountHelp={setShowAccountHelp}
                 getEncouragementMessage={getEncouragementMessage}
                 departmentName={departmentName}

@@ -20,6 +20,8 @@ const DashboardHeader = ({
     setShowDateSettings,
     setShowCalendar,
     setShowReadingGuide,
+    setShowFaq = () => {},
+    setShowTutorial = () => {},
     setShowAccountHelp = () => {},
     getEncouragementMessage,
     departmentName,
@@ -84,7 +86,9 @@ const DashboardHeader = ({
                             <button id="tut-achievements" type="button" onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); setShowAchievements(true); }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-yellow-50">🏅 나의 업적·기록</button>
                             <button type="button" onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); setShowCalendar(true); }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-green-50">📆 읽기 달력</button>
                             <button id="tut-date-settings" type="button" onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); setShowDateSettings(true); }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-purple-50">⚙️ 읽기 날짜 설정</button>
-                            <button type="button" onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); setShowReadingGuide(true); }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-blue-50"><Icon name="helpbook" size={15} /> 읽는 방법·FAQ</button>
+                            <button type="button" onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); setShowReadingGuide(true); }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-blue-50"><Icon name="helpbook" size={15} /> 성경통독 114 가이드</button>
+                            <button type="button" onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); setShowFaq(true); }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-violet-50"><span>❓</span> 자주 묻는 질문</button>
+                            <button type="button" onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); setShowTutorial(true); }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-amber-50"><span>🧭</span> 앱 화면 투어</button>
                             <button type="button" onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); setShowAccountHelp(true); }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-emerald-50">📱 로그인·홈 화면 안내</button>
                             {isChurchAdmin && <button type="button" onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); setView('church_admin'); }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-bold text-indigo-700 hover:bg-indigo-50">⚙️ 공동체 관리</button>}
                             <div className="my-1 h-px bg-slate-100"></div>

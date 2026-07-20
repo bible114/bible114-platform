@@ -59,7 +59,8 @@ assert.doesNotMatch(dashboard, /users[^\n]*\.set\([^\n]*\.\.\.currentUser/);
 assert.doesNotMatch(actions, /users[^\n]*\.set\([^\n]*\.\.\.currentUser/);
 assert.match(header, /grid-cols-\[minmax\(0,1fr\)_auto\]/);
 assert.doesNotMatch(header, /overflow-x-auto|scrollbar-hide|justify-between md:justify-end/);
-assert.match(header, /☰ <span>메뉴<\/span>[\s\S]*읽기 달력[\s\S]*읽기 날짜 설정[\s\S]*읽는 방법·FAQ/);
+assert.match(header, /☰ <span>메뉴<\/span>[\s\S]*읽기 달력[\s\S]*읽기 날짜 설정[\s\S]*성경통독 114 가이드[\s\S]*자주 묻는 질문[\s\S]*앱 화면 투어/);
+assert.doesNotMatch(header, /읽는 방법·FAQ/);
 assert.equal(
     (platformAdmin.match(/const rc = u\.readCount \|\| 1;/g) || []).length,
     2,

@@ -93,10 +93,11 @@ assert.equal((readingGuide.match(/question: '/g) || []).length, 6, '성도용 FA
 assert.match(readingGuide, /<details key=\{question\}/);
 assert.match(readingGuide, /<summary className="min-h-11[^"]*text-slate-700/);
 assert.match(readingGuide, /<section aria-labelledby="member-faq-title" className="text-sm">/);
-assert.ok(
-    readingGuide.indexOf('aria-labelledby="member-faq-title"') < readingGuide.indexOf('💡 성경통독 114란?'),
-    'FAQ는 긴 통독 설명보다 먼저 보여야 한다.',
-);
+assert.match(readingGuide, /mode = 'guide'/);
+assert.match(readingGuide, /const isFaq = mode === 'faq'/);
+assert.match(readingGuide, /\{isFaq \? '❓ 자주 묻는 질문' : '📖 성경통독 114 가이드'\}/);
+assert.match(readingGuide, /\{isFaq \? \([\s\S]*member-faq-title[\s\S]*\) : \([\s\S]*💡 성경통독 114란\?/);
+assert.doesNotMatch(readingGuide, /onStartTutorial|앱 화면 사용법 투어 시작하기/);
 assert.match(readingGuide, /role="dialog" aria-modal="true" aria-labelledby="reading-guide-title"/);
 assert.match(readingGuide, /max-h-\[92vh\] flex flex-col/);
 assert.match(readingGuide, /min-h-0 flex-1[^"]*overflow-y-auto/);

@@ -25,6 +25,8 @@ assert.match(reader, /!isCurrentProgressDay[\s\S]*다른 DAY 보는 중/);
 
 assert.match(header, /grid-cols-\[minmax\(0,1fr\)_auto\][\s\S]*group flex min-h-11 min-w-0[\s\S]*읽는 버전/);
 assert.match(header, /☰ <span>메뉴<\/span>[\s\S]*로그인·홈 화면 안내[\s\S]*로그아웃/);
+assert.match(header, /성경통독 114 가이드[\s\S]*자주 묻는 질문[\s\S]*앱 화면 투어/);
+assert.doesNotMatch(header, /읽는 방법·FAQ/);
 assert.match(header, /<header className="mb-4 space-y-3">[\s\S]*<div className="relative z-\[90\][\s\S]*공동체 선택/);
 assert.doesNotMatch(header, /<header className="[^"]*z-\[90\]/);
 assert.doesNotMatch(header, />\{currentOrganizationName \|\| '내 단체 관리'\}<\/span>/);
@@ -34,6 +36,8 @@ assert.equal((video.match(/min-h-11/g) || []).length >= 3, true);
 assert.match(quiz, /min-h-11 rounded-xl px-3 py-2 text-sm font-bold[\s\S]*이 DAY는 건너뛰기/);
 assert.match(memo, /min-h-11 rounded-xl px-3 py-2 text-sm font-bold[\s\S]*내 기록 보기/);
 assert.match(dashboard, /lazy\(\(\) => import\('\.\/dashboard\/TalentShop'\)\)/);
+assert.match(dashboard, /show=\{showFaq\}[\s\S]*mode="faq"/);
+assert.match(dashboard, /setShowFaq=\{setShowFaq\}[\s\S]*setShowTutorial=\{setShowTutorial\}/);
 assert.equal((dashboard.match(/<Suspense fallback=/g) || []).length >= 1, true);
 assert.match(dashboard, /함께 읽는 통독 현황[\s\S]*<RaceMap[\s\S]*<BibleReader[\s\S]*aria-label="읽기왕"[\s\S]*<ReadingChampionSection/);
 assert.doesNotMatch(dashboard, /로그인·홈 화면 이용 안내|공동체 현황·랭킹 모아보기/);
