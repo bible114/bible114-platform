@@ -1,0 +1,1 @@
+import{B as t}from"./index-CaXkOa8i.js";import"./vendor-react-D7f9BLy3.js";import"./vendor-firebase-core-2mLKdCzX.js";import"./vendor-BURj0p3m.js";import"./vendor-firebase-auth-CIddKfXu.js";import"./vendor-firebase-firestore-CRbYWJok.js";import"./app-catalog-Dq5Do3BC.js";import"./app-schedules-DPvgT2CV.js";const h=()=>t;export{h as getPlatformAuth};
