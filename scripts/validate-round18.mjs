@@ -124,7 +124,7 @@ assert.match(reader, /DAY \{completionForViewingDay\.completedDay\}[\s\S]*읽기
 assert.match(reader, /const isAdvanceRead = hasReadToday && isCurrentProgressDay;/);
 assert.doesNotMatch(reader, /isQuizGateLocked|quizGateOpen|onQuizGateLocked/);
 assert.doesNotMatch(reader, /선택 활동 · 퀴즈를 풀지 않아도/);
-assert.match(quiz, /선택 퀴즈예요\. 풀지 않아도 읽기 완료를 누를 수 있어요/);
+assert.doesNotMatch(quiz, /선택 퀴즈예요|풀지 않아도 읽기 완료/);
 assert.match(reader, /disabled=\{readSubmitting \|\| !isCurrentProgressDay\}/);
 assert.match(reader, /isAdvanceRead[\s\S]*\? '한 장 더 읽기'/);
 assert.match(departmentHook, /loadAllMembers = useCallback\(async \(orgIdOverride\)/);

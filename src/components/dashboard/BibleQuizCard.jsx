@@ -565,9 +565,6 @@ const BibleQuizCard = ({
 
     return (
         <section ref={sectionRef} className={sectionClassName}>
-            <div className="mb-3 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm font-bold leading-relaxed text-indigo-800">
-                선택 퀴즈예요. 풀지 않아도 읽기 완료를 누를 수 있어요.
-            </div>
             <div className="mb-3 flex justify-end">
                 <QuizLevelToggle currentUser={currentUser} setCurrentUser={setCurrentUser} finished={finished} />
             </div>

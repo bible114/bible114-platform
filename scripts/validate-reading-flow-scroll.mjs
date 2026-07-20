@@ -21,7 +21,7 @@ assert.equal((readerSource.match(/id="tut-read-btn"/g) || []).length, 2);
 assert.match(userBibleActionsSource, /const nextCompletionSummary = \{\s*uid,\s*requestId: response\.requestId,\s*completedDay:/);
 assert.match(userBibleActionsSource, /Number\(requestedDay\) !== Number\(currentProgressDay\)[\s\S]*return;[\s\S]*readSubmittingRef\.current = true/);
 assert.doesNotMatch(readerSource, /선택 활동 · 퀴즈를 풀지 않아도/);
-assert.match(quizCardSource, /선택 퀴즈예요\. 풀지 않아도 읽기 완료를 누를 수 있어요/);
+assert.doesNotMatch(quizCardSource, /선택 퀴즈예요|풀지 않아도 읽기 완료/);
 assert.doesNotMatch(readerSource, /isQuizGateLocked|quizGateOpen/);
 assert.match(readerSource, /disabled=\{readSubmitting \|\| !isCurrentProgressDay\}/);
 assert.match(readerSource, /aria-label=\{`이전 본문 DAY/);
