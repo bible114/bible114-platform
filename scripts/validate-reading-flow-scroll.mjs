@@ -29,14 +29,21 @@ assert.match(readerSource, /aria-label=\{`다음 본문 DAY/);
 assert.match(readerSource, /내 진도 DAY \{currentUser\.currentDay\}로 돌아가기/);
 assert.match(readerSource, /본문 다시 불러오기/);
 const bibleReaderPosition = dashboardSource.indexOf('<BibleReader');
+const raceMapPosition = dashboardSource.indexOf('<RaceMap');
 const announcementPosition = dashboardSource.indexOf('<AnnouncementBanner');
 const dailyVideoPosition = dashboardSource.indexOf('<DailyVideoCard');
 assert.ok(bibleReaderPosition > -1, '대시보드에 성경 본문이 있어야 합니다.');
 assert.ok(
-    bibleReaderPosition < announcementPosition && bibleReaderPosition < dailyVideoPosition,
-    '별도 바로가기 버튼 없이도 성경 본문이 공지와 영상보다 먼저 보여야 합니다.',
+    raceMapPosition < dailyVideoPosition
+        && dailyVideoPosition < bibleReaderPosition
+        && bibleReaderPosition < announcementPosition,
+    '천로역정 레이스 다음에 매일성경 영상, 그 다음에 성경 본문이 보여야 합니다.',
 );
+assert.match(dashboardSource, /quizContent=\{\([\s\S]*BibleQuizCard[\s\S]*belowQuizContent=\{hasCommunity \? \([\s\S]*TalentShop/);
 assert.doesNotMatch(dashboardSource, /오늘 말씀 DAY \{currentDay\} 바로가기/);
+assert.match(quizCardSource, /DAY \{progressDay\} 성경퀴즈[\s\S]*QuizLevelToggle/);
+assert.match(quizCardSource, /keepQuizCardInView[\s\S]*scrollIntoView\(\{[\s\S]*block: 'start'/);
+assert.match(quizCardSource, /submitAnswer[\s\S]*finally \{[\s\S]*keepQuizCardInView\(\)/);
 assert.match(tutorialSource, /id: 'tut-quiz-area'[\s\S]*title: '오늘의 퀴즈 \(선택\)'/);
 assert.match(tutorialSource, /퀴즈를 풀거나 건너뛰지 않아도 읽기 완료와 다음 DAY 진행은 언제든 가능합니다/);
 

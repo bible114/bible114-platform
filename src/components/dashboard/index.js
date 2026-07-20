@@ -1,4 +1,5 @@
 export { default as DashboardHeader } from './DashboardHeader';
+export { default as CommunityRankingSummary } from './CommunityRankingSummary';
 export { default as RaceMap } from './RaceMap';
 export { default as AnnouncementBanner } from './AnnouncementBanner';
 export { default as DailyVideoCard } from './DailyVideoCard';

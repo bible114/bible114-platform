@@ -185,8 +185,25 @@ const BibleQuizCard = ({
     const progressKey = getQuizProgressKey(progressCycle, progressDay, readingEpoch);
     const currentUserRef = useRef(currentUser);
     const progressKeyRef = useRef(progressKey);
+    const quizSectionRef = useRef(null);
     currentUserRef.current = currentUser;
     progressKeyRef.current = progressKey;
+    const setQuizSectionNode = node => {
+        quizSectionRef.current = node;
+        if (typeof sectionRef === 'function') sectionRef(node);
+        else if (sectionRef) sectionRef.current = node;
+    };
+    const keepQuizCardInView = () => {
+        const scrollToQuiz = () => quizSectionRef.current?.scrollIntoView({
+            behavior: 'auto',
+            block: 'start',
+        });
+        if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+            scrollToQuiz();
+            return;
+        }
+        window.requestAnimationFrame(() => window.requestAnimationFrame(scrollToQuiz));
+    };
     const submissionStillCurrent = (
         uid,
         epoch,
@@ -325,7 +342,7 @@ const BibleQuizCard = ({
     if (!currentUser || currentUser.role === 'guest') return null;
     if (!quizState.loading && !hasQuestion) {
         return (
-            <section ref={sectionRef} className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-center shadow-sm">
+            <section ref={setQuizSectionNode} className="scroll-mt-24 rounded-3xl border border-amber-200 bg-amber-50 p-5 text-center shadow-sm">
                 <p className="text-base font-black text-amber-900">퀴즈는 선택이에요</p>
                 <p className="mt-2 text-sm font-bold leading-relaxed text-amber-800">{quizState.error || '오늘 퀴즈가 준비되지 않았어요. 아래 읽기 완료 버튼은 그대로 누를 수 있습니다.'}</p>
                 <button
@@ -555,22 +572,29 @@ const BibleQuizCard = ({
             });
         } finally {
             setSubmitting(false);
+            if (submissionStillCurrent(
+                submittedUid,
+                submittedEpoch,
+                submittedProgressKey,
+                submittedQuizConfigurationKey,
+                submittedRosterOrgId,
+            )) keepQuizCardInView();
         }
     };
 
     const currentProgress = currentUser?.quizProgress?.[progressKey] || progress || {};
     const currentAttempts = currentProgress.attempts || 0;
     const showAnswer = currentProgress.solved === true || currentAttempts >= 2;
-    const sectionClassName = `bg-white rounded-3xl border shadow-sm p-5 overflow-hidden transition-[border-color,box-shadow] duration-300 ${highlight ? 'border-indigo-500 ring-4 ring-indigo-200 shadow-indigo-100' : 'border-slate-100'}`;
+    const sectionClassName = `scroll-mt-24 bg-white rounded-3xl border shadow-sm p-5 overflow-hidden transition-[border-color,box-shadow] duration-300 ${highlight ? 'border-indigo-500 ring-4 ring-indigo-200 shadow-indigo-100' : 'border-slate-100'}`;
 
     return (
-        <section ref={sectionRef} className={sectionClassName}>
-            <div className="mb-3 flex justify-end">
+        <section ref={setQuizSectionNode} className={sectionClassName}>
+            <div className="mb-4 flex items-start justify-between gap-3">
+                <p className="pt-1 text-xs font-black text-indigo-500">DAY {progressDay} 성경퀴즈</p>
                 <QuizLevelToggle currentUser={currentUser} setCurrentUser={setCurrentUser} finished={finished} />
             </div>
             <div className="flex items-start justify-between gap-4 mb-4">
                 <div>
-                    <p className="text-xs font-black text-indigo-500 mb-1">DAY {progressDay} 성경퀴즈</p>
                     <div className="mb-2 inline-flex rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-black text-indigo-600">
                         {quizState.badge || '성경 상식 문제'}
                     </div>

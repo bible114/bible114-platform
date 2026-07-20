@@ -17,6 +17,7 @@ const DEFAULT_GUEST_STATE = {
     lastReadDate: null,
     readDates: [],
     videoType: 'adult',
+    dailyVideoCollapsed: false,
     quizLevel: null,
     migratedAt: null,
 };
@@ -28,6 +29,7 @@ const normalizeGuestState = (raw) => ({
     streak: Math.max(0, parseInt(raw?.streak, 10) || 0),
     readDates: Array.isArray(raw?.readDates) ? raw.readDates.slice(-400) : [],
     videoType: raw?.videoType === 'kids' ? 'kids' : 'adult',
+    dailyVideoCollapsed: raw?.dailyVideoCollapsed === true,
     quizLevel: ['standard', 'easy'].includes(raw?.quizLevel) ? raw.quizLevel : null,
 });
 

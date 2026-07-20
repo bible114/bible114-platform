@@ -28,6 +28,7 @@ import {
 // Dashboard Components
 import {
     DashboardHeader,
+    CommunityRankingSummary,
     RaceMap,
     AnnouncementBanner,
     DailyVideoCard,
@@ -576,6 +577,8 @@ const DashboardView = ({
                     </section>
                 )}
                 <main className="px-4 space-y-6">
+                    <DailyVideoCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
+
                     {completionSummary?.completedDay && completionSummary.completedDay !== viewingDay && (
                         <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-center text-emerald-900 shadow-sm">
                             <p className="text-lg font-black">DAY {completionSummary.completedDay} 읽기 완료! 🎉</p>
@@ -619,11 +622,21 @@ const DashboardView = ({
                                 talentProgramEnabled={talentProgramEnabled}
                             />
                         )}
+                        belowQuizContent={hasCommunity ? (
+                            <Suspense fallback={<DeferredSectionFallback label="달란트 상점" />}>
+                                <TalentShop
+                                    currentUser={currentUser}
+                                    setCurrentUser={setCurrentUser}
+                                    organizations={talentOrganizations}
+                                    onOrganizationChange={selectActiveOrganization}
+                                    showUnlockModal={showSecretShopUnlocked}
+                                    onCloseUnlockModal={() => setShowSecretShopUnlocked(false)}
+                                />
+                            </Suspense>
+                        ) : null}
                     />
 
                     {hasCommunity && <AnnouncementBanner announcement={announcement} />}
-
-                    <DailyVideoCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
 
                     {socialLinkNotice && (
                         <SocialLinkBanner
@@ -651,17 +664,6 @@ const DashboardView = ({
                         />
                     </div>
 
-                    {hasCommunity && <Suspense fallback={<DeferredSectionFallback label="달란트 상점" />}>
-                        <TalentShop
-                            currentUser={currentUser}
-                            setCurrentUser={setCurrentUser}
-                            organizations={talentOrganizations}
-                            onOrganizationChange={selectActiveOrganization}
-                            showUnlockModal={showSecretShopUnlocked}
-                            onCloseUnlockModal={() => setShowSecretShopUnlocked(false)}
-                        />
-                    </Suspense>}
-
                     {currentUser.role === 'member' && currentUser.accountType !== 'personal' && (
                         <CommunityMembershipCard
                             currentUser={currentUser}
@@ -671,6 +673,18 @@ const DashboardView = ({
                         />
                     )}
                     <PersonalAccountMigrationCard currentUser={currentUser} onMigrate={onPersonalAccountMigrate} />
+
+                    {hasCommunity && !isReadingPeople && (
+                        <CommunityRankingSummary
+                            getEncouragementMessage={getEncouragementMessage}
+                            departmentName={departmentName}
+                            setShowFullRanking={setShowFullRanking}
+                            topProgressGroups={topProgressGroups}
+                            departmentId={currentUser.departmentId}
+                            subgroupId={subgroupId}
+                            extraMemberships={additionalMemberships}
+                        />
+                    )}
 
                     {hasCommunity && !isReadingPeople && (
                         <section aria-label="읽기왕" className="pt-2">

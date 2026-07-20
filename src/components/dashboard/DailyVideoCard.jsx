@@ -58,6 +58,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
     const [playing, setPlaying] = useState(false);
     const [startSec, setStartSec] = useState(0);
     const [dateKey, setDateKey] = useState(getVideoDateKST());
+    const [collapsed, setCollapsed] = useState(currentUser?.dailyVideoCollapsed === true);
     const iframeRef = useRef(null);
     const carriedResolveRef = useRef(null);
 
@@ -467,7 +468,56 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
         setMode((currentUser?.videoMode || currentUser?.videoType) === 'kids' ? 'kids' : 'adult');
     }, [currentUser?.videoMode, currentUser?.videoType]);
 
-    if (!video) return null;
+    useEffect(() => {
+        setCollapsed(currentUser?.dailyVideoCollapsed === true);
+    }, [currentUser?.uid, currentUser?.dailyVideoCollapsed]);
+
+    const handleCollapsedChange = async () => {
+        const nextCollapsed = !collapsed;
+        setCollapsed(nextCollapsed);
+        setPlaying(false);
+        if (currentUser?.role === 'guest') {
+            saveGuestState({ dailyVideoCollapsed: nextCollapsed });
+            setCurrentUser?.(previous => previous ? { ...previous, dailyVideoCollapsed: nextCollapsed } : previous);
+            return;
+        }
+        if (!currentUser?.uid || !db) return;
+        setCurrentUser?.(previous => previous?.uid === currentUser.uid
+            ? { ...previous, dailyVideoCollapsed: nextCollapsed }
+            : previous);
+        try {
+            await db.collection('users').doc(currentUser.uid).set({
+                dailyVideoCollapsed: nextCollapsed,
+            }, { merge: true });
+        } catch (error) {
+            console.error('매일성경 열림 상태 저장 실패:', error);
+        }
+    };
+
+    if (video === null) return null;
+
+    if (collapsed) {
+        return (
+            <section className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm" aria-label="매일성경 영상">
+                <div className="flex items-center justify-between gap-3 bg-gradient-to-br from-indigo-600 to-blue-700 px-5 py-4 text-white">
+                    <h2 className="flex items-center gap-2 text-base font-bold"><span className="text-xl">🎬</span> 매일성경</h2>
+                    <button type="button" onClick={handleCollapsedChange} aria-expanded="false" className="min-h-11 rounded-full bg-white/20 px-4 py-2 text-sm font-black hover:bg-white/30">열기</button>
+                </div>
+            </section>
+        );
+    }
+
+    if (video === undefined) {
+        return (
+            <section className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm" aria-label="매일성경 영상">
+                <div className="flex items-center justify-between gap-3 bg-gradient-to-br from-indigo-600 to-blue-700 px-5 py-4 text-white">
+                    <h2 className="flex items-center gap-2 text-base font-bold"><span className="text-xl">🎬</span> 매일성경</h2>
+                    <button type="button" onClick={handleCollapsedChange} aria-expanded="true" className="min-h-11 rounded-full bg-white/20 px-4 py-2 text-sm font-black hover:bg-white/30">닫기</button>
+                </div>
+                <p className="px-5 py-4 text-center text-sm font-bold text-slate-500" role="status">오늘 영상을 불러오는 중이에요.</p>
+            </section>
+        );
+    }
 
     const selectedEntry = video[mode];
     const otherMode = mode === 'adult' ? 'kids' : 'adult';
@@ -541,23 +591,26 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
     return (
         <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
             <div className="p-5 bg-gradient-to-br from-indigo-600 to-blue-700 text-white">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                     <h2 className="text-lg font-bold flex items-center gap-2">
                         <span className="text-xl">🎬</span> 매일성경
                     </h2>
-                    <div className="flex items-center bg-white/20 backdrop-blur-md rounded-full p-1 shrink-0">
-                        <button
-                            onClick={() => handleModeChange('adult')}
-                            className={`min-h-11 rounded-full px-3 py-2 text-sm font-bold transition-all ${mode === 'adult' ? 'bg-white text-indigo-700 shadow-sm' : 'text-white/80'}`}
-                        >
-                            성인용
-                        </button>
-                        <button
-                            onClick={() => handleModeChange('kids')}
-                            className={`min-h-11 rounded-full px-3 py-2 text-sm font-bold transition-all ${mode === 'kids' ? 'bg-white text-indigo-700 shadow-sm' : 'text-white/80'}`}
-                        >
-                            어린이용
-                        </button>
+                    <div className="flex w-full shrink-0 items-center justify-between gap-2 sm:w-auto">
+                        <div className="flex items-center bg-white/20 backdrop-blur-md rounded-full p-1 shrink-0">
+                            <button
+                                onClick={() => handleModeChange('adult')}
+                                className={`min-h-11 rounded-full px-3 py-2 text-sm font-bold transition-all ${mode === 'adult' ? 'bg-white text-indigo-700 shadow-sm' : 'text-white/80'}`}
+                            >
+                                성인용
+                            </button>
+                            <button
+                                onClick={() => handleModeChange('kids')}
+                                className={`min-h-11 rounded-full px-3 py-2 text-sm font-bold transition-all ${mode === 'kids' ? 'bg-white text-indigo-700 shadow-sm' : 'text-white/80'}`}
+                            >
+                                어린이용
+                            </button>
+                        </div>
+                        <button type="button" onClick={handleCollapsedChange} aria-expanded="true" className="min-h-11 rounded-full bg-white/20 px-3 py-2 text-sm font-black hover:bg-white/30">닫기</button>
                     </div>
                 </div>
                 {usingFallback && (

@@ -1,16 +1,5 @@
 import React from 'react';
 import Icon from '../Icon';
-import { getMembershipList } from '../../utils/memberships';
-
-const sameMembership = (left, right) => {
-    if (!left || !right || left.departmentId !== right.departmentId) return false;
-    if (left.subgroupId === right.subgroupId) return true;
-    // legacy subgroupId=name 호환. modern group끼리는 name-name만으로 같다고 보지 않는다.
-    return Boolean(
-        (left.subgroupId && right.subgroupName && left.subgroupId === right.subgroupName)
-        || (right.subgroupId && left.subgroupName && right.subgroupId === left.subgroupName)
-    );
-};
 
 const DashboardHeader = ({
     handleLogout,
@@ -23,13 +12,6 @@ const DashboardHeader = ({
     setShowFaq = () => {},
     setShowTutorial = () => {},
     setShowAccountHelp = () => {},
-    getEncouragementMessage,
-    departmentName,
-    setShowFullRanking,
-    topProgressGroups,
-    departmentId,
-    subgroupId,
-    extraMemberships = [],
     // 새로운 props
     planTypeName,
     versionName,
@@ -43,10 +25,6 @@ const DashboardHeader = ({
     onOpenMemberships,
     currentOrganizationName,
 }) => {
-    const primaryMembership = { departmentId, departmentName, subgroupId, subgroupName: null };
-    const normalizedExtraMemberships = getMembershipList({ extraMemberships })
-        .filter(membership => !sameMembership(membership, primaryMembership));
-
     return (
         <header className="mb-4 space-y-3">
             {/* 자주 확인하는 정보만 남기고, 조작 메뉴는 한곳에 모은다. */}
@@ -97,23 +75,6 @@ const DashboardHeader = ({
                     </details>
                 </div>
             </div>
-
-            {/* 랭킹은 핵심 요약만 노출하고, 상세는 전체보기에서 확인한다. */}
-            {hasCommunity && <div className="px-4 w-full max-w-5xl mx-auto">
-                <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
-                    <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-bold text-blue-600">{getEncouragementMessage()}</p>
-                        <div className="mt-1 flex min-w-0 items-center gap-2">
-                            <span className="truncate text-sm font-black text-slate-800">🏆 {departmentName || '미배정'}</span>
-                            {topProgressGroups[0] && <span className="hidden truncate text-xs font-bold text-slate-500 sm:inline">현재 1위 {topProgressGroups[0].name} · {topProgressGroups[0].progressRate}%</span>}
-                            {normalizedExtraMemberships.length > 0 && <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">+{normalizedExtraMemberships.length}개 소속</span>}
-                        </div>
-                    </div>
-                    <button onClick={() => setShowFullRanking(true)} className="flex min-h-11 shrink-0 items-center gap-1 rounded-xl bg-slate-50 px-3 py-2 text-xs font-bold text-blue-600 hover:bg-blue-50">
-                        전체 랭킹 <Icon name="right" size={10} />
-                    </button>
-                </div>
-            </div>}
         </header>
     );
 };

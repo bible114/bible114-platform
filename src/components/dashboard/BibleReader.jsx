@@ -29,6 +29,7 @@ const BibleReader = ({
     readSubmitting,
     handleRead,
     quizContent,
+    belowQuizContent,
     completionSummary,
     bibleHeaderRef,
 }) => {
@@ -268,6 +269,12 @@ const BibleReader = ({
                 {!verseData.loading && !hasContentError && quizContent && (
                     <div id="tut-quiz-area">
                         {quizContent}
+                    </div>
+                )}
+
+                {!verseData.loading && !hasContentError && belowQuizContent && (
+                    <div className="mt-6">
+                        {belowQuizContent}
                     </div>
                 )}
 

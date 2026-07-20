@@ -655,6 +655,10 @@ assert.match(
 assert.match(dailyVideo, /newMode === 'kids'[\s\S]*startsWith\('nt_'\)/);
 assert.match(dailyVideo, /saveGuestState\(\{ videoType: newMode,[\s\S]*quizLevel: 'easy'/);
 assert.match(dailyVideo, /videoMode: newMode,[\s\S]*quizLevel: 'easy'/);
+assert.match(dailyVideo, /currentUser\?\.dailyVideoCollapsed === true/);
+assert.match(dailyVideo, /saveGuestState\(\{ dailyVideoCollapsed: nextCollapsed \}\)/);
+assert.match(dailyVideo, /collection\('users'\)\.doc\(currentUser\.uid\)\.set\(\{[\s\S]*dailyVideoCollapsed: nextCollapsed/);
+assert.match(guestStorage, /dailyVideoCollapsed: raw\?\.dailyVideoCollapsed === true/);
 assert.match(quiz, /어린이 영상을 선택하면 쉬운 퀴즈로 자동 변경돼요/);
 assert.match(helperSource, /export \{ parseChapters, mapToStandardLabel, parseAndMapChapters \} from '\.\/dailyVideoChapters\.js'/);
 assert.match(dailyVideoChaptersSource, /label\.includes\('해설'\) \|\| label\.includes\('묵상'\)/);
