@@ -82,23 +82,10 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
             }
         };
 
-        // 본문과 영상이 먼저 준비되도록 무거운 공동체 명부 요청은 브라우저가
-        // 한가해진 뒤 시작한다. 통독 지도와 랭킹은 홈 최하단의 보조 정보다.
-        let communityIdleId = null;
-        let communityTimerId = null;
-        if (typeof window.requestIdleCallback === 'function') {
-            communityIdleId = window.requestIdleCallback(
-                () => { void loadCommunityData(); },
-                { timeout: 1200 },
-            );
-        } else {
-            communityTimerId = window.setTimeout(() => { void loadCommunityData(); }, 200);
-        }
+        void loadCommunityData();
         void loadAnnouncement();
         void loadKakaoLink();
         return () => {
-            if (communityIdleId !== null) window.cancelIdleCallback(communityIdleId);
-            if (communityTimerId !== null) window.clearTimeout(communityTimerId);
             if (communityRequestRef.current === requestId) communityRequestRef.current += 1;
         };
     }, [

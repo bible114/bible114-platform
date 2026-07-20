@@ -28,6 +28,7 @@ import {
 // Dashboard Components
 import {
     DashboardHeader,
+    RaceMap,
     AnnouncementBanner,
     DailyVideoCard,
     BibleReader,
@@ -44,7 +45,6 @@ import {
 import TutorialOverlay from './TutorialOverlay';
 
 const TalentShop = lazy(() => import('./dashboard/TalentShop'));
-const RaceMap = lazy(() => import('./dashboard/RaceMap'));
 const ReadingChampionSection = lazy(() => import('./dashboard/ReadingChampionSection'));
 
 const DeferredSectionFallback = ({ label }) => (
@@ -563,6 +563,14 @@ const DashboardView = ({
                 className="max-w-5xl mx-auto w-full mt-4"
                 style={{ paddingBottom: 'var(--app-fixed-bottom-clearance)' }}
             >
+                {hasCommunity && !isReadingPeople && (
+                    <section aria-label="함께 읽는 통독 현황" className="mb-6">
+                        <div className="mb-3 px-4">
+                            <h2 className="text-base font-black text-slate-800">🏃 함께 읽는 통독 현황</h2>
+                        </div>
+                        <RaceMap racers={racers} departmentChampions={departmentChampions} getSubgroupDisplay={getSubgroupDisplay} />
+                    </section>
+                )}
                 <main className="px-4 space-y-6">
                     {completionSummary?.completedDay && completionSummary.completedDay !== viewingDay && (
                         <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-center text-emerald-900 shadow-sm">
@@ -661,15 +669,7 @@ const DashboardView = ({
                     <PersonalAccountMigrationCard currentUser={currentUser} onMigrate={onPersonalAccountMigrate} />
 
                     {hasCommunity && !isReadingPeople && (
-                        <section aria-label="함께 읽는 현황" className="space-y-6 pt-2">
-                            <div>
-                                <div className="mb-3">
-                                    <h2 className="text-base font-black text-slate-800">🏃 함께 읽는 통독 현황</h2>
-                                </div>
-                                <Suspense fallback={null}>
-                                    <RaceMap racers={racers} departmentChampions={departmentChampions} getSubgroupDisplay={getSubgroupDisplay} />
-                                </Suspense>
-                            </div>
+                        <section aria-label="읽기왕" className="pt-2">
                             <Suspense fallback={null}>
                                 <ReadingChampionSection getWeeklyMVP={getWeeklyMVP} />
                             </Suspense>

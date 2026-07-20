@@ -34,7 +34,7 @@ assert.match(quiz, /min-h-11 rounded-xl px-3 py-2 text-sm font-bold[\s\S]*이 DA
 assert.match(memo, /min-h-11 rounded-xl px-3 py-2 text-sm font-bold[\s\S]*내 기록 보기/);
 assert.match(dashboard, /lazy\(\(\) => import\('\.\/dashboard\/TalentShop'\)\)/);
 assert.equal((dashboard.match(/<Suspense fallback=/g) || []).length >= 1, true);
-assert.match(dashboard, /<BibleReader[\s\S]*함께 읽는 통독 현황[\s\S]*<RaceMap[\s\S]*<ReadingChampionSection/);
+assert.match(dashboard, /함께 읽는 통독 현황[\s\S]*<RaceMap[\s\S]*<BibleReader[\s\S]*aria-label="읽기왕"[\s\S]*<ReadingChampionSection/);
 assert.doesNotMatch(dashboard, /로그인·홈 화면 이용 안내|공동체 현황·랭킹 모아보기/);
 
 console.log('novice mobile controls validation passed');
