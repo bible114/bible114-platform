@@ -46,9 +46,9 @@ const DashboardHeader = ({
         .filter(membership => !sameMembership(membership, primaryMembership));
 
     return (
-        <header className="relative z-[90] mb-4 space-y-3">
+        <header className="mb-4 space-y-3">
             {/* 자주 확인하는 정보만 남기고, 조작 메뉴는 한곳에 모은다. */}
-            <div className="bg-white/95 backdrop-blur-md border-b border-slate-200/60 shadow-sm">
+            <div className="relative z-[90] border-b border-slate-200/60 bg-white/95 shadow-sm backdrop-blur-md">
                 <div className="mx-auto grid w-full max-w-5xl grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 py-2 md:flex md:gap-3">
                     <button
                         id="tut-version-btn"
