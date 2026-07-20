@@ -578,7 +578,6 @@ const DashboardView = ({
                     {completionSummary?.completedDay && completionSummary.completedDay !== viewingDay && (
                         <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-center text-emerald-900 shadow-sm">
                             <p className="text-lg font-black">DAY {completionSummary.completedDay} 읽기 완료! 🎉</p>
-                            <p className="mt-1 text-sm font-bold">진도가 DAY {currentDay}(으)로 이동했습니다.</p>
                         </div>
                     )}
 
