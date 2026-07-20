@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const shop = fs.readFileSync(new URL('../src/components/dashboard/TalentShop.jsx', import.meta.url), 'utf8');
+const dashboard = fs.readFileSync(new URL('../src/components/DashboardView.jsx', import.meta.url), 'utf8');
 
 assert.doesNotMatch(
     shop,
@@ -15,6 +16,9 @@ assert.match(
 );
 assert.match(shop, /우리 교회 상점은 지금 준비 중이에요/);
 assert.match(shop, /내 소속 상점은 지금 준비 중이에요/);
+assert.match(dashboard, /setTalentMarketVisible\(resolution\.canUseMarket\)/);
+assert.match(dashboard, /belowQuizContent=\{hasCommunity && talentMarketVisible \?/,
+    '상점을 이용할 수 없는 공동체에서는 준비 중 안내를 포함한 상점 영역 전체를 숨겨야 한다.');
 assert.match(shop, /내 소속 상품을 준비하고 있어요/);
 assert.match(
     shop,

@@ -154,6 +154,7 @@ const DashboardView = ({
     const [showMemberships, setShowMemberships] = useState(false);
     const [showAccountHelp, setShowAccountHelp] = useState(false);
     const [talentProgramEnabled, setTalentProgramEnabled] = useState(true);
+    const [talentMarketVisible, setTalentMarketVisible] = useState(false);
     const bibleHeaderRef = useRef(null);
     const observedCompletionRef = useRef({
         uid: currentUser?.uid || null,
@@ -216,20 +217,27 @@ const DashboardView = ({
     useEffect(() => {
         if (!currentUser?.churchId || currentUser.role === 'guest') {
             setTalentProgramEnabled(false);
+            setTalentMarketVisible(false);
             return undefined;
         }
         let alive = true;
+        setTalentMarketVisible(false);
         db.collection('churches').doc(currentUser.churchId).collection('settings').doc('talentShop').get()
             .then(doc => {
                 if (!alive) return;
-                setTalentProgramEnabled(resolveTalentProgram({
+                const resolution = resolveTalentProgram({
                     user: currentUser,
                     talentShop: doc.exists ? doc.data() : null,
-                }).canEarnTalent);
+                });
+                setTalentProgramEnabled(resolution.canEarnTalent);
+                setTalentMarketVisible(resolution.canUseMarket);
             })
             .catch(error => {
                 console.error('달란트 부서 설정 로드 실패:', error);
-                if (alive) setTalentProgramEnabled(true);
+                if (alive) {
+                    setTalentProgramEnabled(true);
+                    setTalentMarketVisible(false);
+                }
             });
         return () => { alive = false; };
     }, [
@@ -610,7 +618,7 @@ const DashboardView = ({
                                 talentProgramEnabled={talentProgramEnabled}
                             />
                         )}
-                        belowQuizContent={hasCommunity ? (
+                        belowQuizContent={hasCommunity && talentMarketVisible ? (
                             <Suspense fallback={<DeferredSectionFallback label="달란트 상점" />}>
                                 <TalentShop
                                     currentUser={currentUser}

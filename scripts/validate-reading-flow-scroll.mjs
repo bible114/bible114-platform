@@ -41,7 +41,7 @@ assert.ok(
         && bibleReaderPosition < announcementPosition,
     '천로역정 레이스 다음에 매일성경 영상, 그 다음에 성경 본문이 보여야 합니다.',
 );
-assert.match(dashboardSource, /quizContent=\{\([\s\S]*BibleQuizCard[\s\S]*belowQuizContent=\{hasCommunity \? \([\s\S]*TalentShop/);
+assert.match(dashboardSource, /quizContent=\{\([\s\S]*BibleQuizCard[\s\S]*belowQuizContent=\{hasCommunity && talentMarketVisible \? \([\s\S]*TalentShop/);
 assert.doesNotMatch(dashboardSource, /오늘 말씀 DAY \{currentDay\} 바로가기/);
 assert.match(quizCardSource, /DAY \{progressDay\} 성경퀴즈[\s\S]*QuizLevelToggle/);
 assert.match(quizCardSource, /keepQuizCardInView[\s\S]*scrollIntoView\(\{[\s\S]*block: 'start'/);
