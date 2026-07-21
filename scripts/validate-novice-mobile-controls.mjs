@@ -26,7 +26,7 @@ assert.doesNotMatch(reader, /내가 읽을 차례|읽을 차례 \$\{currentUser\
 assert.match(reader, /!isCurrentProgressDay[\s\S]*다른 DAY 보는 중/);
 
 assert.match(header, /grid-cols-\[minmax\(0,1fr\)_auto\][\s\S]*group flex min-h-11 min-w-0[\s\S]*읽는 버전/);
-assert.match(header, /☰ <span>메뉴<\/span>[\s\S]*로그인·홈 화면 안내[\s\S]*로그아웃/);
+assert.match(header, /☰ <span>메뉴<\/span>[\s\S]*로그인·바로가기[\s\S]*로그아웃/);
 assert.match(header, /성경통독 114 가이드[\s\S]*자주 묻는 질문[\s\S]*앱 화면 투어/);
 assert.doesNotMatch(header, /읽는 방법·FAQ/);
 assert.match(header, /<header className="mb-4 space-y-3">[\s\S]*<div className="relative z-\[90\][\s\S]*공동체 선택/);
@@ -56,5 +56,7 @@ assert.match(rankingSummary, /aria-label="소그룹 누적 랭킹"[\s\S]*progres
     '소그룹 누적 랭킹은 접힌 요약이 아니라 전체 목록으로 항상 보여야 한다.');
 assert.doesNotMatch(rankingSummary, /전체 랭킹/);
 assert.doesNotMatch(dashboard, /로그인·홈 화면 이용 안내|공동체 현황·랭킹 모아보기/);
+assert.match(dashboard, /aria-label="로그인과 바로가기"[\s\S]*로그인·바로가기[\s\S]*<HomeScreenHelpBanner \/>/);
+assert.doesNotMatch(dashboard, /<HomeScreenHelpBanner \/>[\s\S]*성경통독 114 가이드/);
 
 console.log('novice mobile controls validation passed');

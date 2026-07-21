@@ -503,13 +503,13 @@ const DashboardView = ({
             />
             {showAccountHelp && (
                 <div className="fixed inset-0 z-[130] flex items-end justify-center bg-black/45 sm:items-center sm:p-4" onMouseDown={event => { if (event.target === event.currentTarget) setShowAccountHelp(false); }}>
-                    <section role="dialog" aria-modal="true" aria-label="로그인과 홈 화면 안내" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-slate-50 p-5 shadow-2xl sm:rounded-3xl">
+                    <section role="dialog" aria-modal="true" aria-label="로그인과 바로가기" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-slate-50 p-5 shadow-2xl sm:rounded-3xl">
                         <div className="mb-4 flex items-center justify-between gap-3">
                             <div>
-                                <h2 className="text-lg font-black text-slate-900">로그인·홈 화면 안내</h2>
-                                <p className="mt-1 text-xs font-bold text-slate-500">빠른 로그인 연결과 휴대폰 바로가기를 한곳에서 확인하세요.</p>
+                                <h2 className="text-lg font-black text-slate-900">로그인·바로가기</h2>
+                                <p className="mt-1 text-xs font-bold text-slate-500">빠른 로그인 연결과 휴대폰 바로가기를 확인하세요.</p>
                             </div>
-                            <button type="button" onClick={() => setShowAccountHelp(false)} className="flex min-h-11 min-w-11 items-center justify-center rounded-full text-xl text-slate-500 hover:bg-white" aria-label="로그인과 홈 화면 안내 닫기">✕</button>
+                            <button type="button" onClick={() => setShowAccountHelp(false)} className="flex min-h-11 min-w-11 items-center justify-center rounded-full text-xl text-slate-500 hover:bg-white" aria-label="로그인과 바로가기 닫기">✕</button>
                         </div>
                         <div className="space-y-4">
                             <SocialLinkBanner
@@ -520,10 +520,6 @@ const DashboardView = ({
                                 onKakaoLink={onKakaoLink}
                             />
                             <HomeScreenHelpBanner />
-                            <button type="button" onClick={() => { setShowAccountHelp(false); setShowReadingGuide(true); }} className="flex min-h-12 w-full items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50 px-4 text-sm font-black text-indigo-700 hover:bg-indigo-100">
-                                <span>📖 성경통독 114 가이드</span>
-                                <span aria-hidden="true">›</span>
-                            </button>
                         </div>
                     </section>
                 </div>
