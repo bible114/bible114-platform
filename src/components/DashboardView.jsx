@@ -553,7 +553,7 @@ const DashboardView = ({
                 personalOrganizations={personalOrganizations}
                 primaryOrgId={currentUser.primaryOrgId}
                 onPrimaryOrgChange={onPrimaryOrgChange}
-                onOpenMemberships={currentUser.accountType === 'personal' ? () => setShowMemberships(true) : null}
+                onOpenMemberships={() => setShowMemberships(true)}
                 currentOrganizationName={currentUser.churchName}
             />
 
@@ -657,14 +657,6 @@ const DashboardView = ({
                         />
                     </div>
 
-                    {currentUser.role === 'member' && currentUser.accountType !== 'personal' && (
-                        <CommunityMembershipCard
-                            currentUser={currentUser}
-                            setCurrentUser={setCurrentUser}
-                            activeOrgId={currentUser.churchId}
-                            onSelectOrg={selectActiveOrganization}
-                        />
-                    )}
                     <PersonalAccountMigrationCard currentUser={currentUser} onMigrate={onPersonalAccountMigrate} />
 
                     {hasCommunity && !isReadingPeople && (
@@ -706,7 +698,7 @@ const DashboardView = ({
             )}
             <KakaoChannelButton kakaoLink={kakaoLink} />
 
-            {showMemberships && currentUser.accountType === 'personal' && <div className="fixed inset-0 z-[180] flex items-end justify-center bg-black/45 sm:items-center sm:p-4" onMouseDown={event => { if (event.target === event.currentTarget) setShowMemberships(false); }}><div role="dialog" aria-modal="true" aria-label="내 단체 관리" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-slate-50 p-5 sm:rounded-3xl"><div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-black text-slate-900">내 단체 관리</h2><button type="button" onClick={() => setShowMemberships(false)} className="p-2 text-slate-400" aria-label="닫기">✕</button></div><CommunityMembershipCard currentUser={currentUser} setCurrentUser={setCurrentUser} activeOrgId={currentUser.churchId} onSelectOrg={selectActiveOrganization} onPrimaryOrgChange={onPrimaryOrgChange} /></div></div>}
+            {showMemberships && <div className="fixed inset-0 z-[180] flex items-end justify-center bg-black/45 sm:items-center sm:p-4" onMouseDown={event => { if (event.target === event.currentTarget) setShowMemberships(false); }}><div role="dialog" aria-modal="true" aria-label="내 공동체 관리" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-slate-50 p-5 sm:rounded-3xl"><div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-black text-slate-900">공동체 선택</h2><button type="button" onClick={() => setShowMemberships(false)} className="p-2 text-slate-400" aria-label="닫기">✕</button></div><CommunityMembershipCard currentUser={currentUser} setCurrentUser={setCurrentUser} activeOrgId={currentUser.churchId} onSelectOrg={selectActiveOrganization} onPrimaryOrgChange={onPrimaryOrgChange} churchCommunities={churchCommunities} /></div></div>}
 
         </div>
     );

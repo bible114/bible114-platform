@@ -6,6 +6,8 @@ export const RESTART_READING_ACTION = "restartReading" as const;
 export const SUBMIT_QUIZ_ACTION = "submitQuiz" as const;
 export const SKIP_QUIZ_ACTION = "skipQuiz" as const;
 export const JOIN_COMMUNITY_ACTION = "joinCommunity" as const;
+export const UPDATE_SELF_SUBGROUP_MEMBERSHIP_ACTION =
+  "updateSelfSubgroupMembership" as const;
 export const ISSUE_JOIN_TICKET_ACTION = "issueJoinTicket" as const;
 export const COMPLETE_MEMBER_SIGNUP_ACTION = "completeMemberSignup" as const;
 export const COMPLETE_PERSONAL_SIGNUP_ACTION =
@@ -227,6 +229,14 @@ export type PlatformApiRequest =
     subgroupId: string;
   }
   | {
+    action: typeof UPDATE_SELF_SUBGROUP_MEMBERSHIP_ACTION;
+    requestId: string;
+    churchId: string;
+    operation: "add" | "remove";
+    departmentId: string;
+    subgroupId: string;
+  }
+  | {
     action: typeof COMPLETE_MEMBER_SIGNUP_ACTION;
     requestId: string;
     churchId: string;
@@ -361,6 +371,7 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     contactEmail,
     consent,
     expectedVersion,
+    operation,
   } = body as Record<string, unknown>;
   if (!isRequestId(requestId)) {
     throw new PlatformApiRequestError("INVALID_REQUEST_ID");
@@ -932,6 +943,35 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       churchId: normalizedChurchId,
       entryCode: normalizedEntryCode,
       joinTicket: normalizedJoinTicket,
+      departmentId: normalizedDepartmentId,
+      subgroupId: normalizedSubgroupId,
+    };
+  }
+  if (action === UPDATE_SELF_SUBGROUP_MEMBERSHIP_ACTION) {
+    const allowedKeys = new Set([
+      "action",
+      "requestId",
+      "churchId",
+      "operation",
+      "departmentId",
+      "subgroupId",
+    ]);
+    const normalizedChurchId = safeDocumentId(churchId);
+    const normalizedDepartmentId = safeDocumentId(departmentId);
+    const normalizedSubgroupId = safeDocumentId(subgroupId);
+    if (
+      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+      !normalizedChurchId || normalizedChurchId === "unaffiliated_v1" ||
+      !normalizedDepartmentId || !normalizedSubgroupId ||
+      !["add", "remove"].includes(String(operation))
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return {
+      action,
+      requestId,
+      churchId: normalizedChurchId,
+      operation: operation as "add" | "remove",
       departmentId: normalizedDepartmentId,
       subgroupId: normalizedSubgroupId,
     };

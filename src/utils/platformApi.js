@@ -2286,6 +2286,51 @@ export const joinCommunity = ({ churchId, entryCode = '', joinTicket = '', depar
     }, options);
 };
 
+export const updateSelfSubgroupMembership = ({ churchId, operation, departmentId, subgroupId }, options = {}) => {
+    const safeId = value => {
+        if (typeof value !== 'string') return null;
+        const normalized = value.trim();
+        return normalized && normalized.length <= 128 && !normalized.includes('/')
+            && !/[\u0000-\u001f\u007f]/.test(normalized) ? normalized : null;
+    };
+    const payload = {
+        churchId: safeId(churchId),
+        operation,
+        departmentId: safeId(departmentId),
+        subgroupId: safeId(subgroupId),
+    };
+    if (!payload.churchId || payload.churchId === 'unaffiliated_v1'
+        || !['add', 'remove'].includes(operation)
+        || !payload.departmentId || !payload.subgroupId) {
+        throw new PlatformApiError('소그룹 참여 정보를 다시 확인해주세요.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const requestId = options.requestId || createRequestId();
+    return callPlatformApi('updateSelfSubgroupMembership', payload, { ...options, requestId })
+        .then(result => {
+            const allowedStatuses = new Set(['added', 'removed', 'alreadyJoined', 'alreadyLeft']);
+            const membershipsValid = Array.isArray(result?.extraMemberships)
+                && result.extraMemberships.length <= 3
+                && result.extraMemberships.every(membership => isResponseRecord(membership)
+                    && hasExactKeys(membership, new Set([
+                        'departmentId', 'departmentName', 'subgroupId', 'subgroupName',
+                    ]))
+                    && ['departmentId', 'departmentName', 'subgroupId', 'subgroupName']
+                        .every(key => typeof membership[key] === 'string' && membership[key].length > 0));
+            if (!hasExactKeys(result, new Set([
+                'ok', 'action', 'requestId', 'status', 'churchId', 'extraMemberships',
+            ])) || result.ok !== true || result.action !== 'updateSelfSubgroupMembership'
+                || result.requestId !== requestId || result.churchId !== payload.churchId
+                || !allowedStatuses.has(result.status) || !membershipsValid) {
+                throw new PlatformApiError('소그룹 변경 결과를 안전하게 확인하지 못했습니다.', {
+                    code: 'INVALID_RESPONSE', status: 200, retryable: true,
+                });
+            }
+            return result;
+        });
+};
+
 export const purchaseItem = ({ churchId, itemId, departmentId, marketId }, options = {}) => {
     const safeId = value => {
         if (typeof value !== 'string') return null;

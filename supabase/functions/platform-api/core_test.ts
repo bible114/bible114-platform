@@ -799,6 +799,43 @@ Deno.test("공동체 참여 요청을 정규화하고 경로·코드를 검증�
   }
 });
 
+Deno.test("사용자가 같은 교회 소그룹을 직접 변경하는 요청을 검증한다", () => {
+  const parsed = parsePlatformApiRequest({
+    action: "updateSelfSubgroupMembership",
+    requestId: "123e4567-e89b-42d3-a456-426614174000",
+    churchId: "test-church",
+    operation: "add",
+    departmentId: "young",
+    subgroupId: "cell-2",
+  });
+  assert(parsed.action === "updateSelfSubgroupMembership", "action mismatch");
+  if (parsed.action !== "updateSelfSubgroupMembership") return;
+  assert(parsed.operation === "add", "operation mismatch");
+  assert(parsed.subgroupId === "cell-2", "subgroup mismatch");
+
+  for (
+    const invalid of [
+      { operation: "replace" },
+      { churchId: "unaffiliated_v1" },
+      { subgroupId: "bad/path" },
+    ]
+  ) {
+    assertRequestError(
+      () =>
+        parsePlatformApiRequest({
+          action: "updateSelfSubgroupMembership",
+          requestId: "123e4567-e89b-42d3-a456-426614174000",
+          churchId: "test-church",
+          operation: "remove",
+          departmentId: "young",
+          subgroupId: "cell-2",
+          ...invalid,
+        }),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
 Deno.test("최초 교인 가입 요청의 최소 프로필을 정규화한다", () => {
   const parsed = parsePlatformApiRequest({
     action: "completeMemberSignup",

@@ -108,6 +108,10 @@ import { rotateChurchAccessCode } from "./rotateChurchAccessCodeService.ts";
 import { ensureUnaffiliatedChurch } from "./ensureUnaffiliatedChurchService.ts";
 import { skipQuiz, submitQuiz } from "./quizSubmission.ts";
 import { rebuildPublicChurches } from "./publicDirectoryService.ts";
+import {
+  SelfSubgroupMembershipError,
+  updateSelfSubgroupMembership,
+} from "./selfSubgroupMembershipCore.ts";
 
 // preview action은 계속 무쓰기 계산만 수행하고, 실제 읽기·퀴즈 변경은 아래의
 // 전용 서비스 transaction 모듈에만 위임한다.
@@ -1365,6 +1369,117 @@ Deno.serve(async (request) => {
     if (!userDocument) throw new PlatformError("NOT_FOUND");
     if (userDocument.data.isDeleted === true) {
       throw new PlatformError("FORBIDDEN");
+    }
+
+    if (parsed.action === "updateSelfSubgroupMembership") {
+      if (userDocument.data.role !== "member") {
+        throw new PlatformError("FORBIDDEN");
+      }
+      const transaction = await beginTransaction(
+        service.token,
+        service.projectId,
+      );
+      try {
+        const userPath = `users/${uid}`;
+        const rosterPath = `churches/${parsed.churchId}/roster/${uid}`;
+        const churchPath = `churches/${parsed.churchId}`;
+        const [freshUser, churchDocument, rosterDocument] = await Promise.all([
+          getDocument<Record<string, unknown>>(
+            service.token,
+            service.projectId,
+            userPath,
+            { transaction },
+          ),
+          getDocument<Record<string, unknown>>(
+            service.token,
+            service.projectId,
+            churchPath,
+            { transaction },
+          ),
+          getDocument<Record<string, unknown>>(
+            service.token,
+            service.projectId,
+            rosterPath,
+            { transaction },
+          ),
+        ]);
+        if (
+          !freshUser || freshUser.data.isDeleted === true || !churchDocument
+        ) {
+          throw new PlatformError("NOT_FOUND");
+        }
+        const isPrimaryChurchDocument =
+          freshUser.data.accountType !== "personal" &&
+          freshUser.data.churchId === parsed.churchId;
+        const targetPath = isPrimaryChurchDocument ? userPath : rosterPath;
+        const membershipDocument = isPrimaryChurchDocument
+          ? freshUser.data
+          : rosterDocument?.data;
+        if (
+          !membershipDocument ||
+          membershipDocument.uid && membershipDocument.uid !== uid
+        ) {
+          throw new PlatformError("FORBIDDEN", {
+            message: "현재 참여 중인 교회의 소그룹만 변경할 수 있습니다.",
+          });
+        }
+        let decision;
+        try {
+          decision = updateSelfSubgroupMembership({
+            operation: parsed.operation,
+            departmentId: parsed.departmentId,
+            subgroupId: parsed.subgroupId,
+            church: churchDocument.data,
+            membershipDocument,
+          });
+        } catch (error) {
+          if (!(error instanceof SelfSubgroupMembershipError)) throw error;
+          const messages: Record<string, string> = {
+            CHURCH_INACTIVE:
+              "현재 운영 중인 교회에서만 소그룹을 변경할 수 있습니다.",
+            INVALID_MEMBERSHIP: "교회의 부서·소그룹 정보를 다시 확인해주세요.",
+            PRIMARY_MEMBERSHIP: "주 소속 소그룹은 여기서 탈퇴할 수 없습니다.",
+            TOO_MANY_MEMBERSHIPS:
+              "추가 소그룹은 최대 3개까지 참여할 수 있습니다.",
+          };
+          throw new PlatformError("CONFLICT", {
+            message: messages[error.code] ||
+              "소그룹 소속을 변경할 수 없습니다.",
+          });
+        }
+        const changed = decision.status === "added" ||
+          decision.status === "removed";
+        const now = new Date();
+        if (changed) {
+          await commitWrites(service.token, service.projectId, [
+            updateWrite(service.projectId, targetPath, {
+              extraMemberships: decision.extraMemberships,
+              updatedAt: now,
+            }, {
+              updateMask: ["extraMemberships", "updatedAt"],
+              exists: true,
+            }),
+          ], { transaction });
+        } else {
+          await rollbackTransaction(
+            service.token,
+            service.projectId,
+            transaction,
+          ).catch(() => {});
+        }
+        return jsonResponse(origin, 200, {
+          ok: true,
+          action: parsed.action,
+          requestId: parsed.requestId,
+          status: decision.status,
+          churchId: parsed.churchId,
+          extraMemberships: decision.extraMemberships,
+        });
+      } catch (error) {
+        await rollbackTransaction(service.token, service.projectId, transaction)
+          .catch(() => {});
+        throw error;
+      }
     }
 
     if (parsed.action === "completeRead") {

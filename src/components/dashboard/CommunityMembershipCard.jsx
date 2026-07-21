@@ -9,6 +9,7 @@ import {
     joinCommunity as joinCommunityViaApi,
     joinSoloCommunity as joinSoloCommunityViaApi,
     PlatformApiError,
+    updateSelfSubgroupMembership as updateSelfSubgroupMembershipViaApi,
 } from '../../utils/platformApi';
 import {
     isLatestCanonicalUserState,
@@ -18,7 +19,7 @@ import { validateJoinedSoloCommunityState } from '../../utils/joinSoloCommunityS
 
 const emptySelection = { departmentId: '', departmentName: '', subgroupId: '', subgroupName: '' };
 
-const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = false, onJoinComplete, onSkip, selectionOnly = false, skipLabel = '나중에 할게요', activeOrgId, onSelectOrg, onPrimaryOrgChange }) => {
+const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = false, onJoinComplete, onSkip, selectionOnly = false, skipLabel = '나중에 할게요', activeOrgId, onSelectOrg, onPrimaryOrgChange, churchCommunities = [] }) => {
     const [directory, setDirectory] = useState([]);
     const [showJoin, setShowJoin] = useState(false);
     const [orgId, setOrgId] = useState('');
@@ -29,6 +30,8 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
     const [step, setStep] = useState('church');
     const [busy, setBusy] = useState(false);
     const [notice, setNotice] = useState(null);
+    const [showSelfGroup, setShowSelfGroup] = useState(false);
+    const [selfGroupSelection, setSelfGroupSelection] = useState(emptySelection);
     const joinTriggerRef = useRef(null);
     const dialogRef = useRef(null);
     const busyRef = useRef(false);
@@ -42,6 +45,12 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
     const selectedOrgId = activeOrgId || currentUser?.churchId || null;
     const baseChurchId = currentUser?.baseChurchId || currentUser?.churchId || null;
     const baseChurchName = currentUser?.baseChurchName || currentUser?.churchName || '주 소속 공동체';
+    const selfExtraMemberships = useMemo(
+        () => (Array.isArray(currentUser?.extraMemberships) ? currentUser.extraMemberships.slice(0, 3) : []),
+        [currentUser?.extraMemberships]
+    );
+    const canManageSelfGroups = !onboarding && selectedOrgId && selectedOrgId !== UNAFFILIATED_CHURCH_ID
+        && currentUser?.departmentId && currentUser?.subgroupId && churchCommunities.length > 0;
 
     useEffect(() => {
         let alive = true;
@@ -150,6 +159,65 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
         const subgroupName = typeof subgroup === 'string' ? subgroup : subgroup?.name || '';
         const subgroupId = typeof subgroup === 'string' ? subgroup : subgroup?.id || subgroupName;
         setSelection(prev => ({ ...prev, subgroupId, subgroupName }));
+    };
+
+    const setSelfDepartment = (department) => {
+        setSelfGroupSelection({
+            departmentId: department.id || department.name || '',
+            departmentName: department.name || department.id || '',
+            subgroupId: '',
+            subgroupName: '',
+        });
+    };
+
+    const setSelfSubgroup = (subgroup) => {
+        const subgroupName = typeof subgroup === 'string' ? subgroup : subgroup?.name || subgroup?.id || '';
+        const subgroupId = typeof subgroup === 'string' ? subgroup : subgroup?.id || subgroupName;
+        setSelfGroupSelection(previous => ({ ...previous, subgroupId, subgroupName }));
+    };
+
+    const applySelfMemberships = (user, memberships) => {
+        if (!user) return user;
+        if (user.accountType !== 'personal' && user.churchId === selectedOrgId) {
+            return { ...user, extraMemberships: memberships };
+        }
+        return {
+            ...user,
+            extraOrgs: (user.extraOrgs || []).map(org => org.orgId === selectedOrgId
+                ? { ...org, extraMemberships: memberships }
+                : org),
+        };
+    };
+
+    const changeSelfSubgroupMembership = async (operation, membership = selfGroupSelection) => {
+        if (busy || !selectedOrgId || !membership.departmentId || !membership.subgroupId) return;
+        setBusy(true);
+        setNotice(null);
+        try {
+            const result = await updateSelfSubgroupMembershipViaApi({
+                churchId: selectedOrgId,
+                operation,
+                departmentId: membership.departmentId,
+                subgroupId: membership.subgroupId,
+            });
+            setCurrentUser(user => applySelfMemberships(user, result.extraMemberships));
+            setShowSelfGroup(false);
+            setSelfGroupSelection(emptySelection);
+            setNotice({
+                type: 'success',
+                text: operation === 'add' ? '소그룹에 참여했어요.' : '추가 소그룹에서 나왔어요.',
+            });
+        } catch (error) {
+            console.error('내 소그룹 변경 실패:', error);
+            setNotice({
+                type: 'error',
+                text: error instanceof PlatformApiError && [400, 403, 404, 409].includes(error.status)
+                    ? error.message
+                    : '소그룹을 변경하지 못했습니다. 잠시 후 다시 시도해주세요.',
+            });
+        } finally {
+            setBusy(false);
+        }
     };
 
     const joinCommunity = async () => {
@@ -395,6 +463,16 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
                 <div><h2 className="font-bold text-slate-800">내 공동체</h2><p className="text-xs text-slate-500 mt-1">다른 공동체에서도 함께 성경을 읽을 수 있어요.</p></div>
                 <button ref={joinTriggerRef} type="button" disabled={extraOrgs.length >= 3 || busy} onClick={() => { setNotice(null); setShowJoin(true); }} className="shrink-0 rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:bg-slate-300">공동체 추가</button>
             </div>
+            {canManageSelfGroups && <div className="mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">
+                <div className="flex items-start justify-between gap-3">
+                    <div><h3 className="text-sm font-black text-slate-800">현재 교회 소그룹</h3><p className="mt-1 text-xs leading-5 text-slate-500">주 소속은 유지되고, 함께 활동할 소그룹을 3개까지 더 선택할 수 있어요.</p></div>
+                    <button type="button" disabled={busy || selfExtraMemberships.length >= 3} onClick={() => { setNotice(null); setSelfGroupSelection(emptySelection); setShowSelfGroup(true); }} className="shrink-0 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-black text-white disabled:bg-slate-300">소그룹 추가</button>
+                </div>
+                <div className="mt-3 space-y-2">
+                    <div className="flex items-center justify-between rounded-xl bg-white px-3 py-2.5 text-sm"><span className="min-w-0 truncate font-bold text-slate-700">{[currentUser.departmentName || currentUser.departmentId, currentUser.subgroupName || currentUser.subgroupId].filter(Boolean).join(' · ')}</span><span className="shrink-0 text-[10px] font-black text-indigo-600">주 소속</span></div>
+                    {selfExtraMemberships.map(membership => <div key={`${membership.departmentId}:${membership.subgroupId}`} className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2.5"><span className="min-w-0 truncate text-sm font-bold text-slate-700">{[membership.departmentName || membership.departmentId, membership.subgroupName || membership.subgroupId].filter(Boolean).join(' · ')}</span><button type="button" disabled={busy} onClick={() => { if (window.confirm('이 추가 소그룹에서 나오시겠습니까?')) changeSelfSubgroupMembership('remove', membership); }} className="shrink-0 text-xs font-bold text-red-500 disabled:text-slate-300">나가기</button></div>)}
+                </div>
+            </div>}
             <div className="space-y-2">
                 {currentUser.accountType !== 'personal' && (() => {
                     const isActive = selectedOrgId === baseChurchId;
@@ -409,7 +487,17 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
                 {extraOrgs.length === 0 && <p className="py-2 text-center text-xs text-slate-400">참여 중인 공동체가 없습니다. 혼자 읽는 기록은 계속 안전하게 저장됩니다.</p>}
                 {currentUser.accountType === 'personal' && !extraOrgs.some(org => org.orgId === UNAFFILIATED_CHURCH_ID) && <button type="button" disabled={busy || extraOrgs.length >= 3} onClick={joinSoloCommunity} className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs font-bold text-emerald-700 disabled:opacity-40">혼자 읽기 모임으로 돌아가기</button>}
             </div>
-            {notice && !showJoin && <p className="mt-3 text-xs text-red-600">{notice.text}</p>}
+            {notice && !showJoin && <p className={`mt-3 text-xs font-bold ${notice.type === 'error' ? 'text-red-600' : 'text-emerald-600'}`}>{notice.text}</p>}
+
+            {showSelfGroup && <div className="fixed inset-0 z-[220] flex items-end justify-center bg-black/45 sm:items-center sm:p-4" onMouseDown={event => { if (event.target === event.currentTarget && !busy) setShowSelfGroup(false); }}>
+                <div role="dialog" aria-modal="true" aria-label="현재 교회 소그룹 추가" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
+                    <div className="mb-5 flex items-center justify-between"><div><h3 className="text-lg font-black text-slate-900">소그룹 추가</h3><p className="mt-1 text-xs text-slate-500">현재 교회 안에서 함께할 곳을 선택하세요.</p></div><button type="button" disabled={busy} aria-label="소그룹 추가 창 닫기" onClick={() => setShowSelfGroup(false)} className="p-2 text-slate-400">✕</button></div>
+                    <div><p className="mb-2 text-xs font-bold text-slate-500">부서 선택</p><div className="grid grid-cols-2 gap-2">{churchCommunities.map(department => <button type="button" key={department.id || department.name} onClick={() => setSelfDepartment(department)} className={`rounded-xl border p-3 text-sm font-bold ${selfGroupSelection.departmentId === (department.id || department.name) ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600'}`}>{department.name}</button>)}</div></div>
+                    {selfGroupSelection.departmentId && <div className="mt-4"><p className="mb-2 text-xs font-bold text-slate-500">소그룹 선택</p><div className="grid grid-cols-2 gap-2">{(churchCommunities.find(department => (department.id || department.name) === selfGroupSelection.departmentId)?.subgroups || []).map((subgroup, index) => { const subgroupId = typeof subgroup === 'string' ? subgroup : subgroup.id || subgroup.name; const alreadyJoined = (currentUser.departmentId === selfGroupSelection.departmentId && currentUser.subgroupId === subgroupId) || selfExtraMemberships.some(item => item.departmentId === selfGroupSelection.departmentId && item.subgroupId === subgroupId); return <button type="button" key={subgroupId || index} disabled={alreadyJoined} onClick={() => setSelfSubgroup(subgroup)} className={`rounded-xl border p-3 text-sm font-bold disabled:bg-slate-100 disabled:text-slate-300 ${selfGroupSelection.subgroupId === subgroupId ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600'}`}>{typeof subgroup === 'string' ? subgroup : subgroup.name}{alreadyJoined ? ' · 참여 중' : ''}</button>; })}</div></div>}
+                    <button type="button" disabled={busy || !selfGroupSelection.subgroupId} onClick={() => changeSelfSubgroupMembership('add')} className="mt-5 w-full rounded-xl bg-indigo-600 py-3 text-sm font-black text-white disabled:bg-slate-300">{busy ? '저장 중...' : '이 소그룹에 참여하기'}</button>
+                    {notice && <p role="alert" className="mt-3 text-xs font-bold text-red-600">{notice.text}</p>}
+                </div>
+            </div>}
 
             {showJoin && <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onMouseDown={e => { if (e.target === e.currentTarget) closeJoin(); }}>
                 <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="공동체 추가" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
