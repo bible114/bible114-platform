@@ -233,7 +233,7 @@ const LoginView = ({
     const [aChurchCode, setAChurchCode] = useState('');
     const [aPolicyConsents, setAPolicyConsents] = useState(() => createEmptyPolicyConsents('communityAdmin'));
     const [aAgeConfirmed14Plus, setAAgeConfirmed14Plus] = useState(false);
-    const [orgComms, setOrgComms] = useState([{ id: 'comm_0', name: '', subgroups: [{ id: 'sub_0', name: '' }] }]);
+    const [orgComms, setOrgComms] = useState([{ id: 'comm_0', name: '', subgroups: [] }]);
 
     const [loading, setLoading] = useState(false);
     const [googleAdminLoading, setGoogleAdminLoading] = useState(false);
@@ -735,7 +735,7 @@ const LoginView = ({
     const resetAdminSignup = async () => {
         await cancelGoogleAdminSignupAndClear();
         setSignupStep(1);
-        setOrgComms([{ id: 'comm_0', name: '', subgroups: [{ id: 'sub_0', name: '' }] }]);
+        setOrgComms([{ id: 'comm_0', name: '', subgroups: [] }]);
         clearError();
     };
 

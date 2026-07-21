@@ -40,7 +40,7 @@ const OrgEditor = ({ departments, onChange }) => {
     const [bulkMessage, setBulkMessage] = useState('');
 
     const addCommunity = () =>
-        onChange([...departments, { id: `comm_${Date.now()}`, name: '', subgroups: [{ id: genSubId(), name: '' }] }]);
+        onChange([...departments, { id: `comm_${Date.now()}`, name: '', subgroups: [] }]);
 
     const removeCommunity = (idx) =>
         onChange(departments.filter((_, i) => i !== idx));
@@ -89,6 +89,14 @@ const OrgEditor = ({ departments, onChange }) => {
             ? { ...c, subgroups: c.subgroups.filter((_, j) => j !== sIdx) }
             : c));
 
+    const useDepartmentWithoutSubgroups = (cIdx) => {
+        onChange(departments.map((community, index) => index === cIdx
+            ? { ...community, subgroups: [] }
+            : community));
+        setBulkDepartmentId(null);
+        setBulkMessage('');
+    };
+
     return (
         <div className="space-y-3">
             <button type="button"
@@ -117,6 +125,11 @@ const OrgEditor = ({ departments, onChange }) => {
                             </button>
                         </div>
                         <div className="space-y-1.5 ml-6">
+                            {comm.subgroups.length === 0 && (
+                                <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-[11px] font-bold leading-5 text-emerald-800">
+                                    소그룹 없이 {comm.name.trim() || '이 부서'} 전체를 하나의 그룹으로 운영합니다.
+                                </div>
+                            )}
                             {comm.subgroups.map((sub, sIdx) => (
                                 <div key={typeof sub === 'string' ? sIdx : sub.id} className="flex gap-1 items-center">
                                     <span className="text-slate-300 text-xs shrink-0">└</span>
@@ -127,32 +140,42 @@ const OrgEditor = ({ departments, onChange }) => {
                                         placeholder={`소그룹 ${sIdx + 1}`}
                                         className="flex-1 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-200"
                                     />
-                                    {comm.subgroups.length > 1 && (
-                                        <button
-                                            type="button"
-                                            onClick={() => removeSubgroup(cIdx, sIdx)}
-                                            className="text-slate-300 hover:text-red-400 text-xs px-1 transition-colors">
-                                            ✕
-                                        </button>
-                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => removeSubgroup(cIdx, sIdx)}
+                                        aria-label={`${getSubName(sub).trim() || `소그룹 ${sIdx + 1}`} 삭제`}
+                                        className="text-slate-300 hover:text-red-400 text-xs px-1 transition-colors">
+                                        ✕
+                                    </button>
                                 </div>
                             ))}
-                            <button
-                                type="button"
-                                onClick={() => addSubgroup(cIdx)}
-                                className="text-xs text-indigo-400 hover:text-indigo-600 font-bold mt-1 transition-colors">
-                                + 소그룹 추가
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setBulkDepartmentId(bulkDepartmentId === comm.id ? null : comm.id);
-                                    setBulkMessage('');
-                                }}
-                                className="ml-3 text-xs font-bold text-indigo-500 transition-colors hover:text-indigo-700"
-                            >
-                                {bulkDepartmentId === comm.id ? '여러 개 추가 닫기' : '+ 여러 소그룹 한 번에'}
-                            </button>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1">
+                                <button
+                                    type="button"
+                                    onClick={() => addSubgroup(cIdx)}
+                                    className="text-xs text-indigo-500 hover:text-indigo-700 font-bold transition-colors">
+                                    {comm.subgroups.length === 0 ? '+ 소그룹 만들기' : '+ 소그룹 추가'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setBulkDepartmentId(bulkDepartmentId === comm.id ? null : comm.id);
+                                        setBulkMessage('');
+                                    }}
+                                    className="text-xs font-bold text-indigo-500 transition-colors hover:text-indigo-700"
+                                >
+                                    {bulkDepartmentId === comm.id ? '여러 개 추가 닫기' : '+ 여러 소그룹 한 번에'}
+                                </button>
+                                {comm.subgroups.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => useDepartmentWithoutSubgroups(cIdx)}
+                                        className="text-xs font-bold text-slate-400 transition-colors hover:text-emerald-700"
+                                    >
+                                        소그룹 없이 운영
+                                    </button>
+                                )}
+                            </div>
                             {bulkDepartmentId === comm.id && (
                                 <div className="mt-2 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3">
                                     <p className="mb-2 text-[11px] font-bold text-slate-600">예: 1~10 + 구역 → 1구역부터 10구역</p>
