@@ -101,8 +101,8 @@ assert.deepEqual(emptyWeeklyRanking.top10, [], '이번 주 독자가 전혀 없�
 assert.equal(getCompletedReadingRounds({ readCount: 1 }), 0);
 assert.equal(getCompletedReadingRounds({ readCount: 2 }), 1);
 assert.equal(getCompletedReadingRounds({ readCount: 11 }), 10);
-assert.equal(getReadingRoundBadgeLabel({ readCount: 2 }), '1독');
-assert.equal(getReadingRoundBadgeLabel({ readCount: 11 }), '10독');
+assert.equal(getReadingRoundBadgeLabel({ readCount: 2 }), '1');
+assert.equal(getReadingRoundBadgeLabel({ readCount: 11 }), '10');
 assert.match(readingChampion, /<ReadingRoundBadge member=\{streakMVP\}/);
 assert.match(readingChampion, /<ReadingRoundBadge member=\{progressMVP\}/);
 assert.equal((readingChampion.match(/<ReadingRoundBadge member=\{member\}/g) || []).length, 2);

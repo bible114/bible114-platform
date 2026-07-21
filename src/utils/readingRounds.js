@@ -4,5 +4,5 @@ export const getCompletedReadingRounds = member => (
 
 export const getReadingRoundBadgeLabel = member => {
     const completedRounds = getCompletedReadingRounds(member);
-    return completedRounds > 0 ? `${completedRounds}독` : '';
+    return completedRounds > 0 ? String(completedRounds) : '';
 };
