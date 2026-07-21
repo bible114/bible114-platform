@@ -66,7 +66,7 @@ assert.ok(settingsTab.includes('입장코드를 입력하거나 변경한 직후
 assert.match(quizProgress, /if \(attempts === 1\) return 10;/);
 assert.match(quizProgress, /if \(attempts === 2\) return 5;/);
 assert.match(quizProgress, /rewardDate === todayKey/);
-assert.match(readCore, /const baseTalentEarned = isFirstReadToday \? 10 \+ Math\.min\(newStreak, 7\) : 0;/);
+assert.match(readCore, /const baseTalentEarned = isFirstReadToday[\s\S]*10 \+ Math\.min\(newStreak, 7\) \+ getTalentStreakMilestoneBonus\(newStreak\)[\s\S]*: 0;/);
 
 for (const faqText of [
     '로그인이 안 돼요',
@@ -110,23 +110,17 @@ assert.match(readingGuide, /dialogRef\.current\?\.querySelectorAll/);
 
 for (const loginHelpText of [
     '기존 진도와 달란트를 그대로 연결',
-    '로그인·기록 문의',
-    '교회 주보',
-    '교회 단체방',
-    '담당 선생님',
-    '교회 목록을 불러오지 못했습니다.',
-    '현재 공개된 교회 목록이 없습니다.',
     '이름·생년월일·비밀번호를 다시 확인해주세요.',
 ]) assert.ok(loginView.includes(loginHelpText), `로그인 도움 문구 누락: ${loginHelpText}`);
-assert.match(loginView, /aria-label="로그인 도움"[\s\S]*setShowReadingGuide\(true\)[\s\S]*min-h-11[\s\S]*도움말[\s\S]*setShowAdminContact\(true\)[\s\S]*min-h-11[\s\S]*로그인·기록 문의/);
+assert.match(loginView, /aria-label="로그인 도움"[\s\S]*setShowReadingGuide\(true\)[\s\S]*min-h-11[\s\S]*도움말/);
+assert.doesNotMatch(loginView, /로그인·기록 문의|setShowAdminContact|AdminContactModal/);
 assert.match(loginView, /onClick=\{\(\) => setShowReadingGuide\(true\)\}[^>]*>읽는 방법<\/button>/);
-assert.match(loginView, /setShowReadingGuide\(true\)[\s\S]{0,180}md:hidden[\s\S]{0,100}도움말/);
+assert.match(loginView, /aria-label="로그인 도움" className="[^"]*md:hidden"[\s\S]{0,420}도움말/);
 assert.match(loginView, /hidden md:grid grid-cols-4/);
 assert.match(loginView, /hidden md:block bg-cream-card/);
 assert.doesNotMatch(loginView, /5초만에 빠른 시작|기존 성도 안내 다시 보기/);
 assert.match(loginView, /type=\{showMemberEntryCode \? 'text' : 'password'\}/);
 assert.match(loginView, /aria-label=\{showMemberEntryCode \? '교회 입장코드 숨기기' : '교회 입장코드 보기'\}/);
-assert.match(loginView, /loadFailed \? \(/);
 assert.match(loginView, /statsLoading \? '…' : stats\.chapters_read_today\.toLocaleString\(\)/);
 assert.doesNotMatch(loginView, /stats\.chapters_read_today > 0 \? stats\.chapters_read_today\.toLocaleString\(\) : '—'/);
 

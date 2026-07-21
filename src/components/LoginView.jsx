@@ -71,97 +71,6 @@ const PulseIndicator = ({ color = '#b8702a', size = 7 }) => (
     </span>
 );
 
-// 비밀번호 문의 안내 모달.
-// 주의: 비로그인 화면이라 users 컬렉션 쿼리는 규칙상 항상 거부된다 (관리자 이름 표시 불가).
-// 공개 문서인 settings/churchDirectory에서 교회 목록만 보여주고 관리자 문의를 안내한다.
-const AdminContactModal = ({ onClose }) => {
-    const [churches, setChurches] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [loadFailed, setLoadFailed] = useState(false);
-    const closeButtonRef = useRef(null);
-    const dialogRef = useRef(null);
-
-    useEffect(() => {
-        getChurchDirectory()
-            .then(list => {
-                setChurches(list
-                    .filter(c => !c.hidden && c.name)
-                    .map(c => c.name)
-                    .sort((a, b) => a.localeCompare(b, 'ko-KR')));
-            })
-            .catch(() => setLoadFailed(true))
-            .finally(() => setLoading(false));
-    }, []);
-
-    useEffect(() => {
-        const previouslyFocused = document.activeElement;
-        const previousBodyOverflow = document.body.style.overflow;
-        document.body.style.overflow = 'hidden';
-        const handleKeyDown = event => {
-            if (event.key === 'Escape') onClose();
-            if (event.key !== 'Tab') return;
-            const focusable = dialogRef.current?.querySelectorAll(
-                'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-            );
-            if (!focusable?.length) return;
-            const first = focusable[0];
-            const last = focusable[focusable.length - 1];
-            if (event.shiftKey && document.activeElement === first) {
-                event.preventDefault();
-                last.focus();
-            } else if (!event.shiftKey && document.activeElement === last) {
-                event.preventDefault();
-                first.focus();
-            }
-        };
-        document.addEventListener('keydown', handleKeyDown);
-        closeButtonRef.current?.focus();
-        return () => {
-            document.removeEventListener('keydown', handleKeyDown);
-            document.body.style.overflow = previousBodyOverflow;
-            previouslyFocused?.focus?.();
-        };
-    }, [onClose]);
-
-    return (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-            <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="password-help-title" className="bg-cream-card rounded-t-3xl w-full max-w-md p-6 pb-8 shadow-2xl border border-hairline" onClick={e => e.stopPropagation()}>
-                <div className="flex justify-between items-center mb-3">
-                    <h3 id="password-help-title" className="font-serif font-semibold text-ink text-lg">로그인·기록 문의</h3>
-                    <button ref={closeButtonRef} type="button" aria-label="로그인 도움말 닫기" onClick={onClose} className="min-h-11 min-w-11 text-ink/40 text-xl leading-none hover:text-ink/70 transition-colors">✕</button>
-                </div>
-                <p className="text-sm text-ink/70 leading-relaxed mb-3">
-                    예전 기록을 카카오·구글에 연결하지 못했거나 기존 비밀번호를 잊으셨다면 <span className="font-semibold text-ink/80">소속 교회의 관리자(담당 선생님)</span>에게 도움을 요청해주세요.
-                </p>
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-900 mb-4">
-                    연락처가 화면에 없다면 <strong>교회 주보</strong>를 확인하거나, <strong>교회 단체방</strong>에 문의하거나,
-                    평소 연락하는 <strong>담당 선생님</strong>께 말씀해주세요.
-                </div>
-                {loading ? (
-                    <p className="text-center text-ink/40 text-sm py-4">불러오는 중...</p>
-                ) : loadFailed ? (
-                    <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-relaxed text-red-700">
-                        교회 목록을 불러오지 못했습니다. 잠시 후 다시 열어주세요. 급하면 위의 교회 주보·단체방·담당 선생님을 통해 문의해주세요.
-                    </div>
-                ) : churches.length === 0 ? (
-                    <p className="rounded-xl bg-cream px-4 py-3 text-center text-ink/60 text-sm">현재 공개된 교회 목록이 없습니다. 위 방법으로 소속 교회에 직접 문의해주세요.</p>
-                ) : (
-                    <>
-                        <p className="text-sm text-ink/55 mb-2">함께하고 있는 교회</p>
-                        <ul className="space-y-2 max-h-56 overflow-y-auto">
-                            {churches.map((name, i) => (
-                                <li key={i} className="bg-cream border border-hairline rounded-xl px-4 py-3">
-                                    <span className="text-sm font-semibold text-ink">{name}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    </>
-                )}
-            </div>
-        </div>
-    );
-};
-
 const ExistingMemberNoticeModal = ({ onClose }) => {
     const confirmButtonRef = useRef(null);
 
@@ -228,7 +137,6 @@ const LoginView = ({
     // Tab: 'member' | 'admin' | 'memberSignup' | 'adminSignup'
     const [activeTab, setActiveTab] = useState(initialTab);
     const [signupStep, setSignupStep] = useState(1);
-    const [showAdminContact, setShowAdminContact] = useState(false);
     const [showDemoTour, setShowDemoTour] = useState(false);
     const [showReadingGuide, setShowReadingGuide] = useState(false);
     const [showExistingMemberNotice, setShowExistingMemberNotice] = useState(false);
@@ -1393,27 +1301,19 @@ const LoginView = ({
 
                     {/* Form content */}
                     {renderCard()}
-                    <nav aria-label="로그인 도움" className="mt-5 grid grid-cols-2 gap-2 border-t border-hairline pt-4 md:grid-cols-1">
+                    <nav aria-label="로그인 도움" className="mt-5 border-t border-hairline pt-4 md:hidden">
                         <button
                             type="button"
                             onClick={() => setShowReadingGuide(true)}
-                            className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 md:hidden"
+                            className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700"
                         >
                             도움말
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setShowAdminContact(true)}
-                            className="min-h-11 rounded-xl border border-amber-200 bg-amber-50 px-3 text-sm font-bold text-amber-900"
-                        >
-                            로그인·기록 문의
                         </button>
                     </nav>
                 </div>
 
             </div>
 
-            {showAdminContact && <AdminContactModal onClose={() => setShowAdminContact(false)} />}
             {showExistingMemberNotice && <ExistingMemberNoticeModal onClose={() => setShowExistingMemberNotice(false)} />}
 
             {showDemoTour && (
