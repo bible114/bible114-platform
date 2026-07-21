@@ -69,7 +69,7 @@ Deno.test("오늘 dailyAdvanceDate가 있으면 count 0이어도 보상이 0이�
   );
 });
 
-Deno.test("하루 3회 완료 뒤에는 dailyLimit이다", () => {
+Deno.test("하루 한 회독 완료 뒤에는 dailyLimit이다", () => {
   const result = calculateReadCompletion(
     {
       currentDay: 10,

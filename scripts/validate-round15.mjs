@@ -6,7 +6,7 @@ import { getTTSLegacyBlockedApp, getTTSUnavailableApp } from '../src/utils/ttsAv
 
 const read = path => fs.readFileSync(path, 'utf8');
 
-assert.equal(DAILY_READ_ADVANCE_LIMIT, 3);
+assert.equal(DAILY_READ_ADVANCE_LIMIT, 365);
 assert.deepEqual(getDailyAdvanceState({}, '2026-07-13', 'Mon Jul 13 2026'), {
     count: 0,
     isFirstReadToday: true,
@@ -15,8 +15,8 @@ assert.deepEqual(getDailyAdvanceState({ lastReadDate: 'Mon Jul 13 2026' }, '2026
     count: 1,
     isFirstReadToday: false,
 });
-assert.deepEqual(getDailyAdvanceState({ dailyAdvanceDate: '2026-07-13', dailyAdvanceCount: 3 }, '2026-07-13', 'Mon Jul 13 2026'), {
-    count: 3,
+assert.deepEqual(getDailyAdvanceState({ dailyAdvanceDate: '2026-07-13', dailyAdvanceCount: 365 }, '2026-07-13', 'Mon Jul 13 2026'), {
+    count: 365,
     isFirstReadToday: false,
 });
 

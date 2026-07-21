@@ -10,6 +10,7 @@ import {
   type CompleteReadInput,
   completeReadTransaction,
 } from "./readCompletionService.ts";
+import { DAILY_READ_ADVANCE_LIMIT } from "./readCore.ts";
 
 const PROJECT_ID = "test-project";
 const SERVICE = { token: "service-token", projectId: PROJECT_ID };
@@ -584,7 +585,7 @@ Deno.test("position mismatch와 daily limit는 ledger 없이 안전하게 rollba
     [`users/${UID}`]: baseUser({
       lastReadDate: TODAY,
       dailyAdvanceDate: TODAY,
-      dailyAdvanceCount: 3,
+      dailyAdvanceCount: DAILY_READ_ADVANCE_LIMIT,
     }),
     [`churches/base-org/settings/talentShop`]: v2Shop(),
   });

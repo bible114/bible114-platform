@@ -1,4 +1,6 @@
-export const DAILY_READ_ADVANCE_LIMIT = 3;
+// 추가 읽기는 보상을 중복 지급하지 않으므로 사람의 정상적인 통독 진행을
+// 가로막지 않는다. 한 번의 전체 통독 분량만 안전 상한으로 둔다.
+export const DAILY_READ_ADVANCE_LIMIT = 365;
 
 export const getDailyAdvanceState = (user, todayKey, legacyTodayString) => {
     if (user?.dailyAdvanceDate === todayKey) {
@@ -16,4 +18,3 @@ export const getDailyAdvanceState = (user, todayKey, legacyTodayString) => {
 
     return { count: 0, isFirstReadToday: true };
 };
-

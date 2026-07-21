@@ -1,4 +1,5 @@
 import { PLATFORM_API_URL } from '../data/constants.js';
+import { DAILY_READ_ADVANCE_LIMIT } from './readPolicy.js';
 
 const DEFAULT_TIMEOUT_MS = 12_000;
 const DAILY_VIDEO_TIMEOUT_MS = 70_000;
@@ -957,15 +958,23 @@ export const validateCompleteReadResponse = (payload, result, expectedRequestId)
     } else if (hasExactKeys(result.result, COMPLETE_READ_DAILY_LIMIT_KEYS)
         && result.result.status === 'dailyLimit') {
         if (result.alreadyCompleted || result.committed
-            || result.result.limit !== 3
-            || !isSafeIntegerInRange(result.result.count, 3, Number.MAX_SAFE_INTEGER)
+            || result.result.limit !== DAILY_READ_ADVANCE_LIMIT
+            || !isSafeIntegerInRange(
+                result.result.count,
+                DAILY_READ_ADVANCE_LIMIT,
+                Number.MAX_SAFE_INTEGER,
+            )
             || user.dailyAdvanceCount !== result.result.count
             || user.dailyAdvanceDate !== result.calendarDate
             || user.readCount !== payload.cycle
             || user.currentDay !== payload.day) {
             return invalidCompleteReadResponse();
         }
-        normalizedResult = { status: 'dailyLimit', limit: 3, count: result.result.count };
+        normalizedResult = {
+            status: 'dailyLimit',
+            limit: DAILY_READ_ADVANCE_LIMIT,
+            count: result.result.count,
+        };
     } else {
         return invalidCompleteReadResponse();
     }
