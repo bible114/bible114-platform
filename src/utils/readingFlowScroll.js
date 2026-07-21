@@ -21,11 +21,12 @@ const prefersReducedMotion = (windowObject) => {
 
 export const scrollElementIntoView = (element, {
     block = 'start',
+    behavior = null,
     windowObject = typeof window === 'undefined' ? null : window,
 } = {}) => {
     if (!element || typeof element.scrollIntoView !== 'function') return false;
     element.scrollIntoView({
-        behavior: prefersReducedMotion(windowObject) ? 'auto' : 'smooth',
+        behavior: behavior || (prefersReducedMotion(windowObject) ? 'auto' : 'smooth'),
         block,
     });
     return true;
@@ -33,6 +34,7 @@ export const scrollElementIntoView = (element, {
 
 export const scheduleScrollIntoView = (getElement, {
     block = 'start',
+    behavior = null,
     frameCount = 1,
     isStillCurrent = () => true,
     windowObject = typeof window === 'undefined' ? null : window,
@@ -42,7 +44,7 @@ export const scheduleScrollIntoView = (getElement, {
     let cancelled = false;
     const run = () => {
         if (cancelled || !isStillCurrent()) return;
-        scrollElementIntoView(getElement(), { block, windowObject });
+        scrollElementIntoView(getElement(), { block, behavior, windowObject });
     };
 
     if (typeof windowObject?.requestAnimationFrame === 'function') {

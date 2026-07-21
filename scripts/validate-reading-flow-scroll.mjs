@@ -21,7 +21,7 @@ assert.equal((readerSource.match(/id="tut-read-btn"/g) || []).length, 2);
 assert.match(userBibleActionsSource, /const nextCompletionSummary = \{\s*uid,\s*requestId: response\.requestId,\s*completedDay:/);
 assert.match(userBibleActionsSource, /Number\(requestedDay\) !== Number\(currentProgressDay\)[\s\S]*return;[\s\S]*readSubmittingRef\.current = true/);
 assert.doesNotMatch(dashboardSource, /currentScrollContextRef|quizScrollContextKey/);
-assert.match(dashboardSource, /const expectedRequestId = completionSummary\.requestId[\s\S]*frameCount: 2[\s\S]*observedCompletionRef\.current\.summary\?\.requestId === expectedRequestId/);
+assert.match(dashboardSource, /const expectedRequestId = completionSummary\.requestId[\s\S]*behavior: 'auto'[\s\S]*frameCount: 2[\s\S]*observedCompletionRef\.current\.summary\?\.requestId === expectedRequestId/);
 assert.doesNotMatch(readerSource, /선택 활동 · 퀴즈를 풀지 않아도/);
 assert.doesNotMatch(quizCardSource, /선택 퀴즈예요|풀지 않아도 읽기 완료/);
 assert.doesNotMatch(readerSource, /isQuizGateLocked|quizGateOpen/);
@@ -30,7 +30,7 @@ assert.match(readerSource, /aria-label=\{`이전 본문 DAY/);
 assert.match(readerSource, /aria-label=\{`다음 본문 DAY/);
 assert.match(readerSource, /내 진도 DAY \{currentUser\.currentDay\}로 돌아가기/);
 assert.match(readerSource, /본문 다시 불러오기/);
-assert.match(readerSource, /const handleAdvanceRead = \(\) => \{[\s\S]*scheduleScrollIntoView\(\(\) => bibleHeaderRef\?\.current,[\s\S]*return handleRead\(\)/);
+assert.match(readerSource, /const handleAdvanceRead = \(\) => \{[\s\S]*scheduleScrollIntoView\(\(\) => bibleHeaderRef\?\.current,[\s\S]*behavior: 'auto'[\s\S]*return handleRead\(\)/);
 assert.match(readerSource, /한 장 더 읽기[\s\S]*onClick=\{handleAdvanceRead\}/);
 assert.match(readerSource, /onClick=\{isAdvanceRead \? handleAdvanceRead : handleRead\}/);
 const bibleReaderPosition = dashboardSource.indexOf('<BibleReader');
@@ -89,6 +89,13 @@ assert.equal(scrollElementIntoView(element, {
     windowObject: reducedMotionWindow,
 }), true);
 assert.deepEqual(scrollOptions, { behavior: 'auto', block: 'center' }, '움직임 감소 설정을 존중해야 합니다.');
+
+assert.equal(scrollElementIntoView(element, {
+    block: 'start',
+    behavior: 'auto',
+    windowObject: { matchMedia: () => ({ matches: false }) },
+}), true);
+assert.deepEqual(scrollOptions, { behavior: 'auto', block: 'start' }, '한 장 더 읽기는 긴 화면을 애니메이션 없이 즉시 이동해야 합니다.');
 
 let scheduledFrame = null;
 const scheduledFrames = [];

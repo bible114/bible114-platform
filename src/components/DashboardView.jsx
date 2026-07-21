@@ -207,6 +207,7 @@ const DashboardView = ({
         const expectedRequestId = completionSummary.requestId;
         return scheduleScrollIntoView(() => bibleHeaderRef.current, {
             block: 'start',
+            behavior: 'auto',
             frameCount: 2,
             isStillCurrent: () => currentUserUidRef.current === expectedUid
                 && observedCompletionRef.current.uid === expectedUid

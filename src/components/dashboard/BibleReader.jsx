@@ -51,6 +51,7 @@ const BibleReader = ({
     const handleAdvanceRead = () => {
         scheduleScrollIntoView(() => bibleHeaderRef?.current, {
             block: 'start',
+            behavior: 'auto',
             frameCount: 1,
         });
         return handleRead();
