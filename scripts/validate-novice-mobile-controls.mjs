@@ -45,7 +45,11 @@ assert.match(dashboard, /show=\{showFaq\}[\s\S]*mode="faq"/);
 assert.match(dashboard, /setShowFaq=\{setShowFaq\}[\s\S]*setShowTutorial=\{setShowTutorial\}/);
 assert.equal((dashboard.match(/<Suspense fallback=/g) || []).length >= 1, true);
 assert.match(dashboard, /함께 읽는 통독 현황[\s\S]*<RaceMap[\s\S]*<DailyVideoCard[\s\S]*<AnnouncementBanner[\s\S]*<BibleReader[\s\S]*belowQuizContent[\s\S]*<TalentShop[\s\S]*<CommunityRankingSummary[\s\S]*aria-label="읽기왕"[\s\S]*<ReadingChampionSection/);
-assert.match(rankingSummary, /aria-label="공동체 랭킹 요약"[\s\S]*전체 랭킹/);
+const rankingModal = fs.readFileSync(new URL('../src/components/modals/RankingModal.jsx', import.meta.url), 'utf8');
+assert.doesNotMatch(rankingModal, /평균 진행률.*소그룹 평균 Day/s);
+assert.match(rankingSummary, /aria-label="소그룹 누적 랭킹"[\s\S]*progressRanking\.map/,
+    '소그룹 누적 랭킹은 접힌 요약이 아니라 전체 목록으로 항상 보여야 한다.');
+assert.doesNotMatch(rankingSummary, /전체 랭킹/);
 assert.doesNotMatch(dashboard, /로그인·홈 화면 이용 안내|공동체 현황·랭킹 모아보기/);
 
 console.log('novice mobile controls validation passed');

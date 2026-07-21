@@ -673,9 +673,9 @@ const DashboardView = ({
                     {hasCommunity && !isReadingPeople && (
                         <CommunityRankingSummary
                             getEncouragementMessage={getEncouragementMessage}
-                            departmentName={departmentName}
                             setShowFullRanking={setShowFullRanking}
-                            topProgressGroups={topProgressGroups}
+                            setSelectedSubgroupDetail={setSelectedSubgroupDetail}
+                            progressRanking={progressRanking}
                             departmentId={currentUser.departmentId}
                             subgroupId={subgroupId}
                             extraMemberships={additionalMemberships}

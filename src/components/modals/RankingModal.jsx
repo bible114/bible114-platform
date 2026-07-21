@@ -72,7 +72,6 @@ const RankingModal = ({
                             <button key={comm.id} onClick={() => setRankingCommunityFilter(comm.id)} className={`px-2.5 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap transition-colors ${rankingCommunityFilter === comm.id ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{comm.name}</button>
                         ))}
                     </div>
-                    <div className="mb-3 bg-blue-50 p-3 rounded-xl border border-blue-100"><p className="text-xs text-blue-700"><strong>평균 진행률</strong> = 소그룹 평균 Day ÷ 365 × 100</p><p className="text-[10px] text-blue-600 mt-1">💡 소그룹을 클릭하면 멤버별 진행 상황을 볼 수 있어요</p></div>
                     <div className="flex-1 overflow-y-auto space-y-3 pr-2">
                         {(() => {
                             let filteredRanking = progressRanking;
