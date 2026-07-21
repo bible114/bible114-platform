@@ -9,6 +9,7 @@ import { reconcileStoredRequestIds } from '../../utils/adminTalentRequests';
 
 const LEGACY_TALENT_DEPARTMENT_ID = 'legacy_shared';
 const PURCHASE_REQUEST_STORAGE_PREFIX = 'b114_purchase_request_v1:';
+const ALWAYS_UNLOCKED_TEST_CHURCH_IDS = new Set(['test_church_kakao']);
 const purchaseRequestFallback = new Map();
 
 const purchaseRequestKey = ({ uid, churchId, departmentId, marketId, itemId }) => (
@@ -302,8 +303,11 @@ const TalentShop = ({
         return <ShopUnavailableCard notice={getShopUnavailableNotice({ program, currentUser })} />;
     }
 
-    // 교회 관리자는 7일 연속 해금 없이 항상 볼 수 있다 (상품 구성·교인 화면 확인용).
-    const unlocked = currentUser.secretShopUnlocked === true || currentUser.role === 'churchAdmin';
+    // 교회 관리자는 상품 구성을 확인할 수 있고, 공식 테스트 교회는 회원 흐름을
+    // 즉시 반복 검증할 수 있도록 7일 연속 조건 없이 상점을 연다.
+    const unlocked = currentUser.secretShopUnlocked === true
+        || currentUser.role === 'churchAdmin'
+        || ALWAYS_UNLOCKED_TEST_CHURCH_IDS.has(currentUser.churchId);
     if (!unlocked) return <ShopLockedCard streak={currentUser.streak} />;
 
     const buyItem = async (item) => {

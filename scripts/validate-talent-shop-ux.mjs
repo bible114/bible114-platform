@@ -20,6 +20,9 @@ assert.match(dashboard, /setTalentMarketVisible\(resolution\.canUseMarket\)/);
 assert.match(dashboard, /belowQuizContent=\{hasCommunity && talentMarketVisible \?/,
     '상점을 이용할 수 없는 공동체에서는 준비 중 안내를 포함한 상점 영역 전체를 숨겨야 한다.');
 assert.match(shop, /내 소속 상품을 준비하고 있어요/);
+assert.match(shop, /ALWAYS_UNLOCKED_TEST_CHURCH_IDS = new Set\(\['test_church_kakao'\]\)/);
+assert.match(shop, /ALWAYS_UNLOCKED_TEST_CHURCH_IDS\.has\(currentUser\.churchId\)/,
+    '천로역정테스트교회에서는 회원도 7일 조건 없이 달란트 시장을 테스트할 수 있어야 한다.');
 assert.match(
     shop,
     /담당 선생님에게 (확인|문의)/,
