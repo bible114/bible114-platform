@@ -1,6 +1,5 @@
 import {
   calculateReadCompletion,
-  DAILY_READ_ADVANCE_LIMIT,
   normalizeProgressDay,
   normalizeReadCount,
   type StoredReadUser,
@@ -69,19 +68,19 @@ Deno.test("오늘 dailyAdvanceDate가 있으면 count 0이어도 보상이 0이�
   );
 });
 
-Deno.test("하루 한 회독 완료 뒤에는 dailyLimit이다", () => {
-  const result = calculateReadCompletion(
-    {
-      currentDay: 10,
-      readCount: 1,
-      lastReadDate: TODAY,
-      dailyAdvanceDate: TODAY,
-      dailyAdvanceCount: DAILY_READ_ADVANCE_LIMIT,
-    },
-    { cycle: 1, day: 10 },
-    TODAY,
+Deno.test("같은 날 읽는 횟수와 관계없이 다음 DAY로 진행한다", () => {
+  const result = ready({
+    lastReadDate: TODAY,
+    dailyAdvanceDate: TODAY,
+    dailyAdvanceCount: 10_000,
+  });
+  assert(result.updateData.currentDay === 11, "progress did not advance");
+  assert(
+    result.updateData.dailyAdvanceCount === 10_001,
+    "daily count mismatch",
   );
-  assert(result.status === "dailyLimit", "daily limit not enforced");
+  assert(result.summary.scoreEarned === 0, "extra read score awarded");
+  assert(result.summary.talentEarned === 0, "extra read talent awarded");
 });
 
 Deno.test("저장 위치와 요청 위치가 다르면 positionMismatch이다", () => {

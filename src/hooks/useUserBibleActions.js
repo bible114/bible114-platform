@@ -219,11 +219,6 @@ export const useUserBibleActions = (
                 // completion/toast/history 화면 효과는 적용하지 않는다.
                 return;
             }
-            if (response.result.status === 'dailyLimit') {
-                setBonusToast('오늘 읽을 수 있는 분량을 모두 완료했어요. 내일 다시 만나요!');
-                setTimeout(() => setBonusToast(null), 4000);
-                return;
-            }
             if (response.result.status === 'positionMismatch') {
                 setBonusToast('읽기 진행 상태가 바뀌어 최신 위치로 이동했어요. 다시 눌러주세요.');
                 setTimeout(() => setBonusToast(null), 4000);

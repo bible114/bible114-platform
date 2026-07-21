@@ -10,7 +10,6 @@ import {
   type CompleteReadInput,
   completeReadTransaction,
 } from "./readCompletionService.ts";
-import { DAILY_READ_ADVANCE_LIMIT } from "./readCore.ts";
 
 const PROJECT_ID = "test-project";
 const SERVICE = { token: "service-token", projectId: PROJECT_ID };
@@ -568,7 +567,7 @@ Deno.test("같은 날 추가 읽기로 365일을 마치면 독자 수는 두고 
   );
 });
 
-Deno.test("position mismatch와 daily limit는 ledger 없이 안전하게 rollback한다", async () => {
+Deno.test("position mismatch는 ledger 없이 안전하게 rollback한다", async () => {
   const mismatch = createHarness({
     [`users/${UID}`]: baseUser({ currentDay: 11 }),
     [`churches/base-org/settings/talentShop`]: v2Shop(),
@@ -580,22 +579,6 @@ Deno.test("position mismatch와 daily limit는 ledger 없이 안전하게 rollba
     "position mismatch committed",
   );
   assert(mismatch.commits.length === 0 && mismatch.rollbackCount === 1);
-
-  const limited = createHarness({
-    [`users/${UID}`]: baseUser({
-      lastReadDate: TODAY,
-      dailyAdvanceDate: TODAY,
-      dailyAdvanceCount: DAILY_READ_ADVANCE_LIMIT,
-    }),
-    [`churches/base-org/settings/talentShop`]: v2Shop(),
-  });
-  const limitedResponse = await complete(limited);
-  assert(
-    limitedResponse.result.status === "dailyLimit" &&
-      !limitedResponse.committed,
-    "daily limit committed",
-  );
-  assert(limited.commits.length === 0 && limited.rollbackCount === 1);
 });
 
 Deno.test("익명·unsafe request와 저장 정수 overflow를 쓰기 전에 거부한다", async () => {

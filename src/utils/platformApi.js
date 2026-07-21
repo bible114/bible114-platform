@@ -1,5 +1,4 @@
 import { PLATFORM_API_URL } from '../data/constants.js';
-import { DAILY_READ_ADVANCE_LIMIT } from './readPolicy.js';
 
 const DEFAULT_TIMEOUT_MS = 12_000;
 const DAILY_VIDEO_TIMEOUT_MS = 70_000;
@@ -103,7 +102,6 @@ const COMPLETE_READ_SUMMARY_KEYS = new Set([
 ]);
 const COMPLETE_READ_READY_KEYS = new Set(['status', 'updateData', 'summary']);
 const COMPLETE_READ_POSITION_KEYS = new Set(['status', 'expected', 'received']);
-const COMPLETE_READ_DAILY_LIMIT_KEYS = new Set(['status', 'limit', 'count']);
 const COMPLETE_READ_REQUEST_KEYS = new Set(['cycle', 'day', 'readingEpoch']);
 const COMPLETE_READ_POSITION_VALUE_KEYS = new Set(['cycle', 'day']);
 const RESTART_READING_REQUEST_KEYS = new Set(['cycle', 'day', 'readingEpoch']);
@@ -819,7 +817,7 @@ const normalizeReadUpdate = (value) => {
         || !isSafeIntegerInRange(value.maxStreak, 0, Number.MAX_SAFE_INTEGER)
         || !isValidLegacyCalendarDate(value.lastReadDate)
         || !isValidLegacyCalendarDate(value.dailyAdvanceDate)
-        || !isSafeIntegerInRange(value.dailyAdvanceCount, 1, 3)
+        || !isSafeIntegerInRange(value.dailyAdvanceCount, 1, Number.MAX_SAFE_INTEGER)
         || (Object.prototype.hasOwnProperty.call(value, 'talent')
             && !isSafeIntegerInRange(value.talent, 0, MAX_TALENT_BALANCE))
         || (Object.prototype.hasOwnProperty.call(value, 'secretShopUnlocked')
@@ -954,26 +952,6 @@ export const validateCompleteReadResponse = (payload, result, expectedRequestId)
             status: 'positionMismatch',
             expected: { ...result.result.expected },
             received: { ...result.result.received },
-        };
-    } else if (hasExactKeys(result.result, COMPLETE_READ_DAILY_LIMIT_KEYS)
-        && result.result.status === 'dailyLimit') {
-        if (result.alreadyCompleted || result.committed
-            || result.result.limit !== DAILY_READ_ADVANCE_LIMIT
-            || !isSafeIntegerInRange(
-                result.result.count,
-                DAILY_READ_ADVANCE_LIMIT,
-                Number.MAX_SAFE_INTEGER,
-            )
-            || user.dailyAdvanceCount !== result.result.count
-            || user.dailyAdvanceDate !== result.calendarDate
-            || user.readCount !== payload.cycle
-            || user.currentDay !== payload.day) {
-            return invalidCompleteReadResponse();
-        }
-        normalizedResult = {
-            status: 'dailyLimit',
-            limit: DAILY_READ_ADVANCE_LIMIT,
-            count: result.result.count,
         };
     } else {
         return invalidCompleteReadResponse();

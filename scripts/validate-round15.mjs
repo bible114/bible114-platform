@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { ACHIEVEMENTS, getNewAchievementIds, mergeAchievementIds } from '../src/data/achievements.js';
-import { DAILY_READ_ADVANCE_LIMIT, getDailyAdvanceState } from '../src/utils/readPolicy.js';
+import { getDailyAdvanceState } from '../src/utils/readPolicy.js';
 import { getTTSLegacyBlockedApp, getTTSUnavailableApp } from '../src/utils/ttsAvailability.js';
 
 const read = path => fs.readFileSync(path, 'utf8');
 
-assert.equal(DAILY_READ_ADVANCE_LIMIT, 365);
 assert.deepEqual(getDailyAdvanceState({}, '2026-07-13', 'Mon Jul 13 2026'), {
     count: 0,
     isFirstReadToday: true,
@@ -111,7 +110,7 @@ assert.ok(
 );
 assert.match(actions, /import\s*\{[^}]*completeRead[^}]*restartReading[^}]*\}\s*from\s*['"]\.\.\/utils\/platformApi['"]/);
 assert(handleReadSource.includes('response = await completeRead('));
-assert(handleReadSource.includes("response.result.status === 'dailyLimit'"));
+assert(!handleReadSource.includes("response.result.status === 'dailyLimit'"));
 assert(!handleReadSource.includes('db.runTransaction'));
 
 const memosHook = read('src/hooks/useMemos.js');

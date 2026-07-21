@@ -1,6 +1,3 @@
-// 추가 읽기는 첫 읽기 이후 점수·달란트를 지급하지 않는다. 기존 3회 상한은
-// "한 장 더 읽기"가 다음 DAY로 진행되지 않게 했으므로 한 회독 분량까지 허용한다.
-export const DAILY_READ_ADVANCE_LIMIT = 365;
 const DAYS_PER_CYCLE = 365;
 const DAY_MS = 86_400_000;
 const MONTHS = [
@@ -61,11 +58,6 @@ export type ReadCompletionResult =
     status: "positionMismatch";
     expected: ReadCompletionRequest;
     received: ReadCompletionRequest;
-  }
-  | {
-    status: "dailyLimit";
-    limit: number;
-    count: number;
   }
   | {
     status: "ready";
@@ -186,14 +178,6 @@ export const calculateReadCompletion = (
   const dailyAdvanceCount = dailyAdvanceDateMatches
     ? nonNegativeInteger(user.dailyAdvanceCount)
     : (lastReadDateMatches ? 1 : 0);
-  if (dailyAdvanceCount >= DAILY_READ_ADVANCE_LIMIT) {
-    return {
-      status: "dailyLimit",
-      limit: DAILY_READ_ADVANCE_LIMIT,
-      count: dailyAdvanceCount,
-    };
-  }
-
   const isFirstReadToday = !dailyAdvanceDateMatches && !lastReadDateMatches;
   const oldScore = finiteNumber(user.score);
   const oldStreak = nonNegativeInteger(user.streak);

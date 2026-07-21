@@ -1552,6 +1552,25 @@ assert.deepEqual(
     ),
     validCompleteReadResponse,
 );
+const validFourthReadPayload = { cycle: 1, day: 4, readingEpoch: 0 };
+const validFourthReadResponse = structuredClone(validCompleteReadResponse);
+validFourthReadResponse.result.updateData.currentDay = 5;
+validFourthReadResponse.result.updateData.dailyAdvanceCount = 4;
+validFourthReadResponse.result.summary.scoreEarned = 0;
+validFourthReadResponse.result.summary.talentEarned = 0;
+validFourthReadResponse.result.summary.newProgressDay = 5;
+validFourthReadResponse.result.summary.nextViewingDay = 5;
+validFourthReadResponse.state.user.currentDay = 5;
+validFourthReadResponse.state.user.dailyAdvanceCount = 4;
+assert.deepEqual(
+    platformApi.validateCompleteReadResponse(
+        validFourthReadPayload,
+        validFourthReadResponse,
+        readRequestId,
+    ),
+    validFourthReadResponse,
+    '같은 날 4장째 성공 응답도 저장 실패로 오판하면 안 된다.',
+);
 const validZeroCountReadGuardResponse = structuredClone(validCompleteReadResponse);
 validZeroCountReadGuardResponse.committed = false;
 validZeroCountReadGuardResponse.result = {
