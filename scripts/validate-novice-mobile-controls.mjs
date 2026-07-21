@@ -39,6 +39,7 @@ assert.match(video, /aria-expanded="false"[\s\S]*열기/);
 assert.match(video, /collection\('users'\)\.doc\(currentUser\.uid\)\.set\(\{[\s\S]*dailyVideoCollapsed: nextCollapsed/);
 assert.match(quiz, /min-h-11 rounded-xl px-3 py-2 text-sm font-bold[\s\S]*이 DAY는 건너뛰기/);
 assert.match(quiz, /DAY \{progressDay\} 성경퀴즈[\s\S]*QuizLevelToggle/);
+assert.match(quiz, /text-xl font-black[\s\S]*sm:text-2xl[^>]*>DAY \{progressDay\} 성경퀴즈/);
 assert.match(memo, /min-h-11 rounded-xl px-3 py-2 text-sm font-bold[\s\S]*내 기록 보기/);
 assert.match(dashboard, /lazy\(\(\) => import\('\.\/dashboard\/TalentShop'\)\)/);
 assert.match(dashboard, /show=\{showFaq\}[\s\S]*mode="faq"/);

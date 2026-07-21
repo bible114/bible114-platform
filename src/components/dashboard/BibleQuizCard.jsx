@@ -584,7 +584,7 @@ const BibleQuizCard = ({
     return (
         <section ref={setQuizSectionNode} className={sectionClassName}>
             <div className="mb-4 flex items-start justify-between gap-3">
-                <p className="pt-1 text-xs font-black text-indigo-500">DAY {progressDay} 성경퀴즈</p>
+                <p className="pt-0.5 text-xl font-black leading-tight tracking-[-0.02em] text-indigo-600 sm:text-2xl">DAY {progressDay} 성경퀴즈</p>
                 <QuizLevelToggle currentUser={currentUser} setCurrentUser={setCurrentUser} finished={finished} />
             </div>
             <div className="flex items-start justify-between gap-4 mb-4">
