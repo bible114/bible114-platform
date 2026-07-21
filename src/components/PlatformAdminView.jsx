@@ -8,6 +8,7 @@ import { getDaysRead, getVideoDateKST, parseAndMapChapters, extractYouTubePlayli
 import { invalidateChurchDirectoryCache, migrateChurchAccessSecrets } from '../utils/churchDirectory';
 import { migrateCredentialsIfNeeded, fetchMemberCredentials } from '../utils/memberCredentials';
 import { UNAFFILIATED_CHURCH_ID } from '../data/constants';
+import { PlatformPopupCard } from './PlatformPopupAd';
 
 const PlatformAdminView = ({
     currentUser,
@@ -1186,25 +1187,8 @@ const PlatformAdminView = ({
                             {(popupInput.title || popupInput.text) && (
                                 <div className="mt-4 p-4 bg-slate-100 rounded-xl border-2 border-dashed border-slate-300">
                                     <p className="text-xs text-slate-400 mb-3 font-bold uppercase">팝업 미리보기</p>
-                                    <div className="relative mx-auto w-full max-w-sm overflow-hidden rounded-[1.75rem] border border-white/70 bg-white shadow-lg">
-                                        <div className="absolute right-3 top-3 z-10 grid h-8 w-8 place-items-center rounded-full bg-slate-950/55 text-sm font-bold text-white">✕</div>
-                                        {popupInput.imageUrl && (
-                                            <img src={popupInput.imageUrl} alt="" className="max-h-56 w-full object-cover" />
-                                        )}
-                                        <div className="p-5">
-                                            <p className="mb-2 text-[11px] font-black tracking-[0.12em] text-indigo-500">교회 소식</p>
-                                            {popupInput.title && <p className="pr-7 text-lg font-black tracking-tight text-slate-900">{popupInput.title}</p>}
-                                            {popupInput.text && <p className={`whitespace-pre-wrap text-sm leading-relaxed text-slate-600 ${popupInput.title ? 'mt-2' : ''}`}>{popupInput.text}</p>}
-                                            <div className="mt-4 flex flex-wrap gap-2">
-                                                {(popupInput.links || []).map((link, idx) => link.text && (
-                                                    <div key={idx} className="min-h-10 flex-1 rounded-xl bg-slate-900 px-4 py-2.5 text-center text-sm font-black text-white">{link.text} <span className="ml-1 text-xs opacity-70">↗</span></div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center justify-end gap-1 border-t border-slate-100 bg-slate-50/80 px-3 py-2">
-                                            <div className="rounded-lg px-3 py-2 text-xs font-bold text-slate-500">일주일 동안 보지 않기</div>
-                                            <div className="rounded-lg px-3 py-2 text-xs font-black text-slate-800">닫기</div>
-                                        </div>
+                                    <div className="flex justify-center">
+                                        <PlatformPopupCard popup={popupInput} preview />
                                     </div>
                                 </div>
                             )}

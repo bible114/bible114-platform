@@ -9,7 +9,14 @@ assert.match(popup, /expiresAt: Date\.now\(\) \+ WEEK_IN_MS/);
 assert.match(popup, /Number\(hidden\?\.expiresAt\) > Date\.now\(\)/);
 assert.match(popup, /일주일 동안 보지 않기/);
 assert.doesNotMatch(popup, /오늘 하루 보지 않기|HIDE_TODAY_KEY/);
-assert.match(popup, /max-w-sm/);
+assert.match(popup, /max-w-\[27rem\]/);
 assert.match(popup, /min-h-10/);
+assert.match(popup, /성경통독114 소식/);
+assert.match(popup, /bg-gradient-to-r from-indigo-500 via-blue-500 to-amber-400/);
+assert.doesNotMatch(popup, /flex-1 items-center justify-center rounded-xl bg-slate-900/);
 
-console.log('교회 광고 팝업 우선순위, 7일 숨김, 모바일 디자인 검증 통과');
+const admin = fs.readFileSync(new URL('../src/components/PlatformAdminView.jsx', import.meta.url), 'utf8');
+assert.match(admin, /import \{ PlatformPopupCard \} from '\.\/PlatformPopupAd'/);
+assert.match(admin, /<PlatformPopupCard popup=\{popupInput\} preview \/>/);
+
+console.log('교회 광고 팝업 우선순위, 7일 숨김, 실제-미리보기 공통 디자인 검증 통과');
