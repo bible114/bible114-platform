@@ -22,6 +22,8 @@ const adminSignup = login.slice(
 );
 assert.match(adminSignup, /카카오로 공동체 등록 시작/);
 assert.match(adminSignup, /구글 계정으로 시작/);
+assert.match(adminSignup, /aria-label="카카오 계정으로 공동체 등록 시작"[\s\S]*rounded-2xl bg-\[#FEE500\] px-5 py-4 text-base[\s\S]*viewBox="0 0 24 24"/);
+assert.match(adminSignup, /aria-label="구글 계정으로 공동체 등록 시작"[\s\S]*rounded-2xl bg-slate-100 px-5 py-4 text-base[\s\S]*viewBox="0 0 48 48"/);
 assert.doesNotMatch(adminSignup, /이메일과 비밀번호로 등록|placeholder="비밀번호/);
 assert.doesNotMatch(adminSignup, /setActiveTab\('admin'\)/);
 assert.match(login, /if \(!isSocialSignup\)[\s\S]{0,160}카카오 또는 구글 계정을 먼저 확인/);
