@@ -1,4 +1,5 @@
 import React from 'react';
+import { getReadingRoundBadgeLabel } from '../../utils/readingRounds';
 
 const RaceMap = ({ racers, departmentChampions, getSubgroupDisplay }) => {
     const getNonLinearPos = (day) => {
@@ -45,21 +46,24 @@ const RaceMap = ({ racers, departmentChampions, getSubgroupDisplay }) => {
                 const racerReadCount = racer.readCount || 1;
                 const is2ndRound = racerReadCount >= 2;
                 const displayDay = is2ndRound ? racer.currentDay : (racer.mapDay ?? racer.day);
+                const readingRoundBadge = getReadingRoundBadgeLabel(racer);
 
                 const p = Math.max(8, Math.min(getNonLinearPos(displayDay), 94));
                 const isMe = racer.isMe;
                 const subgroupInfo = getSubgroupDisplay(racer.subgroupId, racer.subgroupName);
                 const isDeptChampion = departmentChampions[racer.uid];
                 const zIndex = isMe ? 29 : is2ndRound ? 28 : 25;
-                const topPos = isMe ? '50%' : is2ndRound ? '8%' : `${15 + (idx % 10) * 8}%`;
+                // 완독자가 같은 DAY에서 새 회차를 시작해도 한 줄에 포개지지 않도록
+                // 모든 참가자를 동일한 10개 세로 레인에 분산한다.
+                const topPos = isMe ? '50%' : `${8 + (idx % 10) * 8}%`;
 
                 return (
                     <div key={racer.uid || idx} className="absolute transition-all duration-1000 ease-out"
                         style={{ left: `calc(${p}% - 16px)`, top: topPos, zIndex }}>
                         <div className="relative flex items-center">
-                            {racerReadCount > 1 && (
-                                <div className="absolute -left-2 -top-1 w-4 h-4 bg-gradient-to-br from-purple-500 to-purple-700 rounded-full flex items-center justify-center border-2 border-white shadow-md z-10">
-                                    <span className="text-[7px] font-bold text-white">{racerReadCount}</span>
+                            {readingRoundBadge && (
+                                <div className="absolute -left-2 -top-2 z-10 flex min-w-6 items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-purple-500 to-purple-700 px-1 py-0.5 shadow-md">
+                                    <span className="text-[7px] font-black leading-none text-white">{readingRoundBadge}</span>
                                 </div>
                             )}
                             <div className={`flex items-stretch rounded-full shadow-md overflow-hidden ${isMe ? 'ring-2 ring-yellow-400 ring-offset-1' : ''}`}>

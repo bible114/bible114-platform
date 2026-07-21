@@ -5,6 +5,7 @@ import { getCompletedReadingRounds, getReadingRoundBadgeLabel } from '../src/uti
 
 const guest = fs.readFileSync(new URL('../src/components/GuestReaderView.jsx', import.meta.url), 'utf8');
 const reader = fs.readFileSync(new URL('../src/components/dashboard/BibleReader.jsx', import.meta.url), 'utf8');
+const raceMap = fs.readFileSync(new URL('../src/components/dashboard/RaceMap.jsx', import.meta.url), 'utf8');
 const header = fs.readFileSync(new URL('../src/components/dashboard/DashboardHeader.jsx', import.meta.url), 'utf8');
 const video = fs.readFileSync(new URL('../src/components/dashboard/DailyVideoCard.jsx', import.meta.url), 'utf8');
 const quiz = fs.readFileSync(new URL('../src/components/dashboard/BibleQuizCard.jsx', import.meta.url), 'utf8');
@@ -31,6 +32,9 @@ assert.equal((reader.match(/min-h-11 min-w-11/g) || []).length >= 6, true);
 assert.match(reader, /text-center text-sm font-medium leading-relaxed text-slate-500/);
 assert.doesNotMatch(reader, /내가 읽을 차례|읽을 차례 \$\{currentUser\.currentDay\}/);
 assert.match(reader, /!isCurrentProgressDay[\s\S]*다른 DAY 보는 중/);
+assert.match(raceMap, /getReadingRoundBadgeLabel\(racer\)/);
+assert.match(raceMap, /8 \+ \(idx % 10\) \* 8/);
+assert.doesNotMatch(raceMap, />\{racerReadCount\}<\/span>/);
 
 assert.match(header, /grid-cols-\[minmax\(0,1fr\)_auto\][\s\S]*group flex min-h-11 min-w-0[\s\S]*읽는 버전/);
 assert.match(header, /☰ <span>메뉴<\/span>[\s\S]*로그인·바로가기[\s\S]*로그아웃/);

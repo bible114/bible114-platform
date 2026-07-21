@@ -16,11 +16,14 @@ const apply = process.argv.includes('--apply');
 const confirmation = process.argv.find(value => value.startsWith('--confirm='))?.slice(10) || '';
 const fail = message => { throw new Error(message); };
 
-if (!['preview', 'create', 'audit'].includes(command)) {
-    fail('Usage: node scripts/manage-reading-badge-fixture.mjs preview|audit|create [--apply --confirm=CREATE_READING_BADGE_FIXTURE]');
+if (!['preview', 'create', 'audit', 'repair'].includes(command)) {
+    fail('Usage: node scripts/manage-reading-badge-fixture.mjs preview|audit|create|repair [--apply --confirm=...]');
 }
 if (command === 'create' && apply && confirmation !== 'CREATE_READING_BADGE_FIXTURE') {
     fail('create requires --apply --confirm=CREATE_READING_BADGE_FIXTURE');
+}
+if (command === 'repair' && (!apply || confirmation !== 'REPAIR_READING_BADGE_FIXTURE')) {
+    fail('repair requires --apply --confirm=REPAIR_READING_BADGE_FIXTURE');
 }
 
 const firebaseToolsRoot = [
@@ -123,6 +126,11 @@ const createWrite = (documentPath, data) => ({
     update: { name: fullName(documentPath), fields: encodeFields(data) },
     currentDocument: { exists: false },
 });
+const updateWrite = (documentPath, data) => ({
+    update: { name: fullName(documentPath), fields: encodeFields(data) },
+    updateMask: { fieldPaths: Object.keys(data) },
+    currentDocument: { exists: true },
+});
 
 const church = await getDocument(`churches/${CHURCH_ID}`);
 if (!church || church.data.name !== CHURCH_NAME || church.data.isDeleted === true) {
@@ -187,6 +195,9 @@ const users = Array.from({ length: MEMBER_COUNT }, (_, index) => {
     const name = isCompletedFixture
         ? `배지테스트${completedRounds}독`
         : `배지대조미완독${String(index - 9).padStart(2, '0')}`;
+    // 1~10독 계정이 같은 DAY 1 좌표에 겹치지 않도록 비선형 지도 전반에 분산한다.
+    const completedCurrentDays = [315, 266, 193, 160, 127, 96, 76, 56, 36, 16];
+    const currentDay = isCompletedFixture ? completedCurrentDays[index] : 1;
     const birthdate = `199202${number}`;
     return {
         uid: `${PREFIX}${number}`,
@@ -195,6 +206,7 @@ const users = Array.from({ length: MEMBER_COUNT }, (_, index) => {
         password: sharedPassword,
         email: `${encodeURIComponent(name)}_${birthdate}_${CHURCH_ID}@bible.local`,
         completedRounds,
+        currentDay,
         departmentId: department.id,
         departmentName: department.name || department.id,
         subgroupId: subgroup.id,
@@ -208,7 +220,7 @@ const preview = {
     church: { id: CHURCH_ID, name: church.data.name },
     anchor: { uid: anchor.uid, name: anchor.name, departmentId: anchor.departmentId, subgroupId: anchor.subgroupId || '' },
     cohorts: [...new Set(users.map(user => `${user.departmentName}/${user.subgroupName || '-'}`))],
-    planned: users.map(user => ({ uid: user.uid, name: user.name, birthdate: user.birthdate, completedRounds: user.completedRounds })),
+    planned: users.map(user => ({ uid: user.uid, name: user.name, birthdate: user.birthdate, completedRounds: user.completedRounds, currentDay: user.currentDay })),
     existingFixtureCount: existingFixtureUsers.length,
 };
 
@@ -230,7 +242,7 @@ if (command === 'audit') {
         uid: user.uid,
         name: user.name,
         completedRounds: user.completedRounds,
-        currentDay: 1,
+        currentDay: user.currentDay,
         departmentId: user.departmentId,
         subgroupId: user.subgroupId || '',
     }));
@@ -245,6 +257,36 @@ if (command === 'audit') {
     const ok = JSON.stringify(actual) === JSON.stringify(expected) && authMatches.every(Boolean);
     console.log(JSON.stringify({ ok, firestoreCount: actual.length, authCount: authMatches.filter(Boolean).length, rounds: actual.map(user => user.completedRounds) }, null, 2));
     if (!ok) process.exitCode = 1;
+    process.exit();
+}
+
+if (command === 'repair') {
+    if (existingFixtureUsers.length !== MEMBER_COUNT) {
+        fail(`Expected ${MEMBER_COUNT} existing fixture users, found ${existingFixtureUsers.length}.`);
+    }
+    const byUid = new Map(existingFixtureUsers.map(user => [user.uid, user]));
+    const writes = users.map(user => {
+        const existing = byUid.get(user.uid);
+        if (!existing || existing.fixtureType !== 'reading-badge-test' || existing.name !== user.name) {
+            fail(`Fixture identity mismatch: ${user.uid}`);
+        }
+        const totalDays = user.completedRounds * 365 + Math.max(0, user.currentDay - 1);
+        return updateWrite(`users/${user.uid}`, {
+            currentDay: user.currentDay,
+            readCount: user.completedRounds + 1,
+            score: totalDays * 10,
+            updatedAt: now,
+        });
+    });
+    await commit(writes);
+    if (existingManifest) {
+        fs.writeFileSync(manifestPath, JSON.stringify({
+            ...existingManifest,
+            repairedAt: now.toISOString(),
+            users,
+        }, null, 2), { mode: 0o600 });
+    }
+    console.log(JSON.stringify({ status: 'repaired', count: writes.length }, null, 2));
     process.exit();
 }
 
@@ -308,8 +350,9 @@ try {
             departmentName: user.departmentName,
             subgroupId: user.subgroupId,
             subgroupName: user.subgroupName,
+            currentDay: user.currentDay,
             readCount: user.completedRounds + 1,
-            score: user.completedRounds * 3650,
+            score: (user.completedRounds * 365 + Math.max(0, user.currentDay - 1)) * 10,
         }),
         createWrite(`users/${user.uid}/private/auth`, { password: sharedPassword, updatedAt: now }),
     ]);
