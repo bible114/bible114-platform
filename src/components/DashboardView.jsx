@@ -575,6 +575,8 @@ const DashboardView = ({
                 <main className="px-4 space-y-6">
                     <DailyVideoCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
 
+                    {hasCommunity && <AnnouncementBanner announcement={announcement} />}
+
                     {completionSummary?.completedDay && completionSummary.completedDay !== viewingDay && (
                         <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-center text-emerald-900 shadow-sm">
                             <p className="text-lg font-black">DAY {completionSummary.completedDay} 읽기 완료! 🎉</p>
@@ -631,8 +633,6 @@ const DashboardView = ({
                             </Suspense>
                         ) : null}
                     />
-
-                    {hasCommunity && <AnnouncementBanner announcement={announcement} />}
 
                     {socialLinkNotice && (
                         <SocialLinkBanner
