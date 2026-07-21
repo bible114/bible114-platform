@@ -54,6 +54,8 @@ assert.match(dashboard, /함께 읽는 통독 현황[\s\S]*<RaceMap[\s\S]*<Daily
 assert.match(announcement, /aria-label="교회 소식"/);
 assert.match(announcement, /rounded-full px-4 py-2 text-sm font-black/);
 assert.doesNotMatch(announcement, /bg-\[#03C75A\]|min-w-\[140px\]|p-7|mb-10/);
+assert.match(announcement, /h-2 w-2 rounded-full bg-indigo-500/);
+assert.doesNotMatch(announcement, /M4 13\.5|bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-400|grid h-10 w-10/);
 for (const [name, source] of [
     ['성경통독 가이드와 FAQ', readingGuide],
     ['읽기 날짜 설정', dateSettings],
