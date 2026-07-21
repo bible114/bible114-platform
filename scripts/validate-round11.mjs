@@ -51,7 +51,7 @@ assert.match(onboarding, /UNAFFILIATED_CHURCH_ID/);
 assert.match(auth, /completePersonalSignupViaApi\(\{[\s\S]*churchId: organization\.orgId[\s\S]*joinTicket: organization\.joinTicket/);
 assert.doesNotMatch(auth, /transaction\.set\(rosterRef/);
 assert.match(membership, /joinTicket,[\s\S]*\.\.\.selection/);
-assert.match(dashboard, /내 단체 관리/);
+assert.match(dashboard, /공동체 선택/);
 assert.match(membership, /기본으로 설정/);
 assert.match(membership, /현재 보고 있음/);
 assert.doesNotMatch(membership, /🏆 순위/);
