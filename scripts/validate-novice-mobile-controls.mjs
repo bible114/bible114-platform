@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { rankWeeklyMembers } from '../src/utils/weeklyRanking.js';
 
 const guest = fs.readFileSync(new URL('../src/components/GuestReaderView.jsx', import.meta.url), 'utf8');
 const reader = fs.readFileSync(new URL('../src/components/dashboard/BibleReader.jsx', import.meta.url), 'utf8');
@@ -73,5 +74,23 @@ assert.doesNotMatch(rankingSummary, /전체 랭킹/);
 assert.doesNotMatch(dashboard, /로그인·홈 화면 이용 안내|공동체 현황·랭킹 모아보기/);
 assert.match(dashboard, /aria-label="로그인과 바로가기"[\s\S]*로그인·바로가기[\s\S]*<HomeScreenHelpBanner \/>/);
 assert.doesNotMatch(dashboard, /<HomeScreenHelpBanner \/>[\s\S]*성경통독 114 가이드/);
+
+const weeklyRanking = rankWeeklyMembers([
+    { uid: 'weekly-1', name: '이번주 독자', weeklyCount: 1, totalCount: 4 },
+    { uid: 'weekly-2', name: '둘째 성도', weeklyCount: 0, totalCount: 3 },
+    { uid: 'weekly-3', name: '셋째 성도', weeklyCount: 0, totalCount: 2 },
+]);
+assert.equal(weeklyRanking.winner?.uid, 'weekly-1');
+assert.deepEqual(
+    weeklyRanking.top10.map(member => [member.uid, member.weeklyCount]),
+    [['weekly-1', 1], ['weekly-2', 0], ['weekly-3', 0]],
+    '이번 주 독자가 한 명뿐이어도 공동체의 주간 2~10위는 0일을 포함해 보여야 합니다.',
+);
+const emptyWeeklyRanking = rankWeeklyMembers([
+    { uid: 'weekly-0-a', weeklyCount: 0, totalCount: 10 },
+    { uid: 'weekly-0-b', weeklyCount: 0, totalCount: 9 },
+]);
+assert.equal(emptyWeeklyRanking.winner, null);
+assert.deepEqual(emptyWeeklyRanking.top10, [], '이번 주 독자가 전혀 없으면 억지로 주간 순위를 만들면 안 됩니다.');
 
 console.log('novice mobile controls validation passed');

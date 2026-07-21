@@ -2,6 +2,7 @@ import { DEFAULT_DEPARTMENTS } from '../data/departments';
 import { TOTAL_DAYS } from '../data/constants';
 import { getMembershipList, belongsToDepartment, belongsToSubgroup } from './memberships';
 import { getDaysRead } from './helpers';
+import { rankWeeklyMembers } from './weeklyRanking.js';
 
 // Firestore 문서는 uid별 1개지만, 잘못 합쳐진 입력이 와도 교회/그룹 지표에서
 // 같은 사용자를 두 번 세지 않는다. uid가 없는 레거시 객체는 서로 다른 사람일 수 있어 유지한다.
@@ -127,24 +128,16 @@ export const getWeeklyMVP = (departmentMembers) => {
         })).values());
     };
 
-    const weeklyWithCounts = uniqueDepartmentMembers
-        .map(m => {
+    const weeklyWithCounts = uniqueDepartmentMembers.map(m => {
             const readDates = getReadDates(m);
             return {
                 ...m,
                 weeklyCount: readDates.filter(date => date >= weekStart && date <= todayEnd).length,
                 totalCount: getDaysRead(m)
             };
-        })
-        .filter(m => m.weeklyCount > 0)
-        .sort((a, b) => {
-            if (b.weeklyCount !== a.weeklyCount) return b.weeklyCount - a.weeklyCount;
-            if (b.totalCount !== a.totalCount) return b.totalCount - a.totalCount;
-            return String(a.name || a.uid || '').localeCompare(String(b.name || b.uid || ''), 'ko');
         });
 
-    const mvpByWeekly = weeklyWithCounts.length > 0 ? weeklyWithCounts[0] : null;
-    const weeklyTop10 = weeklyWithCounts.slice(0, 10);
+    const { winner: mvpByWeekly, top10: weeklyTop10 } = rankWeeklyMembers(weeklyWithCounts);
 
     const totalWithCounts = uniqueDepartmentMembers
         .map(m => ({
