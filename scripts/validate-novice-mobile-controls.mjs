@@ -7,6 +7,10 @@ const header = fs.readFileSync(new URL('../src/components/dashboard/DashboardHea
 const video = fs.readFileSync(new URL('../src/components/dashboard/DailyVideoCard.jsx', import.meta.url), 'utf8');
 const quiz = fs.readFileSync(new URL('../src/components/dashboard/BibleQuizCard.jsx', import.meta.url), 'utf8');
 const announcement = fs.readFileSync(new URL('../src/components/dashboard/AnnouncementBanner.jsx', import.meta.url), 'utf8');
+const readingGuide = fs.readFileSync(new URL('../src/components/modals/ReadingGuideModal.jsx', import.meta.url), 'utf8');
+const dateSettings = fs.readFileSync(new URL('../src/components/modals/DateSettingsModal.jsx', import.meta.url), 'utf8');
+const calendar = fs.readFileSync(new URL('../src/components/modals/CalendarModal.jsx', import.meta.url), 'utf8');
+const achievements = fs.readFileSync(new URL('../src/components/modals/AchievementsModal.jsx', import.meta.url), 'utf8');
 const memo = fs.readFileSync(new URL('../src/components/dashboard/MemoSection.jsx', import.meta.url), 'utf8');
 const dashboard = fs.readFileSync(new URL('../src/components/DashboardView.jsx', import.meta.url), 'utf8');
 const rankingSummary = fs.readFileSync(new URL('../src/components/dashboard/CommunityRankingSummary.jsx', import.meta.url), 'utf8');
@@ -50,6 +54,15 @@ assert.match(dashboard, /함께 읽는 통독 현황[\s\S]*<RaceMap[\s\S]*<Daily
 assert.match(announcement, /aria-label="교회 소식"/);
 assert.match(announcement, /rounded-full px-4 py-2 text-sm font-black/);
 assert.doesNotMatch(announcement, /bg-\[#03C75A\]|min-w-\[140px\]|p-7|mb-10/);
+for (const [name, source] of [
+    ['성경통독 가이드와 FAQ', readingGuide],
+    ['읽기 날짜 설정', dateSettings],
+    ['읽기 달력', calendar],
+    ['나의 업적과 기록', achievements],
+]) {
+    assert.match(source, /fixed inset-0 z-\[180\]/, `${name} 창은 상단 메뉴보다 높은 공통 레이어여야 합니다.`);
+}
+assert.equal((dashboard.match(/fixed inset-0 z-\[180\]/g) || []).length, 2, '공동체 선택과 로그인 바로가기 창도 공통 레이어여야 합니다.');
 const rankingModal = fs.readFileSync(new URL('../src/components/modals/RankingModal.jsx', import.meta.url), 'utf8');
 assert.doesNotMatch(rankingModal, /평균 진행률.*소그룹 평균 Day/s);
 assert.match(rankingSummary, /aria-label="소그룹 누적 랭킹"[\s\S]*progressRanking\.map/,

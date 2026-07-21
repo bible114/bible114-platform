@@ -43,7 +43,7 @@ const CalendarModal = ({
     }).length;
 
     return (
-        <div className="fixed inset-0 z-[160] bg-black/50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div className="fixed inset-0 z-[180] bg-black/50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
             <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-4 border-b pb-2">
                     <h3 className="text-xl font-bold text-slate-800">📅 읽기 캘린더</h3>

@@ -21,7 +21,7 @@ const AchievementsModal = ({ show, onClose, currentUser }) => {
     if (!show) return null;
 
     return (
-        <div className="fixed inset-0 z-[170] flex items-end justify-center bg-black/55 sm:items-center sm:p-5" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div className="fixed inset-0 z-[180] flex items-end justify-center bg-black/55 sm:items-center sm:p-5" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
             <section role="dialog" aria-modal="true" aria-label="나의 업적과 기록" className="flex h-[100dvh] w-full max-w-md flex-col overflow-hidden bg-slate-50 shadow-2xl sm:h-auto sm:max-h-[90vh] sm:rounded-[2rem]" onMouseDown={e => e.stopPropagation()}>
                 <header className="z-10 shrink-0 border-b border-slate-200 bg-white px-5 pb-4 pt-3 shadow-sm">
                     <div className="flex min-h-11 items-center justify-between gap-3">

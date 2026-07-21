@@ -67,7 +67,7 @@ const ReadingGuideModal = ({ show, onClose, mode = 'guide' }) => {
     if (!show) return null;
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div className="fixed inset-0 z-[180] bg-black/50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
             <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="reading-guide-title" className="bg-white rounded-2xl p-6 w-full max-w-sm max-h-[92vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-4 border-b pb-2">
                     <h3 id="reading-guide-title" className="text-xl font-bold text-slate-800">
