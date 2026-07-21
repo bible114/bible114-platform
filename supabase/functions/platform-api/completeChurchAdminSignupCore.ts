@@ -381,7 +381,7 @@ const validateDepartments = (
     if (
       !id || !name || departmentIds.has(id) ||
       !Array.isArray(department.subgroups) ||
-      department.subgroups.length < 1 || department.subgroups.length > 100
+      department.subgroups.length > 100
     ) {
       throw new CompleteChurchAdminSignupValidationError(
         "INVALID_DEPARTMENTS",

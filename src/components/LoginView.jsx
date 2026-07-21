@@ -696,11 +696,14 @@ const LoginView = ({
     const handleAdminSignupFinal = async () => {
         const getSubName = (s) => (typeof s === 'string' ? s : s.name);
         const getSubId = (s) => (typeof s === 'string' ? null : s.id);
-        const validComms = orgComms.filter(c => c.name.trim()).map(c => ({
+        const validComms = orgComms.filter(c => c.name.trim()).map((c, departmentIndex) => ({
             id: c.id, name: c.name.trim(),
             subgroups: c.subgroups
                 .filter(s => getSubName(s).trim())
-                .map(s => ({ id: getSubId(s) || ('sub_' + Date.now().toString(36)), name: getSubName(s).trim() })),
+                .map((s, subgroupIndex) => ({
+                    id: getSubId(s) || `sub_${Date.now().toString(36)}_${departmentIndex}_${subgroupIndex}`,
+                    name: getSubName(s).trim(),
+                })),
         }));
         if (validComms.length === 0) { setErrorMsg('최소 하나의 부서를 추가해주세요.'); return; }
         setLoading(true);

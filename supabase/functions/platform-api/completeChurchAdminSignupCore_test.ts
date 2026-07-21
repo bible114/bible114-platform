@@ -365,7 +365,6 @@ Deno.test("이름·코드의 공백·제어문자·길이를 거부한다", () =
 Deno.test("부서·소그룹 exact schema와 id 유일성을 검증한다", () => {
   const invalidDepartments = [
     [],
-    [{ id: "adult", name: "장년부", subgroups: [] }],
     [{
       id: "adult",
       name: "장년부",
@@ -391,6 +390,16 @@ Deno.test("부서·소그룹 exact schema와 id 유일성을 검증한다", () =
         ),
     );
   }
+});
+
+Deno.test("소그룹이 아직 없는 부서도 가입 후 관리 화면에서 설정할 수 있다", () => {
+  const validated = validateCompleteChurchAdminSignup(
+    identity(),
+    input("password", {
+      departments: [{ id: "adult", name: "장년부", subgroups: [] }],
+    }),
+  );
+  assert(validated.departments[0].subgroups.length === 0);
 });
 
 Deno.test("동의 정책 버전·source·성인 확인·agreement exact schema를 검증한다", () => {

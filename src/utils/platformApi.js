@@ -2071,7 +2071,7 @@ const isCanonicalChurchAdminDepartments = value => {
             || departmentIds.has(department.id)
             || !isCanonicalChurchAdminSignupText(department.name, 1, 100)
             || !Array.isArray(department.subgroups)
-            || department.subgroups.length < 1 || department.subgroups.length > 100) return false;
+            || department.subgroups.length > 100) return false;
         departmentIds.add(department.id);
         const subgroupIds = new Set();
         subgroupCount += department.subgroups.length;

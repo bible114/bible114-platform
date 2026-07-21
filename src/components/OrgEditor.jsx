@@ -40,7 +40,7 @@ const OrgEditor = ({ departments, onChange }) => {
     const [bulkMessage, setBulkMessage] = useState('');
 
     const addCommunity = () =>
-        onChange([...departments, { id: `comm_${Date.now()}`, name: '', subgroups: [''] }]);
+        onChange([...departments, { id: `comm_${Date.now()}`, name: '', subgroups: [{ id: genSubId(), name: '' }] }]);
 
     const removeCommunity = (idx) =>
         onChange(departments.filter((_, i) => i !== idx));

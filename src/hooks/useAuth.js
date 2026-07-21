@@ -1763,7 +1763,9 @@ export const useAuth = ({
             } else if (err?.emailAdminSignupIncomplete) {
                 setErrorMsg('인증 계정 생성 후 로그인 상태가 변경되어 자동 재개할 수 없습니다. 같은 이메일로 다시 로그인해 재시도하거나 플랫폼 관리자에게 계정 정리를 요청해주세요.');
             } else {
-                setErrorMsg('가입 처리 중 오류가 발생했습니다.');
+                setErrorMsg(err instanceof PlatformApiError
+                    ? err.message
+                    : '가입 처리 중 오류가 발생했습니다.');
             }
             finalResult = { ok: false, retryable: true };
             return finalResult;
