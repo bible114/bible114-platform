@@ -47,8 +47,8 @@ assert.ok(
 assert.match(dashboardSource, /quizContent=\{\([\s\S]*BibleQuizCard[\s\S]*belowQuizContent=\{hasCommunity && talentMarketVisible \? \([\s\S]*TalentShop/);
 assert.doesNotMatch(dashboardSource, /오늘 말씀 DAY \{currentDay\} 바로가기/);
 assert.match(quizCardSource, /DAY \{progressDay\} 성경퀴즈[\s\S]*QuizLevelToggle/);
-assert.match(quizCardSource, /keepQuizCardInView[\s\S]*scrollIntoView\(\{[\s\S]*block: 'start'/);
-assert.match(quizCardSource, /submitAnswer[\s\S]*finally \{[\s\S]*keepQuizCardInView\(\)/);
+assert.doesNotMatch(quizCardSource, /scrollIntoView|keepQuizCardInView/,
+    '퀴즈 정답 확인은 사용자가 누른 위치에서 화면을 강제로 이동시키면 안 됩니다.');
 assert.match(tutorialSource, /id: 'tut-quiz-area'[\s\S]*title: '오늘의 퀴즈 \(선택\)'/);
 assert.match(tutorialSource, /퀴즈를 풀거나 건너뛰지 않아도 읽기 완료와 다음 DAY 진행은 언제든 가능합니다/);
 
@@ -127,7 +127,7 @@ scheduleScrollIntoView(() => ({
 }), { frameCount: 2, windowObject: scheduledWindow });
 assert.equal(scheduledFrames.length, 1);
 scheduledFrames[0]();
-assert.equal(scheduledScrolls, 0, '퀴즈 카드가 접히는 첫 프레임에는 이동하지 않아야 합니다.');
+assert.equal(scheduledScrolls, 0, '첫 렌더 프레임에는 아직 이동하지 않아야 합니다.');
 assert.equal(scheduledFrames.length, 2);
 scheduledFrames[1]();
 assert.equal(scheduledScrolls, 1, '레이아웃이 안정된 두 번째 프레임에 이동해야 합니다.');

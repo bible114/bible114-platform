@@ -179,24 +179,11 @@ const BibleQuizCard = ({
     const progressKey = getQuizProgressKey(progressCycle, progressDay, readingEpoch);
     const currentUserRef = useRef(currentUser);
     const progressKeyRef = useRef(progressKey);
-    const quizSectionRef = useRef(null);
     currentUserRef.current = currentUser;
     progressKeyRef.current = progressKey;
     const setQuizSectionNode = node => {
-        quizSectionRef.current = node;
         if (typeof sectionRef === 'function') sectionRef(node);
         else if (sectionRef) sectionRef.current = node;
-    };
-    const keepQuizCardInView = () => {
-        const scrollToQuiz = () => quizSectionRef.current?.scrollIntoView({
-            behavior: 'auto',
-            block: 'start',
-        });
-        if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
-            scrollToQuiz();
-            return;
-        }
-        window.requestAnimationFrame(() => window.requestAnimationFrame(scrollToQuiz));
     };
     const submissionStillCurrent = (
         uid,
@@ -566,13 +553,6 @@ const BibleQuizCard = ({
             });
         } finally {
             setSubmitting(false);
-            if (submissionStillCurrent(
-                submittedUid,
-                submittedEpoch,
-                submittedProgressKey,
-                submittedQuizConfigurationKey,
-                submittedRosterOrgId,
-            )) keepQuizCardInView();
         }
     };
 
