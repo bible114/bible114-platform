@@ -114,6 +114,9 @@ const PlanSelectionView = ({
                 <div className="text-center mb-6">
                     <h2 className="text-xl font-bold text-slate-800">소속 공동체 선택</h2>
                     <p className="text-slate-500 text-sm">어느 부서에 소속되어 계신가요?</p>
+                    <p className="mx-auto mt-3 max-w-lg rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-left text-xs font-bold leading-5 text-indigo-800">
+                        먼저 자신의 소그룹으로 가입하세요. 주일학교 선생님은 가입 후 <b>메뉴 → 공동체 선택</b>에서 맡은 반도 함께 추가할 수 있어요.
+                    </p>
                 </div>
                 {communities.length === 0 ? (
                     <div className="w-full max-w-2xl text-center py-12 bg-white rounded-2xl border border-slate-200 shadow-sm">
@@ -160,8 +163,11 @@ const PlanSelectionView = ({
                     </button>
                 </div>
                 <div className="text-center mb-6">
-                    <h2 className="text-xl font-bold text-slate-800">소그룹 선택</h2>
+                    <h2 className="text-xl font-bold text-slate-800">{tempUser?.churchName ? `${tempUser.churchName} 소그룹 선택` : '소그룹 선택'}</h2>
                     <p className="text-slate-500 text-sm">{tempUser?.departmentName} 내의 소그룹을 선택해주세요.</p>
+                    <p className="mx-auto mt-3 max-w-lg rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-left text-xs font-bold leading-5 text-indigo-800">
+                        주일학교 선생님은 먼저 자신의 소그룹을 선택하고, 가입 후 <b>메뉴 → 공동체 선택</b>에서 맡은 반을 추가하세요.
+                    </p>
                 </div>
                 {(!selectedComm || !Array.isArray(selectedComm.subgroups)
                     || selectedComm.subgroups.length === 0) ? (

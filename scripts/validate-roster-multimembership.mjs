@@ -74,6 +74,8 @@ assert.match(rules, /resource\.data\.churchId != 'unaffiliated_v1'[\s\S]*request
 assert.doesNotMatch(rules, /신규 소셜 가입은 users \+ roster/);
 
 const membershipCard = read('src/components/dashboard/CommunityMembershipCard.jsx');
+const planSelection = read('src/components/PlanSelectionView.jsx');
+const adminFirstGuide = read('src/components/dashboard/ChurchAdminReaderGuide.jsx');
 const joinCore = read('supabase/functions/platform-api/joinCore.ts');
 const joinSoloCore = read('supabase/functions/platform-api/joinSoloCommunityCore.ts');
 const app = read('src/App.jsx');
@@ -84,6 +86,18 @@ const convertPersonalCore = read('supabase/functions/platform-api/convertToPerso
 const convertPersonalService = read('supabase/functions/platform-api/convertToPersonalAccountService.ts');
 assert.match(membershipCard, /joinCommunityViaApi\(\{/,
     '일반 추가 공동체 참여는 서버 API를 사용해야 한다.');
+assert.doesNotMatch(membershipCard, />현재 교회 소그룹</,
+    '소그룹 영역 제목은 현재 교회라는 일반 문구 대신 실제 교회명을 보여야 한다.');
+assert.match(membershipCard, /\{selectedChurchName\} 소그룹/,
+    '공동체 선택에서 현재 보고 있는 교회 이름을 소그룹 제목에 보여야 한다.');
+assert.match(membershipCard, /주일학교 선생님은 자신의 소그룹과 맡은 반을 함께 선택하세요/,
+    '가입 후 공동체 선택 화면에 교사용 다중 소그룹 안내가 있어야 한다.');
+assert.match(planSelection, /가입 후 <b>메뉴 → 공동체 선택<\/b>에서 맡은 반/,
+    '최초 가입 화면은 교사에게 가입 후 맡은 반을 추가하는 경로를 알려야 한다.');
+assert.match(planSelection, /tempUser\?\.churchName \? `\$\{tempUser\.churchName\} 소그룹 선택`/,
+    '최초 가입 소그룹 화면에도 실제 교회 이름을 보여야 한다.');
+assert.match(adminFirstGuide, /주일학교 선생님에게는 가입 후 <b>메뉴 → 공동체 선택<\/b>에서 맡은 반도 함께 추가/,
+    '관리자 최초 안내에 주일학교 교사 소그룹 설정 방법이 있어야 한다.');
 assert.match(joinCore, /membership:\s*\{[\s\S]*extraMemberships:\s*\[\]/,
     '서버가 새 roster를 추가 소속 빈 배열로 시작해야 한다.');
 assert.match(authHook, /completePersonalSignupViaApi\(\{[\s\S]*departmentId: organization\.departmentId[\s\S]*subgroupId: organization\.subgroupId/);

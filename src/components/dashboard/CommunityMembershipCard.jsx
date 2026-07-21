@@ -100,6 +100,9 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
     }, [showJoin]);
 
     const orgName = (id) => id === UNAFFILIATED_CHURCH_ID ? UNAFFILIATED_CHURCH_NAME : (directory.find(org => org.id === id)?.name || '공동체');
+    const selectedChurchName = selectedOrgId === baseChurchId
+        ? baseChurchName
+        : orgName(selectedOrgId);
     const closeJoin = () => {
         if (busy) return;
         setShowJoin(false);
@@ -438,6 +441,9 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
             <div className="text-center">
                 <h2 className="text-xl font-bold text-slate-800">공동체에 참여하시겠어요?</h2>
                 <p className="mt-2 text-sm text-slate-500">교회나 공동체와 함께 읽으면 랭킹과 응원을 나눌 수 있어요.</p>
+                <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-left text-xs font-bold leading-5 text-indigo-800">
+                    먼저 자신의 소그룹을 선택하세요. 주일학교 선생님은 가입 후 <b>메뉴 → 공동체 선택</b>에서 맡은 반도 함께 추가할 수 있어요.
+                </div>
                 <button type="button" onClick={() => setShowJoin(true)} className="mt-5 w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white">공동체 찾아보기</button>
                 <button type="button" onClick={onSkip} disabled={busy} className="mt-2 w-full rounded-xl py-3 text-sm font-bold text-slate-500 disabled:opacity-40">{skipLabel}</button>
             </div>
@@ -465,7 +471,7 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
             </div>
             {canManageSelfGroups && <div className="mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">
                 <div className="flex items-start justify-between gap-3">
-                    <div><h3 className="text-sm font-black text-slate-800">현재 교회 소그룹</h3><p className="mt-1 text-xs leading-5 text-slate-500">주 소속은 유지되고, 함께 활동할 소그룹을 3개까지 더 선택할 수 있어요.</p></div>
+                    <div><h3 className="text-sm font-black text-slate-800">{selectedChurchName} 소그룹</h3><p className="mt-1 text-xs font-bold leading-5 text-indigo-700">주일학교 선생님은 자신의 소그룹과 맡은 반을 함께 선택하세요.</p><p className="mt-1 text-[11px] leading-4 text-slate-500">주 소속은 유지되고, 함께 활동할 소그룹을 3개까지 더 선택할 수 있어요.</p></div>
                     <button type="button" disabled={busy || selfExtraMemberships.length >= 3} onClick={() => { setNotice(null); setSelfGroupSelection(emptySelection); setShowSelfGroup(true); }} className="shrink-0 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-black text-white disabled:bg-slate-300">소그룹 추가</button>
                 </div>
                 <div className="mt-3 space-y-2">
@@ -490,8 +496,8 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
             {notice && !showJoin && <p className={`mt-3 text-xs font-bold ${notice.type === 'error' ? 'text-red-600' : 'text-emerald-600'}`}>{notice.text}</p>}
 
             {showSelfGroup && <div className="fixed inset-0 z-[220] flex items-end justify-center bg-black/45 sm:items-center sm:p-4" onMouseDown={event => { if (event.target === event.currentTarget && !busy) setShowSelfGroup(false); }}>
-                <div role="dialog" aria-modal="true" aria-label="현재 교회 소그룹 추가" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
-                    <div className="mb-5 flex items-center justify-between"><div><h3 className="text-lg font-black text-slate-900">소그룹 추가</h3><p className="mt-1 text-xs text-slate-500">현재 교회 안에서 함께할 곳을 선택하세요.</p></div><button type="button" disabled={busy} aria-label="소그룹 추가 창 닫기" onClick={() => setShowSelfGroup(false)} className="p-2 text-slate-400">✕</button></div>
+                <div role="dialog" aria-modal="true" aria-label={`${selectedChurchName} 소그룹 추가`} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
+                    <div className="mb-5 flex items-start justify-between gap-3"><div><h3 className="text-lg font-black text-slate-900">{selectedChurchName} 소그룹</h3><p className="mt-1 text-xs font-bold leading-5 text-indigo-700">주일학교 선생님은 자신의 소그룹과 맡은 반을 함께 선택하세요.</p></div><button type="button" disabled={busy} aria-label="소그룹 추가 창 닫기" onClick={() => setShowSelfGroup(false)} className="p-2 text-slate-400">✕</button></div>
                     <div><p className="mb-2 text-xs font-bold text-slate-500">부서 선택</p><div className="grid grid-cols-2 gap-2">{churchCommunities.map(department => <button type="button" key={department.id || department.name} onClick={() => setSelfDepartment(department)} className={`rounded-xl border p-3 text-sm font-bold ${selfGroupSelection.departmentId === (department.id || department.name) ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600'}`}>{department.name}</button>)}</div></div>
                     {selfGroupSelection.departmentId && <div className="mt-4"><p className="mb-2 text-xs font-bold text-slate-500">소그룹 선택</p><div className="grid grid-cols-2 gap-2">{(churchCommunities.find(department => (department.id || department.name) === selfGroupSelection.departmentId)?.subgroups || []).map((subgroup, index) => { const subgroupId = typeof subgroup === 'string' ? subgroup : subgroup.id || subgroup.name; const alreadyJoined = (currentUser.departmentId === selfGroupSelection.departmentId && currentUser.subgroupId === subgroupId) || selfExtraMemberships.some(item => item.departmentId === selfGroupSelection.departmentId && item.subgroupId === subgroupId); return <button type="button" key={subgroupId || index} disabled={alreadyJoined} onClick={() => setSelfSubgroup(subgroup)} className={`rounded-xl border p-3 text-sm font-bold disabled:bg-slate-100 disabled:text-slate-300 ${selfGroupSelection.subgroupId === subgroupId ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600'}`}>{typeof subgroup === 'string' ? subgroup : subgroup.name}{alreadyJoined ? ' · 참여 중' : ''}</button>; })}</div></div>}
                     <button type="button" disabled={busy || !selfGroupSelection.subgroupId} onClick={() => changeSelfSubgroupMembership('add')} className="mt-5 w-full rounded-xl bg-indigo-600 py-3 text-sm font-black text-white disabled:bg-slate-300">{busy ? '저장 중...' : '이 소그룹에 참여하기'}</button>

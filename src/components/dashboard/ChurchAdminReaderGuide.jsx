@@ -29,6 +29,13 @@ const ChurchAdminReaderGuide = ({ show, onClose, onOpenAdmin }) => {
                     <p className="mt-2 text-sm font-bold text-indigo-700">화면 맨 위의 이 버튼을 누르세요.</p>
                 </div>
 
+                <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-left">
+                    <p className="text-sm font-black text-amber-900">소그룹 안내도 함께 해주세요</p>
+                    <p className="mt-1 text-xs font-bold leading-5 text-amber-800">
+                        성도는 자신의 소그룹으로 가입합니다. 주일학교 선생님에게는 가입 후 <b>메뉴 → 공동체 선택</b>에서 맡은 반도 함께 추가하도록 안내해주세요.
+                    </p>
+                </div>
+
                 <button
                     type="button"
                     onClick={onClose}
