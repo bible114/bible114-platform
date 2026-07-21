@@ -1,5 +1,6 @@
 import React from 'react';
 import MarkdownRenderer from '../MarkdownRenderer';
+import { scheduleScrollIntoView } from '../../utils/readingFlowScroll';
 
 const BibleReader = ({
     verseData,
@@ -47,6 +48,13 @@ const BibleReader = ({
         : (!isCurrentProgressDay
             ? '다른 DAY는 살펴보기만 할 수 있습니다. 내 진도로 돌아간 뒤 완료해주세요.'
             : '오늘 본문을 다 읽은 뒤 눌러주세요.');
+    const handleAdvanceRead = () => {
+        scheduleScrollIntoView(() => bibleHeaderRef?.current, {
+            block: 'start',
+            frameCount: 1,
+        });
+        return handleRead();
+    };
 
     return (
         <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
@@ -291,7 +299,7 @@ const BibleReader = ({
                             </p>
                         )}
                         {completionForViewingDay.talentProgramEnabled && !completionForViewingDay.isFirstReadToday && <p className="mt-1 text-sm font-bold text-emerald-700">추가 읽기는 점수와 달란트가 더 적립되지 않아요.</p>}
-                        <button type="button" onClick={handleRead} disabled={readSubmitting || !isCurrentProgressDay} className="mt-4 min-h-11 rounded-full border border-emerald-300 bg-white px-5 py-2.5 text-sm font-bold text-emerald-800 disabled:opacity-50">
+                        <button type="button" onClick={handleAdvanceRead} disabled={readSubmitting || !isCurrentProgressDay} className="mt-4 min-h-11 rounded-full border border-emerald-300 bg-white px-5 py-2.5 text-sm font-bold text-emerald-800 disabled:opacity-50">
                             {readSubmitting ? '기록 중...' : '한 장 더 읽기'}
                         </button>
                     </div>
@@ -299,7 +307,7 @@ const BibleReader = ({
                     <div id="tut-read-btn" className="scroll-mt-4 mt-8 pt-6 border-t border-slate-100">
                         <div className="relative">
                             <button
-                                onClick={handleRead}
+                                onClick={isAdvanceRead ? handleAdvanceRead : handleRead}
                                 disabled={readSubmitting || !isCurrentProgressDay}
                                 className={`w-full py-5 rounded-3xl font-bold text-xl transition-all shadow-xl hover:shadow-2xl active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100 flex items-center justify-center gap-3
                                     ${isAdvanceRead
