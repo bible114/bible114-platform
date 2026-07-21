@@ -31,9 +31,14 @@ for (const text of ['카카오로 시작', '구글로 시작', '기존 성도이
 assert.doesNotMatch(login, /카카오톡으로 로그인|Google로 로그인|기존 회원 로그인 \(이름·생년월일로\)/);
 assert.match(login, /공동체 관리자/);
 assert.match(login, /isPendingKakaoLoginReturn/);
-assert.match(login, /loginTransitioning[\s\S]*로그인 확인 중…[\s\S]*잠시만 기다려주세요/);
+assert.match(login, /loginTransitioning[\s\S]*로그인 중…[\s\S]*다음 화면을 준비하고 있어요/);
 assert.match(login, /setLoginTransitioning\(true\)[\s\S]*onGooglePersonalSignup/);
 assert.match(login, /setLoginTransitioning\(true\)[\s\S]*onMemberLogin/);
+assert.match(login, /didLogin = await onMemberLogin[\s\S]*if \(!didLogin\) setLoginTransitioning\(false\)/);
+assert.match(login, /didLogin = await onGooglePersonalSignup\(\) === true[\s\S]*if \(!didLogin\) setLoginTransitioning\(false\)/);
+assert.match(app, /onLoginTransitionChange=\{setLoginTransitioning\}/);
+assert.match(app, /loginTransitioning[\s\S]*로그인 중…[\s\S]*다음 화면을 준비하고 있어요/);
+assert.match(app, /isDestinationReady \|\| isDirectAdminView[\s\S]*setLoginTransitioning\(false\)/);
 assert.match(auth, /buildKakaoAuthorizeUrl/);
 assert.match(auth, /signInWithCustomToken/);
 assert.match(auth, /isValidKakaoState/);

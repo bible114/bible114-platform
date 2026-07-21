@@ -59,6 +59,7 @@ const App = () => {
     const [view, setView] = useState('login');
     const [tempUser, setTempUser] = useState(null);
     const [loginInitialTab, setLoginInitialTab] = useState('member');
+    const [loginTransitioning, setLoginTransitioning] = useState(false);
     const [pendingKakaoAdminSignup, setPendingKakaoAdminSignup] = useState(null);
     const [showSecretShopUnlocked, setShowSecretShopUnlocked] = useState(false);
     const [completionCelebration, setCompletionCelebration] = useState(null);
@@ -323,6 +324,19 @@ const App = () => {
             if (view !== 'login') setView('login');
         }
     }, [currentUser, authLoading, resetReaderSessionState, view, tempUser?.uid]);
+
+    // 로그인 폼의 비동기 작업이 끝났다는 사실만으로 로딩을 해제하면,
+    // React가 다음 화면을 반영하기 전 로그인 첫 화면이 한 프레임 다시 보일 수 있다.
+    // 실제 목적 화면이 준비된 뒤에만 앱 공통 전환 화면을 닫는다.
+    useEffect(() => {
+        if (!loginTransitioning) return;
+        const isDirectAdminView = currentUser?.role === 'superAdmin'
+            || currentUser?.role === 'platformAdmin';
+        const isDestinationReady = view !== 'login' && Boolean(currentUser || tempUser?.uid);
+        if (isDestinationReady || isDirectAdminView) {
+            setLoginTransitioning(false);
+        }
+    }, [currentUser, loginTransitioning, tempUser?.uid, view]);
 
     // 관리자가 읽기/관리 화면을 오가면 현재 화면을 세션 기준으로 갱신한다.
     // 그래야 관리 화면에서 새로고침해도 읽기 화면으로 튕기지 않는다.
@@ -867,6 +881,7 @@ const App = () => {
                 setErrorMsg={setErrorMsg}
                 presetChurchId={presetChurchId}
                 initialTab={loginInitialTab}
+                onLoginTransitionChange={setLoginTransitioning}
             />
         );
     } else if (view === 'social_onboarding' && tempUser?.uid) {
@@ -1014,6 +1029,15 @@ const App = () => {
     return (
         <>
             {pageContent}
+            {loginTransitioning && (
+                <div role="status" aria-live="polite" className="fixed inset-0 z-[300] flex items-center justify-center bg-cream px-6">
+                    <div className="text-center">
+                        <div className="mx-auto mb-5 h-12 w-12 animate-spin rounded-full border-4 border-accent/20 border-t-accent" aria-hidden="true" />
+                        <p className="font-serif text-2xl font-semibold text-ink">로그인 중…</p>
+                        <p className="mt-2 text-sm text-ink/60">다음 화면을 준비하고 있어요.</p>
+                    </div>
+                </div>
+            )}
             {/* 플랫폼 팝업 광고 — 성경 읽기 화면(회원·게스트)에서 모두에게 표시 */}
             {((view === 'dashboard' && currentUser) || (view === 'guest' && currentUser?.role === 'guest')) && <PlatformPopupAd />}
             <ToastContainer toasts={adminAuthToasts.toasts} onClose={adminAuthToasts.removeToast} />

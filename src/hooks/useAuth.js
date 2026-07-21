@@ -364,8 +364,7 @@ export const useAuth = ({
         const pendingMigration = getPendingPersonalMigration(firebaseUser.uid)
             || restorePendingPersonalMigrationFromAuth({ firebaseUser, userData: data });
         if (data.accountType === 'personal' || pendingMigration) {
-            await openExistingPersonalUser(firebaseUser, doc, loginTiming);
-            return;
+            return await openExistingPersonalUser(firebaseUser, doc, loginTiming);
         }
         if (!['member', 'churchAdmin'].includes(data.role)) throw new Error('NOT_MEMBER_ACCOUNT');
         let user = userDocToState(doc);
@@ -489,7 +488,7 @@ export const useAuth = ({
             beginInteractiveAuthFlow(flowName);
             try {
                 await authReady;
-                if (isKakaoTalkBrowser()) { setErrorMsg(KAKAO_GOOGLE_AUTH_MESSAGE); return; }
+                if (isKakaoTalkBrowser()) { setErrorMsg(KAKAO_GOOGLE_AUTH_MESSAGE); return false; }
                 const provider = new firebase.auth.GoogleAuthProvider();
                 const cred = await auth.signInWithPopup(provider);
                 popupUid = cred?.user?.uid || null;
@@ -504,11 +503,9 @@ export const useAuth = ({
                     // 첫 화면의 큰 Google 버튼으로 들어와도 저장된 관리자 역할을 먼저
                     // 판정한다. 이메일 추측 없이 인증 uid의 서버 원본 역할만 신뢰한다.
                     if (GOOGLE_ADMIN_ROLES.has(existingDoc.data()?.role)) {
-                        await finishAdminLogin(cred, { requireRegisteredAdmin: true, loginTiming });
-                        return;
+                        return await finishAdminLogin(cred, { requireRegisteredAdmin: true, loginTiming });
                     }
-                    await openExistingSocialUser(cred.user, existingDoc, loginTiming);
-                    return;
+                    return await openExistingSocialUser(cred.user, existingDoc, loginTiming);
                 }
                 if (signupDraft?.birthdate || signupDraft?.consents) {
                     buildSignupConsentSnapshot({
@@ -518,6 +515,7 @@ export const useAuth = ({
                     }, { source: 'google_personal_signup' });
                 }
                 openSocialOnboarding(cred.user, 'google.com', {}, signupDraft);
+                return true;
             } catch (error) {
                 if (error?.code === 'auth/account-exists-with-different-credential' && error?.credential) {
                     pendingGoogleRecoveryCredentialRef.current = error.credential;
@@ -534,6 +532,7 @@ export const useAuth = ({
                     });
                     setView('social_onboarding');
                     setErrorMsg('');
+                    return true;
                 } else if (error?.message === 'NOT_PERSONAL_ACCOUNT') {
                     setErrorMsg("이미 기존 기록이 있는 계정입니다. 첫 화면에서 다시 시작해 '기존 진도·달란트 이어보기'를 선택해주세요.");
                     if (popupUid && auth.currentUser?.uid === popupUid) {
@@ -541,6 +540,7 @@ export const useAuth = ({
                         setTempUser(null);
                         await auth.signOut().catch(() => {});
                     }
+                    return false;
                 } else {
                     applyGooglePopupError(error);
                     if (popupUid
@@ -550,6 +550,7 @@ export const useAuth = ({
                         setTempUser(null);
                         await auth.signOut().catch(() => {});
                     }
+                    return false;
                 }
             } finally {
                 endInteractiveAuthFlow(flowName);
@@ -988,7 +989,7 @@ export const useAuth = ({
             const isUnaffiliated = churchId === UNAFFILIATED_CHURCH_ID;
             if (isUnaffiliated && !/^\d{4}$/.test(String(phone4 || '').trim())) {
                 setErrorMsg('전화번호 뒤 4자리를 입력해주세요.');
-                return;
+                return false;
             }
             // 일반 교회는 신 포맷(이름+생년월일+교회ID) 실패 시 구 포맷으로 마이그레이션한다.
             // 무소속은 신규 기능이라 phone4 포함 포맷만 사용한다.
@@ -1008,7 +1009,7 @@ export const useAuth = ({
                 } else {
                     setErrorMsg('로그인 실패. 잠시 후 다시 시도해주세요.');
                 }
-                return;
+                return false;
             }
 
             if (!cred) {
@@ -1028,10 +1029,10 @@ export const useAuth = ({
                     await cred.user.updateEmail(newEmail).catch(() => {});
                 }
             }
-            if (!cred) return;
+            if (!cred) return false;
             const doc = await db.collection('users').doc(cred.user.uid).get();
-            if (!doc.exists) { setErrorMsg('사용자 정보를 찾을 수 없습니다.'); return; }
-            if (doc.data().isDeleted) { await rejectDeletedUser(); return; }
+            if (!doc.exists) { setErrorMsg('사용자 정보를 찾을 수 없습니다.'); return false; }
+            if (doc.data().isDeleted) { await rejectDeletedUser(); return false; }
             let user = userDocToState(doc);
             const extraOrgsPromise = loadUserExtraOrgs(cred.user.uid);
             // [랭킹] 자격증명 지연 이관 — 본문서에 평문이 남아 있으면 private로 옮긴다.
@@ -1045,7 +1046,7 @@ export const useAuth = ({
             }
             user.extraOrgs = await extraOrgsPromise;
             user = await migratePersonalWallet(user);
-            if (auth.currentUser?.uid !== cred.user.uid) return;
+            if (auth.currentUser?.uid !== cred.user.uid) return false;
             setCurrentUser(user);
             setHasReadToday(user.lastReadDate === new Date().toDateString());
             const requiresOnboarding = user.accountType !== 'personal'
@@ -1053,7 +1054,7 @@ export const useAuth = ({
             if (user.churchId) {
                 if (requiresOnboarding) {
                     await loadChurchCommunities(user.churchId, { requireServer: true });
-                    if (auth.currentUser?.uid !== cred.user.uid) return;
+                    if (auth.currentUser?.uid !== cred.user.uid) return false;
                 } else {
                     loadChurchCommunities(user.churchId);
                 }
@@ -1069,9 +1070,11 @@ export const useAuth = ({
             }
             setView(targetView);
             finishLoginTiming(loginTiming, targetView);
+            return true;
         } catch (err) {
             console.error(err);
             setErrorMsg('로그인 처리 중 오류가 발생했습니다.');
+            return false;
         }
     };
 
@@ -1178,11 +1181,12 @@ export const useAuth = ({
                 }
                 return null;
             });
-            if (!cred) return;
-            await finishAdminLogin(cred, { loginTiming });
+            if (!cred) return false;
+            return await finishAdminLogin(cred, { loginTiming });
         } catch (err) {
             console.error(err);
             setErrorMsg('로그인 처리 중 오류가 발생했습니다.');
+            return false;
         }
     };
 
@@ -1191,7 +1195,7 @@ export const useAuth = ({
         setErrorMsg('');
         if (isKakaoTalkBrowser()) {
             setErrorMsg(KAKAO_GOOGLE_AUTH_MESSAGE);
-            return;
+            return false;
         }
         const authFlowName = 'googleAdminLogin';
         let popupUid = null;
@@ -1202,12 +1206,12 @@ export const useAuth = ({
             const cred = await auth.signInWithPopup(provider);
             if (!cred?.user) {
                 setErrorMsg('구글 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.');
-                return;
+                return false;
             }
             popupUid = cred.user.uid;
 
             const didLogin = await finishAdminLogin(cred, { requireRegisteredAdmin: true, loginTiming });
-            if (!didLogin) return;
+            if (!didLogin) return false;
 
             const hasPasswordProvider = (cred.user.providerData || [])
                 .some(providerData => providerData?.providerId === firebase.auth.EmailAuthProvider.PROVIDER_ID);
@@ -1218,6 +1222,7 @@ export const useAuth = ({
                     console.error('관리자 로그인 제공자 안내 표시 실패:', noticeError);
                 }
             }
+            return true;
         } catch (err) {
             applyGooglePopupError(err);
             if (popupUid && auth.currentUser?.uid === popupUid) {
@@ -1227,6 +1232,7 @@ export const useAuth = ({
                     console.error('관리자 Google 로그인 실패 후 로그아웃 실패:', signOutError);
                 });
             }
+            return false;
         } finally {
             endInteractiveAuthFlow(authFlowName);
         }

@@ -223,6 +223,7 @@ const LoginView = ({
     setErrorMsg,
     presetChurchId,
     initialTab = 'member',
+    onLoginTransitionChange = () => {},
 }) => {
     // Tab: 'member' | 'admin' | 'memberSignup' | 'adminSignup'
     const [activeTab, setActiveTab] = useState(initialTab);
@@ -233,7 +234,11 @@ const LoginView = ({
     const [showExistingMemberNotice, setShowExistingMemberNotice] = useState(false);
     const [openPublicPolicyId, setOpenPublicPolicyId] = useState(null);
     const pendingKakaoReturnRef = useRef(isPendingKakaoLoginReturn());
-    const [loginTransitioning, setLoginTransitioning] = useState(pendingKakaoReturnRef.current);
+    const [loginTransitioning, setLocalLoginTransitioning] = useState(pendingKakaoReturnRef.current);
+    const setLoginTransitioning = value => {
+        setLocalLoginTransitioning(value);
+        onLoginTransitionChange(value);
+    };
 
     // Platform stats (Firestore)
     const [stats, setStats] = useState({
@@ -557,10 +562,11 @@ const LoginView = ({
         if (isLoginUnaffiliated && !/^\d{4}$/.test(loginPhone4.trim())) { setErrorMsg('전화번호 뒤 4자리를 입력해주세요.'); return; }
         setLoading(true);
         setLoginTransitioning(true);
+        let didLogin = false;
         try {
-            await onMemberLogin(loginName.trim(), loginBirthdateDigits, loginPw, loginChurchId, loginPhone4.trim());
+            didLogin = await onMemberLogin(loginName.trim(), loginBirthdateDigits, loginPw, loginChurchId, loginPhone4.trim()) === true;
         } finally {
-            setLoginTransitioning(false);
+            if (!didLogin) setLoginTransitioning(false);
             setLoading(false);
         }
     };
@@ -570,10 +576,11 @@ const LoginView = ({
         if (!loginEmail.trim() || !loginPw.trim()) { setErrorMsg('이메일과 비밀번호를 입력해주세요.'); return; }
         setLoading(true);
         setLoginTransitioning(true);
+        let didLogin = false;
         try {
-            await onChurchAdminLogin(loginEmail.trim(), loginPw);
+            didLogin = await onChurchAdminLogin(loginEmail.trim(), loginPw) === true;
         } finally {
-            setLoginTransitioning(false);
+            if (!didLogin) setLoginTransitioning(false);
             setLoading(false);
         }
     };
@@ -583,10 +590,11 @@ const LoginView = ({
         setLoading(true);
         setGoogleAdminLoading(true);
         setLoginTransitioning(true);
+        let didLogin = false;
         try {
-            await onGoogleAdminLogin();
+            didLogin = await onGoogleAdminLogin() === true;
         } finally {
-            setLoginTransitioning(false);
+            if (!didLogin) setLoginTransitioning(false);
             setGoogleAdminLoading(false);
             setLoading(false);
         }
@@ -699,8 +707,13 @@ const LoginView = ({
     const handleGoogleAccountStart = async () => {
         clearError(); setLoading(true); setGooglePersonalLoading(true);
         setLoginTransitioning(true);
-        try { await onGooglePersonalSignup(); }
-        finally { setLoginTransitioning(false); setGooglePersonalLoading(false); setLoading(false); }
+        let didLogin = false;
+        try { didLogin = await onGooglePersonalSignup() === true; }
+        finally {
+            if (!didLogin) setLoginTransitioning(false);
+            setGooglePersonalLoading(false);
+            setLoading(false);
+        }
     };
 
     const handleGooglePersonalSignup = async () => {
@@ -1261,8 +1274,8 @@ const LoginView = ({
                 <div role="status" aria-live="polite" className="fixed inset-0 z-[200] flex items-center justify-center bg-cream px-6">
                     <div className="text-center">
                         <div className="mx-auto mb-5 h-12 w-12 animate-spin rounded-full border-4 border-accent/20 border-t-accent" aria-hidden="true" />
-                        <p className="font-serif text-2xl font-semibold text-ink">로그인 확인 중…</p>
-                        <p className="mt-2 text-sm text-ink/60">잠시만 기다려주세요.</p>
+                        <p className="font-serif text-2xl font-semibold text-ink">로그인 중…</p>
+                        <p className="mt-2 text-sm text-ink/60">다음 화면을 준비하고 있어요.</p>
                     </div>
                 </div>
             )}
