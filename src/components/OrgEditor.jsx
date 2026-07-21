@@ -109,7 +109,6 @@ const OrgEditor = ({ departments, onChange }) => {
                 {departments.map((comm, cIdx) => (
                     <div key={comm.id} className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm">
                         <div className="flex gap-2 mb-2 items-center">
-                            <span className="text-base shrink-0">🏛️</span>
                             <input
                                 type="text"
                                 value={comm.name}
@@ -124,7 +123,7 @@ const OrgEditor = ({ departments, onChange }) => {
                                 ✕
                             </button>
                         </div>
-                        <div className="space-y-1.5 ml-6">
+                        <div className="space-y-1.5">
                             {comm.subgroups.length === 0 && (
                                 <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-[11px] font-bold leading-5 text-emerald-800">
                                     소그룹 없이 {comm.name.trim() || '이 부서'} 전체를 하나의 그룹으로 운영합니다.
