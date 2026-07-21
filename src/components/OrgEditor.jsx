@@ -1,6 +1,30 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 const genSubId = () => 'sub_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+const MAX_BULK_SUBGROUPS = 50;
+
+export const buildNumberedSubgroupNames = ({ prefix = '', start, end, suffix = '' }) => {
+    const startNumber = Number(start);
+    const endNumber = Number(end);
+    if (!Number.isInteger(startNumber) || !Number.isInteger(endNumber) || startNumber < 1 || endNumber < startNumber) {
+        return { names: [], error: '시작·끝 번호를 올바르게 입력해주세요.' };
+    }
+    if (endNumber - startNumber + 1 > MAX_BULK_SUBGROUPS) {
+        return { names: [], error: `한 번에 최대 ${MAX_BULK_SUBGROUPS}개까지 만들 수 있어요.` };
+    }
+    const trimmedPrefix = prefix.trim();
+    const trimmedSuffix = suffix.trim();
+    if (!trimmedPrefix && !trimmedSuffix) {
+        return { names: [], error: '이름 앞말이나 뒷말을 하나 이상 입력해주세요.' };
+    }
+    return {
+        names: Array.from(
+            { length: endNumber - startNumber + 1 },
+            (_, index) => `${trimmedPrefix}${startNumber + index}${trimmedSuffix}`,
+        ),
+        error: '',
+    };
+};
 
 export const DEFAULT_ORG = [
     { id: 'senior', name: '장년부', subgroups: [{ id: genSubId(), name: '1구역' }, { id: genSubId(), name: '2구역' }, { id: genSubId(), name: '3구역' }] },
@@ -11,6 +35,10 @@ export const DEFAULT_ORG = [
 ];
 
 const OrgEditor = ({ departments, onChange }) => {
+    const [bulkDepartmentId, setBulkDepartmentId] = useState(null);
+    const [bulkDraft, setBulkDraft] = useState({ prefix: '', start: '1', end: '10', suffix: '구역' });
+    const [bulkMessage, setBulkMessage] = useState('');
+
     const addCommunity = () =>
         onChange([...departments, { id: `comm_${Date.now()}`, name: '', subgroups: [''] }]);
 
@@ -22,6 +50,31 @@ const OrgEditor = ({ departments, onChange }) => {
 
     const addSubgroup = (idx) =>
         onChange(departments.map((c, i) => i === idx ? { ...c, subgroups: [...c.subgroups, { id: genSubId(), name: '' }] } : c));
+
+    const addNumberedSubgroups = (idx) => {
+        const result = buildNumberedSubgroupNames(bulkDraft);
+        if (result.error) {
+            setBulkMessage(result.error);
+            return;
+        }
+        const existingNames = new Set(departments[idx].subgroups.map(subgroup => getSubName(subgroup).trim()).filter(Boolean));
+        const newNames = result.names.filter(name => !existingNames.has(name));
+        if (newNames.length === 0) {
+            setBulkMessage('같은 이름의 소그룹이 이미 모두 있어요.');
+            return;
+        }
+        onChange(departments.map((community, communityIndex) => communityIndex === idx
+            ? {
+                ...community,
+                subgroups: [
+                    ...community.subgroups.filter(subgroup => getSubName(subgroup).trim()),
+                    ...newNames.map(name => ({ id: genSubId(), name })),
+                ],
+            }
+            : community));
+        const skippedCount = result.names.length - newNames.length;
+        setBulkMessage(`${newNames.length}개를 추가했어요.${skippedCount ? ` 중복 ${skippedCount}개는 제외했어요.` : ''}`);
+    };
 
     // Support both legacy string subgroups and new { id, name } objects
     const getSubName = (s) => (typeof s === 'string' ? s : s.name);
@@ -90,6 +143,77 @@ const OrgEditor = ({ departments, onChange }) => {
                                 className="text-xs text-indigo-400 hover:text-indigo-600 font-bold mt-1 transition-colors">
                                 + 소그룹 추가
                             </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setBulkDepartmentId(bulkDepartmentId === comm.id ? null : comm.id);
+                                    setBulkMessage('');
+                                }}
+                                className="ml-3 text-xs font-bold text-indigo-500 transition-colors hover:text-indigo-700"
+                            >
+                                {bulkDepartmentId === comm.id ? '여러 개 추가 닫기' : '+ 여러 소그룹 한 번에'}
+                            </button>
+                            {bulkDepartmentId === comm.id && (
+                                <div className="mt-2 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3">
+                                    <p className="mb-2 text-[11px] font-bold text-slate-600">예: 1~10 + 구역 → 1구역부터 10구역</p>
+                                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_72px_72px_1fr]">
+                                        <label className="text-[10px] font-bold text-slate-500">
+                                            이름 앞말
+                                            <input
+                                                type="text"
+                                                value={bulkDraft.prefix}
+                                                onChange={event => { setBulkDraft(draft => ({ ...draft, prefix: event.target.value })); setBulkMessage(''); }}
+                                                placeholder="선택"
+                                                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                            />
+                                        </label>
+                                        <label className="text-[10px] font-bold text-slate-500">
+                                            시작 번호
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                inputMode="numeric"
+                                                value={bulkDraft.start}
+                                                onChange={event => { setBulkDraft(draft => ({ ...draft, start: event.target.value })); setBulkMessage(''); }}
+                                                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                            />
+                                        </label>
+                                        <label className="text-[10px] font-bold text-slate-500">
+                                            끝 번호
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                inputMode="numeric"
+                                                value={bulkDraft.end}
+                                                onChange={event => { setBulkDraft(draft => ({ ...draft, end: event.target.value })); setBulkMessage(''); }}
+                                                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                            />
+                                        </label>
+                                        <label className="text-[10px] font-bold text-slate-500">
+                                            이름 뒷말
+                                            <input
+                                                type="text"
+                                                value={bulkDraft.suffix}
+                                                onChange={event => { setBulkDraft(draft => ({ ...draft, suffix: event.target.value })); setBulkMessage(''); }}
+                                                placeholder="예: 구역"
+                                                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                            />
+                                        </label>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => addNumberedSubgroups(cIdx)}
+                                        className="mt-2 min-h-10 w-full rounded-lg bg-indigo-600 px-3 text-xs font-black text-white active:scale-[0.99]"
+                                    >
+                                        한 번에 추가
+                                    </button>
+                                    {bulkMessage && (
+                                        <p role="status" className={`mt-2 text-center text-[11px] font-bold ${bulkMessage.includes('추가했어요') ? 'text-emerald-700' : 'text-red-600'}`}>
+                                            {bulkMessage}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 ))}
