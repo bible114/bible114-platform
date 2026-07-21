@@ -3,6 +3,13 @@ import fs from 'node:fs';
 
 const shop = fs.readFileSync(new URL('../src/components/dashboard/TalentShop.jsx', import.meta.url), 'utf8');
 const dashboard = fs.readFileSync(new URL('../src/components/DashboardView.jsx', import.meta.url), 'utf8');
+const adminShop = fs.readFileSync(new URL('../src/components/churchAdmin/TalentShopTab.jsx', import.meta.url), 'utf8');
+
+assert.match(adminShop, /1인 연간 최대 적립량/);
+assert.match(adminShop, /const DAILY_READING_TALENT_MAX = 17/);
+assert.match(adminShop, /const DAILY_QUIZ_TALENT_MAX = 10/);
+assert.match(adminShop, /const ANNUAL_TALENT_MAX = DAILY_TALENT_MAX \* 365/);
+assert.match(adminShop, /새로 시작한 첫 365일/);
 
 assert.doesNotMatch(
     shop,
