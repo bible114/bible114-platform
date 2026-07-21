@@ -47,7 +47,8 @@ const AchievementsModal = ({ show, onClose, currentUser }) => {
                     <div className="space-y-1.5">
                         <p><b>점수</b> = 하루 첫 읽기 10점 + 연속 보너스(최대 5)</p>
                         <p><b>달란트</b> = 하루 첫 읽기 10+연속(최대 7), 퀴즈 정답 +10(2번째 시도 +5)</p>
-                        <p className="font-black text-blue-800">달란트는 하루 1번만 적립돼요.</p>
+                        <p><b>이정표 보너스</b> = 7·30·60·90·120·180·270·365일 연속 읽기에 추가 적립</p>
+                        <p className="font-black text-blue-800">매일 읽고 퀴즈를 첫 시도에 맞히면 첫 365일 최대 10,000 달란트예요.</p>
                     </div>
                 </section>
                 <h4 className="mb-3 text-lg font-black text-slate-800">업적 배지</h4>

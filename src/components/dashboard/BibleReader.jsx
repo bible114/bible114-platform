@@ -299,6 +299,11 @@ const BibleReader = ({
                                 {completionForViewingDay.quizTalentEarned > 0 ? ` · 퀴즈 +${completionForViewingDay.quizTalentEarned}` : ''}
                             </p>
                         )}
+                        {completionForViewingDay.talentMilestoneBonus > 0 && (
+                            <p className="mt-1 text-sm font-black text-violet-700">
+                                🎁 {completionForViewingDay.newStreak}일 연속 보너스 +{completionForViewingDay.talentMilestoneBonus}
+                            </p>
+                        )}
                         {completionForViewingDay.talentProgramEnabled && !completionForViewingDay.isFirstReadToday && <p className="mt-1 text-sm font-bold text-emerald-700">추가 읽기는 점수와 달란트가 더 적립되지 않아요.</p>}
                         <button type="button" onClick={handleAdvanceRead} disabled={readSubmitting || !isCurrentProgressDay} className="mt-4 min-h-11 rounded-full border border-emerald-300 bg-white px-5 py-2.5 text-sm font-bold text-emerald-800 disabled:opacity-50">
                             {readSubmitting ? '기록 중...' : '한 장 더 읽기'}

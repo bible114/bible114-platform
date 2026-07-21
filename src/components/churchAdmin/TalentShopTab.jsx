@@ -10,11 +10,11 @@ const SHOP_EMOJI_GROUPS = [
 
 const DAILY_READING_TALENT_MAX = 17;
 const DAILY_QUIZ_TALENT_MAX = 10;
-const DAILY_TALENT_MAX = DAILY_READING_TALENT_MAX + DAILY_QUIZ_TALENT_MAX;
-const ANNUAL_TALENT_MAX = DAILY_TALENT_MAX * 365;
+const ANNUAL_MILESTONE_BONUS = 6 + 10 + 15 + 20 + 20 + 25 + 30 + 40;
 const FIRST_YEAR_TALENT_MAX = (11 + 12 + 13 + 14 + 15 + 16 + 17)
     + DAILY_READING_TALENT_MAX * (365 - 7)
-    + DAILY_QUIZ_TALENT_MAX * 365;
+    + DAILY_QUIZ_TALENT_MAX * 365
+    + ANNUAL_MILESTONE_BONUS;
 
 const TalentShopTab = ({ ctx }) => {
     const {
@@ -74,21 +74,24 @@ const TalentShopTab = ({ ctx }) => {
                                     <div className="grid gap-4 p-5 sm:grid-cols-[1fr_auto] sm:items-center">
                                         <div>
                                             <p className="text-xs font-black text-amber-700">상품 가격을 정할 때 참고하세요</p>
-                                            <h3 className="mt-1 text-lg font-black text-slate-900">1인 연간 최대 적립량</h3>
+                                            <h3 className="mt-1 text-lg font-black text-slate-900">1인 · 통독 시작 후 365일 최대 적립량</h3>
                                             <p className="mt-2 text-xs font-bold leading-5 text-slate-500">
                                                 매일 첫 읽기와 퀴즈를 모두 완료했을 때의 최대치입니다. 퀴즈를 두 번째 시도에 맞히거나 읽기를 쉬면 실제 적립량은 더 적어집니다.
                                             </p>
                                         </div>
                                         <div className="rounded-2xl bg-slate-900 px-5 py-4 text-center text-white shadow-lg shadow-slate-200">
-                                            <p className="text-[11px] font-bold text-white/60">365일 이론상 최대</p>
-                                            <p className="mt-1 whitespace-nowrap text-2xl font-black text-amber-300">⭐ {ANNUAL_TALENT_MAX.toLocaleString()}개</p>
+                                            <p className="text-[11px] font-bold text-white/60">매일 읽기·퀴즈 첫 시도 정답</p>
+                                            <p className="mt-1 whitespace-nowrap text-2xl font-black text-amber-300">⭐ {FIRST_YEAR_TALENT_MAX.toLocaleString()}개</p>
                                         </div>
                                     </div>
                                     <div className="grid border-t border-amber-100 bg-white/70 sm:grid-cols-3">
                                         <div className="border-b border-amber-100 px-4 py-3 sm:border-b-0 sm:border-r"><p className="text-[11px] font-bold text-slate-400">하루 첫 읽기</p><p className="mt-0.5 text-sm font-black text-slate-700">최대 ⭐ {DAILY_READING_TALENT_MAX}</p></div>
                                         <div className="border-b border-amber-100 px-4 py-3 sm:border-b-0 sm:border-r"><p className="text-[11px] font-bold text-slate-400">퀴즈 첫 시도 정답</p><p className="mt-0.5 text-sm font-black text-slate-700">최대 ⭐ {DAILY_QUIZ_TALENT_MAX}</p></div>
-                                        <div className="px-4 py-3"><p className="text-[11px] font-bold text-slate-400">새로 시작한 첫 365일</p><p className="mt-0.5 text-sm font-black text-violet-700">최대 ⭐ {FIRST_YEAR_TALENT_MAX.toLocaleString()}</p></div>
+                                        <div className="px-4 py-3"><p className="text-[11px] font-bold text-slate-400">연속 읽기 이정표 보너스</p><p className="mt-0.5 text-sm font-black text-violet-700">총 ⭐ {ANNUAL_MILESTONE_BONUS}</p></div>
                                     </div>
+                                    <p className="border-t border-amber-100 bg-white/70 px-4 py-3 text-center text-[11px] font-bold leading-5 text-slate-500">
+                                        7일 +6 · 30일 +10 · 60일 +15 · 90일 +20 · 120일 +20 · 180일 +25 · 270일 +30 · 365일 +40
+                                    </p>
                                 </section>
 
                                 <div className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm">

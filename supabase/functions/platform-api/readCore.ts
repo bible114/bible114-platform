@@ -16,6 +16,21 @@ const MONTHS = [
 ] as const;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
+export const TALENT_STREAK_MILESTONE_BONUSES: Readonly<Record<number, number>> =
+  {
+    7: 6,
+    30: 10,
+    60: 15,
+    90: 20,
+    120: 20,
+    180: 25,
+    270: 30,
+    365: 40,
+  };
+
+export const getTalentStreakMilestoneBonus = (streak: number): number =>
+  TALENT_STREAK_MILESTONE_BONUSES[streak] || 0;
+
 export type StoredReadUser = {
   currentDay?: unknown;
   readCount?: unknown;
@@ -196,7 +211,9 @@ export const calculateReadCompletion = (
   const completedRound = currentDay === DAYS_PER_CYCLE;
   const newProgressDay = completedRound ? 1 : currentDay + 1;
   const newReadCount = completedRound ? readCount + 1 : readCount;
-  const baseTalentEarned = isFirstReadToday ? 10 + Math.min(newStreak, 7) : 0;
+  const baseTalentEarned = isFirstReadToday
+    ? 10 + Math.min(newStreak, 7) + getTalentStreakMilestoneBonus(newStreak)
+    : 0;
   const accountUsesDirectWallet = user.accountType !== "personal";
   const directCanEarnTalent = talentRouting
     ? accountUsesDirectWallet && talentRouting.directCanEarnTalent

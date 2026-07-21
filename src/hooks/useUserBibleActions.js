@@ -12,6 +12,10 @@ import {
     getOrCreateRestartActivityRequest,
 } from '../utils/userActivityRequests';
 
+const TALENT_STREAK_MILESTONE_BONUSES = Object.freeze({
+    7: 6, 30: 10, 60: 15, 90: 20, 120: 20, 180: 25, 270: 30, 365: 40,
+});
+
 const readingPosition = (user) => ({
     cycle: Number.isSafeInteger(user?.readCount) && user.readCount >= 1 ? user.readCount : 1,
     day: Number.isSafeInteger(user?.currentDay) && user.currentDay >= 1 ? user.currentDay : 1,
@@ -309,6 +313,10 @@ export const useUserBibleActions = (
                     ? summary.talentEarned + quizTalentEarned
                     : 0,
                 readingTalentEarned: summary.talentEarned,
+                talentMilestoneBonus: summary.talentProgramEnabled && isFirstReadToday
+                    ? (TALENT_STREAK_MILESTONE_BONUSES[summary.newStreak] || 0)
+                    : 0,
+                newStreak: summary.newStreak,
                 quizTalentEarned,
                 isFirstReadToday,
                 quizRewardLimited: summary.talentEarned === 0 && quizTalentEarned > 0,

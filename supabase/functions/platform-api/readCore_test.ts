@@ -3,6 +3,7 @@ import {
   normalizeProgressDay,
   normalizeReadCount,
   type StoredReadUser,
+  TALENT_STREAK_MILESTONE_BONUSES,
 } from "./readCore.ts";
 
 const TODAY = "Tue Jul 14 2026";
@@ -113,10 +114,43 @@ Deno.test("전날 읽었으면 streak과 보너스가 증가한다", () => {
     "streak mismatch",
   );
   assert(result.summary.scoreEarned === 15, "streak score bonus mismatch");
-  assert(result.summary.talentEarned === 17, "streak talent mismatch");
+  assert(result.summary.talentEarned === 23, "streak talent mismatch");
   assert(
     result.updateData.secretShopUnlocked === true,
     "secret shop not unlocked",
+  );
+});
+
+Deno.test("연속 읽기 이정표마다 정해진 달란트 보너스를 한 번 더 지급한다", () => {
+  for (
+    const [streakText, bonus] of Object.entries(
+      TALENT_STREAK_MILESTONE_BONUSES,
+    )
+  ) {
+    const streak = Number(streakText);
+    const result = ready({
+      talent: 0,
+      streak: streak - 1,
+      maxStreak: streak - 1,
+      lastReadDate: YESTERDAY,
+    });
+    assert(result.summary.newStreak === streak, `${streak}일 streak mismatch`);
+    assert(
+      result.summary.talentEarned === 17 + bonus,
+      `${streak}일 milestone talent mismatch`,
+    );
+  }
+});
+
+Deno.test("첫 365일 최대 달란트는 이정표 보너스를 포함해 정확히 10000이다", () => {
+  const readingTalent = 11 + 12 + 13 + 14 + 15 + 16 + 17 + 17 * (365 - 7);
+  const quizTalent = 10 * 365;
+  const milestoneTalent = Object.values(TALENT_STREAK_MILESTONE_BONUSES)
+    .reduce((sum, value) => sum + value, 0);
+  assert(milestoneTalent === 166, "milestone sum mismatch");
+  assert(
+    readingTalent + quizTalent + milestoneTalent === 10_000,
+    "annual talent maximum mismatch",
   );
 });
 

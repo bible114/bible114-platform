@@ -170,6 +170,9 @@ const QUIZ_PROGRESS_KEY_PATTERN = /^(?:e([1-9]\d*)_)?r([1-9]\d*)_d([1-9]\d*)$/;
 const QUIZ_KEY_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const LEGACY_CALENDAR_DATE_PATTERN = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (0[1-9]|[12]\d|3[01]) (\d{4})$/;
 const MAX_TALENT_BALANCE = 1_000_000_000;
+const TALENT_STREAK_MILESTONE_BONUSES = Object.freeze({
+    7: 6, 30: 10, 60: 15, 90: 20, 120: 20, 180: 25, 270: 30, 365: 40,
+});
 const loadAuth = async () => (await import('./platformAuth.js')).getPlatformAuth();
 const isResponseRecord = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
@@ -847,7 +850,7 @@ const normalizeReadSummary = (value) => {
         || !isSafeIntegerInRange(value.newLevel, value.oldLevel, Number.MAX_SAFE_INTEGER)
         || !isSafeIntegerInRange(value.scoreEarned, 0, 15)
         || !isSafeIntegerInRange(value.streakBonus, 0, 5)
-        || !isSafeIntegerInRange(value.talentEarned, 0, 17)
+        || !isSafeIntegerInRange(value.talentEarned, 0, 57)
         || !isSafeIntegerInRange(value.newStreak, 0, Number.MAX_SAFE_INTEGER)
         || !isSafeIntegerInRange(value.newReadCount, 1, Number.MAX_SAFE_INTEGER)
         || !isSafeIntegerInRange(value.newProgressDay, 1, 365)
@@ -859,7 +862,7 @@ const normalizeReadSummary = (value) => {
         || (value.scoreEarned !== 0 && value.scoreEarned !== 10 + value.streakBonus)
         || (value.scoreEarned === 0 && value.streakBonus !== 0)
         || value.talentEarned !== (value.scoreEarned > 0 && value.talentProgramEnabled
-            ? 10 + Math.min(value.newStreak, 7)
+            ? 10 + Math.min(value.newStreak, 7) + (TALENT_STREAK_MILESTONE_BONUSES[value.newStreak] || 0)
             : 0)
         || (value.rewardsUserWallet && !value.talentProgramEnabled)
         || (value.secretShopJustUnlocked && value.newStreak < 7)
