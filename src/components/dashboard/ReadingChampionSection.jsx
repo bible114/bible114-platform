@@ -1,5 +1,17 @@
 import React from 'react';
 import { getDaysRead } from '../../utils/helpers';
+import { getReadingRoundBadgeLabel } from '../../utils/readingRounds';
+
+const ReadingRoundBadge = ({ member }) => {
+    const label = getReadingRoundBadgeLabel(member);
+    if (!label) return null;
+
+    return (
+        <span className="shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-black text-purple-700">
+            {label}
+        </span>
+    );
+};
 
 const ReadingChampionSection = ({ getWeeklyMVP }) => {
     if (typeof getWeeklyMVP !== 'function') return null;
@@ -21,7 +33,10 @@ const ReadingChampionSection = ({ getWeeklyMVP }) => {
                 <div className="bg-white p-3 rounded-xl border border-blue-100 text-center">
                     <div className="text-2xl mb-1">🔥</div>
                     <p className="text-[10px] text-slate-500 mb-1">주간 읽기왕</p>
-                    <p className="font-bold text-slate-800">{streakMVP ? streakMVP.name : '-'}</p>
+                    <div className="flex min-w-0 items-center justify-center gap-1">
+                        <p className="truncate font-bold text-slate-800">{streakMVP ? streakMVP.name : '-'}</p>
+                        <ReadingRoundBadge member={streakMVP} />
+                    </div>
                     <p className="text-xs text-orange-500 mb-2 font-bold">
                         {streakMVP ? `이번 주 ${streakMVP.weeklyCount || 0}일` : '-'}
                     </p>
@@ -32,7 +47,10 @@ const ReadingChampionSection = ({ getWeeklyMVP }) => {
                 <div className="bg-white p-3 rounded-xl border border-blue-100 text-center">
                     <div className="text-2xl mb-1">🏆</div>
                     <p className="text-[10px] text-slate-500 mb-1">누적 읽기왕</p>
-                    <p className="font-bold text-slate-800">{progressMVP ? progressMVP.name : '-'}</p>
+                    <div className="flex min-w-0 items-center justify-center gap-1">
+                        <p className="truncate font-bold text-slate-800">{progressMVP ? progressMVP.name : '-'}</p>
+                        <ReadingRoundBadge member={progressMVP} />
+                    </div>
                     <p className="text-xs text-blue-500 mb-2 font-bold">
                         {(() => {
                             if (!progressMVP) return '-';
@@ -57,8 +75,11 @@ const ReadingChampionSection = ({ getWeeklyMVP }) => {
                     <div className="space-y-1">
                         {weeklyTop10.length > 1 ? weeklyTop10.slice(1, 10).map((member, idx) => {
                             return (
-                                <div key={member.uid} className="flex justify-between items-center text-[10px]">
-                                    <span className="text-slate-600 truncate mr-1">{idx + 2}위. {member.name}</span>
+                                <div key={member.uid} className="flex justify-between items-center gap-1 text-[10px]">
+                                    <span className="flex min-w-0 items-center gap-1 text-slate-600">
+                                        <span className="truncate">{idx + 2}위. {member.name}</span>
+                                        <ReadingRoundBadge member={member} />
+                                    </span>
                                     <span className="text-orange-500 font-bold shrink-0">{member.weeklyCount || 0}일</span>
                                 </div>
                             );
@@ -73,8 +94,11 @@ const ReadingChampionSection = ({ getWeeklyMVP }) => {
                         {totalTop10.length > 1 ? totalTop10.slice(1, 10).map((member, idx) => {
                             const totalDays = getDaysRead(member);
                             return (
-                                <div key={member.uid} className="flex justify-between items-center text-[10px]">
-                                    <span className="text-slate-600 truncate mr-1">{idx + 2}위. {member.name}</span>
+                                <div key={member.uid} className="flex justify-between items-center gap-1 text-[10px]">
+                                    <span className="flex min-w-0 items-center gap-1 text-slate-600">
+                                        <span className="truncate">{idx + 2}위. {member.name}</span>
+                                        <ReadingRoundBadge member={member} />
+                                    </span>
                                     <span className="text-blue-600 font-bold shrink-0">{totalDays}일</span>
                                 </div>
                             );

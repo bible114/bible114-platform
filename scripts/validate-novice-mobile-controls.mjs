@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { rankWeeklyMembers } from '../src/utils/weeklyRanking.js';
+import { getCompletedReadingRounds, getReadingRoundBadgeLabel } from '../src/utils/readingRounds.js';
 
 const guest = fs.readFileSync(new URL('../src/components/GuestReaderView.jsx', import.meta.url), 'utf8');
 const reader = fs.readFileSync(new URL('../src/components/dashboard/BibleReader.jsx', import.meta.url), 'utf8');
@@ -15,6 +16,7 @@ const achievements = fs.readFileSync(new URL('../src/components/modals/Achieveme
 const memo = fs.readFileSync(new URL('../src/components/dashboard/MemoSection.jsx', import.meta.url), 'utf8');
 const dashboard = fs.readFileSync(new URL('../src/components/DashboardView.jsx', import.meta.url), 'utf8');
 const rankingSummary = fs.readFileSync(new URL('../src/components/dashboard/CommunityRankingSummary.jsx', import.meta.url), 'utf8');
+const readingChampion = fs.readFileSync(new URL('../src/components/dashboard/ReadingChampionSection.jsx', import.meta.url), 'utf8');
 
 assert.match(guest, /가입하고 저장/);
 assert.match(guest, /읽는 순서와 성경 번역 선택/);
@@ -92,5 +94,13 @@ const emptyWeeklyRanking = rankWeeklyMembers([
 ]);
 assert.equal(emptyWeeklyRanking.winner, null);
 assert.deepEqual(emptyWeeklyRanking.top10, [], '이번 주 독자가 전혀 없으면 억지로 주간 순위를 만들면 안 됩니다.');
+assert.equal(getCompletedReadingRounds({ readCount: 1 }), 0);
+assert.equal(getCompletedReadingRounds({ readCount: 2 }), 1);
+assert.equal(getCompletedReadingRounds({ readCount: 11 }), 10);
+assert.equal(getReadingRoundBadgeLabel({ readCount: 2 }), '1독');
+assert.equal(getReadingRoundBadgeLabel({ readCount: 11 }), '10독');
+assert.match(readingChampion, /<ReadingRoundBadge member=\{streakMVP\}/);
+assert.match(readingChampion, /<ReadingRoundBadge member=\{progressMVP\}/);
+assert.equal((readingChampion.match(/<ReadingRoundBadge member=\{member\}/g) || []).length, 2);
 
 console.log('novice mobile controls validation passed');
