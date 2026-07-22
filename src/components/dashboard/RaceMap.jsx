@@ -62,8 +62,12 @@ const RaceMap = ({ racers, departmentChampions, getSubgroupDisplay }) => {
                         style={{ left: `calc(${p}% - 16px)`, top: topPos, zIndex }}>
                         <div className="relative flex items-center">
                             {readingRoundBadge && (
-                                <div className="absolute -left-2 -top-2 z-10 flex min-w-6 items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-purple-500 to-purple-700 px-1 py-0.5 shadow-md">
-                                    <span className="text-[7px] font-black leading-none text-white">{readingRoundBadge}</span>
+                                <div
+                                    className="absolute -left-1.5 -top-2 z-10 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-purple-500 to-purple-700 shadow-md"
+                                    title={`${readingRoundBadge}회 완독`}
+                                    aria-label={`${readingRoundBadge}회 완독`}
+                                >
+                                    <span className="tabular-nums text-[8px] font-black leading-none text-white">{readingRoundBadge}</span>
                                 </div>
                             )}
                             <div className={`flex items-stretch rounded-full shadow-md overflow-hidden ${isMe ? 'ring-2 ring-yellow-400 ring-offset-1' : ''}`}>
