@@ -1001,7 +1001,7 @@ const App = () => {
                 getProgressRanking={() => formatProgressRanking(subgroupStats)}
                 getSubgroupDisplay={getSubgroupDisplay}
                 generateMemosHTML={generateMemosHTML}
-                getWeeklyMVP={() => getWeeklyMVP(departmentMembers)}
+                getWeeklyMVP={() => getWeeklyMVP(allMembersForRace)}
                 setView={setView}
                 isChurchAdmin={currentUser?.role === 'churchAdmin'}
                 churchCommunities={churchCommunities}

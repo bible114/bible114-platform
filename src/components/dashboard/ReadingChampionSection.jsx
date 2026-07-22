@@ -7,7 +7,11 @@ const ReadingRoundBadge = ({ member }) => {
     if (!label) return null;
 
     return (
-        <span className="shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-black text-purple-700">
+        <span
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-purple-200 bg-purple-600 tabular-nums text-[8px] font-black leading-none text-white shadow-sm"
+            title={`${label}회 완독`}
+            aria-label={`${label}회 완독`}
+        >
             {label}
         </span>
     );

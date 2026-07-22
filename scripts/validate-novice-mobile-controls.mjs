@@ -18,6 +18,7 @@ const memo = fs.readFileSync(new URL('../src/components/dashboard/MemoSection.js
 const dashboard = fs.readFileSync(new URL('../src/components/DashboardView.jsx', import.meta.url), 'utf8');
 const rankingSummary = fs.readFileSync(new URL('../src/components/dashboard/CommunityRankingSummary.jsx', import.meta.url), 'utf8');
 const readingChampion = fs.readFileSync(new URL('../src/components/dashboard/ReadingChampionSection.jsx', import.meta.url), 'utf8');
+const app = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
 
 assert.match(guest, /가입하고 저장/);
 assert.match(guest, /읽는 순서와 성경 번역 선택/);
@@ -62,6 +63,10 @@ assert.match(dashboard, /show=\{showFaq\}[\s\S]*mode="faq"/);
 assert.match(dashboard, /setShowFaq=\{setShowFaq\}[\s\S]*setShowTutorial=\{setShowTutorial\}/);
 assert.equal((dashboard.match(/<Suspense fallback=/g) || []).length >= 1, true);
 assert.match(dashboard, /함께 읽는 통독 현황[\s\S]*<RaceMap[\s\S]*<DailyVideoCard[\s\S]*<AnnouncementBanner[\s\S]*<BibleReader[\s\S]*belowQuizContent[\s\S]*<TalentShop[\s\S]*<CommunityRankingSummary[\s\S]*aria-label="읽기왕"[\s\S]*<ReadingChampionSection/);
+assert.match(app, /getWeeklyMVP=\{\(\) => getWeeklyMVP\(allMembersForRace\)\}/,
+    '읽기왕은 현재 부서만이 아니라 활동 중인 교회 전체 명단으로 계산해야 한다.');
+assert.doesNotMatch(app, /getWeeklyMVP=\{\(\) => getWeeklyMVP\(departmentMembers\)\}/,
+    '부서 인원이 적다는 이유로 주간 2~10위가 비어서는 안 된다.');
 assert.match(announcement, /aria-label="교회 소식"/);
 assert.match(announcement, /rounded-full px-4 py-2 text-sm font-black/);
 assert.doesNotMatch(announcement, /bg-\[#03C75A\]|min-w-\[140px\]|p-7|mb-10/);
@@ -110,5 +115,9 @@ assert.equal(getReadingRoundBadgeLabel({ readCount: 11 }), '10');
 assert.match(readingChampion, /<ReadingRoundBadge member=\{streakMVP\}/);
 assert.match(readingChampion, /<ReadingRoundBadge member=\{progressMVP\}/);
 assert.equal((readingChampion.match(/<ReadingRoundBadge member=\{member\}/g) || []).length, 2);
+assert.match(readingChampion, /flex h-5 w-5[\s\S]*rounded-full[\s\S]*\{label\}/,
+    '읽기왕의 완독 숫자 배지도 고정 크기 원형이어야 한다.');
+assert.doesNotMatch(readingChampion, /bg-purple-100 px-1\.5 py-0\.5/,
+    '읽기왕에 기존 캡슐형 완독 배지가 남으면 안 된다.');
 
 console.log('novice mobile controls validation passed');
