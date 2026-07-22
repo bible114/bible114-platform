@@ -36,6 +36,8 @@ export type StoredReadUser = {
   readCount?: unknown;
   dailyAdvanceDate?: unknown;
   dailyAdvanceCount?: unknown;
+  weeklyReadKey?: unknown;
+  weeklyReadCount?: unknown;
   lastReadDate?: unknown;
   score?: unknown;
   streak?: unknown;
@@ -63,6 +65,8 @@ export type ReadCompletionUpdate = {
   lastReadDate: string;
   dailyAdvanceDate: string;
   dailyAdvanceCount: number;
+  weeklyReadKey: string;
+  weeklyReadCount: number;
   recentReadDates: string[];
   talent?: number;
   secretShopUnlocked?: true;
@@ -194,6 +198,24 @@ export const calculateReadCompletion = (
     ? nonNegativeInteger(user.dailyAdvanceCount)
     : (lastReadDateMatches ? 1 : 0);
   const isFirstReadToday = !dailyAdvanceDateMatches && !lastReadDateMatches;
+  const weekStartTimestamp = todayTimestamp -
+    new Date(todayTimestamp).getUTCDay() * DAY_MS;
+  const weeklyReadKey = toLegacyDay(weekStartTimestamp);
+  const storedWeeklyReadCount = user.weeklyReadKey === weeklyReadKey
+    ? nonNegativeInteger(user.weeklyReadCount)
+    : null;
+  const previousDaysThisWeek = Array.isArray(user.recentReadDates)
+    ? new Set(user.recentReadDates.flatMap((value) => {
+      const timestamp = parseLegacyDay(value);
+      return timestamp !== null && timestamp >= weekStartTimestamp &&
+          timestamp < todayTimestamp
+        ? [timestamp]
+        : [];
+    })).size
+    : 0;
+  // 기존 계정은 첫 저장 때 이번 주 날짜 수와 오늘 이미 읽은 횟수를 안전하게 이관한다.
+  const weeklyReadCount = storedWeeklyReadCount ??
+    (previousDaysThisWeek + dailyAdvanceCount);
   const oldScore = finiteNumber(user.score);
   const oldStreak = nonNegativeInteger(user.streak);
   const streakBonus = isFirstReadToday ? Math.min(5, oldStreak) : 0;
@@ -242,6 +264,8 @@ export const calculateReadCompletion = (
     lastReadDate: normalizedToday,
     dailyAdvanceDate: normalizedToday,
     dailyAdvanceCount: dailyAdvanceCount + 1,
+    weeklyReadKey,
+    weeklyReadCount: weeklyReadCount + 1,
     recentReadDates: normalizeRecentReadDates(
       user.recentReadDates,
       todayTimestamp,

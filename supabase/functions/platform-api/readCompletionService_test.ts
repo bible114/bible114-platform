@@ -294,6 +294,8 @@ Deno.test("첫 읽기는 users·canonical roster·history·ledger·통계를 한
     lastReadDate: TODAY,
     dailyAdvanceDate: TODAY,
     dailyAdvanceCount: 1,
+    weeklyReadKey: "Sun Jul 12 2026",
+    weeklyReadCount: 1,
     recentReadDates: [TODAY],
     secretShopUnlocked: false,
   }, "fresh user state");
@@ -327,8 +329,12 @@ Deno.test("첫 읽기는 users·canonical roster·history·ledger·통계를 한
       rosterBAfterRead?.talent === 9 &&
       Array.isArray(rosterAAfterRead?.recentReadDates) &&
       rosterAAfterRead.recentReadDates[0] === TODAY &&
+      rosterAAfterRead?.weeklyReadKey === "Sun Jul 12 2026" &&
+      rosterAAfterRead?.weeklyReadCount === 1 &&
       Array.isArray(rosterBAfterRead?.recentReadDates) &&
-      rosterBAfterRead.recentReadDates[0] === TODAY,
+      rosterBAfterRead.recentReadDates[0] === TODAY &&
+      rosterBAfterRead?.weeklyReadKey === "Sun Jul 12 2026" &&
+      rosterBAfterRead?.weeklyReadCount === 1,
     "per-roster talent routing mismatch",
   );
   assert(

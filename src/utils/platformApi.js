@@ -88,12 +88,16 @@ const COMPLETE_READ_USER_KEYS = new Set([
     'currentDay', 'readCount', 'score', 'talent', 'streak', 'maxStreak', 'lastReadDate',
     'dailyAdvanceDate', 'dailyAdvanceCount', 'recentReadDates', 'secretShopUnlocked',
 ]);
+const COMPLETE_READ_USER_WEEKLY_KEYS = new Set([
+    ...COMPLETE_READ_USER_KEYS, 'weeklyReadKey', 'weeklyReadCount',
+]);
 const COMPLETE_READ_UPDATE_REQUIRED_KEYS = new Set([
     'currentDay', 'readCount', 'score', 'streak', 'maxStreak', 'lastReadDate',
     'dailyAdvanceDate', 'dailyAdvanceCount', 'recentReadDates',
 ]);
 const COMPLETE_READ_UPDATE_ALLOWED_KEYS = new Set([
-    ...COMPLETE_READ_UPDATE_REQUIRED_KEYS, 'talent', 'secretShopUnlocked',
+    ...COMPLETE_READ_UPDATE_REQUIRED_KEYS, 'weeklyReadKey', 'weeklyReadCount',
+    'talent', 'secretShopUnlocked',
 ]);
 const COMPLETE_READ_SUMMARY_KEYS = new Set([
     'oldLevel', 'newLevel', 'scoreEarned', 'streakBonus', 'talentEarned', 'newStreak',
@@ -778,7 +782,8 @@ const normalizeReadDates = (value) => {
 };
 
 const normalizeReadStateUser = (value) => {
-    if (!hasExactKeys(value, COMPLETE_READ_USER_KEYS)
+    if (!(hasExactKeys(value, COMPLETE_READ_USER_KEYS)
+        || hasExactKeys(value, COMPLETE_READ_USER_WEEKLY_KEYS))
         || !isSafeIntegerInRange(value.currentDay, 1, 365)
         || !isSafeIntegerInRange(value.readCount, 1, Number.MAX_SAFE_INTEGER)
         || !isSafeIntegerInRange(value.score, 0, Number.MAX_SAFE_INTEGER)
@@ -789,6 +794,11 @@ const normalizeReadStateUser = (value) => {
         || (value.dailyAdvanceDate !== null && !isValidLegacyCalendarDate(value.dailyAdvanceDate))
         || !isSafeIntegerInRange(value.dailyAdvanceCount, 0, Number.MAX_SAFE_INTEGER)
         || (value.dailyAdvanceDate === null && value.dailyAdvanceCount > 0)
+        || (Object.prototype.hasOwnProperty.call(value, 'weeklyReadKey')
+            && value.weeklyReadKey !== null
+            && !isValidLegacyCalendarDate(value.weeklyReadKey))
+        || (Object.prototype.hasOwnProperty.call(value, 'weeklyReadCount')
+            && !isSafeIntegerInRange(value.weeklyReadCount, 0, Number.MAX_SAFE_INTEGER))
         || typeof value.secretShopUnlocked !== 'boolean') {
         return invalidCompleteReadResponse();
     }
@@ -802,6 +812,9 @@ const normalizeReadStateUser = (value) => {
         lastReadDate: value.lastReadDate,
         dailyAdvanceDate: value.dailyAdvanceDate,
         dailyAdvanceCount: value.dailyAdvanceCount,
+        ...(Object.prototype.hasOwnProperty.call(value, 'weeklyReadKey')
+            ? { weeklyReadKey: value.weeklyReadKey, weeklyReadCount: value.weeklyReadCount }
+            : {}),
         recentReadDates: normalizeReadDates(value.recentReadDates),
         secretShopUnlocked: value.secretShopUnlocked,
     };
@@ -821,6 +834,12 @@ const normalizeReadUpdate = (value) => {
         || !isValidLegacyCalendarDate(value.lastReadDate)
         || !isValidLegacyCalendarDate(value.dailyAdvanceDate)
         || !isSafeIntegerInRange(value.dailyAdvanceCount, 1, Number.MAX_SAFE_INTEGER)
+        || (Object.prototype.hasOwnProperty.call(value, 'weeklyReadKey')
+            !== Object.prototype.hasOwnProperty.call(value, 'weeklyReadCount'))
+        || (Object.prototype.hasOwnProperty.call(value, 'weeklyReadKey')
+            && !isValidLegacyCalendarDate(value.weeklyReadKey))
+        || (Object.prototype.hasOwnProperty.call(value, 'weeklyReadCount')
+            && !isSafeIntegerInRange(value.weeklyReadCount, 1, Number.MAX_SAFE_INTEGER))
         || (Object.prototype.hasOwnProperty.call(value, 'talent')
             && !isSafeIntegerInRange(value.talent, 0, MAX_TALENT_BALANCE))
         || (Object.prototype.hasOwnProperty.call(value, 'secretShopUnlocked')
@@ -836,6 +855,9 @@ const normalizeReadUpdate = (value) => {
         lastReadDate: value.lastReadDate,
         dailyAdvanceDate: value.dailyAdvanceDate,
         dailyAdvanceCount: value.dailyAdvanceCount,
+        ...(Object.prototype.hasOwnProperty.call(value, 'weeklyReadKey')
+            ? { weeklyReadKey: value.weeklyReadKey, weeklyReadCount: value.weeklyReadCount }
+            : {}),
         recentReadDates: normalizeReadDates(value.recentReadDates),
         ...(Object.prototype.hasOwnProperty.call(value, 'talent') ? { talent: value.talent } : {}),
         ...(Object.prototype.hasOwnProperty.call(value, 'secretShopUnlocked')
@@ -879,6 +901,9 @@ const sameReadUpdateState = (update, stateUser) => (
             ? JSON.stringify(update[key]) === JSON.stringify(stateUser[key])
             : Object.is(update[key], stateUser[key])
     ))
+    && (!Object.prototype.hasOwnProperty.call(update, 'weeklyReadKey')
+        || (update.weeklyReadKey === stateUser.weeklyReadKey
+            && update.weeklyReadCount === stateUser.weeklyReadCount))
     && (!Object.prototype.hasOwnProperty.call(update, 'talent')
         || update.talent === stateUser.talent)
     && (!Object.prototype.hasOwnProperty.call(update, 'secretShopUnlocked')

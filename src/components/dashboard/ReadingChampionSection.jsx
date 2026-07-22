@@ -42,7 +42,7 @@ const ReadingChampionSection = ({ getWeeklyMVP }) => {
                         <ReadingRoundBadge member={streakMVP} />
                     </div>
                     <p className="text-xs text-orange-500 mb-2 font-bold">
-                        {streakMVP ? `이번 주 ${streakMVP.weeklyCount || 0}일` : '-'}
+                        {streakMVP ? `이번 주 ${streakMVP.weeklyCount || 0}회` : '-'}
                     </p>
                     <p className="text-[9px] text-slate-400 mt-2 pt-2 border-t border-slate-100">이번 주 가장 많이 읽은 사람</p>
                 </div>
@@ -84,7 +84,7 @@ const ReadingChampionSection = ({ getWeeklyMVP }) => {
                                         <span className="truncate">{idx + 2}위. {member.name}</span>
                                         <ReadingRoundBadge member={member} />
                                     </span>
-                                    <span className="text-orange-500 font-bold shrink-0">{member.weeklyCount || 0}일</span>
+                                    <span className="text-orange-500 font-bold shrink-0">{member.weeklyCount || 0}회</span>
                                 </div>
                             );
                         }) : <p className="text-[10px] text-slate-400 text-center py-2">-</p>}

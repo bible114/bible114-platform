@@ -30,6 +30,8 @@ const UPDATE_KEYS = [
     'lastReadDate',
     'dailyAdvanceDate',
     'dailyAdvanceCount',
+    'weeklyReadKey',
+    'weeklyReadCount',
     'recentReadDates',
     'talent',
     'secretShopUnlocked',

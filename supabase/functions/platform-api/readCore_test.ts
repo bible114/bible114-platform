@@ -52,6 +52,57 @@ Deno.test("같은 날 둘째 읽기는 보상이 0이다", () => {
   assert(result.updateData.dailyAdvanceCount === 2, "daily count mismatch");
 });
 
+Deno.test("같은 날 추가 읽기도 주간 읽기 횟수에 즉시 더한다", () => {
+  const result = ready({
+    lastReadDate: TODAY,
+    dailyAdvanceDate: TODAY,
+    dailyAdvanceCount: 3,
+    recentReadDates: ["Sun Jul 12 2026", YESTERDAY, TODAY],
+  });
+  assert(
+    result.updateData.weeklyReadKey === "Sun Jul 12 2026",
+    "week key mismatch",
+  );
+  assert(
+    result.updateData.weeklyReadCount === 6,
+    "weekly count did not advance",
+  );
+});
+
+Deno.test("저장된 주간 횟수가 있으면 날짜 수가 아니라 횟수를 이어간다", () => {
+  const result = ready({
+    lastReadDate: TODAY,
+    dailyAdvanceDate: TODAY,
+    dailyAdvanceCount: 4,
+    weeklyReadKey: "Sun Jul 12 2026",
+    weeklyReadCount: 11,
+  });
+  assert(
+    result.updateData.weeklyReadCount === 12,
+    "stored weekly count mismatch",
+  );
+});
+
+Deno.test("새 주가 시작되면 주간 읽기 횟수를 다시 센다", () => {
+  const result = calculateReadCompletion(
+    {
+      currentDay: 10,
+      readCount: 1,
+      weeklyReadKey: "Sun Jul 12 2026",
+      weeklyReadCount: 20,
+      lastReadDate: "Sat Jul 18 2026",
+    },
+    { cycle: 1, day: 10 },
+    "Sun Jul 19 2026",
+  );
+  if (result.status !== "ready") throw new Error("expected ready");
+  assert(
+    result.updateData.weeklyReadKey === "Sun Jul 19 2026",
+    "new week key mismatch",
+  );
+  assert(result.updateData.weeklyReadCount === 1, "new week count mismatch");
+});
+
 Deno.test("오늘 dailyAdvanceDate가 있으면 count 0이어도 보상이 0이다", () => {
   const result = ready({
     score: 20,

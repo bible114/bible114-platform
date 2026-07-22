@@ -21,6 +21,8 @@ export const rosterSnapshotToMembers = (snapshot) => {
             readCount: data.readCount || 1,
             lastReadDate: data.lastReadDate || null,
             recentReadDates: Array.isArray(data.recentReadDates) ? data.recentReadDates : [],
+            weeklyReadKey: data.weeklyReadKey || null,
+            weeklyReadCount: data.weeklyReadCount || 0,
             departmentId: data.departmentId || null,
             departmentName: data.departmentName || null,
             subgroupId: data.subgroupId || null,

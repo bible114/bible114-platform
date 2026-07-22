@@ -130,9 +130,18 @@ export const getWeeklyMVP = (departmentMembers) => {
 
     const weeklyWithCounts = uniqueDepartmentMembers.map(m => {
             const readDates = getReadDates(m);
+            const storedWeekStart = m.weeklyReadKey ? new Date(m.weeklyReadKey) : null;
+            if (storedWeekStart && !Number.isNaN(storedWeekStart.getTime())) {
+                storedWeekStart.setHours(0, 0, 0, 0);
+            }
+            const hasCurrentWeeklyCount = storedWeekStart?.getTime() === weekStart.getTime()
+                && Number.isSafeInteger(m.weeklyReadCount)
+                && m.weeklyReadCount >= 0;
             return {
                 ...m,
-                weeklyCount: readDates.filter(date => date >= weekStart && date <= todayEnd).length,
+                weeklyCount: hasCurrentWeeklyCount
+                    ? m.weeklyReadCount
+                    : readDates.filter(date => date >= weekStart && date <= todayEnd).length,
                 totalCount: getDaysRead(m)
             };
         });

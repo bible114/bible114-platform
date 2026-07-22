@@ -100,6 +100,8 @@ export type CompleteReadFreshState = {
     lastReadDate: string | null;
     dailyAdvanceDate: string | null;
     dailyAdvanceCount: number;
+    weeklyReadKey: string | null;
+    weeklyReadCount: number;
     recentReadDates: string[];
     secretShopUnlocked: boolean;
   };
@@ -145,6 +147,7 @@ type NormalizedUser = CompleteReadUserDocument & {
   streak: number;
   maxStreak: number;
   dailyAdvanceCount: number;
+  weeklyReadCount: number;
 };
 
 type NormalizedRoster = {
@@ -368,6 +371,15 @@ const normalizeUser = (
       "users.dailyAdvanceCount",
       { fallback: 0 },
     ),
+    weeklyReadKey: optionalDateString(
+      data.weeklyReadKey,
+      "users.weeklyReadKey",
+    ),
+    weeklyReadCount: requireSafeInteger(
+      data.weeklyReadCount,
+      "users.weeklyReadCount",
+      { fallback: 0 },
+    ),
     lastReadDate: optionalDateString(data.lastReadDate, "users.lastReadDate"),
     dailyAdvanceDate: optionalDateString(
       data.dailyAdvanceDate,
@@ -444,6 +456,11 @@ const projectState = (
       "users.dailyAdvanceDate",
     ),
     dailyAdvanceCount: user.dailyAdvanceCount,
+    weeklyReadKey: optionalDateString(
+      user.weeklyReadKey,
+      "users.weeklyReadKey",
+    ),
+    weeklyReadCount: user.weeklyReadCount,
     recentReadDates: recentReadDates(user.recentReadDates),
     secretShopUnlocked: user.secretShopUnlocked === true,
   },
@@ -491,6 +508,12 @@ const parseReadyResult = (value: unknown): ReadCompletionResult => {
       update.dailyAdvanceCount,
       "ledger.dailyAdvanceCount",
     ),
+    weeklyReadKey: update.weeklyReadKey === undefined
+      ? requireString(update.dailyAdvanceDate, "ledger.dailyAdvanceDate")
+      : requireString(update.weeklyReadKey, "ledger.weeklyReadKey"),
+    weeklyReadCount: update.weeklyReadCount === undefined
+      ? requireSafeInteger(update.dailyAdvanceCount, "ledger.dailyAdvanceCount")
+      : requireSafeInteger(update.weeklyReadCount, "ledger.weeklyReadCount"),
     recentReadDates: recentReadDates(update.recentReadDates),
     ...(update.talent === undefined ? {} : {
       talent: requireSafeInteger(update.talent, "ledger.talent", {
@@ -808,6 +831,8 @@ const executeCompleteRead = async (
       streak: result.updateData.streak,
       lastReadDate: result.updateData.lastReadDate,
       recentReadDates: result.updateData.recentReadDates,
+      weeklyReadKey: result.updateData.weeklyReadKey,
+      weeklyReadCount: result.updateData.weeklyReadCount,
       updatedAt: now,
     };
     const nextRosters = rosters.map((roster, index) => {
