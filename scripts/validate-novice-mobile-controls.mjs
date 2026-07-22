@@ -18,6 +18,8 @@ const memo = fs.readFileSync(new URL('../src/components/dashboard/MemoSection.js
 const dashboard = fs.readFileSync(new URL('../src/components/DashboardView.jsx', import.meta.url), 'utf8');
 const rankingSummary = fs.readFileSync(new URL('../src/components/dashboard/CommunityRankingSummary.jsx', import.meta.url), 'utf8');
 const readingChampion = fs.readFileSync(new URL('../src/components/dashboard/ReadingChampionSection.jsx', import.meta.url), 'utf8');
+const statsUtils = fs.readFileSync(new URL('../src/utils/statsUtils.js', import.meta.url), 'utf8');
+const helpers = fs.readFileSync(new URL('../src/utils/helpers.js', import.meta.url), 'utf8');
 const app = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
 
 assert.match(guest, /가입하고 저장/);
@@ -67,6 +69,10 @@ assert.match(app, /getWeeklyMVP=\{\(\) => getWeeklyMVP\(allMembersForRace\)\}/,
     '읽기왕은 현재 부서만이 아니라 활동 중인 교회 전체 명단으로 계산해야 한다.');
 assert.doesNotMatch(app, /getWeeklyMVP=\{\(\) => getWeeklyMVP\(departmentMembers\)\}/,
     '부서 인원이 적다는 이유로 주간 2~10위가 비어서는 안 된다.');
+assert.match(helpers, /fixtureType: d\.fixtureType \?\? null/,
+    '운영 화면에서 테스트 계정을 구분할 수 있어야 한다.');
+assert.match(statsUtils, /filter\(member => member\.fixtureType !== 'reading-badge-test'\)/,
+    '읽기왕 순위에 배지 테스트 계정이 섞이면 안 된다.');
 assert.match(announcement, /aria-label="교회 소식"/);
 assert.match(announcement, /rounded-full px-4 py-2 text-sm font-black/);
 assert.doesNotMatch(announcement, /bg-\[#03C75A\]|min-w-\[140px\]|p-7|mb-10/);

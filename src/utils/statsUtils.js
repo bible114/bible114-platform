@@ -98,7 +98,8 @@ export const calculateSubgroupStats = (members, communities) => {
 };
 
 export const getWeeklyMVP = (departmentMembers) => {
-    const uniqueDepartmentMembers = uniqueMembersByUid(departmentMembers);
+    const uniqueDepartmentMembers = uniqueMembersByUid(departmentMembers)
+        .filter(member => member.fixtureType !== 'reading-badge-test');
     if (uniqueDepartmentMembers.length === 0) return null;
 
     const now = new Date();

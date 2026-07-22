@@ -238,6 +238,7 @@ export const userDocToState = (doc) => {
         dailyAdvanceCount: d.dailyAdvanceCount ?? 0,
         weeklyReadKey: d.weeklyReadKey ?? null,
         weeklyReadCount: d.weeklyReadCount ?? 0,
+        fixtureType: d.fixtureType ?? null,
         // 미니룸 관련: useMiniRoom이 undefined(=미초기화)를 판별에 사용하므로 기본값 없이 그대로 전달
         miniroom: d.miniroom,
         character: d.character,
