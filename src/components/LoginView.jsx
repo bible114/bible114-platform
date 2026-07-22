@@ -148,12 +148,10 @@ const LoginView = ({
     const [showExistingMemberNotice, setShowExistingMemberNotice] = useState(false);
     const [openPublicPolicyId, setOpenPublicPolicyId] = useState(null);
     const pendingKakaoReturnRef = useRef(isPendingKakaoLoginReturn());
-    const [loginTransitioning, setLocalLoginTransitioning] = useState(pendingKakaoReturnRef.current);
     const setLoginTransitioning = value => {
         const pending = Boolean(value);
         if (pending) markLoginTransitionPending();
         else clearLoginTransitionPending();
-        setLocalLoginTransitioning(pending);
         onLoginTransitionChange(pending);
     };
 
@@ -1207,17 +1205,6 @@ const LoginView = ({
             className="min-h-screen bg-cream relative md:grid md:grid-cols-[1.15fr_1fr]"
             style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}
         >
-
-            {loginTransitioning && (
-                <div role="status" aria-live="polite" className="fixed inset-0 z-[200] flex items-center justify-center bg-cream px-6">
-                    <div className="text-center">
-                        <div className="mx-auto mb-5 h-12 w-12 animate-spin rounded-full border-4 border-accent/20 border-t-accent" aria-hidden="true" />
-                        <p className="font-serif text-2xl font-semibold text-ink">로그인 중…</p>
-                        <p className="mt-2 text-sm text-ink/60">다음 화면을 준비하고 있어요.</p>
-                    </div>
-                </div>
-            )}
-
             {/* paper warmth gradient overlay */}
             <div className="absolute inset-0 pointer-events-none opacity-55"
                 style={{
