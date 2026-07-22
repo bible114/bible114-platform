@@ -20,6 +20,8 @@ const platformApiCore = read('supabase/functions/platform-api/core.ts');
 const platformApiIndex = read('supabase/functions/platform-api/index.ts');
 const rotateChurchAccessCodeCore = read('supabase/functions/platform-api/rotateChurchAccessCodeCore.ts');
 const rotateChurchAccessCodeService = read('supabase/functions/platform-api/rotateChurchAccessCodeService.ts');
+const loginTransition = read('src/utils/loginTransition.js');
+const indexHtml = read('index.html');
 
 assert.equal(normalizeChurchEntryCode('1234'), '1234');
 assert.equal(normalizeChurchEntryCode(' alpha-5 '), 'alpha-5');
@@ -39,6 +41,14 @@ assert.match(login, /didLogin = await onGooglePersonalSignup\(\) === true[\s\S]*
 assert.match(app, /onLoginTransitionChange=\{setLoginTransitioning\}/);
 assert.match(app, /loginTransitioning[\s\S]*로그인 중…[\s\S]*다음 화면을 준비하고 있어요/);
 assert.match(app, /isDestinationReady \|\| isDirectAdminView[\s\S]*setLoginTransitioning\(false\)/);
+assert.match(loginTransition, /LOGIN_TRANSITION_KEY = 'b114_login_transition_v1'/);
+assert.match(loginTransition, /LOGIN_TRANSITION_MAX_AGE_MS = 2 \* 60 \* 1000/);
+assert.match(login, /hasPendingLoginTransition\(\)/);
+assert.match(login, /markLoginTransitionPending\(\)[\s\S]*clearLoginTransitionPending\(\)/);
+assert.match(app, /useState\(\(\) => hasPendingLoginTransition\(\)\)/);
+for (const pattern of [/bible114-login-boot/, /b114_login_transition_v1/, /로그인 중…/]) {
+    assert.match(indexHtml, pattern);
+}
 assert.match(auth, /buildKakaoAuthorizeUrl/);
 assert.match(auth, /signInWithCustomToken/);
 assert.match(auth, /isValidKakaoState/);

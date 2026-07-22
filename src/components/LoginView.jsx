@@ -11,6 +11,11 @@ import { SERVICE_POLICIES, createEmptyPolicyConsents, isPolicyConsentComplete } 
 import { validateSignupConsent } from '../utils/signupConsent';
 import { normalizeChurchEntryCode } from '../utils/entryCode';
 import { KAKAO_RETURNING_KEY } from '../utils/kakaoAuth';
+import {
+    clearLoginTransitionPending,
+    hasPendingLoginTransition,
+    markLoginTransitionPending,
+} from '../utils/loginTransition';
 
 const DemoTour = lazy(() => import('./DemoTour'));
 
@@ -41,6 +46,7 @@ const MEMBER_LOGIN_RECHECK_MESSAGE = '이름·생년월일·비밀번호를 다�
 const isPendingKakaoLoginReturn = () => {
     if (typeof window === 'undefined') return false;
     try {
+        if (hasPendingLoginTransition()) return true;
         const params = new URLSearchParams(window.location.search);
         const hasCallback = params.has('code') || params.has('error');
         return hasCallback && sessionStorage.getItem(KAKAO_RETURNING_KEY) === 'pending';
@@ -144,8 +150,11 @@ const LoginView = ({
     const pendingKakaoReturnRef = useRef(isPendingKakaoLoginReturn());
     const [loginTransitioning, setLocalLoginTransitioning] = useState(pendingKakaoReturnRef.current);
     const setLoginTransitioning = value => {
-        setLocalLoginTransitioning(value);
-        onLoginTransitionChange(value);
+        const pending = Boolean(value);
+        if (pending) markLoginTransitionPending();
+        else clearLoginTransitionPending();
+        setLocalLoginTransitioning(pending);
+        onLoginTransitionChange(pending);
     };
 
     // Platform stats (Firestore)

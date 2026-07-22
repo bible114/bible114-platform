@@ -25,6 +25,11 @@ import { normalizeOnboardingOrganizations } from './utils/onboardingOrganization
 import { ToastContainer, useToast } from './components/admin';
 import { useTTS } from './hooks/useTTS';
 import { ADMIN_ENTRY_SESSION_KEY, UNAFFILIATED_CHURCH_ID } from './data/constants';
+import {
+    clearLoginTransitionPending,
+    hasPendingLoginTransition,
+    markLoginTransitionPending,
+} from './utils/loginTransition';
 
 const ChurchAdminView = lazy(() => import('./components/ChurchAdminView'));
 const PlatformAdminView = lazy(() => import('./components/PlatformAdminView'));
@@ -59,7 +64,13 @@ const App = () => {
     const [view, setView] = useState('login');
     const [tempUser, setTempUser] = useState(null);
     const [loginInitialTab, setLoginInitialTab] = useState('member');
-    const [loginTransitioning, setLoginTransitioning] = useState(false);
+    const [loginTransitioning, setLoginTransitioningState] = useState(() => hasPendingLoginTransition());
+    const setLoginTransitioning = useCallback((nextValue) => {
+        const pending = Boolean(nextValue);
+        if (pending) markLoginTransitionPending();
+        else clearLoginTransitionPending();
+        setLoginTransitioningState(pending);
+    }, []);
     const [pendingKakaoAdminSignup, setPendingKakaoAdminSignup] = useState(null);
     const [showSecretShopUnlocked, setShowSecretShopUnlocked] = useState(false);
     const [completionCelebration, setCompletionCelebration] = useState(null);
@@ -337,6 +348,10 @@ const App = () => {
             setLoginTransitioning(false);
         }
     }, [currentUser, loginTransitioning, tempUser?.uid, view]);
+
+    useEffect(() => {
+        if (authError && loginTransitioning) setLoginTransitioning(false);
+    }, [authError, loginTransitioning, setLoginTransitioning]);
 
     // 관리자가 읽기/관리 화면을 오가면 현재 화면을 세션 기준으로 갱신한다.
     // 그래야 관리 화면에서 새로고침해도 읽기 화면으로 튕기지 않는다.
