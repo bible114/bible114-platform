@@ -69,14 +69,10 @@ assert.match(quizProgress, /rewardDate === todayKey/);
 assert.match(readCore, /const baseTalentEarned = isFirstReadToday[\s\S]*10 \+ Math\.min\(newStreak, 7\) \+ getTalentStreakMilestoneBonus\(newStreak\)[\s\S]*: 0;/);
 
 for (const faqText of [
-    '로그인이 안 돼요',
-    '비밀번호를 잊었어요',
     '듣기 소리가 안 나와요',
     '달란트가 안 늘어요',
     '상점에서 샀는데 물건은 어디서?',
     '휴대폰을 바꿨어요',
-    '기존 진도·달란트 이어보기',
-    '다음부터는 소셜 버튼만으로 로그인',
     '하루 첫 읽기 완료',
     '하루 첫 퀴즈 정답',
     '추가 읽기는 0점·0달란트',
@@ -88,8 +84,8 @@ for (const faqText of [
     '게스트 기록은 이전 휴대폰에만',
     '여기 없는 문제는 우리 교회 관리자(선생님)에게 말씀해주세요',
 ]) assert.ok(readingGuide.includes(faqText), `성도용 FAQ 문구 누락: ${faqText}`);
-assert.doesNotMatch(readingGuide, /며칠 밀렸어요|날짜가 안 맞아요|밀린 날 것부터/);
-assert.equal((readingGuide.match(/question: '/g) || []).length, 6, '성도용 FAQ는 정확히 6문항이어야 한다.');
+assert.doesNotMatch(readingGuide, /로그인이 안 돼요|비밀번호를 잊었어요|며칠 밀렸어요|날짜가 안 맞아요|밀린 날 것부터/);
+assert.equal((readingGuide.match(/question: '/g) || []).length, 4, '성도용 FAQ는 정확히 4문항이어야 한다.');
 assert.match(readingGuide, /<details key=\{question\}/);
 assert.match(readingGuide, /<summary className="min-h-11[^"]*text-slate-700/);
 assert.match(readingGuide, /<section aria-label="자주 묻는 질문 목록" className="text-sm">/);
