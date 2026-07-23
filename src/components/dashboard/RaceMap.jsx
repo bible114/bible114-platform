@@ -62,19 +62,20 @@ const RaceMap = ({ racers, departmentChampions, getSubgroupDisplay }) => {
                         <div className="relative flex items-center">
                             {readingRoundBadge && (
                                 <div
-                                    className="absolute -left-1.5 -top-2 z-10 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-purple-500 to-purple-700 shadow-md"
+                                    data-reading-round-badge
+                                    className="absolute -left-2 -top-2 z-20 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-white bg-gradient-to-br from-purple-500 to-purple-700 shadow-sm"
                                     title={`${readingRoundBadge}회 완독`}
                                     aria-label={`${readingRoundBadge}회 완독`}
                                 >
-                                    <span className="tabular-nums text-[8px] font-black leading-none text-white">{readingRoundBadge}</span>
+                                    <span className="tabular-nums text-[6px] font-black leading-none text-white">{readingRoundBadge}</span>
                                 </div>
                             )}
-                            <div className={`flex items-stretch rounded-full shadow-md overflow-hidden ${isMe ? 'ring-2 ring-yellow-400 ring-offset-1' : ''}`}>
+                            <div data-racer-nameplate className={`relative z-10 flex items-stretch rounded-full shadow-md overflow-hidden ${isMe ? 'ring-2 ring-yellow-400 ring-offset-1' : ''}`}>
                                 <div className={`text-[9px] pl-2 pr-1 py-0.5 font-bold whitespace-nowrap flex items-center gap-0.5 ${isMe ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white' : 'bg-white/95 text-slate-700'}`}>
                                     {isDeptChampion && (
-                                        <span className="text-[11px]" title={`${isDeptChampion} 1위`}>👑</span>
+                                        <span className="text-[9px]" title={`${isDeptChampion} 1위`}>👑</span>
                                     )}
-                                    {racer.name}
+                                    <span data-racer-name>{racer.name}</span>
                                 </div>
                                 <div className={`text-[9px] pl-1 pr-1.5 py-0.5 font-bold whitespace-nowrap text-white flex items-center ${subgroupInfo.bgColor} border-l border-white/30`}>
                                     {subgroupInfo.lines.join(' ')}

@@ -42,8 +42,12 @@ assert.match(reader, /text-center text-sm font-medium leading-relaxed text-slate
 assert.doesNotMatch(reader, /내가 읽을 차례|읽을 차례 \$\{currentUser\.currentDay\}/);
 assert.match(reader, /!isCurrentProgressDay[\s\S]*다른 DAY 보는 중/);
 assert.match(raceMap, /getReadingRoundBadgeLabel\(racer\)/);
-assert.match(raceMap, /h-5 w-5[\s\S]*rounded-full[\s\S]*\{readingRoundBadge\}/,
-    '완독 숫자 배지는 이름표를 가리지 않는 고정 크기 원형이어야 한다.');
+assert.match(raceMap, /-left-2 -top-2[\s\S]*h-3\.5 w-3\.5[\s\S]*rounded-full[\s\S]*\{readingRoundBadge\}/,
+    '완독 숫자 배지는 이름 글자 앞까지 침범하지 않는 작은 고정 크기 원형이어야 한다.');
+assert.match(raceMap, /data-reading-round-badge[\s\S]*data-racer-nameplate[\s\S]*data-racer-name/,
+    '완독 숫자 배지와 이름표는 실제 화면에서 겹침을 측정할 수 있어야 한다.');
+assert.doesNotMatch(raceMap, /-left-1\.5 -top-2[\s\S]*h-5 w-5/,
+    '기존 20px 완독 배지는 이름 첫 글자를 가리므로 다시 사용하면 안 된다.');
 assert.doesNotMatch(raceMap, /min-w-6[\s\S]*readingRoundBadge|readingRoundBadge[\s\S]*px-1 py-0\.5/,
     '완독 숫자 배지가 내용 길이에 따라 캡슐형으로 늘어나면 안 된다.');
 assert.match(raceMap, /8 \+ \(idx % 10\) \* 8/);
