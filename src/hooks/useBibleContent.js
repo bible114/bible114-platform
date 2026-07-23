@@ -3,6 +3,7 @@ import { db } from '../utils/firebase';
 import { GENESIS_1, AUDIO_BASE_URL } from '../data/constants';
 import { BIBLE_VERSIONS, PLAN_TYPES } from '../data/bible_options';
 import { getActualDay } from '../utils/helpers';
+import { getYearCompletedRounds } from '../utils/annualReading.js';
 
 const CACHE_LOOKUP_TIMEOUT_MS = 8000;
 
@@ -92,7 +93,7 @@ export const useBibleContent = (currentUser) => {
         if (!currentUser) return;
         setVerseData(prev => ({ ...prev, loading: true }));
 
-        const { planId, dayOffset = 0, readCount = 1 } = currentUser;
+        const { planId, dayOffset = 0 } = currentUser;
         const [planType, version] = (planId || '1year_revised').split('_');
         const planTypeData = PLAN_TYPES.find(p => p.id === planType);
         const planTypeName = planTypeData ? planTypeData.title : '성경 통독';
@@ -100,7 +101,8 @@ export const useBibleContent = (currentUser) => {
         const actualDay = getActualDay(dayToShow, dayOffset);
         const cachedContent = await fetchCachedVerseData(planId, actualDay);
 
-        const readCountBadge = readCount > 1 ? ` (${readCount - 1}독 완료)` : '';
+        const completedThisYear = getYearCompletedRounds(currentUser);
+        const readCountBadge = completedThisYear > 0 ? ` (올해 ${completedThisYear}독 완료)` : '';
 
         if (cachedContent && cachedContent.text && !cachedContent.text.startsWith('[오류]')) {
             const processedText = cachedContent.text;

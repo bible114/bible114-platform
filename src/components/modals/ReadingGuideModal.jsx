@@ -76,11 +76,6 @@ const ReadingGuideModal = ({ show, onClose, mode = 'guide' }) => {
                     <button ref={closeButtonRef} type="button" aria-label="도움말 닫기" onClick={onClose} className="min-w-11 min-h-11 flex items-center justify-center text-slate-400"><Icon name="close" /></button>
                 </div>
 
-                {!isFaq && (
-                    <a href="https://www.bible114.net/8e616cd9-5ca0-4dd3-9e63-64280fc66f38" target="_blank" rel="noopener noreferrer" className="block w-full mb-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-center py-3 rounded-xl font-bold shadow-md hover:from-blue-600 hover:to-blue-700 transition-all">
-                        🎥 성경통독 114 설명 영상 보기
-                    </a>
-                )}
                 <div className="min-h-0 flex-1 space-y-3 overflow-y-auto text-sm">
                     {isFaq ? (
                         <section aria-label="자주 묻는 질문 목록" className="text-sm">

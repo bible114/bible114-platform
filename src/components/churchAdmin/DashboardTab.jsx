@@ -15,7 +15,7 @@ const DashboardTab = ({
             <StatCard label="오늘 진도" value={`${dashboardStats.readToday}명`}
                 subvalue={`어제 최종 ${dashboardStats.readYesterday}명 · ${dashboardStats.readDelta >= 0 ? '+' : ''}${dashboardStats.readDelta}명`} icon="📖" />
             <StatCard label="최근 7일 읽기율" value={`${dashboardStats.recent7Rate}%`} subvalue="최근 7일 내 1회 이상 읽음" icon="🗓️" />
-            <StatCard label="평균 진행 DAY" value={dashboardStats.avgDay || '-'} subvalue="독수 포함 총 진행일 기준" icon="🏁" />
+            <StatCard label="평균 진행 DAY" value={dashboardStats.avgDay || '-'} subvalue="올해 독수 포함 총 진행일 기준" icon="🏁" />
             <div role="button" tabIndex={0} aria-label={`완독자 ${completedReaders.length}명 명단 보기`}
                 onClick={() => setShowCompletedReaders(true)}
                 onKeyDown={event => {
@@ -25,7 +25,7 @@ const DashboardTab = ({
                     }
                 }}
                 className="rounded-2xl cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
-                <StatCard label="완독자" value={`${completedReaders.length}명`} subvalue="눌러서 완독 명단 보기"
+                <StatCard label="올해 완독자" value={`${completedReaders.length}명`} subvalue="눌러서 올해 완독 명단 보기"
                     icon="🏆" className="h-full transition-transform hover:-translate-y-0.5" />
             </div>
         </div>

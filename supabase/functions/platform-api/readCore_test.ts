@@ -206,9 +206,25 @@ Deno.test("첫 365일 최대 달란트는 이정표 보너스를 포함해 정�
 });
 
 Deno.test("365일 완료는 다음 회차 1일로 순환한다", () => {
-  const result = ready({ score: 0, talent: 0 }, 2, 365);
+  const result = ready(
+    {
+      score: 0,
+      talent: 0,
+      readingYear: 2026,
+      yearCompletedRounds: 1,
+      lifetimeCompletedRounds: 8,
+    },
+    2,
+    365,
+  );
   assert(result.updateData.currentDay === 1, "day did not wrap");
   assert(result.updateData.readCount === 3, "cycle did not increment");
+  assert(result.updateData.readingYear === 2026, "year changed");
+  assert(result.updateData.yearCompletedRounds === 2, "annual total missing");
+  assert(
+    result.updateData.lifetimeCompletedRounds === 9,
+    "lifetime total missing",
+  );
   assert(
     result.summary.completedRound === true &&
       result.summary.nextViewingDay === 1,

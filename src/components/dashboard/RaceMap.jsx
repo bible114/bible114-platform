@@ -43,10 +43,9 @@ const RaceMap = ({ racers, departmentChampions, getSubgroupDisplay }) => {
             </div>
 
             {racers.map((racer, idx) => {
-                const racerReadCount = racer.readCount || 1;
-                const is2ndRound = racerReadCount >= 2;
-                const displayDay = is2ndRound ? racer.currentDay : (racer.mapDay ?? racer.day);
                 const readingRoundBadge = getReadingRoundBadgeLabel(racer);
+                const is2ndRound = Boolean(readingRoundBadge);
+                const displayDay = is2ndRound ? racer.currentDay : (racer.mapDay ?? racer.day);
 
                 const p = Math.max(8, Math.min(getNonLinearPos(displayDay), 94));
                 const isMe = racer.isMe;

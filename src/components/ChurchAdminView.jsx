@@ -20,6 +20,7 @@ import QRCode from 'qrcode';
 import { SITE_URL, UNAFFILIATED_CHURCH_ID } from '../data/constants';
 import { mergePrimaryAndRosterMembers, rosterSnapshotToMembers } from '../utils/rosterMembers';
 import { getDaysRead } from '../utils/helpers';
+import { getYearCompletedRounds } from '../utils/annualReading.js';
 import OrganizationTab from './churchAdmin/OrganizationTab';
 
 const ADMIN_INITIAL_LOAD_TIMEOUT_MS = 15_000;
@@ -1251,6 +1252,29 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         });
     };
 
+    const requestTalentReset = () => {
+        const member = members.find(m => m.uid === deductForm.uid);
+        if (!member) { toast.error('초기화할 교인을 먼저 선택해주세요.'); return; }
+        const membership = getMemberTalentDepartment(member);
+        if (!membership) { toast.error('현재 달란트 시장을 이용하는 부서 소속 교인만 초기화할 수 있습니다.'); return; }
+        const balance = Number(member.talent) || 0;
+        if (balance <= 0) { toast.info(`${member.name}님의 달란트 잔액은 이미 0입니다.`); return; }
+        setConfirmAction({
+            type: 'manualDeduct',
+            form: {
+                member,
+                itemName: `관리자 달란트 잔액 초기화 (${new Date().getFullYear()})`,
+                price: balance,
+                membership,
+                marketId: talentMarketId,
+            },
+            title: `${member.name}님의 달란트를 0으로 초기화할까요?`,
+            message: `현재 잔액 ⭐${balance}을 모두 차감합니다. 읽기 기록과 점수는 바뀌지 않으며, 초기화 내역은 관리자 기록에 남습니다.`,
+            confirmLabel: '0으로 초기화',
+            danger: true,
+        });
+    };
+
     const executeManualDeduct = async ({ member, itemName, price, membership, marketId }) => {
         if (talentActionRef.current) {
             toast.warning('다른 달란트 작업을 처리하고 있습니다. 잠시 후 다시 시도해주세요.');
@@ -1758,9 +1782,9 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
     const atRisk = computeAtRisk(members, todayStr);
     const completedReaders = [...members]
-        .filter(member => (member.readCount || 1) > 1)
+        .filter(member => getYearCompletedRounds(member) > 0)
         .sort((a, b) => {
-            const countDiff = (b.readCount || 1) - (a.readCount || 1);
+            const countDiff = getYearCompletedRounds(b) - getYearCompletedRounds(a);
             return countDiff || (a.name || '').localeCompare(b.name || '', 'ko-KR');
         });
     const streakTop = [...members]
@@ -1999,7 +2023,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                 setShowShopPreview, showShopPreview, currentUser, shopPreviewTalent,
                                 shopItemDraft, setShopItemDraft, editingShopItemId, emojiGroupIdx, setEmojiGroupIdx,
                                 submitShopItem, resetShopItemDraft, editShopItem, deleteShopItem, printShopItems,
-                                deductForm, setDeductForm, members: talentMarketMembers, requestManualDeduct, deducting,
+                                deductForm, setDeductForm, members: talentMarketMembers, requestManualDeduct, requestTalentReset, deducting,
                                 purchaseFilter, setPurchaseFilter, filteredPurchases, memberById,
                                 purchaseLoadWarning, pendingPurchaseCount, hasMorePendingPurchases, loadingMorePendingPurchases,
                                 loadMorePendingPurchases,
@@ -2294,8 +2318,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
             <SlideOverPanel
                 open={showCompletedReaders}
-                title="완독자 명단"
-                subtitle={`1독 이상 완료한 교인 ${completedReaders.length}명`}
+                title="올해 완독자 명단"
+                subtitle={`올해 1독 이상 완료한 교인 ${completedReaders.length}명`}
                 onClose={() => setShowCompletedReaders(false)}
                 widthClass="max-w-md"
                 footer={(
@@ -2326,7 +2350,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                     </p>
                                 </div>
                                 <span className="shrink-0 rounded-full bg-emerald-100 px-3 py-1 text-sm font-black text-emerald-700">
-                                    {(member.readCount || 1) - 1}독 완료
+                                    올해 {getYearCompletedRounds(member)}독 완료
                                 </span>
                             </div>
                         ))}

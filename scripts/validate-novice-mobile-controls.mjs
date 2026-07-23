@@ -21,6 +21,8 @@ const readingChampion = fs.readFileSync(new URL('../src/components/dashboard/Rea
 const statsUtils = fs.readFileSync(new URL('../src/utils/statsUtils.js', import.meta.url), 'utf8');
 const helpers = fs.readFileSync(new URL('../src/utils/helpers.js', import.meta.url), 'utf8');
 const app = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+const login = fs.readFileSync(new URL('../src/components/LoginView.jsx', import.meta.url), 'utf8');
+const platformPopup = fs.readFileSync(new URL('../src/components/PlatformPopupAd.jsx', import.meta.url), 'utf8');
 
 assert.match(guest, /가입하고 저장/);
 assert.match(guest, /읽는 순서와 성경 번역 선택/);
@@ -28,6 +30,10 @@ assert.match(guest, /flex-col items-stretch[\s\S]*sm:flex-row/);
 assert.match(guest, /min-h-11 w-full min-w-0[\s\S]*sm:max-w-\[65%\]/);
 assert.doesNotMatch(guest, /className="bg-emerald-600[^\n]*text-xs/);
 assert.doesNotMatch(guest, /className="text-xs font-bold text-slate-400 hover:text-red-500 px-1"/);
+assert.match(login, /서비스 정책[\s\S]*inline-flex min-h-11 items-center/);
+assert.match(login, /inline-flex min-h-11 items-center justify-center px-2[\s\S]{0,160}공동체 등록하기 →/);
+assert.match(platformPopup, /광고 닫기[\s\S]*h-11 w-11/);
+assert.equal((platformPopup.match(/inline-flex min-h-11 items-center/g) || []).length >= 2, true);
 
 assert.match(reader, /말씀을 불러오는 중/);
 assert.match(reader, /인터넷이 느리면 잠시 걸릴 수 있어요/);

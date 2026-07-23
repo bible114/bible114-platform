@@ -166,14 +166,14 @@ assert.match(guestReader, /currentPlanId\.startsWith\('nt_'\)[\s\S]*QuizLevelTog
 assert.doesNotMatch(header, /tut-score|\{score \|\| 0\}pt/);
 assert.match(achievements, /총 읽은 날/);
 assert.match(achievements, /최장 연속/);
-assert.match(achievements, /z-\[170\]/, '업적 창은 상단 메뉴보다 위에 표시되어야 한다.');
+assert.match(achievements, /z-\[180\]/, '업적 창은 상단 메뉴보다 위에 표시되어야 한다.');
 assert.match(achievements, /h-\[100dvh\][\s\S]*overflow-y-auto/, '모바일 업적 창은 전체 화면 안에서 본문만 스크롤되어야 한다.');
 assert.match(achievements, /min-h-0 flex-1 overflow-y-auto/, '업적 목록만 스크롤되고 하단 닫기 버튼은 고정되어야 한다.');
 assert.match(achievements, /role="dialog"[\s\S]*aria-modal="true"/, '업적 창은 접근 가능한 모달이어야 한다.');
 assert.match(achievements, /document\.body\.style\.overflow = 'hidden'/, '업적 창이 열리면 배경 스크롤을 막아야 한다.');
 assert.match(calendarModal, /while \(days\.length < 42\) days\.push\(null\)/, '달을 넘겨도 캘린더 높이가 바뀌지 않아야 한다.');
 assert.match(calendarModal, /if \(!day\) return <div key=\{idx\} className="aspect-square"/, '빈 날짜 칸도 같은 높이를 유지해야 한다.');
-assert.match(calendarModal, /z-\[160\]/, '읽기 캘린더는 상단 메뉴보다 위에 표시되어야 한다.');
+assert.match(calendarModal, /z-\[180\]/, '읽기 캘린더는 상단 메뉴보다 위에 표시되어야 한다.');
 assert.doesNotMatch(actions, /\{ \.\.\.previous, \.\.\.response\.state\.user \}/);
 assert.match(actions, /loadCanonicalUserStateFromServer\(uid\)/);
 assert.match(userStateSync, /loadCanonicalRosterRefsFromServer/);
@@ -320,7 +320,7 @@ const googlePersonalStart = authFlow.slice(
 assert.match(googlePersonalStart, /existingDoc = await userRef\.get\(\{ source: 'server' \}\)/);
 assert.match(googlePersonalStart, /existingDoc = await userRef\.get\(\{ source: 'server' \}\);\s*if \(auth\.currentUser\?\.uid !== cred\.user\.uid\) throw new Error\('SOCIAL_AUTH_CHANGED'\);\s*if \(existingDoc\.exists\)/);
 assert.match(googlePersonalStart, /let popupUid = null[\s\S]*popupUid = cred\?\.user\?\.uid \|\| null/);
-assert.match(googlePersonalStart, /if \(GOOGLE_ADMIN_ROLES\.has\(existingDoc\.data\(\)\?\.role\)\) \{\s*await finishAdminLogin\(cred, \{ requireRegisteredAdmin: true, loginTiming \}\);\s*return;\s*\}\s*await openExistingSocialUser/);
+assert.match(googlePersonalStart, /if \(GOOGLE_ADMIN_ROLES\.has\(existingDoc\.data\(\)\?\.role\)\) \{\s*return await finishAdminLogin\(cred, \{ requireRegisteredAdmin: true, loginTiming \}\);\s*\}\s*return await openExistingSocialUser/);
 assert.match(googlePersonalStart, /popupUid && auth\.currentUser\?\.uid === popupUid[\s\S]*setCurrentUser\(null\)[\s\S]*setTempUser\(null\)[\s\S]*await auth\.signOut/);
 assert.ok(
     googlePersonalStart.indexOf('finishAdminLogin(cred') < googlePersonalStart.indexOf('openExistingSocialUser(cred.user'),

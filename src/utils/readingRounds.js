@@ -1,6 +1,6 @@
-export const getCompletedReadingRounds = member => (
-    Math.max(0, Math.floor(Number(member?.readCount) || 1) - 1)
-);
+import { getYearCompletedRounds } from './annualReading.js';
+
+export const getCompletedReadingRounds = member => getYearCompletedRounds(member);
 
 export const getReadingRoundBadgeLabel = member => {
     const completedRounds = getCompletedReadingRounds(member);

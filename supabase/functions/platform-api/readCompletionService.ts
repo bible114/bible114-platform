@@ -60,6 +60,9 @@ type CompleteReadUserDocument = StoredReadUser & TalentMembershipUser & {
 type CompleteReadRosterDocument = TalentMembershipUser & {
   uid?: unknown;
   talent?: unknown;
+  readingYear?: unknown;
+  yearCompletedRounds?: unknown;
+  lifetimeCompletedRounds?: unknown;
 };
 
 type CompleteReadLedgerDocument = {
@@ -93,6 +96,9 @@ export type CompleteReadFreshState = {
   user: {
     currentDay: number;
     readCount: number;
+    readingYear: number;
+    yearCompletedRounds: number;
+    lifetimeCompletedRounds: number;
     score: number;
     talent: number;
     streak: number;
@@ -142,6 +148,9 @@ type NormalizedUser = CompleteReadUserDocument & {
   readingEpoch: number;
   currentDay: number;
   readCount: number;
+  readingYear: number;
+  yearCompletedRounds: number;
+  lifetimeCompletedRounds: number;
   score: number;
   talent: number;
   streak: number;
@@ -341,6 +350,15 @@ const normalizeUser = (
   const streak = requireSafeInteger(data.streak, "users.streak", {
     fallback: 0,
   });
+  const readCount = requireSafeInteger(data.readCount, "users.readCount", {
+    fallback: 1,
+    min: 1,
+  });
+  const yearCompletedRounds = requireSafeInteger(
+    data.yearCompletedRounds,
+    "users.yearCompletedRounds",
+    { fallback: Math.max(0, readCount - 1) },
+  );
   return {
     ...data,
     readingEpoch: requireSafeInteger(
@@ -353,10 +371,20 @@ const normalizeUser = (
       min: 1,
       max: 365,
     }),
-    readCount: requireSafeInteger(data.readCount, "users.readCount", {
-      fallback: 1,
-      min: 1,
+    readCount,
+    readingYear: requireSafeInteger(data.readingYear, "users.readingYear", {
+      fallback: 0,
     }),
+    yearCompletedRounds,
+    lifetimeCompletedRounds: Math.max(
+      readCount - 1,
+      yearCompletedRounds,
+      requireSafeInteger(
+        data.lifetimeCompletedRounds,
+        "users.lifetimeCompletedRounds",
+        { fallback: Math.max(0, readCount - 1) },
+      ),
+    ),
     score: requireSafeInteger(data.score, "users.score", { fallback: 0 }),
     talent: requireSafeInteger(data.talent, "users.talent", {
       fallback: 0,
@@ -446,6 +474,9 @@ const projectState = (
   user: {
     currentDay: user.currentDay,
     readCount: user.readCount,
+    readingYear: user.readingYear,
+    yearCompletedRounds: user.yearCompletedRounds,
+    lifetimeCompletedRounds: user.lifetimeCompletedRounds,
     score: user.score,
     talent: user.talent,
     streak: user.streak,
@@ -496,6 +527,25 @@ const parseReadyResult = (value: unknown): ReadCompletionResult => {
     readCount: requireSafeInteger(update.readCount, "ledger.readCount", {
       min: 1,
     }),
+    readingYear: requireSafeInteger(
+      update.readingYear,
+      "ledger.readingYear",
+      {
+        fallback: Number(String(update.lastReadDate || "").slice(-4)),
+        min: 2000,
+        max: 9999,
+      },
+    ),
+    yearCompletedRounds: requireSafeInteger(
+      update.yearCompletedRounds,
+      "ledger.yearCompletedRounds",
+      { fallback: Math.max(0, Number(update.readCount) - 1) },
+    ),
+    lifetimeCompletedRounds: requireSafeInteger(
+      update.lifetimeCompletedRounds,
+      "ledger.lifetimeCompletedRounds",
+      { fallback: Math.max(0, Number(update.readCount) - 1) },
+    ),
     score: requireSafeInteger(update.score, "ledger.score"),
     streak: requireSafeInteger(update.streak, "ledger.streak"),
     maxStreak: requireSafeInteger(update.maxStreak, "ledger.maxStreak"),
@@ -721,7 +771,28 @@ const executeCompleteRead = async (
     if (userDocument.data.isDeleted === true) {
       throw new PlatformError("FORBIDDEN");
     }
-    const user = normalizeUser(uid, userDocument.data);
+    let user = normalizeUser(uid, userDocument.data);
+    const currentYear = Number(calendarDate.slice(-4));
+    if (!Number.isSafeInteger(currentYear) || currentYear < 2000) {
+      throw new PlatformError("INTERNAL");
+    }
+    if (user.readingYear !== 0 && user.readingYear !== currentYear) {
+      throw conflict("새해 읽기 기록을 준비한 뒤 다시 시도해주세요.");
+    }
+    if (user.readingYear === 0) {
+      user = {
+        ...user,
+        readingYear: currentYear,
+        yearCompletedRounds: Math.max(
+          user.yearCompletedRounds,
+          user.readCount - 1,
+        ),
+        lifetimeCompletedRounds: Math.max(
+          user.lifetimeCompletedRounds,
+          user.readCount - 1,
+        ),
+      };
+    }
     const rosters = normalizeRosters(uid, rosterDocuments);
     if (user.readingEpoch !== input.readingEpoch) {
       throw conflict("재시작 전 읽기 요청은 처리할 수 없습니다.");
@@ -827,6 +898,9 @@ const executeCompleteRead = async (
     const rosterProgress = {
       currentDay: result.updateData.currentDay,
       readCount: result.updateData.readCount,
+      readingYear: result.updateData.readingYear,
+      yearCompletedRounds: result.updateData.yearCompletedRounds,
+      lifetimeCompletedRounds: result.updateData.lifetimeCompletedRounds,
       score: result.updateData.score,
       streak: result.updateData.streak,
       lastReadDate: result.updateData.lastReadDate,

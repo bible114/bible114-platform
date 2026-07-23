@@ -85,14 +85,16 @@ const COMPLETE_READ_RESPONSE_KEYS = new Set([
 ]);
 const COMPLETE_READ_STATE_KEYS = new Set(['user', 'rosters']);
 const COMPLETE_READ_USER_KEYS = new Set([
-    'currentDay', 'readCount', 'score', 'talent', 'streak', 'maxStreak', 'lastReadDate',
+    'currentDay', 'readCount', 'readingYear', 'yearCompletedRounds', 'lifetimeCompletedRounds',
+    'score', 'talent', 'streak', 'maxStreak', 'lastReadDate',
     'dailyAdvanceDate', 'dailyAdvanceCount', 'recentReadDates', 'secretShopUnlocked',
 ]);
 const COMPLETE_READ_USER_WEEKLY_KEYS = new Set([
     ...COMPLETE_READ_USER_KEYS, 'weeklyReadKey', 'weeklyReadCount',
 ]);
 const COMPLETE_READ_UPDATE_REQUIRED_KEYS = new Set([
-    'currentDay', 'readCount', 'score', 'streak', 'maxStreak', 'lastReadDate',
+    'currentDay', 'readCount', 'readingYear', 'yearCompletedRounds', 'lifetimeCompletedRounds',
+    'score', 'streak', 'maxStreak', 'lastReadDate',
     'dailyAdvanceDate', 'dailyAdvanceCount', 'recentReadDates',
 ]);
 const COMPLETE_READ_UPDATE_ALLOWED_KEYS = new Set([
@@ -786,6 +788,9 @@ const normalizeReadStateUser = (value) => {
         || hasExactKeys(value, COMPLETE_READ_USER_WEEKLY_KEYS))
         || !isSafeIntegerInRange(value.currentDay, 1, 365)
         || !isSafeIntegerInRange(value.readCount, 1, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.readingYear, 2000, 9999)
+        || !isSafeIntegerInRange(value.yearCompletedRounds, 0, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.lifetimeCompletedRounds, value.yearCompletedRounds, Number.MAX_SAFE_INTEGER)
         || !isSafeIntegerInRange(value.score, 0, Number.MAX_SAFE_INTEGER)
         || !isSafeIntegerInRange(value.talent, 0, MAX_TALENT_BALANCE)
         || !isSafeIntegerInRange(value.streak, 0, Number.MAX_SAFE_INTEGER)
@@ -805,6 +810,9 @@ const normalizeReadStateUser = (value) => {
     return {
         currentDay: value.currentDay,
         readCount: value.readCount,
+        readingYear: value.readingYear,
+        yearCompletedRounds: value.yearCompletedRounds,
+        lifetimeCompletedRounds: value.lifetimeCompletedRounds,
         score: value.score,
         talent: value.talent,
         streak: value.streak,
@@ -828,6 +836,9 @@ const normalizeReadUpdate = (value) => {
     )
         || !isSafeIntegerInRange(value.currentDay, 1, 365)
         || !isSafeIntegerInRange(value.readCount, 1, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.readingYear, 2000, 9999)
+        || !isSafeIntegerInRange(value.yearCompletedRounds, 0, Number.MAX_SAFE_INTEGER)
+        || !isSafeIntegerInRange(value.lifetimeCompletedRounds, value.yearCompletedRounds, Number.MAX_SAFE_INTEGER)
         || !isSafeIntegerInRange(value.score, 0, Number.MAX_SAFE_INTEGER)
         || !isSafeIntegerInRange(value.streak, 0, Number.MAX_SAFE_INTEGER)
         || !isSafeIntegerInRange(value.maxStreak, 0, Number.MAX_SAFE_INTEGER)
@@ -849,6 +860,9 @@ const normalizeReadUpdate = (value) => {
     return {
         currentDay: value.currentDay,
         readCount: value.readCount,
+        readingYear: value.readingYear,
+        yearCompletedRounds: value.yearCompletedRounds,
+        lifetimeCompletedRounds: value.lifetimeCompletedRounds,
         score: value.score,
         streak: value.streak,
         maxStreak: value.maxStreak,

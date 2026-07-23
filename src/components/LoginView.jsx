@@ -838,7 +838,7 @@ const LoginView = ({
             <div className="rounded-xl border border-amber-100 bg-amber-50/70 px-3.5 py-3 text-center text-[12px] leading-relaxed text-ink/65 md:hidden">
                 <p>⛪ 교회·모임과 함께 읽고 싶으신가요?</p>
                 <p><b>공동체 대표(관리자)가</b> 먼저 공동체를 등록해야 성도들이 찾아서 함께 읽을 수 있어요.</p>
-                <button type="button" onClick={() => { setActiveTab('adminSignup'); clearError(); }} className="mt-1.5 font-black text-accent underline underline-offset-3">공동체 등록하기 →</button>
+                <button type="button" onClick={() => { setActiveTab('adminSignup'); clearError(); }} className="mt-1.5 inline-flex min-h-11 items-center justify-center px-2 font-black text-accent underline underline-offset-3">공동체 등록하기 →</button>
             </div>
             {errorMsg && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-center text-xs text-red-500">{errorMsg}</p>}
         </div>
@@ -1295,7 +1295,7 @@ const LoginView = ({
                             key={policyId}
                             type="button"
                             onClick={() => setOpenPublicPolicyId(policyId)}
-                            className="underline underline-offset-3 hover:text-ink/80"
+                            className="inline-flex min-h-11 items-center px-1 underline underline-offset-3 hover:text-ink/80"
                         >
                             {SERVICE_POLICIES[policyId].shortLabel}
                         </button>

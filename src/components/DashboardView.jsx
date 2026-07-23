@@ -339,9 +339,8 @@ const DashboardView = ({
 
     // 레이터 데이터 정제
     const allRacersSorted = allMembersForRace.map(m => {
-        const readCount = m.readCount || 1;
-        // day는 누적 읽은 날 수(랭킹/표시)이고, mapDay만 기존 달리기 위치를 보존한다.
-        const mapDay = (readCount - 1) * 365 + (m.currentDay || 1);
+        // 연도별 진도와 순위는 1월 1일부터 다시 쌓는다.
+        const mapDay = getDaysRead(m) + 1;
         return { ...m, day: getDaysRead(m), mapDay, isMe: m.uid === currentUser.uid };
     }).sort((a, b) => b.day - a.day);
 

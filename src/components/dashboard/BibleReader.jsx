@@ -1,6 +1,7 @@
 import React from 'react';
 import MarkdownRenderer from '../MarkdownRenderer';
 import { scheduleScrollIntoView } from '../../utils/readingFlowScroll';
+import { getLifetimeCompletedRounds, getYearCompletedRounds } from '../../utils/annualReading.js';
 
 const BibleReader = ({
     verseData,
@@ -40,6 +41,8 @@ const BibleReader = ({
     const completionForViewingDay = completionSummary?.completedDay === viewingDay
         ? completionSummary
         : null;
+    const yearCompletedRounds = getYearCompletedRounds(currentUser);
+    const lifetimeCompletedRounds = getLifetimeCompletedRounds(currentUser);
     const readButtonLabel = isAdvanceRead
         ? '한 장 더 읽기'
         : (!isCurrentProgressDay ? `내 진도 DAY ${currentUser.currentDay}에서 완료할 수 있어요` : '오늘 읽기 완료');
@@ -73,9 +76,8 @@ const BibleReader = ({
                     <div className="text-center">
                         <h2 className="mb-1 text-xl font-bold leading-tight sm:text-2xl">{verseData.loading ? '말씀을 불러오는 중' : verseData.title}</h2>
                         <div className="flex items-center justify-center gap-2">
-                            {(currentUser.readCount || 1) > 1 && (
-                                <span className="text-xs bg-purple-500/90 px-2 py-0.5 rounded-full">🏆 {currentUser.readCount - 1}독 완료</span>
-                            )}
+                            <span className="text-xs bg-purple-500/90 px-2 py-0.5 rounded-full">🏆 올해 {yearCompletedRounds}독</span>
+                            <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">전체 {lifetimeCompletedRounds}독</span>
                             {!isCurrentProgressDay && (
                                 <span className="rounded-full bg-amber-400/90 px-2 py-0.5 text-xs">
                                     다른 DAY 보는 중

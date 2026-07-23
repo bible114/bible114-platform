@@ -13,6 +13,7 @@ import {
   parseRosterTalentWallets,
   type TalentMembershipUser,
 } from "./talentProgramCore.ts";
+import { getCalendarDateKst } from "../_shared/time.ts";
 
 export const NORMALIZE_LEGACY_READING_POSITION_ACTION =
   "normalizeLegacyReadingPosition" as const;
@@ -62,6 +63,11 @@ type LegacyReadingUser = {
   churchName?: unknown;
   currentDay?: unknown;
   readCount?: unknown;
+  readingEpoch?: unknown;
+  readingYear?: unknown;
+  yearCompletedRounds?: unknown;
+  lifetimeCompletedRounds?: unknown;
+  score?: unknown;
 };
 
 type LegacyReadingChurch = {
@@ -73,6 +79,10 @@ type LegacyReadingRoster = TalentMembershipUser & {
   uid?: unknown;
   currentDay?: unknown;
   readCount?: unknown;
+  readingYear?: unknown;
+  yearCompletedRounds?: unknown;
+  lifetimeCompletedRounds?: unknown;
+  score?: unknown;
 };
 
 type StoredNormalizationLedger = {
@@ -152,6 +162,19 @@ const requireSafeInteger = (
   return candidate;
 };
 
+const requireNonNegativeInteger = (
+  value: unknown,
+  field: string,
+  fallback: number,
+): number => {
+  const candidate = value === undefined || value === null ? fallback : value;
+  if (
+    typeof candidate !== "number" || !Number.isSafeInteger(candidate) ||
+    candidate < 0
+  ) throw conflict(`안전하지 않은 정수 상태입니다: ${field}`);
+  return candidate;
+};
+
 const canonicalIdentity = (
   identity: NormalizeLegacyReadingPositionIdentity,
 ): string => {
@@ -184,6 +207,11 @@ const normalizeUser = (
 ): {
   currentDay: number;
   readCount: number;
+  readingEpoch: number;
+  readingYear: number | null;
+  yearCompletedRounds: number;
+  lifetimeCompletedRounds: number;
+  score: number;
   churchId: string | null;
   churchName: unknown;
 } => {
@@ -211,13 +239,47 @@ const normalizeUser = (
     ) throw conflict("사용자 공동체 식별자가 올바르지 않습니다.");
     churchId = normalizedChurchId;
   }
+  const currentDay = requireSafeInteger(user.currentDay, "users.currentDay");
+  const readCount = requireSafeInteger(user.readCount, "users.readCount", {
+    fallback: 1,
+  });
+  const completedFromGlobalCycle = readCount - 1 +
+    Math.floor((currentDay - 1) / 365);
+  const rawReadingYear = user.readingYear;
+  const readingYear = rawReadingYear === undefined || rawReadingYear === null
+    ? null
+    : requireSafeInteger(rawReadingYear, "users.readingYear");
+  if (readingYear !== null && (readingYear < 2000 || readingYear > 9999)) {
+    throw conflict("사용자 읽기 연도가 올바르지 않습니다.");
+  }
+  const yearCompletedRounds = requireNonNegativeInteger(
+    user.yearCompletedRounds,
+    "users.yearCompletedRounds",
+    completedFromGlobalCycle,
+  );
+  const lifetimeCompletedRounds = Math.max(
+    completedFromGlobalCycle,
+    yearCompletedRounds,
+    requireNonNegativeInteger(
+      user.lifetimeCompletedRounds,
+      "users.lifetimeCompletedRounds",
+      completedFromGlobalCycle,
+    ),
+  );
   return {
-    currentDay: requireSafeInteger(user.currentDay, "users.currentDay"),
+    currentDay,
     // 구버전 문서는 readCount 자체가 없을 수 있으며 기존 클라이언트도 이를
     // 1회차로 해석했다. 명시된 손상 값은 그대로 fail closed 한다.
-    readCount: requireSafeInteger(user.readCount, "users.readCount", {
-      fallback: 1,
-    }),
+    readCount,
+    readingEpoch: requireNonNegativeInteger(
+      user.readingEpoch,
+      "users.readingEpoch",
+      0,
+    ),
+    readingYear,
+    yearCompletedRounds,
+    lifetimeCompletedRounds,
+    score: requireNonNegativeInteger(user.score, "users.score", 0),
     churchId,
     churchName: user.churchName,
   };
@@ -242,7 +304,14 @@ const canonicalChurchName = (
 const normalizeRosters = (
   uid: string,
   documents: FirestoreDocument<LegacyReadingRoster>[],
-  user: { currentDay: number; readCount: number },
+  user: {
+    currentDay: number;
+    readCount: number;
+    readingYear: number;
+    yearCompletedRounds: number;
+    lifetimeCompletedRounds: number;
+    score: number;
+  },
 ): NormalizedRoster[] => {
   const parsed = parseRosterTalentWallets(documents, uid);
   if (!parsed.ok) {
@@ -264,6 +333,26 @@ const normalizeRosters = (
         fallback: user.readCount,
       },
     );
+    const readingYear = requireSafeInteger(
+      roster.readingYear,
+      `roster.${orgId}.readingYear`,
+      { fallback: user.readingYear },
+    );
+    const yearCompletedRounds = requireNonNegativeInteger(
+      roster.yearCompletedRounds,
+      `roster.${orgId}.yearCompletedRounds`,
+      user.yearCompletedRounds,
+    );
+    const lifetimeCompletedRounds = requireNonNegativeInteger(
+      roster.lifetimeCompletedRounds,
+      `roster.${orgId}.lifetimeCompletedRounds`,
+      user.lifetimeCompletedRounds,
+    );
+    const score = requireNonNegativeInteger(
+      roster.score,
+      `roster.${orgId}.score`,
+      user.score,
+    );
     return {
       orgId,
       // 누락/null도 users 값과 같다고 추정하지 않고 실제 미러 복구 대상으로
@@ -271,7 +360,16 @@ const normalizeRosters = (
       needsRepair: roster.currentDay === undefined ||
         roster.currentDay === null || roster.readCount === undefined ||
         roster.readCount === null || currentDay !== user.currentDay ||
-        readCount !== user.readCount,
+        readCount !== user.readCount || roster.readingYear === undefined ||
+        roster.readingYear === null || readingYear !== user.readingYear ||
+        roster.yearCompletedRounds === undefined ||
+        roster.yearCompletedRounds === null ||
+        yearCompletedRounds !== user.yearCompletedRounds ||
+        roster.lifetimeCompletedRounds === undefined ||
+        roster.lifetimeCompletedRounds === null ||
+        lifetimeCompletedRounds !== user.lifetimeCompletedRounds ||
+        roster.score === undefined || roster.score === null ||
+        score !== user.score,
     };
   });
 };
@@ -406,7 +504,50 @@ const executeNormalization = async (
       ),
     ]);
     if (!userDocument) throw new PlatformError("NOT_FOUND");
-    const user = normalizeUser(uid, userDocument.data);
+    const storedUser = normalizeUser(uid, userDocument.data);
+    const now = dependencies.now();
+    if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
+      throw new PlatformError("INTERNAL");
+    }
+    const currentYear = Number(getCalendarDateKst(now).slice(0, 4));
+    if (!Number.isSafeInteger(currentYear)) throw new PlatformError("INTERNAL");
+    if (
+      storedUser.readingYear !== null && storedUser.readingYear > currentYear
+    ) {
+      throw conflict("사용자 읽기 연도가 서버 연도보다 미래입니다.");
+    }
+    const isNewYear = storedUser.readingYear !== null &&
+      storedUser.readingYear < currentYear;
+    if (isNewYear && storedUser.readingEpoch === Number.MAX_SAFE_INTEGER) {
+      throw conflict("읽기 세대 값이 안전한 범위를 벗어났습니다.");
+    }
+    const legacyProgress = storedUser.currentDay > 365
+      ? normalizedResult(storedUser.currentDay, storedUser.readCount)
+      : {
+        status: "normalized" as const,
+        currentDay: storedUser.currentDay,
+        readCount: storedUser.readCount,
+      };
+    const legacyExtraRounds = legacyProgress.readCount - storedUser.readCount;
+    const user = {
+      ...storedUser,
+      currentDay: isNewYear ? 1 : legacyProgress.currentDay,
+      readCount: legacyProgress.readCount,
+      readingEpoch: isNewYear
+        ? storedUser.readingEpoch + 1
+        : storedUser.readingEpoch,
+      readingYear: currentYear,
+      yearCompletedRounds: isNewYear
+        ? 0
+        : storedUser.yearCompletedRounds + legacyExtraRounds,
+      score: isNewYear ? 0 : storedUser.score,
+    };
+    const annualFieldsMissing = userDocument.data.readingYear === undefined ||
+      userDocument.data.readingYear === null ||
+      userDocument.data.yearCompletedRounds === undefined ||
+      userDocument.data.yearCompletedRounds === null ||
+      userDocument.data.lifetimeCompletedRounds === undefined ||
+      userDocument.data.lifetimeCompletedRounds === null;
     const rosters = normalizeRosters(uid, rosterDocuments, user);
     const churchDocument = user.churchId
       ? await dependencies.getDocument<LegacyReadingChurch>(
@@ -428,7 +569,10 @@ const executeNormalization = async (
       return { alreadyCompleted: true, committed: true, result };
     }
 
-    const userNeedsNormalization = user.currentDay > 365;
+    const userNeedsLegacyNormalization = storedUser.currentDay > 365;
+    const userNeedsAnnualNormalization = annualFieldsMissing || isNewYear;
+    const userNeedsNormalization = userNeedsLegacyNormalization ||
+      userNeedsAnnualNormalization;
     const rosterTargets = userNeedsNormalization
       ? rosters
       : rosters.filter((roster) => roster.needsRepair);
@@ -451,23 +595,35 @@ const executeNormalization = async (
     const result: Extract<
       NormalizeLegacyReadingPositionResult,
       { status: "normalized" }
-    > = userNeedsNormalization
-      ? normalizedResult(user.currentDay, user.readCount)
-      : {
-        status: "normalized",
-        currentDay: user.currentDay,
-        readCount: user.readCount,
-      };
-    const now = dependencies.now();
-    if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
-      throw new PlatformError("INTERNAL");
-    }
+    > = {
+      status: "normalized",
+      currentDay: user.currentDay,
+      readCount: user.readCount,
+    };
     const progressUpdate = {
       currentDay: result.currentDay,
       readCount: result.readCount,
+      readingYear: user.readingYear,
+      yearCompletedRounds: user.yearCompletedRounds,
+      lifetimeCompletedRounds: Math.max(
+        user.lifetimeCompletedRounds,
+        result.readCount - 1,
+      ),
+      score: user.score,
     };
     const userUpdate = {
-      ...(userNeedsNormalization ? progressUpdate : {}),
+      ...(userNeedsNormalization
+        ? {
+          ...progressUpdate,
+          ...(isNewYear
+            ? {
+              readingEpoch: user.readingEpoch,
+              dayOffset: 0,
+              startDate: `${currentYear}-01-01`,
+            }
+            : {}),
+        }
+        : {}),
       ...(churchNameNeedsRepair ? { churchName: authoritativeChurchName } : {}),
     };
     const writes = [
@@ -489,7 +645,7 @@ const executeNormalization = async (
           service.projectId,
           `churches/${orgId}/roster/${uid}`,
           progressUpdate,
-          { updateMask: ["currentDay", "readCount"], exists: true },
+          { updateMask: Object.keys(progressUpdate), exists: true },
         )
       ),
       dependencies.updateWrite(service.projectId, ledgerPath, {

@@ -5,6 +5,7 @@ import {
     migratePersonalTalentWallet as migratePersonalTalentWalletViaApi,
     PlatformApiError,
 } from './platformApi';
+import { getYearCompletedRounds } from './annualReading.js';
 
 export { titleMatchesDate };
 export { parseChapters, mapToStandardLabel, parseAndMapChapters } from './dailyVideoChapters.js';
@@ -21,7 +22,7 @@ export const makeUnaffiliatedIdentity = (birthdate, phone4) =>
 // currentDay는 "다음에 읽을 날"이다. 누적 진행/랭킹처럼 실제로 읽은 날 수를
 // 보여줄 때만 이 값을 사용하고, 본문 DAY·달리기 위치에는 currentDay를 그대로 쓴다.
 export const getDaysRead = (member) => (
-    ((member?.readCount || 1) - 1) * 365
+    getYearCompletedRounds(member) * 365
     + Math.max(0, (member?.currentDay || 1) - 1)
 );
 
@@ -232,6 +233,10 @@ export const userDocToState = (doc) => {
         memos: d.memos ?? {},
         dayOffset: d.dayOffset ?? 0,
         readCount: d.readCount ?? 1,
+        readingEpoch: d.readingEpoch ?? 0,
+        readingYear: d.readingYear ?? null,
+        yearCompletedRounds: d.yearCompletedRounds ?? null,
+        lifetimeCompletedRounds: d.lifetimeCompletedRounds ?? null,
         readHistory: d.readHistory ?? [],
         recentReadDates: d.recentReadDates ?? [],
         dailyAdvanceDate: d.dailyAdvanceDate ?? null,

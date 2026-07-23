@@ -96,10 +96,10 @@ const CompletionCelebration = ({
 
                     <p className="mb-2 text-sm font-black tracking-widest text-orange-500">성경 통독을 축하합니다</p>
                     <h2 id="completion-celebration-title" className="text-4xl font-black text-slate-800">
-                        {round}독 완주!
+                        올해 {round}독 완주!
                     </h2>
                     <p className="mt-4 text-lg font-bold text-slate-600">
-                        <span className="text-purple-600">{nextRound}독</span>을 시작합니다
+                        <span className="text-purple-600">올해 {nextRound}독</span>을 시작합니다
                     </p>
                     <p className="mt-2 text-sm leading-relaxed text-slate-500">
                         말씀과 함께한 귀한 걸음을 응원합니다.

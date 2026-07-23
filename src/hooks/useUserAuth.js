@@ -7,6 +7,7 @@ import { isInteractiveAuthFlowActive } from '../utils/authFlowGuard';
 import { loadUserExtraOrgs } from '../utils/roster';
 import { normalizeLegacyReadingPosition } from '../utils/platformApi';
 import { restorePendingPersonalMigrationFromAuth } from '../utils/personalAccountMigration';
+import { needsAnnualReadingSync } from '../utils/annualReading.js';
 
 const isRecoverableReadingPositionAuditError = error => {
     const status = Number(error?.status);
@@ -136,7 +137,8 @@ export const useUserAuth = () => {
                             }
 
                             const localUserNeedsNormalization = Boolean(
-                                user.currentDay && user.currentDay > 365
+                                (user.currentDay && user.currentDay > 365)
+                                || needsAnnualReadingSync(user)
                             );
                             const loadSessionDetails = async () => {
                                 const sessionPatch = {};
@@ -177,6 +179,13 @@ export const useUserAuth = () => {
                                     }
                                     sessionPatch.currentDay = normalizedData.currentDay;
                                     sessionPatch.readCount = normalizedData.readCount;
+                                    sessionPatch.readingEpoch = normalizedData.readingEpoch ?? 0;
+                                    sessionPatch.readingYear = normalizedData.readingYear ?? null;
+                                    sessionPatch.yearCompletedRounds = normalizedData.yearCompletedRounds ?? null;
+                                    sessionPatch.lifetimeCompletedRounds = normalizedData.lifetimeCompletedRounds ?? null;
+                                    sessionPatch.score = normalizedData.score ?? 0;
+                                    sessionPatch.dayOffset = normalizedData.dayOffset ?? 0;
+                                    sessionPatch.startDate = normalizedData.startDate ?? null;
                                     if (typeof normalizedData.churchName === 'string'
                                         && normalizedData.churchName === normalizedData.churchName.trim()
                                         && normalizedData.churchName.length >= 1

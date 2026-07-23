@@ -4,6 +4,7 @@ import fs from 'node:fs';
 const shop = fs.readFileSync(new URL('../src/components/dashboard/TalentShop.jsx', import.meta.url), 'utf8');
 const dashboard = fs.readFileSync(new URL('../src/components/DashboardView.jsx', import.meta.url), 'utf8');
 const adminShop = fs.readFileSync(new URL('../src/components/churchAdmin/TalentShopTab.jsx', import.meta.url), 'utf8');
+const churchAdmin = fs.readFileSync(new URL('../src/components/ChurchAdminView.jsx', import.meta.url), 'utf8');
 
 assert.match(adminShop, /1인 · 통독 시작 후 365일 최대 적립량/);
 assert.match(adminShop, /const DAILY_READING_TALENT_MAX = 17/);
@@ -11,6 +12,12 @@ assert.match(adminShop, /const DAILY_QUIZ_TALENT_MAX = 10/);
 assert.match(adminShop, /const ANNUAL_MILESTONE_BONUS = 6 \+ 10 \+ 15 \+ 20 \+ 20 \+ 25 \+ 30 \+ 40/);
 assert.match(adminShop, /FIRST_YEAR_TALENT_MAX/);
 assert.match(adminShop, /7일 \+6 · 30일 \+10 · 60일 \+15 · 90일 \+20 · 120일 \+20 · 180일 \+25 · 270일 \+30 · 365일 \+40/);
+assert.match(adminShop, /선택 교인 달란트 0으로 초기화/);
+assert.match(adminShop, /disabled=\{deducting \|\| !deductForm\.uid\}/);
+assert.match(churchAdmin, /const requestTalentReset = \(\) =>/);
+assert.match(churchAdmin, /관리자 달란트 잔액 초기화/);
+assert.match(churchAdmin, /price: balance/);
+assert.match(churchAdmin, /읽기 기록과 점수는 바뀌지 않으며, 초기화 내역은 관리자 기록에 남습니다/);
 
 assert.doesNotMatch(
     shop,

@@ -34,6 +34,9 @@ export const getTalentStreakMilestoneBonus = (streak: number): number =>
 export type StoredReadUser = {
   currentDay?: unknown;
   readCount?: unknown;
+  readingYear?: unknown;
+  yearCompletedRounds?: unknown;
+  lifetimeCompletedRounds?: unknown;
   dailyAdvanceDate?: unknown;
   dailyAdvanceCount?: unknown;
   weeklyReadKey?: unknown;
@@ -59,6 +62,9 @@ export type TalentRewardRouting = {
 export type ReadCompletionUpdate = {
   currentDay: number;
   readCount: number;
+  readingYear: number;
+  yearCompletedRounds: number;
+  lifetimeCompletedRounds: number;
   score: number;
   streak: number;
   maxStreak: number;
@@ -233,6 +239,18 @@ export const calculateReadCompletion = (
   const completedRound = currentDay === DAYS_PER_CYCLE;
   const newProgressDay = completedRound ? 1 : currentDay + 1;
   const newReadCount = completedRound ? readCount + 1 : readCount;
+  const readingYear = nonNegativeInteger(user.readingYear);
+  const yearCompletedRounds = nonNegativeInteger(
+    user.yearCompletedRounds,
+    Math.max(0, readCount - 1),
+  ) + (completedRound ? 1 : 0);
+  const lifetimeCompletedRounds = Math.max(
+    nonNegativeInteger(
+      user.lifetimeCompletedRounds,
+      Math.max(0, readCount - 1),
+    ),
+    Math.max(0, readCount - 1),
+  ) + (completedRound ? 1 : 0);
   const baseTalentEarned = isFirstReadToday
     ? 10 + Math.min(newStreak, 7) + getTalentStreakMilestoneBonus(newStreak)
     : 0;
@@ -258,6 +276,9 @@ export const calculateReadCompletion = (
   const updateData: ReadCompletionUpdate = {
     currentDay: newProgressDay,
     readCount: newReadCount,
+    readingYear,
+    yearCompletedRounds,
+    lifetimeCompletedRounds,
     score: newScore,
     streak: newStreak,
     maxStreak,

@@ -22,7 +22,7 @@ export const PlatformPopupCard = ({ popup, onClose, onHideForWeek, preview = fal
         <section className="relative w-full max-w-[27rem] overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white shadow-[0_28px_80px_-28px_rgba(15,23,42,0.65)]">
             <div className="h-1.5 bg-gradient-to-r from-indigo-500 via-blue-500 to-amber-400" />
             <button type="button" onClick={onClose} disabled={preview} aria-label="광고 닫기"
-                className="absolute right-4 top-4 z-10 grid h-8 w-8 place-items-center rounded-full border border-slate-200/80 bg-white/90 text-lg font-medium leading-none text-slate-400 shadow-sm backdrop-blur transition hover:border-slate-300 hover:text-slate-700 active:scale-95 disabled:pointer-events-none">
+                className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-full border border-slate-200/80 bg-white/90 text-lg font-medium leading-none text-slate-400 shadow-sm backdrop-blur transition hover:border-slate-300 hover:text-slate-700 active:scale-95 disabled:pointer-events-none">
                 <span aria-hidden="true">×</span>
             </button>
 
@@ -73,11 +73,11 @@ export const PlatformPopupCard = ({ popup, onClose, onHideForWeek, preview = fal
 
             <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-3">
                 <button type="button" onClick={onHideForWeek} disabled={preview}
-                    className="rounded-lg px-2 py-1.5 text-xs font-bold text-slate-400 transition hover:bg-slate-50 hover:text-slate-600 active:bg-slate-100 disabled:pointer-events-none">
+                    className="inline-flex min-h-11 items-center rounded-lg px-2 py-1.5 text-xs font-bold text-slate-400 transition hover:bg-slate-50 hover:text-slate-600 active:bg-slate-100 disabled:pointer-events-none">
                     일주일 동안 보지 않기
                 </button>
                 <button type="button" onClick={onClose} disabled={preview}
-                    className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98] disabled:pointer-events-none">
+                    className="inline-flex min-h-11 items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98] disabled:pointer-events-none">
                     닫기
                 </button>
             </div>

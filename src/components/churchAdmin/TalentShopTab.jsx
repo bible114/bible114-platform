@@ -24,7 +24,7 @@ const TalentShopTab = ({ ctx }) => {
         setShowShopPreview, showShopPreview, currentUser, shopPreviewTalent,
         shopItemDraft, setShopItemDraft, editingShopItemId, emojiGroupIdx, setEmojiGroupIdx,
         submitShopItem, resetShopItemDraft, editShopItem, deleteShopItem, printShopItems,
-        deductForm, setDeductForm, members, requestManualDeduct, deducting,
+        deductForm, setDeductForm, members, requestManualDeduct, requestTalentReset, deducting,
         purchaseFilter, setPurchaseFilter, filteredPurchases, memberById,
         purchaseLoadWarning, pendingPurchaseCount, hasMorePendingPurchases, loadingMorePendingPurchases,
         loadMorePendingPurchases,
@@ -233,6 +233,18 @@ const TalentShopTab = ({ ctx }) => {
                                             </div>
                                         </div>
                                     )}
+                                    <div className="mt-4 flex flex-col gap-2 border-t border-amber-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                                        <p className="text-xs font-bold leading-5 text-slate-500">
+                                            새 운영 기간을 시작할 때 필요하면 위에서 선택한 교인의 달란트만 0으로 초기화할 수 있습니다. 읽기 기록과 점수는 그대로입니다.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={requestTalentReset}
+                                            disabled={deducting || !deductForm.uid}
+                                            className="shrink-0 rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-black text-red-600 hover:bg-red-50 disabled:opacity-40">
+                                            선택 교인 달란트 0으로 초기화
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 lg:grid-cols-[0.85fr_1.15fr] gap-4">

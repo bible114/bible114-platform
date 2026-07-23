@@ -175,9 +175,13 @@ const App = () => {
             setShowSecretShopUnlocked(true);
         }
         if (resultData?.completedRound) {
+            const annualCompletedRound = Math.max(
+                1,
+                Number(resultData.updateData?.yearCompletedRounds) || 1,
+            );
             setCompletionCelebration({
-                completedRound: Math.max(1, (resultData.newReadCount || 2) - 1),
-                newReadCount: resultData.newReadCount || 2,
+                completedRound: annualCompletedRound,
+                newReadCount: annualCompletedRound + 1,
                 talentEarned: resultData.talentEarned,
                 quizTalentEarned: resultData.quizTalentEarned,
                 totalTalent: resultData.totalTalent,

@@ -1,6 +1,7 @@
 import React from 'react';
 import { getDaysRead } from '../../utils/helpers';
 import { getReadingRoundBadgeLabel } from '../../utils/readingRounds';
+import { getYearCompletedRounds } from '../../utils/annualReading.js';
 
 const ReadingRoundBadge = ({ member }) => {
     const label = getReadingRoundBadgeLabel(member);
@@ -58,16 +59,16 @@ const ReadingChampionSection = ({ getWeeklyMVP }) => {
                     <p className="text-xs text-blue-500 mb-2 font-bold">
                         {(() => {
                             if (!progressMVP) return '-';
-                            const readCount = progressMVP.readCount || 1;
+                            const completedRounds = getYearCompletedRounds(progressMVP);
                             const currentDay = progressMVP.currentDay || 0;
                             const totalDays = getDaysRead(progressMVP);
-                            if (readCount > 1) {
-                                return `총 ${totalDays}일 (${readCount - 1}독 완료, ${currentDay}일)`;
+                            if (completedRounds > 0) {
+                                return `올해 ${totalDays}일 (${completedRounds}독 완료, ${currentDay}일)`;
                             }
                             return `총 ${totalDays}일`;
                         })()}
                     </p>
-                    <p className="text-[9px] text-slate-400 mt-2 pt-2 border-t border-slate-100">전체 누적 읽기 1위</p>
+                    <p className="text-[9px] text-slate-400 mt-2 pt-2 border-t border-slate-100">올해 누적 읽기 1위</p>
                 </div>
             </div>
 

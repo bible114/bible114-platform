@@ -1511,6 +1511,9 @@ const validCompleteReadResponse = {
         updateData: {
             currentDay: 2,
             readCount: 1,
+            readingYear: 2026,
+            yearCompletedRounds: 0,
+            lifetimeCompletedRounds: 0,
             score: 10,
             talent: 11,
             streak: 1,
@@ -1540,6 +1543,9 @@ const validCompleteReadResponse = {
         user: {
             currentDay: 2,
             readCount: 1,
+            readingYear: 2026,
+            yearCompletedRounds: 0,
+            lifetimeCompletedRounds: 0,
             score: 10,
             talent: 11,
             streak: 1,
@@ -1892,7 +1898,8 @@ for (const pattern of [
     /Math\.floor\(\(currentDay - 1\) \/ 365\)/,
     /const nextReadCount = readCount \+ extraRounds/,
     /Number\.isSafeInteger\(nextReadCount\)/,
-    /const userNeedsNormalization = user\.currentDay > 365/,
+    /const userNeedsLegacyNormalization = storedUser\.currentDay > 365/,
+    /const userNeedsAnnualNormalization = annualFieldsMissing \|\| isNewYear/,
     /rosters\.filter\(\(roster\) => roster\.needsRepair\)/,
     /!userNeedsNormalization && !churchNameNeedsRepair &&[\s\S]*rosterTargets\.length === 0/,
     /`churches\/\$\{user\.churchId\}`/,
@@ -1902,12 +1909,12 @@ for (const pattern of [
     /status: "alreadyNormalized"/,
     /committed: false/,
     /activityActions\/\$\{input\.requestId\}/,
-    /updateMask: \["currentDay", "readCount"\]/,
+    /updateMask: Object\.keys\(progressUpdate\)/,
     /input: \{\}/,
     /MAX_TRANSACTION_ATTEMPTS = 3/,
     /alreadyCompleted: true/,
 ]) assert.match(normalizePositionService, pattern);
-assert.match(normalizePositionService, /readCount:[\s\S]{0,120}fallback: 1/,
+assert.match(normalizePositionService, /const readCount = requireSafeInteger\(user\.readCount,[\s\S]{0,160}fallback: 1/,
     'legacy users.readCount 누락은 기존 1회차 의미로 호환해야 한다.');
 const normalizeLedgerStart = normalizePositionService.indexOf(
     'dependencies.updateWrite(service.projectId, ledgerPath',

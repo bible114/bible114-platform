@@ -43,15 +43,31 @@ const pathFromName = (name: string): string => {
     .join("/");
 };
 
-const baseUser = (overrides: Data = {}): Data => ({
-  uid: UID,
-  name: "민감한 이름",
-  password: "plain-support-password",
-  isDeleted: false,
-  currentDay: 731,
-  readCount: 2,
-  ...overrides,
-});
+const baseUser = (overrides: Data = {}): Data => {
+  const data = {
+    uid: UID,
+    name: "민감한 이름",
+    password: "plain-support-password",
+    isDeleted: false,
+    currentDay: 731,
+    readCount: 2,
+    score: 0,
+    readingEpoch: 0,
+    ...overrides,
+  };
+  const currentDay = Number(data.currentDay);
+  const readCount = Number(data.readCount ?? 1);
+  const completed = Math.max(
+    0,
+    readCount - 1 + Math.floor((currentDay - 1) / 365),
+  );
+  return {
+    readingYear: 2026,
+    yearCompletedRounds: completed,
+    lifetimeCompletedRounds: completed,
+    ...data,
+  };
+};
 
 const input = (
   overrides: Partial<NormalizeLegacyReadingPositionInput> = {},
@@ -349,6 +365,10 @@ Deno.test("이미 1~365 범위면 원장도 쓰지 않는 fresh no-op이다", as
       uid: UID,
       currentDay: 365,
       readCount: 7,
+      readingYear: 2026,
+      yearCompletedRounds: 6,
+      lifetimeCompletedRounds: 6,
+      score: 0,
     },
   });
   const response = await normalize(harness);
@@ -363,6 +383,73 @@ Deno.test("이미 1~365 범위면 원장도 쓰지 않는 fresh no-op이다", as
     "no-op ledger must not be created",
   );
   assert(harness.rollbackCount === 1, "no-op transaction not rolled back");
+});
+
+Deno.test("새해에는 현재 진도·연간 완독·점수만 초기화하고 평생 완독과 달란트는 보존한다", async () => {
+  const harness = createHarness({
+    [`users/${UID}`]: baseUser({
+      currentDay: 120,
+      readCount: 11,
+      readingEpoch: 2,
+      readingYear: 2026,
+      yearCompletedRounds: 10,
+      lifetimeCompletedRounds: 10,
+      score: 999,
+      talent: 4321,
+    }),
+    [`churches/org-a/roster/${UID}`]: {
+      uid: UID,
+      currentDay: 120,
+      readCount: 11,
+      readingYear: 2026,
+      yearCompletedRounds: 10,
+      lifetimeCompletedRounds: 10,
+      score: 999,
+      talent: 876,
+    },
+  });
+  harness.dependencies.now = () => new Date("2027-01-01T01:00:00.000Z");
+
+  const response = await normalize(harness);
+  assert(response.committed, "new-year rollover must commit");
+  const user = harness.state.get(`users/${UID}`);
+  const roster = harness.state.get(`churches/org-a/roster/${UID}`);
+  assertEquals({
+    currentDay: user?.currentDay,
+    readCount: user?.readCount,
+    readingEpoch: user?.readingEpoch,
+    readingYear: user?.readingYear,
+    yearCompletedRounds: user?.yearCompletedRounds,
+    lifetimeCompletedRounds: user?.lifetimeCompletedRounds,
+    score: user?.score,
+    talent: user?.talent,
+  }, {
+    currentDay: 1,
+    readCount: 11,
+    readingEpoch: 3,
+    readingYear: 2027,
+    yearCompletedRounds: 0,
+    lifetimeCompletedRounds: 10,
+    score: 0,
+    talent: 4321,
+  });
+  assertEquals({
+    currentDay: roster?.currentDay,
+    readCount: roster?.readCount,
+    readingYear: roster?.readingYear,
+    yearCompletedRounds: roster?.yearCompletedRounds,
+    lifetimeCompletedRounds: roster?.lifetimeCompletedRounds,
+    score: roster?.score,
+    talent: roster?.talent,
+  }, {
+    currentDay: 1,
+    readCount: 11,
+    readingYear: 2027,
+    yearCompletedRounds: 0,
+    lifetimeCompletedRounds: 10,
+    score: 0,
+    talent: 876,
+  });
 });
 
 Deno.test("users가 정상이지만 roster currentDay가 365를 넘으면 roster만 복구한다", async () => {
