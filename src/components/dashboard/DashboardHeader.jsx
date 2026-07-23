@@ -56,7 +56,7 @@ const DashboardHeader = ({
                     </div>
 
                     <details className="relative col-start-2 row-start-1 shrink-0 md:col-auto md:row-auto">
-                        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-800 px-3 py-2 text-sm font-black text-white hover:bg-slate-700 [&::-webkit-details-marker]:hidden">
+                        <summary id="tut-menu-btn" className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-800 px-3 py-2 text-sm font-black text-white hover:bg-slate-700 [&::-webkit-details-marker]:hidden">
                             ☰ <span>메뉴</span> <span aria-hidden="true" className="text-[10px]">▾</span>
                         </summary>
                         <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">

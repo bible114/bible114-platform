@@ -498,7 +498,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
 
     if (collapsed) {
         return (
-            <section className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm" aria-label="매일성경 영상">
+            <section id="tut-daily-video" className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm" aria-label="매일성경 영상">
                 <div className="flex items-center justify-between gap-3 bg-gradient-to-br from-indigo-600 to-blue-700 px-5 py-4 text-white">
                     <h2 className="flex items-center gap-2 text-base font-bold"><span className="text-xl">🎬</span> 매일성경</h2>
                     <button type="button" onClick={handleCollapsedChange} aria-expanded="false" className="min-h-11 rounded-full bg-white/20 px-4 py-2 text-sm font-black hover:bg-white/30">열기</button>
@@ -509,7 +509,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
 
     if (video === undefined) {
         return (
-            <section className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm" aria-label="매일성경 영상">
+            <section id="tut-daily-video" className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm" aria-label="매일성경 영상">
                 <div className="flex items-center justify-between gap-3 bg-gradient-to-br from-indigo-600 to-blue-700 px-5 py-4 text-white">
                     <h2 className="flex items-center gap-2 text-base font-bold"><span className="text-xl">🎬</span> 매일성경</h2>
                     <button type="button" onClick={handleCollapsedChange} aria-expanded="true" className="min-h-11 rounded-full bg-white/20 px-4 py-2 text-sm font-black hover:bg-white/30">닫기</button>
@@ -589,7 +589,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
         .filter(c => c.chapter);
 
     return (
-        <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
+        <div id="tut-daily-video" className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
             <div className="p-5 bg-gradient-to-br from-indigo-600 to-blue-700 text-white">
                 <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                     <h2 className="text-lg font-bold flex items-center gap-2">

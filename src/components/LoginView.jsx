@@ -832,6 +832,9 @@ const LoginView = ({
             <button type="button" onClick={() => setShowExistingMemberNotice(true)} className="min-h-11 w-full rounded-xl border border-blue-200 bg-blue-50 px-3 text-sm font-black text-blue-800">
                 기존 성도이신가요? 안내 보기
             </button>
+            <button type="button" onClick={() => setShowDemoTour(true)} className="min-h-11 w-full rounded-xl border border-amber-200 bg-amber-50 px-3 text-sm font-black text-amber-900">
+                🧭 앱 화면 먼저 둘러보기
+            </button>
             <div className="text-center text-sm font-semibold text-ink/55">
                 <button type="button" onClick={handleGuestLogin} disabled={loading} className="min-h-11 underline underline-offset-3">로그인 없이 둘러보기</button>
             </div>

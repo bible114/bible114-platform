@@ -45,7 +45,8 @@ const migration = read('src/components/dashboard/PersonalAccountMigrationCard.js
 assert.match(churchAdmin, /기존 성도님:[\s\S]*새로 가입하거나 교회를 다시 찾지 마세요/);
 assert.match(churchAdmin, /신규 성도만[\s\S]*처음 시작하기/);
 assert.match(churchAdmin, /신규 성도의 교회 입장코드/);
-assert.match(readingGuide, /새로 가입하거나 교회를 다시 찾지 말고/);
+assert.match(readingGuide, /휴대폰을 바꿨어요[\s\S]*카카오 또는 구글[\s\S]*기존 진도·달란트 이어보기/);
+assert.doesNotMatch(readingGuide, /로그인이 안 돼요|비밀번호를 잊었어요/);
 assert.match(migration, /카카오·구글[\s\S]*기존 진도·달란트 이어보기[\s\S]*소속 교회 없이 혼자 읽었어요/);
 
 const recovery = auth.slice(
