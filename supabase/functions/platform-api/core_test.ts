@@ -1161,6 +1161,42 @@ Deno.test("알 수 없는 action은 거부한다", () => {
   );
 });
 
+Deno.test("진행판과 읽기 달력 조회는 최소 입력만 받는다", () => {
+  const requestId = "123e4567-e89b-42d3-a456-426614174000";
+  const progress = parsePlatformApiRequest({
+    action: "getCommunityProgress",
+    requestId,
+    orgId: "church-1",
+  });
+  assert(
+    progress.action === "getCommunityProgress" &&
+      progress.orgId === "church-1",
+    "progress request rejected",
+  );
+  const calendar = parsePlatformApiRequest({
+    action: "getReadingCalendar",
+    requestId,
+    year: 2026,
+  });
+  assert(
+    calendar.action === "getReadingCalendar" && calendar.year === 2026,
+    "calendar request rejected",
+  );
+  for (
+    const invalid of [
+      { action: "getCommunityProgress", orgId: "../church" },
+      { action: "getCommunityProgress", orgId: "church-1", uid: "forged" },
+      { action: "getReadingCalendar", year: 1999 },
+      { action: "getReadingCalendar", year: 2026, uid: "forged" },
+    ]
+  ) {
+    assertRequestError(
+      () => parsePlatformApiRequest({ requestId, ...invalid }),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
 Deno.test("본문과 requestId 오류를 구분한다", () => {
   assertRequestError(() => parsePlatformApiRequest(null), "INVALID_BODY");
   assertRequestError(

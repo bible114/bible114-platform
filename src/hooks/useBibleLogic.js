@@ -1,5 +1,4 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
-import { db } from '../utils/firebase';
 import { calculateSubgroupStats } from '../utils/statsUtils';
 import { belongsToDepartment } from '../utils/memberships';
 
@@ -31,7 +30,7 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
 
     // 3. User Actions Hook
     const {
-        readHistory, setReadHistory, hasReadToday, setHasReadToday,
+        hasReadToday, setHasReadToday,
         showConfetti, setShowConfetti, levelUpToast, setLevelUpToast,
         bonusToast, setBonusToast, completionSummary, setCompletionSummary,
         newAchievement, setNewAchievement,
@@ -98,26 +97,16 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
         setAllMembersForRace, setSubgroupStats, setDepartmentMembers,
     ]);
 
-    // [Effect 3] 사용자 공통 데이터. 공동체 전환과 무관하므로 uid가 같으면
-    // 메모와 읽기 기록을 비우거나 다시 불러오지 않는다.
+    // [Effect 3] 사용자 공통 메모. 읽기 달력은 사용자가 열 때만 별도로 불러온다.
     useEffect(() => {
         if (view !== 'dashboard' || !currentUser?.uid) return;
         const uid = currentUser.uid;
         const requestId = ++userDataRequestRef.current;
-        const isCurrentRequest = () => requestId === userDataRequestRef.current;
-
         const loadUserData = async () => {
             try {
                 await loadMemos(uid);
             } catch {
                 // useMemos가 빈 상태로 복구하고 memoLoadError를 노출한다.
-            }
-            try {
-                const historySnap = await db.collection('users').doc(uid).collection('history')
-                    .orderBy('date', 'desc').limit(365).get();
-                if (isCurrentRequest()) setReadHistory(historySnap.docs.map(doc => doc.data()));
-            } catch (error) {
-                if (isCurrentRequest()) console.error('읽기 기록 불러오기 실패:', error);
             }
         };
 
@@ -125,7 +114,7 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
         return () => {
             if (userDataRequestRef.current === requestId) userDataRequestRef.current += 1;
         };
-    }, [view, currentUser?.uid, loadMemos, setReadHistory]);
+    }, [view, currentUser?.uid, loadMemos]);
 
     // [Effect 4] Recompute subgroup stats when members OR communities change
     // communities arrives async after allMembersForRace, so this handles the timing gap
@@ -151,7 +140,6 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
         allMembersForRace, setAllMembersForRace,
         memos, setMemos,
         memoLoadError,
-        readHistory, setReadHistory,
         announcement,
         kakaoLink,
         viewingDay, setViewingDay,

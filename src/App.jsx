@@ -15,7 +15,6 @@ import Icon from './components/Icon';
 import MarkdownRenderer from './components/MarkdownRenderer';
 import LoginView from './components/LoginView';
 import PlanSelectionView from './components/PlanSelectionView';
-import DashboardView from './components/DashboardView';
 import GuestReaderView from './components/GuestReaderView';
 import PlatformPopupAd from './components/PlatformPopupAd';
 import SocialOnboardingView from './components/SocialOnboardingView';
@@ -33,6 +32,7 @@ import {
 
 const ChurchAdminView = lazy(() => import('./components/ChurchAdminView'));
 const PlatformAdminView = lazy(() => import('./components/PlatformAdminView'));
+const DashboardView = lazy(() => import('./components/DashboardView'));
 
 const UNAFFILIATED_FALLBACK_DEPARTMENTS = [{
     id: 'personal',
@@ -199,7 +199,6 @@ const App = () => {
         departmentMembers, setDepartmentMembers,
         allMembersForRace, setAllMembersForRace,
         memos, setMemos, memoLoadError,
-        readHistory, setReadHistory,
         announcement, setAnnouncement,
         viewingDay, setViewingDay,
         hasReadToday, setHasReadToday,
@@ -249,8 +248,7 @@ const App = () => {
         setCurrentMemo('');
         setMemos({});
         setViewingDay(null);
-        setReadHistory([]);
-    }, [setMemos, setViewingDay, setReadHistory]);
+    }, [setMemos, setViewingDay]);
 
     // --- 관리자 관련 상태 ---
     const [selectedPlanType, setSelectedPlanType] = useState(null); // 선택된 플랜 타입
@@ -942,7 +940,12 @@ const App = () => {
         );
     } else if (view === 'dashboard' && currentUser) {
         pageContent = (
-            <DashboardView
+            <Suspense fallback={(
+                <div className="min-h-screen bg-slate-50 flex items-center justify-center pb-20">
+                    <p className="text-slate-500 font-bold">읽기 화면을 준비하고 있어요...</p>
+                </div>
+            )}>
+                <DashboardView
                 currentUser={dashboardUser}
                 setCurrentUser={setCurrentUser}
                 departmentMembers={departmentMembers}
@@ -951,7 +954,6 @@ const App = () => {
                 memoLoadError={memoLoadError}
                 currentMemo={currentMemo}
                 setCurrentMemo={setCurrentMemo}
-                readHistory={readHistory}
                 announcement={announcement}
                 kakaoLink={kakaoLink}
                 verseData={verseData}
@@ -1015,14 +1017,15 @@ const App = () => {
                 setCompletionCelebration={setCompletionCelebration}
                 socialLinkNotice={socialLinkNotice}
                 onSocialLinkNoticeClear={() => setSocialLinkNotice(null)}
-                onGoogleLink={handleGoogleLink}
+                    onGoogleLink={handleGoogleLink}
                 onKakaoLink={handleKakaoLinkStart}
                 personalOrganizations={personalOrgs.map(org => ({ ...org, name: personalOrgNames[org.orgId] || org.orgId }))}
                 talentOrganizations={talentOrganizations}
                 onPrimaryOrgChange={handlePrimaryOrgChange}
                 onActiveOrgChange={handleActiveOrgChange}
                 onPersonalAccountMigrate={handlePersonalAccountMigrate}
-            />
+                />
+            </Suspense>
         );
     } else if (view === 'guest' && currentUser?.role === 'guest') {
         pageContent = (

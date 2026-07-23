@@ -38,7 +38,6 @@ export const useUserBibleActions = (
 ) => {
     const currentUserRef = useRef(currentUser);
     currentUserRef.current = currentUser;
-    const [readHistory, setReadHistory] = useState([]);
     const [hasReadToday, setHasReadToday] = useState(false);
     const [showConfetti, setShowConfetti] = useState(false);
     const [levelUpToast, setLevelUpToast] = useState(null);
@@ -276,15 +275,6 @@ export const useUserBibleActions = (
             const totalTalent = summary.rewardsUserWallet
                 ? (Number(freshUser.talent) || 0)
                 : (rosterTalentByOrgId[preferredRosterOrgId] || 0);
-            const historyItem = {
-                action: 'completeRead',
-                requestId: response.requestId,
-                date: response.calendarDate,
-                day: activityRequest.payload.day,
-                score: summary.scoreEarned,
-                talent: summary.talentEarned,
-                ts: new Date(),
-            };
             const completionResult = {
                 ...summary,
                 updateData: freshUser,
@@ -292,13 +282,8 @@ export const useUserBibleActions = (
                 quizTalentEarned,
                 totalTalent,
                 rosterTalentByOrgId,
-                historyItem,
                 alreadyCompleted: response.alreadyCompleted,
             };
-
-            setReadHistory(previous => previous.some(item => item?.requestId === response.requestId)
-                ? previous
-                : [historyItem, ...previous]);
             if (summary.newLevel > summary.oldLevel) {
                 setLevelUpToast(true);
                 setTimeout(() => setLevelUpToast(false), 5000);
@@ -513,8 +498,6 @@ export const useUserBibleActions = (
     }, [syncLatestUser]);
 
     return {
-        readHistory,
-        setReadHistory,
         hasReadToday,
         setHasReadToday,
         showConfetti,

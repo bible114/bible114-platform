@@ -6,7 +6,9 @@ const CalendarModal = ({
     onClose,
     calendarDate,
     setCalendarDate,
-    readHistory
+    readDates = [],
+    loading = false,
+    error = ''
 }) => {
     if (!show) return null;
 
@@ -24,23 +26,18 @@ const CalendarModal = ({
     // 모든 달을 6주(42칸) 높이로 유지해 월 이동 시 모달이 위아래로 흔들리지 않게 한다.
     while (days.length < 42) days.push(null);
 
-    const getDateFromItem = (item) => typeof item === 'string' ? item : item.date;
-
-    const readDaysThisMonth = readHistory.filter(item => {
-        const dateStr = getDateFromItem(item);
-        const date = new Date(dateStr);
-        return date.getFullYear() === year && date.getMonth() === month;
-    }).map(item => new Date(getDateFromItem(item)).getDate());
+    const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}-`;
+    const readDaysThisMonth = readDates
+        .filter(date => typeof date === 'string' && date.startsWith(monthPrefix))
+        .map(date => Number(date.slice(-2)))
+        .filter(day => Number.isSafeInteger(day) && day >= 1 && day <= daysInMonth);
 
     const prevMonth = () => setCalendarDate(new Date(year, month - 1, 1));
     const nextMonth = () => setCalendarDate(new Date(year, month + 1, 1));
     const goToday = () => setCalendarDate(new Date());
 
     const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
-    const yearReadDays = readHistory.filter(item => {
-        const dateStr = getDateFromItem(item);
-        return new Date(dateStr).getFullYear() === year;
-    }).length;
+    const yearReadDays = readDates.length;
 
     return (
         <div className="fixed inset-0 z-[180] bg-black/50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -81,6 +78,16 @@ const CalendarModal = ({
                             );
                         })}
                     </div>
+                    {loading && (
+                        <div className="mt-3 rounded-xl bg-blue-50 px-3 py-2 text-center text-xs font-bold text-blue-600" role="status">
+                            읽은 날짜를 불러오고 있어요...
+                        </div>
+                    )}
+                    {error && (
+                        <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-bold text-red-600" role="alert">
+                            {error}
+                        </div>
+                    )}
                     <div className="mt-4 flex justify-center gap-4 text-xs">
                         <div className="flex items-center gap-1"><div className="w-4 h-4 bg-green-100 rounded"></div><span className="text-slate-500">읽은 날</span></div>
                         <div className="flex items-center gap-1"><div className="w-4 h-4 bg-slate-50 rounded border"></div><span className="text-slate-500">안 읽은 날</span></div>
@@ -88,11 +95,11 @@ const CalendarModal = ({
                     <div className="mt-3 grid grid-cols-2 gap-2">
                         <div className="bg-green-50 p-3 rounded-xl border border-green-100 text-center">
                             <p className="text-xs text-slate-500">이번 달</p>
-                            <p className="text-lg font-bold text-green-700">{readDaysThisMonth.length}일</p>
+                            <p className="text-lg font-bold text-green-700">{loading ? '—' : `${readDaysThisMonth.length}일`}</p>
                         </div>
                         <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-center">
                             <p className="text-xs text-slate-500">{year}년 총</p>
-                            <p className="text-lg font-bold text-blue-700">{yearReadDays}일</p>
+                            <p className="text-lg font-bold text-blue-700">{loading ? '—' : `${yearReadDays}일`}</p>
                         </div>
                     </div>
                 </div>

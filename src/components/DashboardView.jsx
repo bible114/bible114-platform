@@ -74,7 +74,6 @@ const DashboardView = ({
     memoLoadError,
     currentMemo,
     setCurrentMemo,
-    readHistory,
     announcement,
     kakaoLink,
     verseData,
@@ -155,6 +154,9 @@ const DashboardView = ({
     const [showAccountHelp, setShowAccountHelp] = useState(false);
     const [talentProgramEnabled, setTalentProgramEnabled] = useState(true);
     const [talentMarketVisible, setTalentMarketVisible] = useState(false);
+    const [calendarYears, setCalendarYears] = useState({});
+    const [calendarLoading, setCalendarLoading] = useState(false);
+    const [calendarError, setCalendarError] = useState('');
     const bibleHeaderRef = useRef(null);
     const observedCompletionRef = useRef({
         uid: currentUser?.uid || null,
@@ -162,6 +164,54 @@ const DashboardView = ({
     });
     const currentUserUidRef = useRef(currentUser?.uid || null);
     currentUserUidRef.current = currentUser?.uid || null;
+
+    const calendarYear = calendarDate.getFullYear();
+    const calendarCacheKey = `${currentUser?.uid || ''}:${calendarYear}`;
+    const calendarEntry = calendarYears[calendarCacheKey] || null;
+
+    useEffect(() => {
+        setCalendarYears({});
+        setCalendarError('');
+    }, [currentUser?.uid]);
+
+    useEffect(() => {
+        if (!showCalendar || !currentUser?.uid) return undefined;
+        const expectedUid = currentUser.uid;
+        const expectedLastReadDate = currentUser.lastReadDate || null;
+        const cached = calendarYears[calendarCacheKey];
+        if (cached?.lastReadDate === expectedLastReadDate) return undefined;
+        let alive = true;
+        setCalendarLoading(true);
+        setCalendarError('');
+        import('../utils/capacityApi.js').then(({ getReadingCalendar }) => getReadingCalendar(calendarYear, {
+            expectedUid,
+            timeoutMs: 30_000,
+        })).then(result => {
+            if (!alive || currentUserUidRef.current !== expectedUid) return;
+            setCalendarYears(previous => ({
+                ...previous,
+                [calendarCacheKey]: {
+                    dates: result.dates,
+                    lastReadDate: expectedLastReadDate,
+                },
+            }));
+        }).catch(error => {
+            console.error('읽기 달력 로딩 실패:', error);
+            if (alive && currentUserUidRef.current === expectedUid) {
+                setCalendarError('읽기 달력을 불러오지 못했습니다. 잠시 후 다시 열어주세요.');
+            }
+        }).finally(() => {
+            if (alive && currentUserUidRef.current === expectedUid) setCalendarLoading(false);
+        });
+        return () => { alive = false; };
+    }, [
+        showCalendar,
+        calendarYear,
+        calendarCacheKey,
+        calendarYears,
+        currentUser?.uid,
+        currentUser?.lastReadDate,
+    ]);
 
     useEffect(() => {
         if (!isChurchAdmin || !currentUser?.uid) {
@@ -448,7 +498,15 @@ const DashboardView = ({
             <ReadingGuideModal show={showReadingGuide} onClose={() => setShowReadingGuide(false)} mode="guide" />
             <ReadingGuideModal show={showFaq} onClose={() => setShowFaq(false)} mode="faq" />
             <AchievementsModal show={showAchievements} onClose={() => setShowAchievements(false)} currentUser={currentUser} />
-            <CalendarModal show={showCalendar} onClose={() => setShowCalendar(false)} calendarDate={calendarDate} setCalendarDate={setCalendarDate} readHistory={readHistory} />
+            <CalendarModal
+                show={showCalendar}
+                onClose={() => setShowCalendar(false)}
+                calendarDate={calendarDate}
+                setCalendarDate={setCalendarDate}
+                readDates={calendarEntry?.dates || []}
+                loading={calendarLoading}
+                error={calendarError}
+            />
             <MonthlyContestInfoModal show={showMonthlyContestInfo} onClose={() => setShowMonthlyContestInfo(false)} />
             <RestartConfirmModal show={showRestartConfirm} onClose={() => setShowRestartConfirm(false)} onRestart={handleRestart} />
             <DateSettingsModal

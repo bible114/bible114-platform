@@ -20,6 +20,18 @@ export const useDepartment = currentUser => {
         if (!orgId) return [];
         if (orgId === UNAFFILIATED_CHURCH_ID && currentUser?.accountType !== 'personal') return [];
         try {
+            const { getCommunityProgress } = await import('../utils/capacityApi.js');
+            const response = await getCommunityProgress(orgId, {
+                expectedUid: currentUser?.uid,
+                timeoutMs: 30_000,
+            });
+            return response.members;
+        } catch (apiError) {
+            // 새 진행판이 아직 배포되지 않았거나 일시적으로 실패하면 기존 읽기 경로로
+            // 복구한다. 서버/웹 배포 순서가 엇갈려도 대시보드를 비우지 않는다.
+            console.warn('공동체 진행판 요약 로딩 실패, 기존 명단 조회로 복구:', apiError);
+        }
+        try {
             // password == null 필터는 firestore.rules의 같은 교회 read 허용 조건과 쌍이다 —
             // 자격증명이 private로 이관 완료된 문서만 목록 조회가 규칙 증명을 통과한다.
             const usersRequest = orgId === UNAFFILIATED_CHURCH_ID
@@ -45,7 +57,7 @@ export const useDepartment = currentUser => {
             console.error("멤버 로딩 실패:", e);
             return [];
         }
-    }, [currentUser?.churchId, currentUser?.accountType]);
+    }, [currentUser?.uid, currentUser?.churchId, currentUser?.accountType]);
 
     const loadAnnouncement = useCallback(async () => {
         const requestId = ++announcementRequestRef.current;

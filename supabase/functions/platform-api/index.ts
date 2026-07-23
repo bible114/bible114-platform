@@ -112,6 +112,10 @@ import {
   SelfSubgroupMembershipError,
   updateSelfSubgroupMembership,
 } from "./selfSubgroupMembershipCore.ts";
+import {
+  getCommunityProgress,
+  getReadingCalendar,
+} from "./communityProgressService.ts";
 
 // preview action은 계속 무쓰기 계산만 수행하고, 실제 읽기·퀴즈 변경은 아래의
 // 전용 서비스 transaction 모듈에만 위임한다.
@@ -675,6 +679,36 @@ Deno.serve(async (request) => {
       getServiceAccessToken(),
     ]);
     const { uid } = verifiedUser;
+
+    if (parsed.action === "getCommunityProgress") {
+      const result = await getCommunityProgress(
+        service,
+        uid,
+        parsed.orgId,
+        getServiceDateKst(),
+      );
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        ...result,
+      });
+    }
+
+    if (parsed.action === "getReadingCalendar") {
+      const result = await getReadingCalendar(
+        service,
+        uid,
+        parsed.year,
+      );
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        year: parsed.year,
+        ...result,
+      });
+    }
 
     // 최초 교회 교인 가입은 users 문서가 아직 없으므로
     // 기존 사용자 조회·삭제 검사보다 먼저 처리한다.

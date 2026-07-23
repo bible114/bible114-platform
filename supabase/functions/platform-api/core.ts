@@ -42,8 +42,20 @@ export const ROTATE_CHURCH_ACCESS_CODE_ACTION =
   "rotateChurchAccessCode" as const;
 export const ENSURE_UNAFFILIATED_CHURCH_ACTION =
   "ensureUnaffiliatedChurch" as const;
+export const GET_COMMUNITY_PROGRESS_ACTION = "getCommunityProgress" as const;
+export const GET_READING_CALENDAR_ACTION = "getReadingCalendar" as const;
 
 export type PlatformApiRequest =
+  | {
+    action: typeof GET_COMMUNITY_PROGRESS_ACTION;
+    requestId: string;
+    orgId: string;
+  }
+  | {
+    action: typeof GET_READING_CALENDAR_ACTION;
+    requestId: string;
+    year: number;
+  }
   | {
     action: typeof COMPLETE_CHURCH_ADMIN_SIGNUP_ACTION;
     requestId: string;
@@ -372,12 +384,36 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     consent,
     expectedVersion,
     operation,
+    year,
   } = body as Record<string, unknown>;
   if (!isRequestId(requestId)) {
     throw new PlatformApiRequestError("INVALID_REQUEST_ID");
   }
 
   if (action === PREFLIGHT_ACTION) return { action, requestId };
+  if (action === GET_COMMUNITY_PROGRESS_ACTION) {
+    const allowedKeys = new Set(["action", "requestId", "orgId"]);
+    const normalizedOrgId = safeDocumentId(orgId);
+    if (
+      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+      !normalizedOrgId || normalizedOrgId !== orgId ||
+      normalizedOrgId === "." || normalizedOrgId === ".."
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return { action, requestId, orgId: normalizedOrgId };
+  }
+  if (action === GET_READING_CALENDAR_ACTION) {
+    const allowedKeys = new Set(["action", "requestId", "year"]);
+    if (
+      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+      !Number.isSafeInteger(year) || Number(year) < 2000 ||
+      Number(year) > 2200
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return { action, requestId, year: Number(year) };
+  }
   if (action === ENSURE_UNAFFILIATED_CHURCH_ACTION) {
     const allowedKeys = new Set(["action", "requestId"]);
     if (Object.keys(body).some((key) => !allowedKeys.has(key))) {

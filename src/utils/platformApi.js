@@ -467,6 +467,12 @@ const isValidCanonicalOrgId = value => (
     && !/[\u0000-\u001f\u007f]/.test(value)
 );
 
+const isNullableSafeText = value => (
+    value === null
+    || (typeof value === 'string' && value.length <= 120
+        && value === value.trim() && !/[\u0000-\u001f\u007f]/.test(value))
+);
+
 const compareCanonicalIds = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
 
 const isValidLegacyCalendarDate = (value) => {
@@ -484,6 +490,13 @@ const isValidLegacyCalendarDate = (value) => {
         && parsed.getUTCDate() === day
         && weekdays[parsed.getUTCDay()] === match[1];
 };
+
+const isValidStoredCalendarDate = value => (
+    isValidLegacyCalendarDate(value)
+    || (typeof value === 'string'
+        && /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/.test(value)
+        && !Number.isNaN(new Date(`${value}T00:00:00Z`).getTime()))
+);
 
 const normalizeQuizProgressEntry = (value) => {
     const expectedReward = value?.attempts === 1 ? 10 : value?.attempts === 2 ? 5 : 0;
