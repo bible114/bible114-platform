@@ -1,6 +1,7 @@
 import React from 'react';
 import Icon from '../Icon';
 import { SCHEDULE_DATA } from '../../data/schedules';
+import { formatReadingRangeForDisplay } from '../../utils/readingRangeDisplay';
 
 const DateSettingsModal = ({
     show,
@@ -44,7 +45,7 @@ const DateSettingsModal = ({
 
     const getRange = (offset) => {
         const entry = scheduleData[offset];
-        return entry ? entry.range : null;
+        return entry ? formatReadingRangeForDisplay(entry.range) : null;
     };
 
     const saveSelectedDate = async (offset) => {

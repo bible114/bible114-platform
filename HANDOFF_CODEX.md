@@ -184,6 +184,7 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-23 | T140 날짜 설정 시편 단위 표기 | `src/components/modals/DateSettingsModal.jsx`, `src/utils/readingRangeDisplay.js`, `scripts/validate-reading-range-display.mjs`, `package.json` | 날짜 설정 달력의 읽기 범위에만 표시 변환을 적용해 `시 1장`→`시편 1편`, `시 1-7장`→`시편 1-7편`, 복합 범위의 `시 90장`→`시편 90편`으로 보이게 했다. 다른 책의 `장` 표기, 일정 원본, 본문·퀴즈 파싱은 변경하지 않았다. 전용 6개 사례 검사·전체 validate·build·diff-check 통과. |
 | 2026-07-23 | T139 대시보드 읽기 비용 최적화 | `src/{App.jsx,components/{DashboardView,modals/CalendarModal}.jsx,hooks/{useBibleLogic,useDepartment,useUserBibleActions}.js,utils/{capacityApi,platformApi}.js}`, `supabase/functions/{_shared/firestore.ts,platform-api/{core,index,communityProgressCore,communityProgressService}*}`, `scripts/validate-capacity-optimization.mjs`, `package.json` | 로그인 때마다 최대 365개 history를 읽던 경로를 제거하고, 읽기 캘린더를 사용자가 열 때만 연도별 고유 읽기 날짜로 불러오도록 변경했다. 공동체 순위는 상위 20명으로 축소하지 않고 기존처럼 전체 교인을 제공하되, 서버가 개인정보를 제외한 최소 진행 필드만 8개 shard에 일일 캐시하고 접속자의 최신 진행만 동기화한다. 새 서버가 일시 실패하거나 웹/Edge 배포 순서가 엇갈리면 기존 직접 조회로 자동 복구한다. 동일 날짜 다회 읽기는 캘린더에서 1일로 계산한다. 대시보드와 새 조회 모듈을 지연 로딩해 첫 화면 JS를 511.18→417.59kB로 줄였다. 전용 검사, Deno 463/463, 전체 validate·build·diff-check를 통과했고 Edge→웹 순으로 운영 배포했다. 공개 `index-CMjiqqqb.js`의 로컬/운영 SHA-256 일치, 새 대시보드·capacity chunk HTTP 200, 실제 운영 관리자 화면 콘솔 오류 0을 확인했다. rules와 T132 차단 범위는 변경하지 않았다. |
 | 2026-07-19 | T138 기존 성도 전환 공지·안내 전수 개정 | `src/{App.jsx,hooks/useAuth.js,components/{LoginView,ChurchAdminView}.jsx}`, `src/components/{admin/GoogleLinkCard,churchAdmin/SettingsTab,dashboard/PersonalAccountMigrationCard,modals/ReadingGuideModal}.jsx`, `scripts/validate-{social-only-login,round18,round29}.mjs`, `test-artifacts/{existing-member-notice-mobile,existing-member-guide-updated}.png` | 비로그인 첫 화면에서 기기·공지 버전당 한 번 자동으로 뜨는 기존 성도 전용 팝업을 추가하고, 닫은 뒤에도 `기존 성도 안내 다시 보기`로 재확인할 수 있게 했다. 기존 성도는 새 가입·교회 검색을 하지 않고 `카카오/구글 → 기존 진도·달란트 이어보기 → 예전 정보 1회 확인`, 신규 성도만 `처음 시작하기 → 교회 찾기`를 이용하도록 첫 화면·FAQ·개인 전환·오류 안내·관리자 설정/매뉴얼·성도 인쇄 안내를 전수 통일했다. A4 안내문은 기존/신규 경로와 신규 전용 입장코드를 분리했고 2면 모두 794×1123 overflow 0, 모바일 390×844 팝업은 버튼까지 화면 안에 들어옴을 실제 렌더와 스크린샷으로 확인했다. 전체 validate(platform-api 446/446)·build·diff-check 통과. rules·서버·운영 데이터 변경 및 웹 배포·push 없음. |
 | 2026-07-19 | T137 카카오·구글 전용 로그인·기존 기록 연결 | `src/{App.jsx,hooks/useAuth.js,components/{LoginView,SocialOnboardingView,ChurchAdminView}.jsx}`, `src/components/modals/ReadingGuideModal.jsx`, `scripts/validate-{social-only-login,round11,round18,round29}.mjs`, `package.json`, `test-artifacts/{login-social-only-mobile,admin-signup-social-only-mobile}.png` | 일반 첫 화면의 이름·생년월일·비밀번호 및 관리자 이메일 로그인 입구를 제거하고 카카오·구글만 남겼다. 미등록 소셜 인증 뒤 `기존 진도·달란트 이어보기`에서 성도 또는 관리자 legacy 자격을 한 번 확인한 후 **기존 UID에** Google credential 또는 Kakao link를 연결한다. users 문서가 있는 인증 계정은 절대 삭제하지 않고, 방금 만든 users 문서 없는 소셜 Auth 계정만 source-server 확인 후 정리한다. Google 동일 이메일의 `account-exists-with-different-credential`도 기존 기록 연결 전용으로 회수한다. 신규 공동체 등록도 소셜 계정 선택을 필수화하고 이메일·비밀번호 등록을 제거했다. 도움말·FAQ·성도 인쇄 안내·관리자 매뉴얼을 새 흐름에 맞췄다. 390×844 실제 DOM/스크린샷에서 첫 화면 소셜 버튼만 노출, 공동체 등록의 소셜 미선택 진행 차단을 확인했다. 전체 validate(platform-api 446/446)·build·diff-check 통과. OAuth 최종 승인과 실제 기존 계정 연결은 운영 계정 변경을 피하려고 미실행했고 웹 배포·push 없음. |
@@ -2595,6 +2596,13 @@ Codex의 5개 질문에 대한 확정 답:
 - 캐시에는 이메일·비밀번호·생년월일·메모·달란트 잔액을 넣지 않는다. Firestore rules와 T132 차단 범위는 변경하지 않는다.
 - 동일 날짜에 여러 번 읽은 기록은 캘린더에서 1일로 계산한다. 연도 전환·누적 회독·연간 회독의 기존 서버 권위 필드는 변경하지 않는다.
 - 전용 정적 검사, 순수 계산 테스트, 전체 `npm run validate`, `npm run build`, `git diff --check`를 통과하고 Edge→웹 순으로 배포했다. 공개 메인 파일 해시 일치와 실제 운영 관리자 화면 콘솔 오류 0을 확인했다.
+
+### [x] T140. 날짜 설정 시편 `편` 표기 (2026-07-23 사용자 지시)
+
+- 날짜 설정 달력의 읽기 범위 표시에서만 시편 약칭을 `시편`으로 풀고 단위를 `장`에서 `편`으로 바꾼다.
+- 예: `시 1장`→`시편 1편`, `시 1-7장`→`시편 1-7편`, `신 32-34장, 시 90장`→`신 32-34장, 시편 90편`.
+- 일정 원본과 다른 책의 `장` 표기, 본문·퀴즈 파싱은 변경하지 않는다.
+- 전용 사례 검사와 전체 validate·build·diff-check를 통과한다.
 
 ### [ ] T132. T127 최종 차단 시퀀스 (**2026-07-24 19:00:53 KST 이후 + 사용자 명시 승인 후에만**)
 
