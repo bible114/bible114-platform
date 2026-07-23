@@ -1937,7 +1937,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         // 하단 고정 광고(50px)가 콘텐츠를 가리지 않도록 광고 높이만큼 여백 확보
         <div className="min-h-screen bg-slate-50" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
             {/* 상단 헤더 */}
-            <div className="bg-white border-b border-slate-200 px-4 py-4 flex items-center justify-between sticky top-0 z-10">
+            <div id="admin-tut-header" className="bg-white border-b border-slate-200 px-4 py-4 flex items-center justify-between sticky top-0 z-10">
                 <div>
                     <h1 className="font-extrabold text-slate-800">⛪ 공동체 관리</h1>
                     <p className="text-xs text-slate-400">{currentUser.churchName}</p>
@@ -1951,7 +1951,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     )}
                     <button onClick={() => setShowTutorial(true)}
                         className="text-xs bg-blue-50 text-blue-600 px-3 py-2 rounded-lg font-bold">
-                        사용법 보기
+                        🧭 관리자 화면 투어
                     </button>
                     <button onClick={onBack}
                         className="text-xs bg-slate-100 text-slate-600 px-3 py-2 rounded-lg font-bold">

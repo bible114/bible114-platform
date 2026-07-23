@@ -5,7 +5,7 @@ const DashboardTab = ({
     departmentCards, streakTop, getMemberMembershipText,
     renderRiskList, atRisk, daysSinceRead, getTotalProgressDay, formatReadDate,
 }) => (
-    <div className="space-y-6">
+    <div id="admin-tut-dashboard" className="space-y-6">
         <div>
             <h2 className="font-black text-slate-800 text-lg">목양 대시보드</h2>
             <p className="text-xs text-slate-400 mt-1">오늘 읽기 비교는 현재 권한에서 접근 가능한 회원 문서 기준입니다. history 시간값은 앞으로 쌓이는 기록부터 적용됩니다.</p>
