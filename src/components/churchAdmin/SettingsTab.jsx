@@ -13,7 +13,7 @@ const SettingsTab = ({
                 <button onClick={printMemberGuide} className="bg-emerald-600 text-white font-bold px-4 py-2.5 rounded-xl text-sm hover:bg-emerald-700">📱 성도용 로그인·가입 안내문 인쇄</button>
                 <button onClick={printAdminManual} className="bg-slate-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm hover:bg-slate-800">📘 관리자 매뉴얼 인쇄</button>
             </div>
-            <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold leading-relaxed text-rose-700">기존 성도에게는 “카카오·구글 → 기존 진도·달란트 이어보기”를 안내해주세요. “처음 시작하기 → 교회 찾기”는 신규 성도용입니다.</p>
+            <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold leading-relaxed text-rose-700">7월 31일까지 기존 성도에게 “카카오·구글 → 기존 진도·달란트 이어보기”를 안내해주세요. 8월 1일부터는 카카오·구글 로그인만 이용합니다. “처음 시작하기 → 교회 찾기”는 신규 성도용입니다.</p>
             <p className="mt-2 text-xs font-bold text-amber-700">입장코드를 입력하거나 변경한 직후 인쇄하면 코드가 자동으로 들어갑니다. 나중에 인쇄하면 빈칸에 직접 적어주세요.</p>
         </div>
         <div className="bg-white rounded-2xl p-4 border border-slate-100">

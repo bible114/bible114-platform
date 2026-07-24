@@ -128,6 +128,8 @@ const rows = activeUsers.map(({ uid, data }) => {
     };
 });
 
+const transitionRoles = new Set(['member', 'churchAdmin', 'platformAdmin', 'superAdmin']);
+const transitionRows = rows.filter(row => transitionRoles.has(row.role));
 const unlinked = rows
     .filter(row => !row.google && !row.kakao)
     .sort((left, right) => (
@@ -165,6 +167,16 @@ const report = {
         unlinked: unlinked.length,
         unlinkedWithAuth: unlinked.filter(row => row.authExists).length,
         unlinkedWithoutAuth: unlinked.filter(row => !row.authExists).length,
+        transitionEligibleUsers: transitionRows.length,
+        transitionConnected: transitionRows.filter(row => row.google || row.kakao).length,
+        transitionUnlinked: transitionRows.filter(row => !row.google && !row.kakao).length,
+        transitionUnlinkedWithAuth: transitionRows.filter(
+            row => !row.google && !row.kakao && row.authExists,
+        ).length,
+        transitionUnlinkedWithoutAuth: transitionRows.filter(
+            row => !row.google && !row.kakao && !row.authExists,
+        ).length,
+        nonUserRoleDocuments: rows.filter(row => !transitionRoles.has(row.role)).length,
     },
     unlinkedByChurch: [...grouped.entries()].map(([church, members]) => ({
         church,

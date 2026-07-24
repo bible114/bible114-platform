@@ -1418,7 +1418,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     </div>
     <div class="section">
       <h2>1️⃣ 카카오·구글로 시작</h2>
-      <div class="legacy-alert"><b>기존 성도님:</b> 새로 가입하거나 교회를 다시 찾지 마세요. 소셜 로그인 뒤 <b>"기존 진도·달란트 이어보기"</b>를 누르면 기록이 그대로 연결됩니다.</div>
+      <div class="legacy-alert"><b>기존 성도님:</b> 7월 31일까지 카카오·구글을 연결해주세요. 새로 가입하거나 교회를 다시 찾지 마세요. 소셜 로그인 뒤 <b>"기존 진도·달란트 이어보기"</b>를 누르면 기록이 그대로 연결됩니다. 8월 1일부터는 카카오·구글 로그인만 이용합니다.</div>
       <div class="step"><span class="num">①</span><span>QR로 접속한 뒤 <b>카카오로 시작</b> 또는 <b>구글로 시작</b>을 눌러주세요</span></div>
       <div class="step"><span class="num">②</span><span><b>기존 성도</b>: <b>기존 진도·달란트 이어보기</b> → 기존 교회·이름·생년월일·비밀번호를 한 번 확인</span></div>
       <div class="step"><span class="num">③</span><span><b>신규 성도만</b>: <b>처음 시작하기</b> → 이름·생년월일 입력 → <b>"${churchName}"</b> 찾기</span></div>
@@ -1518,7 +1518,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
   </ul></div>
 
   <div class="sec"><h2>⚙️ 설정 — 인쇄물 · 입장코드</h2><ul>
-    <li><b>성도용 로그인·가입 안내문 인쇄</b>: 기존 성도의 기록 연결과 신규 성도의 가입 방법이 담긴 A4 — 전체 성도에게 다시 안내해주세요.</li>
+    <li><b>성도용 로그인·가입 안내문 인쇄</b>: 기존 성도의 기록 연결과 신규 성도의 가입 방법이 담긴 A4 — 7월 31일까지 전체 성도에게 다시 안내해주세요.</li>
     <li>교회 입장코드 변경도 여기서 해요 (가입할 때 교인이 입력하는 코드). <b>코드를 입력·변경한 바로 그 자리에서 안내문을 인쇄</b>하면 자동으로 들어갑니다.</li>
   </ul></div>
 
