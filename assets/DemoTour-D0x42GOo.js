@@ -1,4 +1,4 @@
-import{r as o,j as e}from"./vendor-react-D7f9BLy3.js";import{D as h,M as u,T as p}from"./TutorialOverlay-B97RoT3S.js";import{a4 as g}from"./index-j5cgc17C.js";import"./app-catalog-Dq5Do3BC.js";import"./vendor-firebase-core-2mLKdCzX.js";import"./vendor-BURj0p3m.js";import"./vendor-firebase-auth-CIddKfXu.js";import"./vendor-firebase-firestore-CRbYWJok.js";import"./app-schedules-DPvgT2CV.js";const f={title:"성경통독 114 DAY 150",subtitle:"시편 22-24편 / 사도행전 7장",text:`# 시편 23편
+import{r as o,j as e}from"./vendor-react-D7f9BLy3.js";import{D as h,M as u,T as p}from"./TutorialOverlay-i_Sl6yre.js";import{a4 as g}from"./index-D2XsMKEV.js";import"./app-catalog-Dq5Do3BC.js";import"./vendor-firebase-core-2mLKdCzX.js";import"./vendor-BURj0p3m.js";import"./vendor-firebase-auth-CIddKfXu.js";import"./vendor-firebase-firestore-CRbYWJok.js";import"./app-schedules-DPvgT2CV.js";const f={title:"성경통독 114 DAY 150",subtitle:"시편 22-24편 / 사도행전 7장",text:`# 시편 23편
 
 [[VERSE:1]]여호와는 나의 목자시니 내게 부족함이 없으리로다
 
