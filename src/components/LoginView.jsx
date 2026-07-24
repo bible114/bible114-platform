@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import { auth, authReady, db } from '../utils/firebase';
 import OrgEditor from './OrgEditor';
 import ReadingGuideModal from './modals/ReadingGuideModal';
+import SocialLoginTransitionModal from './modals/SocialLoginTransitionModal';
 import ChurchPicker from './ChurchPicker';
 import { getChurchDirectory, getLastChurch, saveLastChurch } from '../utils/churchDirectory';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../data/constants';
@@ -16,6 +17,10 @@ import {
     hasPendingLoginTransition,
     markLoginTransitionPending,
 } from '../utils/loginTransition';
+import {
+    dismissSocialLoginTransition,
+    shouldShowSocialLoginTransition,
+} from '../utils/socialLoginTransition';
 
 const DemoTour = lazy(() => import('./DemoTour'));
 
@@ -77,46 +82,6 @@ const PulseIndicator = ({ color = '#b8702a', size = 7 }) => (
     </span>
 );
 
-const ExistingMemberNoticeModal = ({ onClose }) => {
-    const confirmButtonRef = useRef(null);
-
-    useEffect(() => {
-        const previousBodyOverflow = document.body.style.overflow;
-        document.body.style.overflow = 'hidden';
-        const handleKeyDown = event => {
-            if (event.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', handleKeyDown);
-        confirmButtonRef.current?.focus();
-        return () => {
-            document.removeEventListener('keydown', handleKeyDown);
-            document.body.style.overflow = previousBodyOverflow;
-        };
-    }, [onClose]);
-
-    return (
-        <div className="fixed inset-0 z-[140] flex items-end justify-center bg-black/55 p-0 sm:items-center sm:p-5">
-            <section role="dialog" aria-modal="true" aria-labelledby="existing-member-notice-title" className="w-full max-w-md rounded-t-3xl bg-white p-6 pb-8 shadow-2xl sm:rounded-3xl">
-                <p className="text-sm font-black text-red-600">기존 성도님 필독</p>
-                <h2 id="existing-member-notice-title" className="mt-1 text-2xl font-black leading-tight text-slate-900">새로 가입하거나 교회를 다시 찾지 마세요</h2>
-                <p className="mt-3 text-sm leading-relaxed text-slate-600">예전에 이름·생년월일·비밀번호로 읽었다면 기존 진도와 달란트를 그대로 연결할 수 있습니다.</p>
-                <ol className="mt-5 space-y-3 rounded-2xl bg-blue-50 p-4 text-sm leading-relaxed text-blue-950">
-                    <li><b>1.</b> 카카오 또는 구글로 시작</li>
-                    <li><b>2.</b> <strong>기존 진도·달란트 이어보기</strong> 선택</li>
-                    <li><b>3.</b> 기존 교회·이름·생년월일·비밀번호를 한 번 확인</li>
-                </ol>
-                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold leading-relaxed text-amber-900">
-                    ‘처음 시작하기’와 교회 찾기는 신규 성도만 이용해주세요. 기존 성도가 누르면 기록이 나뉠 수 있습니다.
-                </div>
-                <p className="mt-3 text-xs leading-relaxed text-slate-500">기존 비밀번호를 모르면 교회 관리자(담당 선생님)에게 문의해주세요.</p>
-                <button ref={confirmButtonRef} type="button" onClick={onClose} className="mt-5 min-h-14 w-full rounded-2xl bg-blue-600 px-5 py-4 text-base font-black text-white">
-                    확인했습니다
-                </button>
-            </section>
-        </div>
-    );
-};
-
 // ─── Input style helper ────────────────────────────────────────────────────────
 const inputCls = "w-full bg-cream border border-hairline rounded-lg px-3.5 py-3 text-sm text-ink placeholder-ink/40 focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent/60 transition-all font-sans";
 
@@ -145,7 +110,9 @@ const LoginView = ({
     const [signupStep, setSignupStep] = useState(1);
     const [showDemoTour, setShowDemoTour] = useState(false);
     const [showReadingGuide, setShowReadingGuide] = useState(false);
-    const [showExistingMemberNotice, setShowExistingMemberNotice] = useState(false);
+    const [showExistingMemberNotice, setShowExistingMemberNotice] = useState(
+        () => shouldShowSocialLoginTransition('landing'),
+    );
     const [openPublicPolicyId, setOpenPublicPolicyId] = useState(null);
     const pendingKakaoReturnRef = useRef(isPendingKakaoLoginReturn());
     const setLoginTransitioning = value => {
@@ -367,6 +334,16 @@ const LoginView = ({
     }, [presetChurchId]);
 
     const clearError = () => setErrorMsg('');
+
+    const closeExistingMemberNotice = () => {
+        dismissSocialLoginTransition('landing');
+        setShowExistingMemberNotice(false);
+    };
+
+    const startSocialConnectionFromNotice = handler => {
+        setShowExistingMemberNotice(false);
+        handler();
+    };
 
     const resetGoogleAdminSignupLocalState = () => {
         setGoogleAdminSignupProfile(null);
@@ -1334,7 +1311,13 @@ const LoginView = ({
 
             </div>
 
-            {showExistingMemberNotice && <ExistingMemberNoticeModal onClose={() => setShowExistingMemberNotice(false)} />}
+            <SocialLoginTransitionModal
+                show={showExistingMemberNotice}
+                onClose={closeExistingMemberNotice}
+                onKakao={() => startSocialConnectionFromNotice(handleKakaoAccountStart)}
+                onGoogle={() => startSocialConnectionFromNotice(handleGoogleAccountStart)}
+                googleDisabled={isKakaoTalkBrowser}
+            />
 
             {showDemoTour && (
                 <Suspense fallback={null}>

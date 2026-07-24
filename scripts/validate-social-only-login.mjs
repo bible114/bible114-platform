@@ -6,6 +6,10 @@ const login = read('src/components/LoginView.jsx');
 const onboarding = read('src/components/SocialOnboardingView.jsx');
 const auth = read('src/hooks/useAuth.js');
 const app = read('src/App.jsx');
+const dashboard = read('src/components/DashboardView.jsx');
+const transitionModal = read('src/components/modals/SocialLoginTransitionModal.jsx');
+const transition = read('src/utils/socialLoginTransition.js');
+const transitionHelpers = await import('../src/utils/socialLoginTransition.js');
 
 const entry = login.slice(
     login.indexOf('const renderEntryChoice ='),
@@ -28,10 +32,30 @@ assert.doesNotMatch(adminSignup, /이메일과 비밀번호로 등록|placeholde
 assert.doesNotMatch(adminSignup, /setActiveTab\('admin'\)/);
 assert.match(login, /if \(!isSocialSignup\)[\s\S]{0,160}카카오 또는 구글 계정을 먼저 확인/);
 assert.match(login, /password: null/);
-assert.match(login, /기존 성도님 필독/);
-assert.match(login, /새로 가입하거나 교회를 다시 찾지 마세요/);
-assert.match(login, /‘처음 시작하기’와 교회 찾기는 신규 성도만/);
-assert.doesNotMatch(login, /setShowExistingMemberNotice\(true\)[\s\S]{0,300}localStorage|EXISTING_MEMBER_NOTICE_KEY/);
+assert.match(login, /shouldShowSocialLoginTransition\('landing'\)/);
+assert.match(login, /dismissSocialLoginTransition\('landing'\)/);
+assert.match(login, /SocialLoginTransitionModal/);
+assert.match(transitionModal, /SOCIAL_LOGIN_TRANSITION_DEADLINE_LABEL/);
+assert.match(transitionModal, /카카오·구글 로그인만 이용합니다/);
+assert.match(transitionModal, /기존 가입자는 새로 가입하지 마세요/);
+assert.match(transitionModal, /기존 진도와 달란트를 그대로 연결하고, 소속 교회도 유지/);
+assert.match(transitionModal, /‘처음 시작하기’로 새 계정을 만들면 이전 기록과 달란트가 나뉠 수/);
+assert.match(transition, /2026-08-01T00:00:00\+09:00/);
+assert.match(transition, /SOCIAL_LOGIN_TRANSITION_NOTICE_VERSION = '20260731_v1'/);
+assert.match(dashboard, /hasSocialLoginProvider\(currentUser, auth\.currentUser\)/);
+assert.match(dashboard, /shouldShowSocialLoginTransition\(currentUser\?\.uid\)/);
+assert.match(dashboard, /accountLinkMode/);
+assert.equal(
+    transitionHelpers.isSocialLoginTransitionActive(Date.parse('2026-07-31T23:59:59+09:00')),
+    true,
+);
+assert.equal(
+    transitionHelpers.isSocialLoginTransitionActive(Date.parse('2026-08-01T00:00:00+09:00')),
+    false,
+);
+assert.equal(transitionHelpers.hasSocialLoginProvider({ authProvider: 'google.com' }), true);
+assert.equal(transitionHelpers.hasSocialLoginProvider({ authProviders: ['kakao.com'] }), true);
+assert.equal(transitionHelpers.hasSocialLoginProvider({ authProvider: 'password' }), false);
 
 assert.match(onboarding, /기존 진도·달란트 이어보기/);
 assert.match(onboarding, /처음 시작하기/);

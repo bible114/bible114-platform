@@ -5,8 +5,13 @@ import { getLevelInfo } from '../data/levels';
 import { DEFAULT_DEPARTMENTS } from '../data/departments';
 import { belongsToDepartment, getMembershipList } from '../utils/memberships';
 import { getDaysRead } from '../utils/helpers';
-import { db } from '../utils/firebase';
+import { auth, db } from '../utils/firebase';
 import { resolveTalentProgram } from '../utils/talentProgram';
+import {
+    dismissSocialLoginTransition,
+    hasSocialLoginProvider,
+    shouldShowSocialLoginTransition,
+} from '../utils/socialLoginTransition';
 import {
     scheduleScrollIntoView,
     shouldScrollToReadingHeader,
@@ -23,6 +28,7 @@ import {
     DateSettingsModal,
     RankingModal,
     MemoListModal,
+    SocialLoginTransitionModal,
 } from './modals';
 
 // Dashboard Components
@@ -152,6 +158,7 @@ const DashboardView = ({
     const [showChurchAdminReaderGuide, setShowChurchAdminReaderGuide] = useState(false);
     const [showMemberships, setShowMemberships] = useState(false);
     const [showAccountHelp, setShowAccountHelp] = useState(false);
+    const [showSocialLoginTransition, setShowSocialLoginTransition] = useState(false);
     const [talentProgramEnabled, setTalentProgramEnabled] = useState(true);
     const [talentMarketVisible, setTalentMarketVisible] = useState(false);
     const [calendarYears, setCalendarYears] = useState({});
@@ -164,6 +171,19 @@ const DashboardView = ({
     });
     const currentUserUidRef = useRef(currentUser?.uid || null);
     currentUserUidRef.current = currentUser?.uid || null;
+
+    useEffect(() => {
+        const eligibleRole = ['member', 'churchAdmin'].includes(currentUser?.role);
+        const needsConnection = eligibleRole && !hasSocialLoginProvider(currentUser, auth.currentUser);
+        setShowSocialLoginTransition(
+            Boolean(needsConnection && shouldShowSocialLoginTransition(currentUser?.uid)),
+        );
+    }, [currentUser?.authProvider, currentUser?.authProviders, currentUser?.role, currentUser?.uid]);
+
+    const closeSocialLoginTransition = () => {
+        dismissSocialLoginTransition(currentUser?.uid);
+        setShowSocialLoginTransition(false);
+    };
 
     const calendarYear = calendarDate.getFullYear();
     const calendarCacheKey = `${currentUser?.uid || ''}:${calendarYear}`;
@@ -557,6 +577,13 @@ const DashboardView = ({
                 show={showChurchAdminReaderGuide}
                 onClose={dismissChurchAdminReaderGuide}
                 onOpenAdmin={openAdminFromReaderGuide}
+            />
+            <SocialLoginTransitionModal
+                show={showSocialLoginTransition}
+                onClose={closeSocialLoginTransition}
+                onKakao={onKakaoLink}
+                onGoogle={onGoogleLink}
+                accountLinkMode
             />
             {showAccountHelp && (
                 <div className="fixed inset-0 z-[180] flex items-end justify-center bg-black/45 sm:items-center sm:p-4" onMouseDown={event => { if (event.target === event.currentTarget) setShowAccountHelp(false); }}>

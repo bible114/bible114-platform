@@ -6,6 +6,7 @@ const read = path => fs.readFileSync(new URL(`../${path}`, import.meta.url), 'ut
 const churchAdmin = read('src/components/ChurchAdminView.jsx');
 const settingsTab = read('src/components/churchAdmin/SettingsTab.jsx');
 const loginView = read('src/components/LoginView.jsx');
+const socialTransitionModal = read('src/components/modals/SocialLoginTransitionModal.jsx');
 const readingGuide = read('src/components/modals/ReadingGuideModal.jsx');
 const homeScreenHelp = read('src/components/dashboard/HomeScreenHelpBanner.jsx');
 const indexHtml = read('index.html');
@@ -104,10 +105,11 @@ assert.match(readingGuide, /document\.body\.style\.overflow = 'hidden'/);
 assert.match(readingGuide, /event\.key !== 'Tab'/);
 assert.match(readingGuide, /dialogRef\.current\?\.querySelectorAll/);
 
+const loginHelpSources = `${loginView}\n${socialTransitionModal}`;
 for (const loginHelpText of [
     '기존 진도와 달란트를 그대로 연결',
     '이름·생년월일·비밀번호를 다시 확인해주세요.',
-]) assert.ok(loginView.includes(loginHelpText), `로그인 도움 문구 누락: ${loginHelpText}`);
+]) assert.ok(loginHelpSources.includes(loginHelpText), `로그인 도움 문구 누락: ${loginHelpText}`);
 assert.match(loginView, /aria-label="로그인 도움"[\s\S]*setShowReadingGuide\(true\)[\s\S]*min-h-11[\s\S]*도움말/);
 assert.doesNotMatch(loginView, /로그인·기록 문의|setShowAdminContact|AdminContactModal/);
 assert.match(loginView, /onClick=\{\(\) => setShowReadingGuide\(true\)\}[^>]*>읽는 방법<\/button>/);
