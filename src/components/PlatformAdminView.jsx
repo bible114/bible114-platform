@@ -1484,7 +1484,7 @@ const PlatformAdminView = ({
                             <h3 className="text-sm font-bold text-sky-800 mb-1">🏠 교회 디렉토리 재생성</h3>
                             <p className="text-xs text-sky-700 mb-3">
                                 서버가 교회 원본을 사전점검한 뒤 <code className="bg-sky-100 px-1 rounded">publicChurches</code>와 호환용 기존 디렉토리를 함께 갱신합니다.
-                                실제 쓰기 전에 변경 건수를 보여주며, 남은 운영 쓰기를 모두 서버로 옮기기 전까지 화면은 기존 디렉토리를 계속 사용합니다.
+                                로그인 화면은 현재 최소 공개 필드만 담은 <code className="bg-sky-100 px-1 rounded">publicChurches</code>를 사용하며, 이 버튼은 변경 건수를 먼저 보여준 뒤 안전하게 다시 맞춥니다.
                             </p>
                             <button
                                 onClick={handleRebuildDirectory}
