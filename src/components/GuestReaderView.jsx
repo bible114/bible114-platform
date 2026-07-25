@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { TOTAL_DAYS } from '../data/constants';
 import { PLAN_TYPES, BIBLE_VERSIONS } from '../data/bible_options';
+import { getPlanTotalDays } from '../data/schedules';
 import { useBibleContent } from '../hooks/useBibleContent';
 import { useTTS } from '../hooks/useTTS';
 import { recordGuestRead, saveGuestState } from '../utils/guestStorage';
@@ -25,11 +25,15 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
     }, []);
 
     const currentPlanId = currentUser?.planId || '1year_revised';
+    const [showNextPlanPrompt, setShowNextPlanPrompt] = useState(false);
 
     const handleGuestVersionChange = (newPlanId) => {
         if (!newPlanId || newPlanId === currentPlanId) return;
-        saveGuestState({ planId: newPlanId });
-        setCurrentUser(prev => (prev ? { ...prev, planId: newPlanId } : prev));
+        const nextDay = showNextPlanPrompt ? 1 : (currentUser?.currentDay || 1);
+        saveGuestState({ planId: newPlanId, currentDay: nextDay });
+        setCurrentUser(prev => (prev ? { ...prev, planId: newPlanId, currentDay: nextDay } : prev));
+        setViewingDay(nextDay);
+        setShowNextPlanPrompt(false);
     };
 
     const [fontSize, setFontSize] = useState(() => {
@@ -59,7 +63,8 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
     }, [currentUser?.uid, currentUser?.planId, viewingDay, loadContent]);
 
     const hasReadToday = currentUser?.lastReadDate === new Date().toDateString();
-    const daysRemaining = Math.max(0, TOTAL_DAYS - (viewingDay || currentUser?.currentDay || 1) + 1);
+    const totalPlanDays = getPlanTotalDays(currentPlanId);
+    const daysRemaining = Math.max(0, totalPlanDays - (viewingDay || currentUser?.currentDay || 1) + 1);
 
     const handleRead = async () => {
         if (readSubmittingRef.current || readSubmitting) return;
@@ -78,6 +83,7 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
                 videoType: guest.videoType,
             } : prev);
             setViewingDay(guest.currentDay);
+            if (guest.requiresNextPlan) setShowNextPlanPrompt(true);
             setShowConfetti(true);
             setTimeout(() => setShowConfetti(false), 3000);
             window.refreshKakaoAdBanner?.();
@@ -97,6 +103,28 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
 
     return (
         <div className="min-h-screen bg-slate-50 overflow-hidden relative font-sans">
+            {showNextPlanPrompt && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="guest-next-plan-title">
+                    <div className="w-full max-w-sm rounded-3xl border-2 border-amber-200 bg-white p-7 text-center shadow-2xl">
+                        <div className="text-6xl" aria-hidden="true">🎉</div>
+                        <h2 id="guest-next-plan-title" className="mt-4 text-3xl font-black text-slate-800">60일 성경 통독 완주!</h2>
+                        <p className="mt-3 font-bold text-purple-600">다음 읽기 계획을 선택해 주세요.</p>
+                        <select
+                            value=""
+                            onChange={(event) => handleGuestVersionChange(event.target.value)}
+                            className="mt-6 min-h-12 w-full rounded-xl border-2 border-slate-200 bg-white px-3 font-bold text-slate-800"
+                            aria-label="다음 읽기 계획 선택"
+                        >
+                            <option value="" disabled>다음 계획 선택</option>
+                            {versionOptions.map(option => (
+                                <option key={option.planId} value={option.planId}>
+                                    {option.planTitle} · {option.versionName}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+            )}
             {showConfetti && <div className="fixed inset-0 z-50 flex justify-center pt-40 pointer-events-none"><div className="text-6xl animate-bounce">🎊</div></div>}
 
             <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200">

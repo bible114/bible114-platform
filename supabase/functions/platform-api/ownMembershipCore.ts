@@ -6,6 +6,8 @@ export const MEMBER_ONBOARDING_PLAN_IDS = [
   "1year_revised",
   "1year_new",
   "nt_new",
+  "readable_revised",
+  "readable_new",
 ] as const;
 
 export type MemberOnboardingPlanId = typeof MEMBER_ONBOARDING_PLAN_IDS[number];

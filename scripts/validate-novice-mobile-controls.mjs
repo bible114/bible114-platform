@@ -46,6 +46,10 @@ assert.match(raceMap, /-left-2 -top-2[\s\S]*h-3\.5 w-3\.5[\s\S]*rounded-full[\s\
     '완독 숫자 배지는 이름 글자 앞까지 침범하지 않는 작은 고정 크기 원형이어야 한다.');
 assert.match(raceMap, /data-reading-round-badge[\s\S]*data-racer-nameplate[\s\S]*data-racer-name/,
     '완독 숫자 배지와 이름표는 실제 화면에서 겹침을 측정할 수 있어야 한다.');
+assert.match(raceMap, /data-community-participant-count[\s\S]*함께 달리는 중[\s\S]*participantCount[\s\S]*명/,
+    '천로역정 지도 왼쪽 위에 교회별 참여자 수 배지가 있어야 한다.');
+assert.match(dashboard, /<RaceMap[\s\S]*participantCount=\{allRacersSorted\.length\}/,
+    '천로역정 참여자 수는 현재 교회의 전체 진행판 인원으로 계산해야 한다.');
 assert.doesNotMatch(raceMap, /-left-1\.5 -top-2[\s\S]*h-5 w-5/,
     '기존 20px 완독 배지는 이름 첫 글자를 가리므로 다시 사용하면 안 된다.');
 assert.doesNotMatch(raceMap, /min-w-6[\s\S]*readingRoundBadge|readingRoundBadge[\s\S]*px-1 py-0\.5/,

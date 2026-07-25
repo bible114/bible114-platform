@@ -4,8 +4,12 @@ import { GENESIS_1, AUDIO_BASE_URL } from '../data/constants';
 import { BIBLE_VERSIONS, PLAN_TYPES } from '../data/bible_options';
 import { getActualDay } from '../utils/helpers';
 import { getYearCompletedRounds } from '../utils/annualReading.js';
+import { getPlanTotalDays } from '../data/schedules';
 
 const CACHE_LOOKUP_TIMEOUT_MS = 8000;
+// 대한성서공회 RNKSV 장·절 원문으로 새번역 캐시를 교체할 때 기존
+// localStorage 본문이 계속 보이지 않도록 읽기 캐시 세대를 분리한다.
+const VERSE_CACHE_REVISION = 'rnksv-2001-v1';
 
 const getVersionName = (planType, version) => {
     const planGroup = BIBLE_VERSIONS[planType];
@@ -44,10 +48,11 @@ export const useBibleContent = (currentUser) => {
     const fetchVerseFromCache = async (planId, day) => {
         const [planType, version] = (planId || '1year_revised').split('_');
         const cacheKey = `${planType}_${version}_${day}`;
+        const localCacheKey = `v_${VERSE_CACHE_REVISION}_${cacheKey}`;
 
         // 1단계: localStorage (즉시)
         try {
-            const local = localStorage.getItem(`v_${cacheKey}`);
+            const local = localStorage.getItem(localCacheKey);
             if (local) {
                 return JSON.parse(local);
             }
@@ -61,7 +66,7 @@ export const useBibleContent = (currentUser) => {
                 const data = doc.data();
                 // localStorage에 저장 (다음번 즉시 로드)
                 try {
-                    localStorage.setItem(`v_${cacheKey}`, JSON.stringify({
+                    localStorage.setItem(localCacheKey, JSON.stringify({
                         title: data.title, text: data.text, audioUrl: data.audioUrl || null
                     }));
                 } catch (e) { /* 용량 초과 무시 */ }
@@ -98,7 +103,7 @@ export const useBibleContent = (currentUser) => {
         const planTypeData = PLAN_TYPES.find(p => p.id === planType);
         const planTypeName = planTypeData ? planTypeData.title : '성경 통독';
 
-        const actualDay = getActualDay(dayToShow, dayOffset);
+        const actualDay = getActualDay(dayToShow, dayOffset, getPlanTotalDays(planId));
         const cachedContent = await fetchCachedVerseData(planId, actualDay);
 
         const completedThisYear = getYearCompletedRounds(currentUser);

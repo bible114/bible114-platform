@@ -182,6 +182,8 @@ const App = () => {
             setCompletionCelebration({
                 completedRound: annualCompletedRound,
                 newReadCount: annualCompletedRound + 1,
+                requiresNextPlan: resultData.requiresNextPlan === true,
+                totalDays: resultData.totalDays,
                 talentEarned: resultData.talentEarned,
                 quizTalentEarned: resultData.quizTalentEarned,
                 totalTalent: resultData.totalTalent,

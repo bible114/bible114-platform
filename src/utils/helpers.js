@@ -323,9 +323,10 @@ export const dateToOffset = (month, day) => {
 };
 
 // 실제 본문 Day 계산 (dayOffset은 Day 1의 날짜를 의미, currentDay는 현재 읽고 있는 Day)
-export const getActualDay = (currentDay, dayOffset) => {
+export const getActualDay = (currentDay, dayOffset, totalDays = 365) => {
+    const safeTotalDays = Number.isSafeInteger(totalDays) && totalDays > 0 ? totalDays : 365;
     let actualDay = currentDay + dayOffset;
-    while (actualDay > 365) actualDay -= 365;
-    while (actualDay < 1) actualDay += 365;
+    while (actualDay > safeTotalDays) actualDay -= safeTotalDays;
+    while (actualDay < 1) actualDay += safeTotalDays;
     return actualDay;
 };

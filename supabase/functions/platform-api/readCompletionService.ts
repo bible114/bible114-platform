@@ -616,10 +616,18 @@ const parseReadyResult = (value: unknown): ReadCompletionResult => {
         "ledger.nextViewingDay",
         { min: 1, max: 365 },
       ),
+      totalDays: requireSafeInteger(
+        summary.totalDays,
+        "ledger.totalDays",
+        { fallback: 365, min: 1, max: 365 },
+      ),
       completedRound: requireBoolean(
         summary.completedRound,
         "ledger.completedRound",
       ),
+      requiresNextPlan: summary.requiresNextPlan === undefined
+        ? false
+        : requireBoolean(summary.requiresNextPlan, "ledger.requiresNextPlan"),
       secretShopJustUnlocked: requireBoolean(
         summary.secretShopJustUnlocked,
         "ledger.secretShopJustUnlocked",

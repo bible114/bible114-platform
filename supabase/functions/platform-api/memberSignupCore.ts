@@ -184,6 +184,8 @@ export const validateMemberSignup = (input: {
     "1year_revised",
     "1year_new",
     "nt_new",
+    "readable_revised",
+    "readable_new",
   ]);
   const guestProgress = input.guestProgress;
   const lastReadDateKey = guestProgress?.lastReadDate === null

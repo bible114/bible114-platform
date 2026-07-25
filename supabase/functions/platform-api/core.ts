@@ -115,7 +115,13 @@ export type PlatformApiRequest =
     action: typeof COMPLETE_MEMBER_ONBOARDING_ACTION;
     requestId: string;
     orgId: string;
-    planId: "1year_sequential" | "1year_revised" | "1year_new" | "nt_new";
+    planId:
+      | "1year_sequential"
+      | "1year_revised"
+      | "1year_new"
+      | "nt_new"
+      | "readable_revised"
+      | "readable_new";
     departmentId: string;
     subgroupId: string;
   }
@@ -598,6 +604,8 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       "1year_revised",
       "1year_new",
       "nt_new",
+      "readable_revised",
+      "readable_new",
     ]);
     if (
       Object.keys(body).some((key) => !allowedKeys.has(key)) ||
@@ -619,7 +627,9 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
         | "1year_sequential"
         | "1year_revised"
         | "1year_new"
-        | "nt_new",
+        | "nt_new"
+        | "readable_revised"
+        | "readable_new",
       departmentId: normalizedDepartmentId,
       subgroupId: normalizedSubgroupId,
     };

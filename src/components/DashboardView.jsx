@@ -1,6 +1,7 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { TOTAL_DAYS, UNAFFILIATED_CHURCH_ID } from '../data/constants';
+import { UNAFFILIATED_CHURCH_ID } from '../data/constants';
 import { BIBLE_VERSIONS, PLAN_TYPES } from '../data/bible_options';
+import { getPlanTotalDays } from '../data/schedules';
 import { getLevelInfo } from '../data/levels';
 import { DEFAULT_DEPARTMENTS } from '../data/departments';
 import { belongsToDepartment, getMembershipList } from '../utils/memberships';
@@ -405,7 +406,8 @@ const DashboardView = ({
         return defaultMessages[currentDay % defaultMessages.length];
     };
 
-    const daysRemaining = Math.max(0, TOTAL_DAYS - currentDay);
+    const totalPlanDays = getPlanTotalDays(currentUser?.planId);
+    const daysRemaining = Math.max(0, totalPlanDays - currentDay);
 
     // 레이터 데이터 정제
     const allRacersSorted = allMembersForRace.map(m => {
@@ -474,7 +476,13 @@ const DashboardView = ({
                     talentEarned={completionCelebration.talentEarned}
                     quizTalentEarned={completionCelebration.quizTalentEarned}
                     totalTalent={completionCelebration.totalTalent}
+                    requiresNextPlan={completionCelebration.requiresNextPlan}
+                    totalDays={completionCelebration.totalDays}
                     onClose={() => setCompletionCelebration(null)}
+                    onChooseNextPlan={() => {
+                        setCompletionCelebration(null);
+                        setView('plan_type_select');
+                    }}
                 />
             )}
             {showConfetti && <div className="fixed inset-0 z-50 flex justify-center pt-40 pointer-events-none"><div className="text-6xl animate-bounce">🎊</div></div>}
@@ -650,7 +658,12 @@ const DashboardView = ({
                         <div className="mb-3 px-4">
                             <h2 className="text-base font-black text-slate-800">🏃 함께 읽는 통독 현황</h2>
                         </div>
-                        <RaceMap racers={racers} departmentChampions={departmentChampions} getSubgroupDisplay={getSubgroupDisplay} />
+                        <RaceMap
+                            racers={racers}
+                            participantCount={allRacersSorted.length}
+                            departmentChampions={departmentChampions}
+                            getSubgroupDisplay={getSubgroupDisplay}
+                        />
                     </section>
                 )}
                 <main className="px-4 space-y-6">

@@ -32,7 +32,10 @@ const CompletionCelebration = ({
     talentEarned,
     quizTalentEarned,
     totalTalent,
+    requiresNextPlan = false,
+    totalDays = 365,
     onClose,
+    onChooseNextPlan,
 }) => {
     const round = toPositiveInteger(completedRound, 1);
     const nextRound = toPositiveInteger(newReadCount, round + 1);
@@ -47,7 +50,7 @@ const CompletionCelebration = ({
         const handleKeyDown = (event) => {
             if (event.key === 'Escape') {
                 event.preventDefault();
-                onClose?.();
+                if (!requiresNextPlan) onClose?.();
             }
             if (event.key === 'Tab') {
                 event.preventDefault();
@@ -61,7 +64,7 @@ const CompletionCelebration = ({
             window.removeEventListener('keydown', handleKeyDown);
             previousFocus?.focus?.();
         };
-    }, [onClose]);
+    }, [onClose, requiresNextPlan]);
 
     return (
         <div
@@ -70,7 +73,7 @@ const CompletionCelebration = ({
             aria-modal="true"
             aria-labelledby="completion-celebration-title"
             onClick={(event) => {
-                if (event.target === event.currentTarget) onClose?.();
+                if (event.target === event.currentTarget && !requiresNextPlan) onClose?.();
             }}
         >
             <div className="pointer-events-none absolute inset-0" aria-hidden="true">
@@ -96,10 +99,14 @@ const CompletionCelebration = ({
 
                     <p className="mb-2 text-sm font-black tracking-widest text-orange-500">성경 통독을 축하합니다</p>
                     <h2 id="completion-celebration-title" className="text-4xl font-black text-slate-800">
-                        올해 {round}독 완주!
+                        {requiresNextPlan ? `${toPositiveInteger(totalDays, 60)}일 성경 통독 완주!` : `올해 ${round}독 완주!`}
                     </h2>
                     <p className="mt-4 text-lg font-bold text-slate-600">
-                        <span className="text-purple-600">올해 {nextRound}독</span>을 시작합니다
+                        {requiresNextPlan ? (
+                            <span className="text-purple-600">다음 읽기 계획을 선택해 주세요</span>
+                        ) : (
+                            <><span className="text-purple-600">올해 {nextRound}독</span>을 시작합니다</>
+                        )}
                     </p>
                     <p className="mt-2 text-sm leading-relaxed text-slate-500">
                         말씀과 함께한 귀한 걸음을 응원합니다.
@@ -117,10 +124,10 @@ const CompletionCelebration = ({
                     <button
                         ref={closeButtonRef}
                         type="button"
-                        onClick={onClose}
+                        onClick={requiresNextPlan ? onChooseNextPlan : onClose}
                         className="mt-7 w-full rounded-2xl bg-gradient-to-r from-orange-500 to-amber-400 py-3.5 text-base font-black text-white shadow-lg transition hover:from-orange-600 hover:to-amber-500 focus:outline-none focus:ring-4 focus:ring-amber-200 active:scale-[0.98]"
                     >
-                        닫기
+                        {requiresNextPlan ? '다음 읽기 계획 선택' : '닫기'}
                     </button>
                 </div>
             </div>

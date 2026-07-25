@@ -1,4 +1,6 @@
-const DAYS_PER_CYCLE = 365;
+const DEFAULT_DAYS_PER_CYCLE = 365;
+const READABLE_DAYS_PER_CYCLE = 60;
+const READABLE_PLAN_IDS = new Set(["readable_revised", "readable_new"]);
 const DAY_MS = 86_400_000;
 const MONTHS = [
   "Jan",
@@ -32,6 +34,7 @@ export const getTalentStreakMilestoneBonus = (streak: number): number =>
   TALENT_STREAK_MILESTONE_BONUSES[streak] || 0;
 
 export type StoredReadUser = {
+  planId?: unknown;
   currentDay?: unknown;
   readCount?: unknown;
   readingYear?: unknown;
@@ -97,7 +100,9 @@ export type ReadCompletionResult =
       newReadCount: number;
       newProgressDay: number;
       nextViewingDay: number;
+      totalDays: number;
       completedRound: boolean;
+      requiresNextPlan: boolean;
       secretShopJustUnlocked: boolean;
       rewardsUserWallet: boolean;
       talentProgramEnabled: boolean;
@@ -112,10 +117,21 @@ const finiteNumber = (value: unknown, fallback = 0): number => {
 const nonNegativeInteger = (value: unknown, fallback = 0): number =>
   Math.max(0, Math.floor(finiteNumber(value, fallback)));
 
-export const normalizeProgressDay = (value: unknown): number => {
+export const getDaysPerCycle = (planId: unknown): number =>
+  typeof planId === "string" && READABLE_PLAN_IDS.has(planId)
+    ? READABLE_DAYS_PER_CYCLE
+    : DEFAULT_DAYS_PER_CYCLE;
+
+export const normalizeProgressDay = (
+  value: unknown,
+  totalDays = DEFAULT_DAYS_PER_CYCLE,
+): number => {
+  const safeTotalDays = Number.isSafeInteger(totalDays) && totalDays > 0
+    ? totalDays
+    : DEFAULT_DAYS_PER_CYCLE;
   const day = Math.floor(finiteNumber(value, 1));
   if (day < 1) return 1;
-  return ((day - 1) % DAYS_PER_CYCLE) + 1;
+  return ((day - 1) % safeTotalDays) + 1;
 };
 
 export const normalizeReadCount = (value: unknown): number =>
@@ -185,7 +201,8 @@ export const calculateReadCompletion = (
   todayLegacy: string,
   talentRouting?: TalentRewardRouting,
 ): ReadCompletionResult => {
-  const currentDay = normalizeProgressDay(user.currentDay);
+  const totalDays = getDaysPerCycle(user.planId);
+  const currentDay = normalizeProgressDay(user.currentDay, totalDays);
   const readCount = normalizeReadCount(user.readCount);
   const expected = { cycle: readCount, day: currentDay };
   if (
@@ -236,7 +253,7 @@ export const calculateReadCompletion = (
     else if (diffDays === 0) newStreak = oldStreak;
   }
 
-  const completedRound = currentDay === DAYS_PER_CYCLE;
+  const completedRound = currentDay === totalDays;
   const newProgressDay = completedRound ? 1 : currentDay + 1;
   const newReadCount = completedRound ? readCount + 1 : readCount;
   const readingYear = nonNegativeInteger(user.readingYear);
@@ -309,8 +326,10 @@ export const calculateReadCompletion = (
       newStreak,
       newReadCount,
       newProgressDay,
-      nextViewingDay: request.day >= DAYS_PER_CYCLE ? 1 : request.day + 1,
+      nextViewingDay: request.day >= totalDays ? 1 : request.day + 1,
+      totalDays,
       completedRound,
+      requiresNextPlan: completedRound && totalDays === READABLE_DAYS_PER_CYCLE,
       secretShopJustUnlocked,
       rewardsUserWallet,
       talentProgramEnabled,

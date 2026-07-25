@@ -1,7 +1,7 @@
 import React from 'react';
 import { getReadingRoundBadgeLabel } from '../../utils/readingRounds';
 
-const RaceMap = ({ racers, departmentChampions, getSubgroupDisplay }) => {
+const RaceMap = ({ racers, participantCount = 0, departmentChampions, getSubgroupDisplay }) => {
     const getNonLinearPos = (day) => {
         const actualDay = Math.min(day, 365);
         if (actualDay <= 100) return (actualDay / 100) * 50;
@@ -12,6 +12,15 @@ const RaceMap = ({ racers, departmentChampions, getSubgroupDisplay }) => {
     return (
         <div className="mx-4 mb-6 relative h-64 bg-sky-texture overflow-hidden rounded-3xl shadow-xl border border-slate-100">
             <div className="absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-white/20 to-transparent z-10"></div>
+            <div
+                data-community-participant-count
+                className="absolute left-3 top-3 z-30 flex items-center gap-1 rounded-full bg-white/95 px-2 py-1 shadow-md ring-1 ring-slate-100 backdrop-blur-sm"
+                aria-label={`함께 달리는 중 ${participantCount}명`}
+            >
+                <span aria-hidden="true" className="text-[10px]">🏃</span>
+                <span className="whitespace-nowrap text-[8px] font-black text-slate-700">함께 달리는 중</span>
+                <strong className="whitespace-nowrap text-[10px] font-black tabular-nums text-blue-600">{participantCount}명</strong>
+            </div>
             <div className="mountain-back"></div>
             <div className="mountain-front"></div>
             <div className="absolute top-2 left-10 text-2xl opacity-80 animate-float">☁️</div>

@@ -232,6 +232,26 @@ Deno.test("365일 완료는 다음 회차 1일로 순환한다", () => {
   );
 });
 
+Deno.test("어 성경이 읽어지네 60일 완료는 다음 계획 선택을 요청한다", () => {
+  const result = ready(
+    {
+      planId: "readable_new",
+      score: 0,
+      talent: 0,
+      readingYear: 2026,
+      yearCompletedRounds: 0,
+      lifetimeCompletedRounds: 0,
+    },
+    1,
+    60,
+  );
+  assert(result.updateData.currentDay === 1, "day did not wrap");
+  assert(result.updateData.readCount === 2, "cycle did not increment");
+  assert(result.summary.totalDays === 60, "plan length mismatch");
+  assert(result.summary.completedRound === true, "completion missing");
+  assert(result.summary.requiresNextPlan === true, "next plan prompt missing");
+});
+
 Deno.test("개인 계정은 users talent를 변경하지 않는다", () => {
   const result = ready({ accountType: "personal", talent: 99, score: 0 });
   assert(

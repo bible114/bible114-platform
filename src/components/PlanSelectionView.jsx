@@ -85,7 +85,9 @@ const PlanSelectionView = ({
                     <div className="text-center mb-6">
                         <h2 className="text-xl font-bold text-slate-800">{planTypeData?.title} 버전 선택</h2>
                         <div className="bg-yellow-50 text-yellow-800 text-xs font-bold p-2 rounded-lg mt-2 break-keep">
-                            📢 오늘 설정하시면 기본적으로 1년간 이 버전으로 읽게 됩니다. 읽는 중간에도 버전을 바꿀 수 있습니다.
+                            {selectedPlanType === 'readable'
+                                ? '📢 선택한 번역으로 60일간 읽습니다. 60일 완독 후 다음 읽기 계획을 선택할 수 있습니다.'
+                                : '📢 오늘 설정하시면 기본적으로 1년간 이 버전으로 읽게 됩니다. 읽는 중간에도 버전을 바꿀 수 있습니다.'}
                         </div>
                     </div>
                 </div>

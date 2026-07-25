@@ -202,6 +202,8 @@ export const validatePersonalSignup = (input: {
     "1year_revised",
     "1year_new",
     "nt_new",
+    "readable_revised",
+    "readable_new",
   ]);
   const lastDate = progress?.lastReadDate === null
     ? null

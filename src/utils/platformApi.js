@@ -103,7 +103,8 @@ const COMPLETE_READ_UPDATE_ALLOWED_KEYS = new Set([
 ]);
 const COMPLETE_READ_SUMMARY_KEYS = new Set([
     'oldLevel', 'newLevel', 'scoreEarned', 'streakBonus', 'talentEarned', 'newStreak',
-    'newReadCount', 'newProgressDay', 'nextViewingDay', 'completedRound',
+    'newReadCount', 'newProgressDay', 'nextViewingDay', 'totalDays', 'completedRound',
+    'requiresNextPlan',
     'secretShopJustUnlocked', 'rewardsUserWallet', 'talentProgramEnabled',
 ]);
 const COMPLETE_READ_READY_KEYS = new Set(['status', 'updateData', 'summary']);
@@ -170,6 +171,7 @@ const COMPLETE_MEMBER_ONBOARDING_RESULT_KEYS = new Set([
 ]);
 const MEMBER_ONBOARDING_PLAN_IDS = new Set([
     '1year_sequential', '1year_revised', '1year_new', 'nt_new',
+    'readable_revised', 'readable_new',
 ]);
 const ACTIVITY_REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const QUIZ_PROGRESS_KEY_PATTERN = /^(?:e([1-9]\d*)_)?r([1-9]\d*)_d([1-9]\d*)$/;
@@ -904,7 +906,9 @@ const normalizeReadSummary = (value) => {
         || !isSafeIntegerInRange(value.newReadCount, 1, Number.MAX_SAFE_INTEGER)
         || !isSafeIntegerInRange(value.newProgressDay, 1, 365)
         || !isSafeIntegerInRange(value.nextViewingDay, 1, 365)
+        || !isSafeIntegerInRange(value.totalDays, 1, 365)
         || typeof value.completedRound !== 'boolean'
+        || typeof value.requiresNextPlan !== 'boolean'
         || typeof value.secretShopJustUnlocked !== 'boolean'
         || typeof value.rewardsUserWallet !== 'boolean'
         || typeof value.talentProgramEnabled !== 'boolean'
@@ -916,7 +920,8 @@ const normalizeReadSummary = (value) => {
         || (value.rewardsUserWallet && !value.talentProgramEnabled)
         || (value.secretShopJustUnlocked && value.newStreak < 7)
         || value.nextViewingDay !== value.newProgressDay
-        || (value.completedRound !== (value.newProgressDay === 1))) {
+        || (value.completedRound !== (value.newProgressDay === 1))
+        || (value.requiresNextPlan && (!value.completedRound || value.totalDays !== 60))) {
         return invalidCompleteReadResponse();
     }
     return { ...value };
@@ -960,7 +965,7 @@ export const validateCompleteReadResponse = (payload, result, expectedRequestId)
         && result.result.status === 'ready') {
         const updateData = normalizeReadUpdate(result.result.updateData);
         const summary = normalizeReadSummary(result.result.summary);
-        const completedRound = payload.day === 365;
+        const completedRound = payload.day === summary.totalDays;
         const expectedProgressDay = completedRound ? 1 : payload.day + 1;
         const expectedReadCount = completedRound ? payload.cycle + 1 : payload.cycle;
         const previousScore = updateData.score - summary.scoreEarned;
@@ -974,6 +979,7 @@ export const validateCompleteReadResponse = (payload, result, expectedRequestId)
             || updateData.maxStreak < updateData.streak
             || !Number.isSafeInteger(expectedReadCount)
             || summary.completedRound !== completedRound
+            || payload.day > summary.totalDays
             || summary.newProgressDay !== expectedProgressDay
             || summary.nextViewingDay !== expectedProgressDay
             || summary.newReadCount !== expectedReadCount
@@ -2578,7 +2584,10 @@ export const completeMemberSignup = ({ churchId, entryCode = '', joinTicket = ''
         || normalizedGuestProgress.currentDay < 1 || normalizedGuestProgress.currentDay > 365
         || !Number.isInteger(normalizedGuestProgress.streak)
         || normalizedGuestProgress.streak < 0 || normalizedGuestProgress.streak > 400
-        || !['1year_sequential', '1year_revised', '1year_new', 'nt_new'].includes(normalizedGuestProgress.planId)
+        || ![
+            '1year_sequential', '1year_revised', '1year_new', 'nt_new',
+            'readable_revised', 'readable_new',
+        ].includes(normalizedGuestProgress.planId)
         || (normalizedGuestProgress.lastReadDate !== null
             && !/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) /.test(normalizedGuestProgress.lastReadDate))) {
         throw new PlatformApiError('교회 교인 가입 정보가 올바르지 않습니다.', {

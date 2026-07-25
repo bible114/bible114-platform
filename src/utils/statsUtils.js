@@ -1,5 +1,5 @@
 import { DEFAULT_DEPARTMENTS } from '../data/departments';
-import { TOTAL_DAYS } from '../data/constants';
+import { getPlanTotalDays } from '../data/schedules';
 import { getMembershipList, belongsToDepartment, belongsToSubgroup } from './memberships';
 import { getDaysRead } from './helpers';
 import { rankWeeklyMembers } from './weeklyRanking.js';
@@ -77,7 +77,12 @@ export const calculateSubgroupStats = (members, communities) => {
                 return sum + getDaysRead(m);
             }, 0) / totalCount
             : 0;
-        const progressRate = TOTAL_DAYS > 0 ? Math.round((avgDay / TOTAL_DAYS) * 100) : 0;
+        const progressRate = totalCount > 0
+            ? Math.round(subMembers.reduce((sum, member) => {
+                const totalDays = getPlanTotalDays(member.planId);
+                return sum + Math.min(100, (getDaysRead(member) / totalDays) * 100);
+            }, 0) / totalCount)
+            : 0;
         const totalScore = subMembers.reduce((sum, m) => sum + (m.score || 0), 0);
 
         stats[JSON.stringify([departmentId, subgroupId || subgroupName])] = {
