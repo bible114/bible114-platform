@@ -169,8 +169,8 @@ assert.ok(genericSettingsStart >= 0, 'generic settings 규칙이 필요합니다
 const genericSettings = rules.slice(genericSettingsStart);
 assert.match(
     genericSettings,
-    /allow write: if settingId != 'churchDirectory' && isPlatformAdmin\(\);/,
-    'generic settings 규칙이 churchDirectory 서비스 전용 쓰기를 우회하면 안 됩니다.',
+    /allow write: if !\(settingId in \['churchDirectory', 'platformStats'\]\) &&[\s\S]*isPlatformAdmin\(\);/,
+    'generic settings 규칙이 churchDirectory·platformStats 서비스 전용 쓰기를 우회하면 안 됩니다.',
 );
 
 console.log('✅ Church lifecycle server authority validation passed');

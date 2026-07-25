@@ -8,7 +8,7 @@
 ## 작업 프로토콜 (Codex는 반드시 이 순서로)
 
 > **2026-07-16 저녁 갱신: 보류됐던 정책 결정이 전부 도착했다** — 문서 하단 "🧭 Claude 결정 회신" 참조. 이름 변경=점진 보정, 삭제=복원 가능한 비활성화(5개 세부 답 포함), platformStats 필드 의미 확정, isPlatformAdmin `isDeleted` 결속 수정 허용. **T125e-2c/d·T125e-3 구현 진행 가능.** 새 라운드 27(읽기 일정 결측 — T128a 표기 수정·T128b 커버리지 검사 즉시, T128c는 M-S1 대기)도 하단에 추가됐다.
-> **현재 활성 작업: 라운드 28 (문서 최하단) — T130·T131 무쓰기 감사·제안 완료. 다음 Codex 작업 T132(T127 최종 차단 시퀀스)는 2026-07-24 19:00:53 KST 이후 + 사용자 명시 승인 후에만.** T123 읽기·퀴즈, T125d `publicChurches`, T125e 전체, T127a~h, T128·T129와 2026-07-16 Kakao 관리자 가입 묶음은 완료·운영 배포됐다. T126 영상 경로의 기존 관찰 시계는 별도 기록으로 유지하되, 읽기·퀴즈·T125 최신 writer를 포함한 **최종 T127 7일 시계는 새 웹 공개 확인 시각인 2026-07-17 19:00:53 KST부터 다시 시작해 2026-07-24 19:00:53 KST 전에는 닫지 않는다**. 그 전에는 일반 공동체 계정의 보호 필드 호환 상한, roster 직접 진도 writer, legacy `videoAutoConfig.apiKey`를 닫거나 정리하지 않는다.
+> **현재 활성 작업: 라운드 28 T132 최종 차단 시퀀스 완료(2026-07-25 사용자 명시 승인).** T127 7일 관찰 종료 감사, legacy talent 백필, 직접 writer 최종 판정, YouTube 키 회전, rules 최종 차단, `publicChurches` 전환과 운영 배포까지 완료했다. 사용자 개입 잔여는 T124d 실제 공동체 관리자 UI 판매·수령·환불 스모크와 2026-08-01 소셜 전환 전 미연결 계정 안내다.
 > **번역 범위 정정(2026-07-18 사용자 확인): 이 프로젝트에서 운영 대상으로 다루는 성경 번역은 `개역개정`과 `새번역`뿐이다. `nt_easy`·`nt_saehangul`·`nt_message` 및 쉬운성경·새한글·메시지 관련 코드/캐시는 과거 비활성 잔여이며, 복구·재생성·재노출 작업 대상으로 해석하지 않는다.** T130의 해당 3종 감사 결과는 역사적 진단 기록으로만 보존한다.
 > 사용자 개입이 필요한 잔여는 T124d 실제 공동체 관리자 소액 판매·수령·환불 스모크뿐이다. 안전한 자격증명·대상 구매 없이 운영 지갑과 불변 ledger를 만들 수 있어 Codex가 임의 실행하지 않는다. T123 shadow 확인용 일회용 계정은 생성·검증 직후 Auth와 모든 문서를 삭제했다.
 > T126 운영 관찰 잔여 2건: 오늘 서비스 날짜에 수동 영상 문서가 생길 때 URL·제목·게시일·`autoFilled` 불변 확인, 실제 platformAdmin 계정의 `adminPreviewDailyVideo` 200 확인. 배포 당일에는 오늘 문서가 없어서 자동 fill 문서가 생성됐고 운영 관리자 자격증명을 사용하지 않았으므로 조건부 미검증으로 남긴다.
@@ -184,6 +184,7 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-25 | T132a~g T127 최종 차단·운영 전환 | `firestore.rules`, `src/utils/{helpers,platformApi}.js`, `src/components/PlatformAdminView.jsx`, `supabase/functions/platform-api/publicDirectoryService*`, `scripts/{audit-t132-public-state,migrate-t132-legacy-talent,rotate-t132-youtube-key,run-t132-public-actions,validate-t132-final-lockdown}.mjs`, 기존 검증 스크립트, `review/T132_WRITER_DECISIONS_2026-07-25.md` | 운영 users 59·active 58을 재감사하고 legacy talent 미이관 23개를 CAS 백필해 미이관 0으로 만들었다. 기준선 대비 문서 수 증가는 RNKSV/배지/QA 작업 잔재로 설명됐고 보호 필드·roster·공개 비밀 필드의 보안 drift는 0이었다. 30개 writer 중 legacy 브라우저 이관 1개를 제거하고 29개를 제한 유지/서버 전용으로 판정했다. roster 진도·점수·달란트, 구매, churchDirectory, platformStats 일반 write를 차단하고 삭제된 platformAdmin 권한을 닫았다. 새 YouTube 전용 키를 만들어 Supabase secret으로 교체하고 Firestore legacy apiKey를 삭제했다. Edge 배포 후 통계 8개 공동체·58명·누적 완독 57회로 재계산, publicChurches 8개와 `mode:public` 전환, rules 운영 배포 완료. 기존 키는 타 Google Cloud 프로젝트 소유라 그 프로젝트에서의 폐기만 별도 권한 필요. Deno 464/464·전체 계약 검사·build·rules dry-run 통과. |
 | 2026-07-24 | T146 SNS 전환 운영 감사·관리자 안내 보강 | `scripts/{audit-unlinked-social-accounts,validate-social-only-login}.mjs`, `src/components/{ChurchAdminView,churchAdmin/SettingsTab}.jsx` | Firebase 관리자 인증을 갱신하고 운영을 다시 읽기 전용 감사했다. 활성 users 문서 58개 중 Google 1·Kakao 4로 소셜 연결 5, 전체 미연결 53이었다. 역할 기준 실제 전환 대상(`member/churchAdmin/platformAdmin/superAdmin`)은 52개이며 연결 5·미연결 47, 미연결 47개는 모두 기존 Firebase Auth가 있어 같은 UID에 자가 연결 가능하다. Auth 없음 6개는 모두 `deletedImporter/Inspector/Verifier` 비사용자 역할 문서라 실제 사용자 복구 대상에서 분리했으며 삭제하지 않았다. 감사 결과에 전환 대상·비사용자 역할 집계를 추가하고, 관리자 설정 안내와 성도용 A4 인쇄문에 7월 31일 연결 마감·8월 1일 SNS 전용 전환을 명시했다. 전체 `npm run validate`(platform-api 463/463)·build·diff-check 통과. 운영 gh-pages 배포 후 공개 main `index-DGVTQWqN.js`의 로컬/운영 SHA-256 일치, Dashboard·ChurchAdmin·CSS chunk HTTP 200, 전환·관리자 마감 문구 포함, 실제 운영 화면 콘솔 경고·오류 0을 확인했다. 8월 1일 09:00 KST에 전환 대상 0명 여부를 재감사하고 0명일 때만 legacy 로그인 코드를 제거하는 1회 후속 작업을 예약했다. |
 | 2026-07-24 | T145 SNS 로그인 전환 1주 안내 팝업 | `src/components/{LoginView,DashboardView}.jsx`, `src/components/modals/{SocialLoginTransitionModal,index}.js{x,}`, `src/utils/socialLoginTransition.js`, `scripts/validate-{social-only-login,round29}.mjs` | 2026-07-31까지 기존 계정에 카카오·구글을 연결하고 2026-08-01부터 SNS 로그인만 이용한다는 안내 팝업을 추가했다. 비로그인 첫 화면은 공지 버전당 기기 1회 자동 표시하고 수동 안내 버튼으로 다시 열 수 있다. 로그인된 member/churchAdmin은 Firebase·users 공급자 정보를 함께 확인해 미연결 계정에만 UID별 1회 자동 표시하며, 팝업에서 바로 카카오·Google 연결을 시작할 수 있다. 기존 가입자가 신규가입해 진도·달란트·소속이 나뉘지 않도록 경고를 명시했다. 캠페인 종료 시각은 KST `2026-08-01 00:00`으로 고정했다. 모바일 390×844에서 전체 내용·버튼 표시, 닫기→새로고침 비재표시, 수동 다시 열기, 콘솔 경고·오류 0을 확인했다. 전체 `npm run validate`(platform-api 463/463)·build·diff-check 통과. 웹 배포·push는 하지 않았다. |
 | 2026-07-24 | T144 천로역정 완독 배지 이름 가림 수정 | `src/components/dashboard/RaceMap.jsx`, `scripts/validate-novice-mobile-controls.mjs` | 이름표 왼쪽 위에 겹쳐 첫 글자를 가리던 완독 숫자 배지를 기존 20px·2px 테두리에서 14px·1px 테두리로 줄이고 이름 글자 바깥으로 이동했다. 부서 1위 왕관도 11px→9px로 줄였다. 배지·이름 측정용 data 속성과 회귀검사를 추가했으며, 로컬 모의 천로역정 화면에서 390×844 모바일과 1280×720 PC의 1자리·2자리 완독 배지를 측정해 이름과 겹침 면적 0, 콘솔 경고·오류 0을 확인했다. 모의 파일은 검증 후 삭제했다. |
@@ -403,6 +404,13 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 ---
 
 ## 📮 Codex → Claude 메모
+
+2026-07-25 T132 최종 차단·운영 전환 완료:
+- T127 감사에서 운영 users 수는 기준선보다 증가했지만 RNKSV/배지/QA 작업 문서로 원인을 확인했고, 핵심 보안 불변식은 legacy talent 미이관 23건 외 모두 clean이었다. 23건을 updateTime precondition으로 백필한 뒤 미이관 0을 재확인했다.
+- writer 후보 30건은 legacy 브라우저 달란트 이관 1건 제거, 나머지 29건 제한 유지/서버 전용으로 판정했다. 상세표는 `review/T132_WRITER_DECISIONS_2026-07-25.md`.
+- 새 YouTube 전용 키 생성→실 API 검증→Supabase secret 교체→Firestore legacy apiKey 삭제 순으로 회전했다. 기존 키는 타 프로젝트 소유라 lookup/revoke 403이며, 노출 경로와 운영 사용은 끊었지만 소유 프로젝트에서의 폐기는 남아 있다.
+- `platform-api` 배포 뒤 platformStats를 8개 공동체·58명·누적 완독 57회로 재계산하고 publicChurches 8개를 백필해 `publicDirectoryMeta/current ready:true, mode:public`을 활성화했다. Firestore rules도 최종 차단본을 운영 배포했다.
+- 남은 외부 운영 게이트는 T124d 실제 공동체 관리자 UI 스모크와 2026-08-01 전 소셜 미연결 47명 연결이다.
 
 2026-07-19 T138 기존 성도 전환 공지·안내 전수 개정 완료:
 - 신규 가입은 `소셜 로그인 → 처음 시작하기 → 교회 찾기`, 기존 성도는 `소셜 로그인 → 기존 진도·달란트 이어보기 → 예전 정보 1회 확인`으로 분리했다. 기존 성도에게 새 가입이나 교회 검색을 지시하는 문구는 첫 화면·FAQ·개인 계정 전환·오류 메시지·관리자 설정/매뉴얼·성도 인쇄물에서 제거했다.
@@ -2610,14 +2618,14 @@ Codex의 5개 질문에 대한 확정 답:
 - 일정 원본과 다른 책의 `장` 표기, 본문·퀴즈 파싱은 변경하지 않는다.
 - 전용 사례 검사와 전체 validate·build·diff-check를 통과한다.
 
-### [ ] T132. T127 최종 차단 시퀀스 (**2026-07-24 19:00:53 KST 이후 + 사용자 명시 승인 후에만**)
+### [x] T132. T127 최종 차단 시퀀스 (**2026-07-24 19:00:53 KST 이후 + 사용자 명시 승인 후에만**)
 
-- [ ] **T132a. 관찰 종료 감사** — `scripts/audit-t127-legacy-state.mjs`·`scripts/audit-t127-direct-writers.mjs`를 재실행해 2026-07-17 기준선(작업 로그 참조) 대비 drift 0을 확인한다. drift가 있으면 차단을 멈추고 원인 분석 메모를 남긴다.
-- [ ] **T132b. 직접 writer 후보 30건 최종 판정** — 정적 감사의 후보(users 17, roster 7, directory 3, dailyVideos 2, videoAutoConfig 1)를 하나씩 이관/제거/의도적 유지로 판정한다. 우선 이관 후보: 플랫폼 관리자의 전체-user 편집·교회 이동, **달란트 전원 리셋(T21) 버튼**(현재 클라이언트 직접 batch 쓰기 — rules 차단 후에도 동작해야 하므로 서버 action 이관 또는 규칙 예외 여부를 먼저 결정), 개인 primary 변경, 일반 공동체 탈퇴. 사용자 작성 데이터에서 잔액을 계산하는 legacy 공식은 서버로 복제하지 않는다는 기존 원칙 유지.
-- [ ] **T132c. 공개 해시 재기록 재감사** — App Check 미적용 상태에서 구버전 탭이 공개 codeHash를 재기록했는지 T125 당시 감사 스크립트로 재확인한다 (공개·디렉토리 비밀 필드 0건 유지 확인).
-- [ ] **T132d. rules 최종 차단 배포** — 일반 공동체 계정 보호 필드 호환 상한 제거, roster 직접 진도 writer 차단, `isPlatformAdmin`(및 검토 후 `isSuperAdmin`·`isChurchAdmin`)에 `isDeleted != true` 결속 추가. **`users` read 규칙 구조는 계속 수정 금지.** 원격 dry-run 컴파일 통과 후 사용자 승인 하에 배포한다.
-- [ ] **T132e. YouTube 키 정리** — `settings/videoAutoConfig`의 legacy `apiKey` 필드 삭제 → **사용자 수동 M-V2: Google Cloud에서 키 회전 후 새 키를 Supabase `YOUTUBE_API_KEY` secret으로 교체** → `videoAutoConfig` 클라이언트 read 차단. 순서를 어기면 노출된 구 키가 유효한 채 남는다.
-- [ ] **T132f. 잔여 컬렉션 직접 write 차단** — `churchDirectory`·`platformStats`·`dailyVideos`(create 포함, 관리자 수동 등록은 서버 action 또는 admin 전용 유지 여부 판정)를 닫는다.
-- [ ] **T132g. (별도 승인) `publicChurches` 전환** — 운영 백필 execute → `publicDirectoryMeta.mode:public` 활성화. T132a~f와 독립적으로 사용자 별도 승인 필요.
+- [x] **T132a. 관찰 종료 감사** — `scripts/audit-t127-legacy-state.mjs`·`scripts/audit-t127-direct-writers.mjs`를 재실행해 기준선 대비 운영 문서 증가 원인을 분리하고 보안 불변식 drift 0을 확인했다.
+- [x] **T132b. 직접 writer 후보 30건 최종 판정** — legacy 브라우저 이관 1건 제거, 29건 제한 유지/서버 전용 판정을 기록했다.
+- [x] **T132c. 공개 해시 재기록 재감사** — 공개 churches·directory의 code/codeHash 0, private access hash 8개 유효를 확인했다.
+- [x] **T132d. rules 최종 차단 배포** — 보호 필드·roster 진도 writer를 닫고 삭제된 platformAdmin 권한을 차단해 운영 배포했다.
+- [x] **T132e. YouTube 키 정리** — 새 전용 키 생성·검증, Supabase secret 교체, legacy Firestore apiKey 삭제, 일반 클라이언트 read 차단을 완료했다.
+- [x] **T132f. 잔여 컬렉션 직접 write 차단** — churchDirectory·platformStats·구매는 서버 전용, dailyVideos 수동 등록은 삭제되지 않은 platformAdmin 전용으로 확정했다.
+- [x] **T132g. (별도 승인) `publicChurches` 전환** — 운영 8개 문서를 백필하고 `publicDirectoryMeta.mode:public`을 활성화했다.
 
 완료 기준: T132a drift 0, 30건 후보 전건 판정 기록, rules 배포 후 로그인·가입·읽기·퀴즈·상점·영상 스모크 통과, 키 회전 완료, 감사 재실행 CLEAN.

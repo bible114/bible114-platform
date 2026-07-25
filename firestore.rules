@@ -14,7 +14,8 @@ service cloud.firestore {
     }
     function isPlatformAdmin() {
       return isSignedIn() &&
-        myData().role in ['platformAdmin', 'superAdmin'];
+        myData().role in ['platformAdmin', 'superAdmin'] &&
+        myData().get('isDeleted', false) != true;
     }
     function isChurchAdmin(churchId) {
       return isSignedIn() &&
@@ -42,38 +43,22 @@ service cloud.firestore {
           (after.get('accountType', null) == 'personal' &&
             after.get('primaryOrgId', null) == churchId));
     }
-    // 본인 users 쓰기에서 score/talent와 legacy 이관 표식을 함께 검증한다.
-    // - 이미 이관된 true 표식은 절대 되돌릴 수 없다.
-    // - personal 계정은 보상·구매·지갑 이관을 서버·roster로만 처리하므로
-    //   true→true 브라우저 쓰기에서 users.score/talent를 완전히 동결한다.
-    // - 일반 공동체 계정의 true→true는 구버전 호환 보상 상한을 유지한다.
-    // - 아직 이관 전이면 일반 설정 쓰기는 허용하되 score/talent는 동결한다.
-    // - 최초 false→true 이관의 spendable talent는 반드시 이관 전 score와 같아야 한다.
-    //   과거 구매 복원분은 score에만 더해지므로 브라우저가 새 달란트를 mint할 수 없다.
+    // T132 백필 뒤 users의 score/talent와 이관 표식은 서버 action만 처리한다.
     function isSafeSelfScoreTalentUpdate(before, after) {
-      let wasMigrated = before.get('talentMigrated', false) == true;
-      let isMigrated = after.get('talentMigrated', false) == true;
       let beforeScore = before.get('score', 0);
       let beforeTalent = before.get('talent', 0);
       let afterScore = after.get('score', 0);
       let afterTalent = after.get('talent', 0);
-      return beforeScore is int && beforeTalent is int &&
+      return before.get('talentMigrated', false) == true &&
+        after.get('talentMigrated', false) == true &&
+        beforeScore is int && beforeTalent is int &&
         afterScore is int && afterTalent is int &&
         beforeScore >= 0 && beforeScore <= 1000000000 &&
         beforeTalent >= 0 && beforeTalent <= 1000000000 &&
         afterScore >= 0 && afterScore <= 1000000000 &&
         afterTalent >= 0 && afterTalent <= 1000000000 &&
-        ((!wasMigrated && !isMigrated &&
-            afterScore == beforeScore && afterTalent == beforeTalent) ||
-          (!wasMigrated && isMigrated &&
-            afterTalent == beforeScore && afterScore >= beforeScore) ||
-          (wasMigrated && isMigrated &&
-            ((before.get('accountType', null) == 'personal' &&
-                afterTalent == beforeTalent &&
-                afterScore == beforeScore) ||
-              (before.get('accountType', null) != 'personal' &&
-                afterTalent <= beforeTalent + 17 &&
-                afterScore <= beforeScore + 15))));
+        afterTalent == beforeTalent &&
+        afterScore == beforeScore;
     }
     // dailyVideos의 adult/kids 항목 검증: 없거나(null), url 필드가 없거나, url이 빈 문자열이면
     // 통과(자동 채움 실패 시 그런 형태로 기록됨). url이 있으면 반드시 유튜브 도메인이어야 한다.
@@ -352,21 +337,13 @@ service cloud.firestore {
               resource.data.get('extraMemberships', []) &&
             request.resource.data.get('score', 0) >= 0 &&
             request.resource.data.get('talent', 0) >= 0 &&
-            // personal의 모든 공동체 지갑은 서버 읽기·퀴즈·구매 action만 갱신한다.
-            // primary/secondary를 가리지 않고 브라우저 score/talent를 exact-freeze한다.
-            // getAfter를 써서 일반→personal 전환과 같은 transaction의 +15/+17 mint도 막는다.
-            ((getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data
-                  .get('accountType', null) == 'personal' &&
-                request.resource.data.get('score', 0) == resource.data.get('score', 0) &&
-                request.resource.data.get('talent', 0) == resource.data.get('talent', 0)) ||
-              (getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data
-                  .get('accountType', null) != 'personal' &&
-                // 일반 공동체 계정의 구버전 호환: roster.score는 users.score 미러다.
-                // 증분 상한(+15) 또는 users 문서와의 절대값 동기화까지 허용한다.
-                (request.resource.data.get('score', 0) <= resource.data.get('score', 0) + 15 ||
-                  request.resource.data.get('score', 0) <=
-                    getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('score', 0)) &&
-                request.resource.data.get('talent', 0) <= resource.data.get('talent', 0) + 17))) ||
+            // 진도·점수·달란트는 읽기·퀴즈·구매 서버 action만 갱신한다.
+            request.resource.data.get('score', 0) == resource.data.get('score', 0) &&
+            request.resource.data.get('talent', 0) == resource.data.get('talent', 0) &&
+            request.resource.data.get('currentDay', 1) == resource.data.get('currentDay', 1) &&
+            request.resource.data.get('streak', 0) == resource.data.get('streak', 0) &&
+            request.resource.data.get('readCount', 1) == resource.data.get('readCount', 1) &&
+            request.resource.data.get('lastReadDate', null) == resource.data.get('lastReadDate', null)) ||
           (isChurchAdmin(churchId) &&
             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'departmentId', 'departmentName', 'subgroupId', 'subgroupName',
@@ -391,26 +368,8 @@ service cloud.firestore {
       match /talentPurchases/{purchaseId} {
         allow read: if isChurchAdmin(churchId) || isPlatformAdmin() ||
           (isSignedIn() && resource.data.uid == request.auth.uid);
-        // 창구 판매(관리자 대리 차감): 앱 사용이 어려운 어르신 교인을 대신해 관리자가
-        // 달란트를 차감하며 구입 물품을 기록한다. 즉시 수령이므로 delivered로 생성.
-        allow create: if (isChurchAdmin(churchId) || isPlatformAdmin()) &&
-          request.resource.data.status == 'delivered' &&
-          request.resource.data.keys().hasOnly(
-            ['uid', 'memberName', 'itemId', 'itemName', 'price', 'status',
-             'createdAt', 'deliveredAt', 'deliveredBy', 'schemaVersion', 'departmentId',
-             'departmentName', 'marketId', 'walletKind', 'walletOrgId']) &&
-          (!('schemaVersion' in request.resource.data) ||
-            (request.resource.data.schemaVersion == 2 &&
-              request.resource.data.departmentId is string &&
-              request.resource.data.marketId is string &&
-              request.resource.data.walletKind in ['user', 'roster'] &&
-              request.resource.data.walletOrgId == churchId));
-        allow update: if (isChurchAdmin(churchId) || isPlatformAdmin()) &&
-          resource.data.status == 'pending' &&
-          request.resource.data.status in ['delivered', 'cancelled'] &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(
-            ['status', 'deliveredAt', 'deliveredBy']);
-        allow delete: if isPlatformAdmin();
+        // 판매·수령·환불은 권한·가격·지갑·멱등 ledger를 함께 검증하는 서버 action만 쓴다.
+        allow create, update, delete: if false;
       }
 
       // 관리자 판매·수령·환불의 멱등 감사 ledger. 서비스 계정만 쓰고
@@ -462,29 +421,24 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // 플랫폼 집계 통계 — 미인증 공개 읽기 (로그인 페이지에서 사용)
-    // Phase 3-4: 완전 차단은 Cloud Functions 없이는 불가하므로 필드 화이트리스트 + 생성 제한으로 완화.
-    // (필드 안의 "값" 자체 조작은 여전히 가능 — 알려진 한계. 근본 해결은 추후 Cloud Functions 과제.)
+    // 플랫폼 집계 통계 — 미인증 공개 읽기, 쓰기는 서버 action 전용.
     match /settings/platformStats {
       allow read: if true;
-      allow update: if isRealUser()
-        && request.resource.data.keys().hasOnly(
-          ['total_churches', 'total_readers', 'finished_total', 'readers_today',
-           'chapters_read_today', 'today_date', 'updatedAt']);
-      allow create: if isPlatformAdmin();
+      allow write: if false;
     }
 
     // 매일 영상 자동화 설정 (YouTube API 키·재생목록 ID). 아래의 포괄적
     // settings/{settingId} 규칙과 겹치지만 명시적으로 둔다.
     match /settings/videoAutoConfig {
-      allow read: if isSignedIn();
+      allow read: if isPlatformAdmin();
       allow write: if isPlatformAdmin();
     }
 
     // 그 외 설정 문서
     match /settings/{settingId} {
-      allow read: if isSignedIn();
-      allow write: if settingId != 'churchDirectory' && isPlatformAdmin();
+      allow read: if settingId != 'videoAutoConfig' && isSignedIn();
+      allow write: if !(settingId in ['churchDirectory', 'platformStats']) &&
+        isPlatformAdmin();
     }
 
     // [라운드 8] 내 명부 행 전체 조회 (collectionGroup) — 로그인 시 내 소속 조직 파악용.
@@ -494,25 +448,13 @@ service cloud.firestore {
     }
 
     // 매일 유튜브 영상 (플랫폼 관리자가 전체 교회 공용으로 등록).
-    // Phase 2b: 로그인 사용자가 최초 접속 시 YouTube API로 자동 채움(lazy fill)한 문서를
-    // 스스로 생성할 수 있도록 create만 필드 화이트리스트로 허용한다. 이미 있는 문서를
-    // 덮어쓰는 수정/삭제(수동 등록 오버라이드 포함)는 플랫폼 관리자만 가능.
+    // 일반 사용자는 서버 resolve action만 호출한다. 수동 등록·삭제만 플랫폼 관리자에게 남긴다.
     match /dailyVideos/{dateId} {
       allow read: if isSignedIn();
-      // adult/kids가 존재하면 유튜브 URL 형식이어야 임의 콘텐츠(피싱 링크 등) 주입을 막는다.
-      // 단, 플랫폼 관리자는 이 URL 형식 검증에서 제외한다 — 관리자가 아직 문서가 없는
-      // "미래 날짜"에 처음으로 수동 등록(saveDailyVideo)하면 Firestore 관점에서는 update가
-      // 아니라 create로 평가되는데, 관리자 입력 폼은 유튜브가 아닌 URL(예: 자체 호스팅 영상)도
-      // 허용하므로 여기서 막으면 정상적인 관리자 흐름이 깨진다. 화이트리스트(필드 제한)는
-      // 관리자에게도 그대로 적용된다.
-      // TODO(security): 미래 날짜의 dateId를 미리 선점(스쿼팅)해 유효한 유튜브 URL로 채우는
-      // 것 자체는 규칙만으로 막을 수 없다 (dateId 문자열과 "오늘 날짜"의 일치 여부를 rules에서
-      // 검증할 방법이 없음). 완전한 차단은 Cloud Functions(서버 시간 기준 검증)가 필요.
-      allow create: if isSignedIn()
+      allow create: if isPlatformAdmin()
         && request.resource.data.keys().hasOnly(['adult', 'kids', 'updatedAt', 'autoFilled'])
-        && (isPlatformAdmin() ||
-            (validVideoEntry(request.resource.data.get('adult', null)) &&
-             validVideoEntry(request.resource.data.get('kids', null))));
+        && validVideoEntry(request.resource.data.get('adult', null))
+        && validVideoEntry(request.resource.data.get('kids', null));
       allow update, delete: if isPlatformAdmin();
     }
   }

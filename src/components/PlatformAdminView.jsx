@@ -355,7 +355,7 @@ const PlatformAdminView = ({
             const result = await rebuildPublicChurches(false, { expectedUid: currentUser?.uid });
             setDirectoryRebuildReport(result);
             invalidateChurchDirectoryCache();
-            alert(`✅ 공개 교회 디렉토리 백필 완료! (${result.summary.expectedCount}개 교회)\n현재 앱은 안전 전환 전까지 기존 디렉토리를 계속 사용합니다.`);
+            alert(`✅ 공개 교회 디렉토리 전환 완료! (${result.summary.expectedCount}개 교회)\n이제 로그인 화면은 최소 공개 필드만 사용합니다.`);
         } catch (e) {
             alert('디렉토리 재생성 실패: ' + e.message);
         } finally {

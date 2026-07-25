@@ -33,7 +33,7 @@ assert.match(envExample, /^VITE_PLATFORM_API_URL=$/m);
 assert.equal(packageJson.scripts['validate:round24'], 'node scripts/validate-round24.mjs');
 assert.match(
     packageJson.scripts.validate,
-    /npm run validate:round24 && npm run validate:round29 && npm run validate:daily-video-server && npm run validate:public-directory && npm run validate:church-lifecycle && npm run validate:platform-api$/,
+    /npm run validate:round24 && npm run validate:round29 && npm run validate:daily-video-server && npm run validate:public-directory && npm run validate:church-lifecycle && npm run validate:t132-final-lockdown && npm run validate:platform-api$/,
 );
 assert.match(packageJson.scripts['validate:platform-api'], /deno test[\s\S]*deno check[\s\S]*deno fmt --check/);
 assert.match(
@@ -2812,31 +2812,31 @@ assert.match(
 );
 assert.match(
     firestoreRules,
-    /wasMigrated && isMigrated[\s\S]*before\.get\('accountType', null\) == 'personal'[\s\S]*afterTalent == beforeTalent[\s\S]*afterScore == beforeScore/,
-    'personal users의 이관 완료 self 쓰기는 users.score/talent를 완전히 동결해야 한다.',
+    /before\.get\('talentMigrated', false\) == true[\s\S]*after\.get\('talentMigrated', false\) == true[\s\S]*afterTalent == beforeTalent[\s\S]*afterScore == beforeScore/,
+    '이관 완료 users의 self 쓰기는 users.score/talent를 완전히 동결해야 한다.',
 );
-assert.match(
+assert.doesNotMatch(
     firestoreRules,
-    /!wasMigrated && isMigrated[\s\S]*afterTalent == beforeScore[\s\S]*afterScore >= beforeScore/,
-    '최초 legacy false→true 이관 분기는 유지해야 한다.',
+    /!wasMigrated|!isMigrated|afterTalent == beforeScore|afterScore >= beforeScore/,
+    '백필 완료 뒤 legacy false→true 이관 분기는 제거해야 한다.',
 );
-assert.match(
+assert.doesNotMatch(
     firestoreRules,
-    /before\.get\('accountType', null\) != 'personal'[\s\S]*afterTalent <= beforeTalent \+ 17[\s\S]*afterScore <= beforeScore \+ 15/,
-    '일반 공동체 users의 true→true 호환 보상 상한은 유지해야 한다.',
+    /afterTalent <= beforeTalent \+ 17|afterScore <= beforeScore \+ 15/,
+    '일반 공동체 users의 true→true 호환 보상 상한은 최종 차단 뒤 남으면 안 된다.',
 );
 const t127RosterUpdateRules = firestoreRules.match(
     /match \/roster\/\{memberUid\} \{([\s\S]*?)\n        allow delete/,
 )?.[1] || '';
 assert.match(
     t127RosterUpdateRules,
-    /getAfter\([\s\S]*users\/\$\(request\.auth\.uid\)[\s\S]*get\('accountType', null\) == 'personal'[\s\S]*get\('score', 0\) == resource\.data\.get\('score', 0\)[\s\S]*get\('talent', 0\) == resource\.data\.get\('talent', 0\)/,
-    'personal의 primary·secondary roster score/talent를 브라우저에서 모두 exact-freeze해야 한다.',
+    /get\('score', 0\) == resource\.data\.get\('score', 0\)[\s\S]*get\('talent', 0\) == resource\.data\.get\('talent', 0\)[\s\S]*get\('currentDay', 1\) == resource\.data\.get\('currentDay', 1\)/,
+    '모든 roster score/talent/진도를 브라우저에서 exact-freeze해야 한다.',
 );
-assert.match(
+assert.doesNotMatch(
     t127RosterUpdateRules,
-    /get\('accountType', null\) != 'personal'[\s\S]*get\('score', 0\) <= resource\.data\.get\('score', 0\) \+ 15[\s\S]*get\('talent', 0\) <= resource\.data\.get\('talent', 0\) \+ 17/,
-    '일반 공동체 roster의 구버전 호환 상한은 유지해야 한다.',
+    /\+ 15|\+ 17/,
+    '일반 공동체 roster의 구버전 호환 상한은 최종 차단 뒤 남으면 안 된다.',
 );
 assert.match(quizSubmission, /quizAttemptSlots\/\$\{input\.progressKey\}_a1/);
 assert.match(quizSubmission, /quizAttemptSlots\/\$\{input\.progressKey\}_a2/);

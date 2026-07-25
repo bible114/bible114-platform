@@ -1,5 +1,4 @@
 import { auth, db } from './firebase';
-import { SHOP_ITEMS } from '../data/shop_items';
 import { titleMatchesDate } from './dailyVideoPolicy';
 import {
     migratePersonalTalentWallet as migratePersonalTalentWalletViaApi,
@@ -26,52 +25,9 @@ export const getDaysRead = (member) => (
     + Math.max(0, (member?.currentDay || 1) - 1)
 );
 
-const FREE_DEFAULTS = ['wall_plain_white', 'floor_plain_white', 'base_man', 'eye_basic', 'expr_happy'];
-
-// 지연(lazy) 마이그레이션: score/talent 이중화 이전 계정을 1회성으로 복구한다.
-// talentMigrated가 없으면 과거 구매 총액(아이템+방 해금)을 역산해
-// talent = 기존 score, score = 기존 score + 구매총액 으로 갱신한다.
-// 반환값: 마이그레이션 후 반영해야 할 { talent, score } 또는 null(마이그레이션 불필요)
-//
-// Fix D: 동시 호출(예: 로그인 화면과 세션 복구가 겹치는 경우) 시 이중 실행으로 보상이
-// 두 번 반영되거나, 마이그레이션 계산 중간에 handleRead 등 다른 트랜잭션이 score/talent를
-// 바꿔써서 그 결과가 유실되는 것을 막기 위해 read+compute+write 전체를 트랜잭션으로 묶는다.
-// 트랜잭션 내부에서 "최신" 스냅샷 기준으로 talentMigrated를 재확인하고 spent를 재계산하므로,
-// 두 번째 호출은 항상 조기 종료하고(null), 인터리빙된 handleRead 커밋도 손실 없이 반영된다.
-export const migrateTalentIfNeeded = async (uid, data) => {
-    if (data.talentMigrated) return null;
-
-    const userRef = db.collection('users').doc(uid);
-
-    return db.runTransaction(async (transaction) => {
-        const snap = await transaction.get(userRef);
-        if (!snap.exists) return null;
-        const fresh = snap.data();
-
-        // 트랜잭션 내부에서 최신 값 기준으로 재확인 — 동시 호출 시 두 번째 실행은 여기서 멈춘다.
-        if (fresh.talentMigrated) return null;
-
-        const spentItems = (fresh.inventory || [])
-            .filter(id => !FREE_DEFAULTS.includes(id))
-            .reduce((sum, id) => sum + (SHOP_ITEMS.find(i => i.id === id)?.price || 0), 0);
-
-        const unlocked = fresh.miniroom?.unlockedRooms || 1;
-        let spentRooms = 0;
-        for (let i = 1; i < unlocked; i++) spentRooms += 800 + (i - 1) * 400;
-
-        const spent = spentItems + spentRooms;
-        const talent = fresh.score || 0;
-        const score = (fresh.score || 0) + spent;
-
-        transaction.update(userRef, {
-            talent,
-            score,
-            talentMigrated: true,
-        });
-
-        return { talent, score };
-    });
-};
+// T132에서 운영 미이관 계정을 사전 백필하고 브라우저 이관 writer를 제거했다.
+// 기존 호출부는 호환을 위해 유지하되 운영 데이터를 쓰지 않는다.
+export const migrateTalentIfNeeded = async () => null;
 
 const MAX_TALENT_BALANCE = 1_000_000_000;
 const isCanonicalOrgId = value => (

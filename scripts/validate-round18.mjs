@@ -224,17 +224,17 @@ assert.match(rules, /allow delete: if !isPersonalPrimaryRoster\(churchId, member
 assert.match(membershipCard, /transaction\.get\(rosterRef\)[\s\S]*latestTalent > 0[\s\S]*남아 있어 탈퇴할 수 없어요/);
 assert.match(churchAdmin, /executeExpelRosterMember[\s\S]*transaction\.get\(rosterRef\)[\s\S]*latestTalent > 0[\s\S]*남아 있어 제명할 수 없습니다/);
 assert.match(churchAdmin, /executeExpelRosterMember[\s\S]*error\?\.code === 'permission-denied'[\s\S]*기본 공동체이거나 달란트 잔액이 남은 명부에서는 제명할 수 없습니다/);
-assert.match(rules, /function isSafeSelfScoreTalentUpdate\(before, after\)[\s\S]*!wasMigrated && !isMigrated[\s\S]*afterScore == beforeScore && afterTalent == beforeTalent/,
-    '미이관 상태에서는 일반 users 쓰기로 score/talent를 먼저 부풀릴 수 없어야 한다.');
-assert.match(rules, /!wasMigrated && isMigrated[\s\S]*afterTalent == beforeScore && afterScore >= beforeScore/,
-    '최초 legacy 이관의 spendable talent는 이관 전 score와 정확히 같아야 한다.');
-assert.match(rules, /wasMigrated && isMigrated[\s\S]*before\.get\('accountType', null\) == 'personal'[\s\S]*afterTalent == beforeTalent[\s\S]*afterScore == beforeScore/,
-    '이관 완료 personal users는 본인 브라우저에서 score/talent를 더 이상 바꾸지 못해야 한다.');
-assert.match(rules, /before\.get\('accountType', null\) != 'personal'[\s\S]*afterTalent <= beforeTalent \+ 17[\s\S]*afterScore <= beforeScore \+ 15/,
-    '일반 공동체 계정의 이관 완료 브라우저 보상 호환 상한은 유지해야 한다.');
+assert.match(rules, /function isSafeSelfScoreTalentUpdate\(before, after\)[\s\S]*before\.get\('talentMigrated', false\) == true[\s\S]*after\.get\('talentMigrated', false\) == true/,
+    '백필 완료 users만 본인 설정 쓰기를 계속할 수 있어야 한다.');
+assert.match(rules, /afterTalent == beforeTalent[\s\S]*afterScore == beforeScore/,
+    '이관 완료 users는 본인 브라우저에서 score/talent를 더 이상 바꾸지 못해야 한다.');
+assert.doesNotMatch(rules, /!wasMigrated|!isMigrated|afterTalent == beforeScore|afterScore >= beforeScore/,
+    'legacy 브라우저 이관 분기는 백필 완료 뒤 제거되어야 한다.');
+assert.doesNotMatch(rules, /afterTalent <= beforeTalent \+ 17|afterScore <= beforeScore \+ 15/,
+    '일반 공동체 계정의 구버전 브라우저 보상 호환 상한은 최종 차단 뒤 남으면 안 된다.');
 const rosterRules = rules.match(/match \/roster\/\{memberUid\} \{([\s\S]*?)\n        allow delete/)?.[1] || '';
-assert.match(rosterRules, /getAfter\([\s\S]*users\/\$\(request\.auth\.uid\)[\s\S]*get\('accountType', null\) == 'personal'[\s\S]*get\('score', 0\) == resource\.data\.get\('score', 0\)[\s\S]*get\('talent', 0\) == resource\.data\.get\('talent', 0\)/,
-    'personal의 모든 roster 지갑은 브라우저 self-update에서도 동결해야 한다.');
+assert.match(rosterRules, /get\('score', 0\) == resource\.data\.get\('score', 0\)[\s\S]*get\('talent', 0\) == resource\.data\.get\('talent', 0\)[\s\S]*get\('currentDay', 1\) == resource\.data\.get\('currentDay', 1\)/,
+    '모든 roster 지갑과 진도는 브라우저 self-update에서도 동결해야 한다.');
 const usersRules = rules.match(/match \/users\/\{uid\} \{([\s\S]*?)\n      match \/private\/consent/)?.[1] || '';
 const primaryUserUpdateRule = usersRules.slice(
     usersRules.indexOf('allow update: if'),
@@ -252,7 +252,8 @@ assert.doesNotMatch(usersRules, /users\.talent → primary roster|resource\.data
     'users 개인 지갑 감소는 서버 action 외 규칙 분기로 열면 안 된다.');
 assert.doesNotMatch(rules, /request\.resource\.data\.get\('talent', 0\) <= resource\.data\.get\('talent', 0\) \+ 17 \|\|/,
     'roster 본인 보상 상한에 개인 지갑 이관 우회 조건이 남으면 안 된다.');
-assert.match(rules, /get\('score', 0\) <= resource\.data\.get\('score', 0\) \+ 15/);
+assert.doesNotMatch(rules, /get\('score', 0\) <= resource\.data\.get\('score', 0\) \+ 15/,
+    '구버전 roster 점수 직접 증가 상한은 최종 차단 뒤 남으면 안 된다.');
 assert.match(rules, /match \/churches\/\{churchId\} \{[\s\S]*allow read: if isRealUser\(\)/);
 assert.match(rules, /match \/churches\/\{churchId\} \{[\s\S]*allow create: if false;/,
     '공동체 생성은 completeChurchAdminSignup 서버만 수행해야 한다.');
@@ -262,7 +263,8 @@ assert.match(adminPurchaseCore, /text\(purchase\.status\) !== "pending"[\s\S]*PU
 assert.match(platformApiServer, /parsed\.action === "adminRefundPurchase"[\s\S]*getDocument<AdminPurchaseRecord>[\s\S]*updateWrite\(service\.projectId, walletPath[\s\S]*updateWrite\(service\.projectId, purchasePath[\s\S]*\{ transaction \}/);
 assert.doesNotMatch(churchAdmin, /FieldValue\.increment\(refundAmount\)|transaction\.update\(purchaseRef/);
 assert.doesNotMatch(churchAdmin, /batch\.update\(walletRef[\s\S]*FieldValue\.increment\(purchase\.price/);
-assert.match(rules, /resource\.data\.status == 'pending'[\s\S]*request\.resource\.data\.status in \['delivered', 'cancelled'\]/);
+assert.match(rules, /match \/talentPurchases\/\{purchaseId\}[\s\S]*allow create, update, delete: if false;/,
+    '관리자 판매·수령·환불도 서버 action만 사용해야 한다.');
 assert.match(churchAdminSignupService, /const adminPath = `\$\{churchPath\}\/private\/admin`[\s\S]*updateWrite\(service\.projectId, adminPath,[\s\S]*adminUid: signup\.uid/,
     '공동체 관리자 소유 증명은 서버 가입 transaction이 만들어야 한다.');
 assert.match(constants, /KAKAO_CHANNEL_URL = "https:\/\/pf\.kakao\.com/);

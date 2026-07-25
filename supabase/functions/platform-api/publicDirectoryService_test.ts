@@ -299,7 +299,7 @@ Deno.test("public directory dry-run scans all sources and performs zero writes",
   assertEquals(result, {
     dryRun: true,
     applied: false,
-    mode: "legacy",
+    mode: "public",
     summary: {
       sourceCount: 4,
       expectedCount: 2,

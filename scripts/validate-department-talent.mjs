@@ -330,8 +330,8 @@ assert.match(firestoreIndexes, /"collectionGroup": "talentPurchases"[\s\S]*"fiel
 const purchaseRules = rules.match(/match \/talentPurchases\/\{purchaseId\} \{([\s\S]*?)\n      \}/)?.[1] || '';
 assert.doesNotMatch(purchaseRules, /allow create: if isRealUser\(\)/,
     '일반 교인의 구매 직접 생성은 규칙에서 닫혀 있어야 한다.');
-assert.match(purchaseRules, /allow create: if \(isChurchAdmin\(churchId\) \|\| isPlatformAdmin\(\)\)[\s\S]*status == 'delivered'/,
-    '관리자 창구 판매는 유지해야 한다.');
+assert.match(purchaseRules, /allow create, update, delete: if false;/,
+    '판매·수령·환불은 관리자도 브라우저에서 직접 쓰지 못하고 서버 action만 사용해야 한다.');
 assert.match(rules, /hasAny\(\['role', 'churchId', 'accountType', 'isDeleted', 'extraMemberships',[\s\S]*'departmentId', 'departmentName',[\s\S]*'subgroupId', 'subgroupName'\]\)/,
     'users 소속 필드는 최초 설정도 본인이 직접 바꾸지 못해야 한다.');
 assert.match(rules, /resource\.data\.role == 'member'[\s\S]*isChurchAdmin\(resource\.data\.churchId\)[\s\S]*affectedKeys\(\)\.hasOnly\(\[[\s\S]*'departmentId', 'departmentName', 'subgroupId', 'subgroupName'[\s\S]*'extraMemberships', 'updatedAt'/,
@@ -340,7 +340,7 @@ assert.match(rules, /deletedAt == request\.time[\s\S]*deletedBy == request\.auth
     '교인 삭제 감사 시각·행위자는 삭제 전이와 함께 서버 시각·현재 관리자에 결속해야 한다.');
 assert.match(rules, /isDeleted == false[\s\S]*deletedAt == null[\s\S]*deletedBy == null[\s\S]*hasAll\(\['isDeleted', 'deletedAt', 'deletedBy'\]\)/,
     '교인 복원은 삭제 감사 필드를 함께 비워야 한다.');
-assert.match(rules, /function isSafeSelfScoreTalentUpdate\(before, after\)[\s\S]*wasMigrated && isMigrated/,
+assert.match(rules, /function isSafeSelfScoreTalentUpdate\(before, after\)[\s\S]*before\.get\('talentMigrated', false\) == true[\s\S]*after\.get\('talentMigrated', false\) == true/,
     'talentMigrated true 표식은 본인이 false로 되돌려 이관 예외를 재사용할 수 없어야 한다.');
 const usersCreateRule = rules.slice(
     rules.indexOf('allow create:', rules.indexOf('match /users/{uid}')),
@@ -350,10 +350,12 @@ assert.doesNotMatch(usersCreateRule, /churchAdmin/,
     '브라우저는 신규 공동체 관리자 문서를 직접 만들 수 없어야 한다.');
 assert.match(churchAdminSignupService, /role: "churchAdmin",[\s\S]*extraMemberships: \[\],[\s\S]*score: 0,[\s\S]*talent: 0,[\s\S]*talentMigrated: true/,
     '서버 신규 공동체 관리자 문서는 추가소속·점수·지갑을 canonical 초기값으로 만들어야 한다.');
-assert.match(rules, /wasMigrated && isMigrated[\s\S]*before\.get\('accountType', null\) == 'personal'[\s\S]*afterTalent == beforeTalent[\s\S]*afterScore == beforeScore/,
-    'personal users의 true→true 본인 쓰기는 score/talent를 완전히 동결해야 한다.');
-assert.match(rules, /before\.get\('accountType', null\) != 'personal'[\s\S]*afterTalent <= beforeTalent \+ 17[\s\S]*afterScore <= beforeScore \+ 15/,
-    '일반 공동체 users의 기존 +17/+15 호환 상한은 유지해야 한다.');
+assert.match(rules, /afterTalent == beforeTalent[\s\S]*afterScore == beforeScore/,
+    '이관 완료 users의 true→true 본인 쓰기는 계정 유형과 무관하게 score/talent를 완전히 동결해야 한다.');
+assert.doesNotMatch(rules, /!wasMigrated|!isMigrated|afterTalent == beforeScore|afterScore >= beforeScore/,
+    '백필 완료 뒤 legacy 브라우저 이관 분기가 남으면 안 된다.');
+assert.doesNotMatch(rules, /afterTalent <= beforeTalent \+ 17|afterScore <= beforeScore \+ 15/,
+    '일반 공동체 users의 구버전 브라우저 보상 호환 상한은 최종 차단 뒤 남으면 안 된다.');
 assert.doesNotMatch(rules, /resource\.data\.accountType == 'personal'[\s\S]{0,300}isChurchAdmin\(resource\.data\.get\('primaryOrgId', null\)\)[\s\S]{0,300}hasOnly\(\['talent', 'updatedAt'\]\)/,
     '공동체 관리자가 개인 users.talent를 임의 양수로 직접 설정할 수 없어야 한다.');
 const rosterUpdateRule = rules.match(/match \/roster\/\{memberUid\} \{([\s\S]*?)\n        allow delete/)?.[1] || '';
@@ -373,10 +375,10 @@ assert.match(membership, /transaction\.get\(rosterRef\)[\s\S]*latestTalent > 0[\
     '본인 탈퇴 UI는 source transaction의 최신 roster 잔액을 확인해야 한다.');
 assert.match(churchAdmin, /executeExpelRosterMember[\s\S]*transaction\.get\(rosterRef\)[\s\S]*latestTalent > 0[\s\S]*남아 있어 제명할 수 없습니다/,
     '관리자 제명 UI는 source transaction의 최신 roster 잔액을 확인해야 한다.');
-assert.match(rosterUpdateRule, /getAfter\([\s\S]*users\/\$\(request\.auth\.uid\)[\s\S]*get\('accountType', null\) == 'personal'[\s\S]*get\('score', 0\) == resource\.data\.get\('score', 0\)[\s\S]*get\('talent', 0\) == resource\.data\.get\('talent', 0\)/,
-    'personal의 primary·secondary roster score/talent는 브라우저에서 모두 exact-freeze해야 한다.');
-assert.match(rosterUpdateRule, /getAfter\([\s\S]*get\('accountType', null\) != 'personal'[\s\S]*get\('score', 0\) <= resource\.data\.get\('score', 0\) \+ 15[\s\S]*get\('talent', 0\) <= resource\.data\.get\('talent', 0\) \+ 17/,
-    '일반 공동체 계정 roster의 구버전 +15/+17 호환 경계는 유지해야 한다.');
+assert.match(rosterUpdateRule, /get\('score', 0\) == resource\.data\.get\('score', 0\)[\s\S]*get\('talent', 0\) == resource\.data\.get\('talent', 0\)[\s\S]*get\('currentDay', 1\) == resource\.data\.get\('currentDay', 1\)[\s\S]*get\('lastReadDate', null\) == resource\.data\.get\('lastReadDate', null\)/,
+    '모든 roster 진도·점수·달란트는 브라우저 self-update에서 exact-freeze해야 한다.');
+assert.doesNotMatch(rosterUpdateRule, /\+ 15|\+ 17/,
+    '일반 공동체 roster의 구버전 보상 호환 상한은 최종 차단 뒤 남으면 안 된다.');
 assert.match(adminView, /executeExpelRosterMember[\s\S]*error\?\.code === 'permission-denied'[\s\S]*기본 공동체이거나 달란트 잔액이 남은 명부에서는 제명할 수 없습니다/,
     '기본 또는 양수 잔액 roster 삭제 거부는 관리자에게 별도로 안내해야 한다.');
 assert.match(rules, /match \/roster\/\{memberUid\}[\s\S]*allow update: if \(isRealUser\(\)[\s\S]*affectedKeys\(\)[\s\S]*hasAny\(\['departmentId', 'departmentName', 'subgroupId', 'subgroupName'\]\)/,

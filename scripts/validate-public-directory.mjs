@@ -100,14 +100,14 @@ for (
     /lock\.data\.runId !== requestId[\s\S]*lock\.data\.ownerToken !== ownerToken/,
     /legacyDocument = await dependencies\.getDocument<[\s\S]*LEGACY_DIRECTORY_PATH[\s\S]*const \[sourceDocuments, publicDocuments\] = await Promise\.all/,
     /ready: false,[\s\S]*mode: "legacy"/,
-    /ready: true,[\s\S]*mode: "legacy"/,
+    /ready: true,[\s\S]*mode: "public"/,
     /writeBatchSize: 450/,
   ]
 ) assert.match(service, pattern);
-assert.doesNotMatch(
+assert.match(
   service,
   /mode:\s*"public"/,
-  "남은 직접 writer가 있는 동안 public mode를 활성화하면 안 된다.",
+  "T132 최종 차단 뒤 public mode를 활성화해야 한다.",
 );
 
 const metaOff = service.indexOf("ready: false");
@@ -244,7 +244,7 @@ assert.deepEqual(
       requestId,
       dryRun: true,
       applied: false,
-      mode: "legacy",
+      mode: "public",
       summary,
     },
     requestId,
@@ -257,7 +257,7 @@ for (
       result.extra = true;
     },
     (result) => {
-      result.mode = "public";
+      result.mode = "legacy";
     },
     (result) => {
       result.summary.expectedCount = -1;
@@ -273,7 +273,7 @@ for (
     requestId,
     dryRun: true,
     applied: false,
-    mode: "legacy",
+    mode: "public",
     summary: { ...summary },
   };
   mutate(result);

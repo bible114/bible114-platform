@@ -1887,7 +1887,7 @@ export const validateRebuildPublicChurchesResponse = (payload, result, expectedR
         || result.dryRun !== payload.dryRun
         || typeof result.applied !== 'boolean'
         || result.applied !== !payload.dryRun
-        || result.mode !== 'legacy'
+        || result.mode !== 'public'
         || !hasExactKeys(result.summary, REBUILD_PUBLIC_CHURCHES_SUMMARY_KEYS)
         || typeof result.summary.legacyChanged !== 'boolean'
         || [...REBUILD_PUBLIC_CHURCHES_SUMMARY_KEYS]
@@ -1901,7 +1901,7 @@ export const validateRebuildPublicChurchesResponse = (payload, result, expectedR
         requestId: expectedRequestId,
         dryRun: result.dryRun,
         applied: result.applied,
-        mode: 'legacy',
+        mode: 'public',
         summary: { ...result.summary },
     };
 };

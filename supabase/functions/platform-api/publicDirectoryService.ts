@@ -49,7 +49,7 @@ export type PublicDirectorySummary = {
 export type RebuildPublicChurchesResult = {
   dryRun: boolean;
   applied: boolean;
-  mode: "legacy";
+  mode: "public";
   summary: PublicDirectorySummary;
 };
 
@@ -497,7 +497,7 @@ export const rebuildPublicChurches = async (
     return {
       dryRun: true,
       applied: false,
-      mode: "legacy",
+      mode: "public",
       summary: plan.summary,
     };
   }
@@ -583,10 +583,9 @@ export const rebuildPublicChurches = async (
       dependencies,
     );
 
-    // `mode: legacy` is deliberate until every remaining direct browser
-    // writer is removed and the later rules rollout has completed its
-    // observation gate. Publishing ready and deleting this run's lock are one
-    // transaction, so a stale worker cannot reopen readiness afterward.
+    // T132 final lockdown removed every public-directory browser writer.
+    // Publishing public mode and deleting this run's lock are one transaction,
+    // so a stale worker cannot reopen readiness afterward.
     await commitOwnedWrites(
       service,
       input.requestId,
@@ -594,7 +593,7 @@ export const rebuildPublicChurches = async (
       [
         dependencies.updateWrite(service.projectId, PUBLIC_META_PATH, {
           ready: true,
-          mode: "legacy",
+          mode: "public",
           schemaVersion: 1,
           count: plan.expected.length,
           updatedAt: projectionUpdatedAt,
@@ -618,7 +617,7 @@ export const rebuildPublicChurches = async (
   return {
     dryRun: false,
     applied: true,
-    mode: "legacy",
+    mode: "public",
     summary: plan.summary,
   };
 };
