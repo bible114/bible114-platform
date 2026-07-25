@@ -109,17 +109,26 @@ try {
     }
     assert.ok(signed?.signedJwt, '플랫폼 관리자용 일회성 custom token 서명에 실패했습니다.');
 
-    const signIn = await jsonFetch(
-        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${firebaseApiKey}`,
-        {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: signed.signedJwt, returnSecureToken: true }),
-        },
-    );
+    let signIn;
+    for (let attempt = 0; attempt < 15; attempt += 1) {
+        try {
+            signIn = await jsonFetch(
+                `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${firebaseApiKey}`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: signed.signedJwt, returnSecureToken: true }),
+                },
+            );
+            break;
+        } catch (error) {
+            if (attempt === 14 || !String(error?.message || '').includes('INVALID_CUSTOM_TOKEN')) throw error;
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+    }
     assert.ok(signIn.idToken, '일회성 플랫폼 관리자 ID token 발급에 실패했습니다.');
 
-    const action = async (actionName, dryRun) => jsonFetch(platformApiUrl, {
+    const action = async (actionName, input) => jsonFetch(platformApiUrl, {
         method: 'POST',
         headers: {
             Authorization: `Bearer ${signIn.idToken}`,
@@ -129,12 +138,16 @@ try {
         body: JSON.stringify({
             action: actionName,
             requestId: crypto.randomUUID(),
-            dryRun,
+            ...input,
         }),
     });
 
-    const statsPreview = await action('rebuildPlatformStats', true);
-    const directoryPreview = await action('rebuildPublicChurches', true);
+    const statsPreview = await action('rebuildPlatformStats', { dryRun: true });
+    const directoryPreview = await action('rebuildPublicChurches', { dryRun: true });
+    const videoPreview = await action('adminPreviewDailyVideo', {
+        adultPlaylistId: 'PLkA5pHbjEOGsYpiH6aBbNp4LMMGaSKGaD',
+        kidsPlaylistId: 'PLAXF9wEETjFo',
+    });
     const preview = {
         stats: statsPreview.result,
         directory: {
@@ -142,13 +155,18 @@ try {
             mode: directoryPreview.mode,
             summary: directoryPreview.summary,
         },
+        video: {
+            serviceDate: videoPreview.serviceDate,
+            adultReady: Boolean(videoPreview.previews?.adult),
+            kidsReady: Boolean(videoPreview.previews?.kids),
+        },
     };
     console.log(JSON.stringify({ execute, preview }, null, 2));
 
     if (execute) {
         assert.equal(directoryPreview.summary?.invalidCount, 0, '잘못된 교회 원본이 있어 전환을 중단합니다.');
-        const statsApplied = await action('rebuildPlatformStats', false);
-        const directoryApplied = await action('rebuildPublicChurches', false);
+        const statsApplied = await action('rebuildPlatformStats', { dryRun: false });
+        const directoryApplied = await action('rebuildPublicChurches', { dryRun: false });
         assert.equal(statsApplied.result?.applied, true, '플랫폼 통계 적용 응답이 올바르지 않습니다.');
         assert.equal(directoryApplied.applied, true, '공개 디렉토리 적용 응답이 올바르지 않습니다.');
         assert.equal(directoryApplied.mode, 'public', '공개 디렉토리가 public 모드로 전환되지 않았습니다.');
