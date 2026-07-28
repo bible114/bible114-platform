@@ -31,6 +31,15 @@ const depsDefault: RebuildPlatformStatsDependencies = {
 };
 const safeCount = (value: unknown) =>
   Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : 0;
+const safeAdd = (left: number, right: number, label: string) => {
+  const value = left + right;
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new PlatformError("CONFLICT", {
+      message: `${label} 통계 값이 너무 큽니다.`,
+    });
+  }
+  return value;
+};
 
 export const nextPlatformStatsAfterSignup = (
   current: RecordValue | null,
@@ -76,7 +85,7 @@ export const rebuildPlatformStats = async (
   ) {
     throw new PlatformError("BAD_REQUEST");
   }
-  const [actor, users, churches, current] = await Promise.all([
+  const [actor, users, churches, externalSources, current] = await Promise.all([
     dependencies.getDocument<RecordValue>(
       service.token,
       service.projectId,
@@ -92,6 +101,11 @@ export const rebuildPlatformStats = async (
       service.projectId,
       "churches",
     ),
+    dependencies.listCollectionDocuments<RecordValue>(
+      service.token,
+      service.projectId,
+      "platformExternalStats",
+    ),
     dependencies.getDocument<RecordValue>(
       service.token,
       service.projectId,
@@ -106,26 +120,50 @@ export const rebuildPlatformStats = async (
     throw new PlatformError("FORBIDDEN");
   }
   const activeUsers = users.filter(({ data }) => data.isDeleted !== true);
-  const today = getLegacyCalendarDateStringKst(dependencies.now());
-  const expected = {
-    total_readers: activeUsers.length,
-    total_churches:
-      churches.filter(({ data, name }) =>
+  const activeChurchIds = new Set(
+    churches
+      .filter(({ data, name }) =>
         data.isDeleted !== true && data.isVirtual !== true &&
         !name.endsWith(`/churches/${UNAFFILIATED_CHURCH_ID}`)
-      ).length,
-    readers_today:
+      )
+      .map(({ name }) => name.split("/").at(-1) || ""),
+  );
+  const enabledExternalSources = externalSources.filter(({ data }) =>
+    data.enabled === true &&
+    typeof data.churchId === "string" &&
+    activeChurchIds.has(data.churchId)
+  );
+  const today = getLegacyCalendarDateStringKst(dependencies.now());
+  const externalTotal = (
+    key: "total_readers" | "finished_total" | "readers_today",
+    onlyToday = false,
+  ) =>
+    enabledExternalSources
+      .filter(({ data }) => !onlyToday || data.today_date === today)
+      .reduce(
+        (sum, { data }) => safeAdd(sum, safeCount(data[key]), `외부 ${key}`),
+        0,
+      );
+  const expected = {
+    total_readers: safeAdd(
+      activeUsers.length,
+      externalTotal("total_readers"),
+      "전체 독자",
+    ),
+    total_churches: activeChurchIds.size,
+    readers_today: safeAdd(
       activeUsers.filter(({ data }) => data.lastReadDate === today).length,
-    finished_total: activeUsers.reduce((sum, { data }) => {
-      const readCount = safeCount(data.readCount || 1);
-      const next = sum + Math.max(readCount - 1, 0);
-      if (!Number.isSafeInteger(next)) {
-        throw new PlatformError("CONFLICT", {
-          message: "누적 완독 수가 너무 큽니다.",
-        });
-      }
-      return next;
-    }, 0),
+      externalTotal("readers_today", true),
+      "오늘 독자",
+    ),
+    finished_total: safeAdd(
+      activeUsers.reduce((sum, { data }) => {
+        const readCount = safeCount(data.readCount || 1);
+        return safeAdd(sum, Math.max(readCount - 1, 0), "누적 완독");
+      }, 0),
+      externalTotal("finished_total"),
+      "누적 완독",
+    ),
     today_date: today,
   };
   const expectedKeys = Object.keys(expected) as Array<keyof typeof expected>;
@@ -136,12 +174,16 @@ export const rebuildPlatformStats = async (
     currentValues[key] !== expected[key]
   );
   if (!input.dryRun && changed.length > 0) {
-    if (users.length + churches.length > 480) {
+    if (users.length + churches.length + externalSources.length > 480) {
       throw new PlatformError("CONFLICT", {
         message: "통계 재계산 대상이 단일 안전 스냅샷 한도를 넘었습니다.",
       });
     }
-    const verifies: FirestoreWrite[] = [...users, ...churches]
+    const verifies: FirestoreWrite[] = [
+      ...users,
+      ...churches,
+      ...externalSources,
+    ]
       .filter((document) => document.updateTime)
       .map((document) => ({
         verify: document.name,
@@ -163,5 +205,10 @@ export const rebuildPlatformStats = async (
     expected,
     current: currentValues,
     changed,
+    externalSources: enabledExternalSources.map(({ data, name }) => ({
+      id: name.split("/").at(-1) || "",
+      churchId: data.churchId,
+      todayDate: data.today_date,
+    })),
   };
 };

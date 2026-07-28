@@ -64,28 +64,57 @@ Deno.test("통계 재계산은 활성 사용자와 실제 공동체 스냅샷을
             today_date: "stale",
           }),
       ) as never,
-    listCollectionDocuments: (_token, _project, path) =>
-      Promise.resolve(
-        path === "users"
-          ? [
-            document("users/admin", {
-              role: "platformAdmin",
-              readCount: 1,
-              lastReadDate: "Fri Jul 17 2026",
-            }),
-            document("users/member", {
-              role: "member",
-              readCount: 4,
-              lastReadDate: "Fri Jul 17 2026",
-            }),
-            document("users/deleted", { isDeleted: true, readCount: 8 }),
-          ]
-          : [
-            document("churches/real", { isDeleted: false }),
-            document("churches/deleted", { isDeleted: true }),
-            document("churches/unaffiliated_v1", { isVirtual: true }),
-          ],
-      ) as never,
+    listCollectionDocuments: (_token, _project, path) => {
+      if (path === "users") {
+        return Promise.resolve([
+          document("users/admin", {
+            role: "platformAdmin",
+            readCount: 1,
+            lastReadDate: "Fri Jul 17 2026",
+          }),
+          document("users/member", {
+            role: "member",
+            readCount: 4,
+            lastReadDate: "Fri Jul 17 2026",
+          }),
+          document("users/deleted", { isDeleted: true, readCount: 8 }),
+        ]) as never;
+      }
+      if (path === "churches") {
+        return Promise.resolve([
+          document("churches/real", { isDeleted: false }),
+          document("churches/external", { isDeleted: false }),
+          document("churches/deleted", { isDeleted: true }),
+          document("churches/unaffiliated_v1", { isVirtual: true }),
+        ]) as never;
+      }
+      return Promise.resolve([
+        document("platformExternalStats/sungseo", {
+          enabled: true,
+          churchId: "external",
+          total_readers: 205,
+          readers_today: 17,
+          finished_total: 42,
+          today_date: "Fri Jul 17 2026",
+        }),
+        document("platformExternalStats/stale", {
+          enabled: true,
+          churchId: "external",
+          total_readers: 5,
+          readers_today: 5,
+          finished_total: 1,
+          today_date: "Thu Jul 16 2026",
+        }),
+        document("platformExternalStats/orphan", {
+          enabled: true,
+          churchId: "missing",
+          total_readers: 999,
+          readers_today: 999,
+          finished_total: 999,
+          today_date: "Fri Jul 17 2026",
+        }),
+      ]) as never;
+    },
     commitWrites: (_token, _project, writes) => {
       commits.push(writes);
       return Promise.resolve({}) as never;
@@ -100,8 +129,9 @@ Deno.test("통계 재계산은 활성 사용자와 실제 공동체 스냅샷을
     dependencies,
   );
   assert(result.applied === true && commits.length === 1);
-  assert(result.expected.total_readers === 2);
-  assert(result.expected.total_churches === 1);
-  assert(result.expected.readers_today === 2);
-  assert(result.expected.finished_total === 3);
+  assert(result.expected.total_readers === 212);
+  assert(result.expected.total_churches === 2);
+  assert(result.expected.readers_today === 19);
+  assert(result.expected.finished_total === 46);
+  assert(result.externalSources.length === 2);
 });
