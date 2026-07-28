@@ -375,6 +375,32 @@ Deno.test("platformStats가 없어도 첫 읽기 transaction이 문서를 안전
   }, "missing stats document was not created");
 });
 
+Deno.test("공개 통계 제외 계정은 읽기 진도만 저장하고 공개 통계를 바꾸지 않는다", async () => {
+  const harness = createHarness({
+    [`users/${UID}`]: baseUser({ excludeFromPublicStats: true }),
+    [`churches/base-org/settings/talentShop`]: v2Shop(),
+    "settings/platformStats": {
+      today_date: TODAY,
+      readers_today: 4,
+      finished_total: 2,
+      total_readers: 100,
+    },
+  });
+
+  const response = await complete(harness);
+  assert(response.committed, "excluded account read was not committed");
+  assert(
+    !harness.commits[0].paths.includes("settings/platformStats"),
+    "excluded account changed public stats",
+  );
+  assertEquals(harness.state.get("settings/platformStats"), {
+    today_date: TODAY,
+    readers_today: 4,
+    finished_total: 2,
+    total_readers: 100,
+  });
+});
+
 Deno.test("같은 requestId replay는 입력을 결속하고 통계·history를 중복 기록하지 않는다", async () => {
   const harness = createHarness({
     [`users/${UID}`]: baseUser(),

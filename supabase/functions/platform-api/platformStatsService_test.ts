@@ -77,6 +77,12 @@ Deno.test("통계 재계산은 활성 사용자와 실제 공동체 스냅샷을
             readCount: 4,
             lastReadDate: "Fri Jul 17 2026",
           }),
+          document("users/test-account", {
+            role: "member",
+            readCount: 99,
+            lastReadDate: "Fri Jul 17 2026",
+            excludeFromPublicStats: true,
+          }),
           document("users/deleted", { isDeleted: true, readCount: 8 }),
         ]) as never;
       }

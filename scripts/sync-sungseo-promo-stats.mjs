@@ -246,7 +246,9 @@ if (currentExternal) {
   }
 }
 
-const activeTargetUsers = targetUsers.filter(({ data }) => data.isDeleted !== true);
+const activeTargetUsers = targetUsers.filter(({ data }) =>
+  data.isDeleted !== true && data.excludeFromPublicStats !== true
+);
 const churchExistsInSnapshot = targetChurches.some(({ id }) => id === TARGET_CHURCH_ID);
 const targetChurchSnapshot = churchExistsInSnapshot
   ? targetChurches

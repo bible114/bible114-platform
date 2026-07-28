@@ -23,7 +23,7 @@ const asDoc = <T>(path: string, data: T): FirestoreDocument<T> => ({
   updateTime: "2026-07-17T00:00:00Z",
 });
 
-const harness = () => {
+const harness = ({ includeExcluded = false } = {}) => {
   const commits: FirestoreWrite[][] = [];
   const getDocument = async <T>(
     _token: string,
@@ -55,6 +55,16 @@ const harness = () => {
           churchId: "c1",
           accountType: "church",
         }),
+        ...(includeExcluded
+          ? [
+            asDoc("users/u2", {
+              role: "member",
+              churchId: "c1",
+              accountType: "church",
+              excludeFromPublicStats: true,
+            }),
+          ]
+          : []),
         asDoc("users/p1", {
           role: "member",
           churchId: "c1",
@@ -131,6 +141,29 @@ Deno.test("공동체 비활성화는 주 소속 users만 soft-delete하고 정�
         "/users/p1",
       )
     ),
+  );
+});
+
+Deno.test("공개 통계 제외 사용자는 lifecycle 대상이어도 참여 성도 증감에서 제외한다", async () => {
+  const { dependencies, commits } = harness({ includeExcluded: true });
+  const result = await adminSetChurchLifecycle(
+    { token: "t", projectId: "p" },
+    { uid: "admin", anonymous: false },
+    { requestId: RID, churchId: "c1", active: false },
+    dependencies,
+  );
+  assertEquals(result.affectedUsers, 2);
+  const statsWrite = commits.flat().find((write) =>
+    String((write.update as { name?: string })?.name || "").endsWith(
+      "/settings/platformStats",
+    )
+  );
+  assert(statsWrite);
+  assertEquals(
+    decodeFirestoreFields(
+      (statsWrite.update as { fields: Record<string, never> }).fields,
+    ).total_readers,
+    9,
   );
 });
 

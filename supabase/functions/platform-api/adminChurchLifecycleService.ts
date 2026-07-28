@@ -263,6 +263,9 @@ export const adminSetChurchLifecycle = async (
       ? data.deactivationGeneration === generation
       : data.isDeleted !== true || data.deactivationGeneration === generation;
   });
+  const publicStatsManagedUsers = managedUsers.filter(({ data }) =>
+    data.excludeFromPublicStats !== true
+  );
   const targets = managedUsers.filter(({ data }) =>
     input.active ? data.isDeleted === true : data.isDeleted !== true
   );
@@ -425,7 +428,9 @@ export const adminSetChurchLifecycle = async (
       !Number.isSafeInteger(currentChurches) || Number(currentChurches) < 0
     ) throw conflict("플랫폼 통계를 먼저 재계산해 주세요.");
     const nextReaders = Number(currentReaders) +
-      (input.active ? managedUsers.length : -managedUsers.length);
+      (input.active
+        ? publicStatsManagedUsers.length
+        : -publicStatsManagedUsers.length);
     const nextChurches = Number(currentChurches) + (input.active ? 1 : -1);
     if (nextReaders < 0 || nextChurches < 0) {
       throw conflict("플랫폼 통계 감소값이 올바르지 않습니다.");

@@ -119,7 +119,9 @@ export const rebuildPlatformStats = async (
   ) {
     throw new PlatformError("FORBIDDEN");
   }
-  const activeUsers = users.filter(({ data }) => data.isDeleted !== true);
+  const activeUsers = users.filter(({ data }) =>
+    data.isDeleted !== true && data.excludeFromPublicStats !== true
+  );
   const activeChurchIds = new Set(
     churches
       .filter(({ data, name }) =>

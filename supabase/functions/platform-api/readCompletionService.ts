@@ -52,6 +52,7 @@ type CompleteReadUserDocument = StoredReadUser & TalentMembershipUser & {
   uid?: unknown;
   role?: unknown;
   isDeleted?: unknown;
+  excludeFromPublicStats?: unknown;
   churchId?: unknown;
   baseChurchId?: unknown;
   primaryOrgId?: unknown;
@@ -975,7 +976,10 @@ const executeCompleteRead = async (
     ];
 
     const isFirstReadToday = result.summary.scoreEarned > 0;
-    if (isFirstReadToday || result.summary.completedRound) {
+    if (
+      userDocument.data.excludeFromPublicStats !== true &&
+      (isFirstReadToday || result.summary.completedRound)
+    ) {
       const statsPath = "settings/platformStats";
       const statsDocument = await dependencies.getDocument<
         PlatformStatsDocument
