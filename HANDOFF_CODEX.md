@@ -22,7 +22,7 @@
 3. `npm run build`가 통과하는 상태로만 커밋한다.
 4. 설계에 없는 판단이 필요하거나 설계가 코드 현실과 안 맞으면, **임의로 설계를 바꾸지 말고** "Codex → Claude 메모"에 질문/제안을 남기고, 의존성 없는 다음 작업으로 넘어간다.
 5. 세션을 마칠 때(전체 완료가 아니어도) "Codex → Claude 메모"에 현재 상태·다음 작업자에게 할 말을 남긴다.
-6. **기본 금지**: `firebase deploy`, `npm run deploy`, `git push`는 사용자가 현재 작업에서 명시적으로 요청한 경우에만 검증 후 실행한다. firestore.rules의 `users` read 규칙 수정(별도 세션 담당)과 `users.password` 평문 필드 제거는 계속 금지한다.
+6. **기본 금지**: `firebase deploy`, `npm run deploy`, `git push`는 사용자가 현재 작업에서 명시적으로 요청한 경우에만 검증 후 실행한다. `users.password` 평문 필드 제거는 계속 금지한다. ~~firestore.rules의 `users` read 규칙 수정(별도 세션 담당)~~ → **2026-08-01 해소 완료**(`44c47ad`): read를 본인·교회 관리자·플랫폼 관리자로 한정, rules 안전 테스트 42/42. 랭킹은 platform-api projection 경유라 클라이언트 영향 0건. 이 규칙을 다시 넓히지 말 것.
 
 ---
 
