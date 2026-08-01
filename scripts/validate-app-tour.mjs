@@ -9,6 +9,7 @@ const video = read('src/components/dashboard/DailyVideoCard.jsx');
 const bible = read('src/components/dashboard/BibleReader.jsx');
 const memo = read('src/components/dashboard/MemoSection.jsx');
 const login = read('src/components/LoginView.jsx');
+const index = read('index.html');
 
 const stepIds = [...overlay.matchAll(/^\s*id: '(tut-[^']+)'/gm)].map(match => match[1]);
 assert.deepEqual(stepIds, [
@@ -49,5 +50,11 @@ for (const [id, source] of [
 assert.match(overlay, /role="dialog"/);
 assert.match(overlay, /aria-modal="true"/);
 assert.match(overlay, /투어 종료/);
+
+const demoLayer = Number(demo.match(/demo-tour-root[^"]*z-\[(\d+)\]/)?.[1]);
+const adLayer = Number(index.match(/#kakao-static-ad-layer\s*\{[\s\S]*?z-index:\s*(\d+)/)?.[1]);
+assert.ok(Number.isFinite(demoLayer), '체험 화면의 z-index를 확인할 수 있어야 합니다.');
+assert.ok(Number.isFinite(adLayer), '하단 광고의 z-index를 확인할 수 있어야 합니다.');
+assert.ok(demoLayer > adLayer, '체험 화면과 안내창은 하단 광고보다 위에 표시되어야 합니다.');
 
 console.log('앱 화면 투어 검증 통과');

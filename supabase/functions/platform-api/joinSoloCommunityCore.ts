@@ -1,4 +1,5 @@
 import type { FirestoreDocument } from "../_shared/firestore.ts";
+import { projectCommunityProgressIdentity } from "./communityProgressCore.ts";
 import {
   normalizeStoredDocumentId,
   parseRosterTalentWallets,
@@ -27,6 +28,8 @@ export type JoinSoloCommunityUser = {
   streak?: unknown;
   readCount?: unknown;
   lastReadDate?: unknown;
+  planId?: unknown;
+  fixtureType?: unknown;
 };
 
 export type JoinSoloCommunityRoster = TalentMembershipUser & {
@@ -39,6 +42,8 @@ export type JoinSoloCommunityRoster = TalentMembershipUser & {
   streak?: unknown;
   readCount?: unknown;
   lastReadDate?: unknown;
+  planId?: unknown;
+  fixtureType?: unknown;
   joinedAt?: unknown;
   updatedAt?: unknown;
 };
@@ -52,6 +57,8 @@ export type JoinSoloCommunityRosterSeed = {
   streak: number;
   readCount: number;
   lastReadDate: string | null;
+  planId: string;
+  fixtureType: "reading-badge-test" | null;
   departmentId: null;
   departmentName: null;
   subgroupId: null;
@@ -197,6 +204,7 @@ const validateUser = (
       streak: user.streak as number,
       readCount: user.readCount as number,
       lastReadDate: user.lastReadDate as string | null,
+      ...projectCommunityProgressIdentity(user),
       departmentId: null,
       departmentName: null,
       subgroupId: null,

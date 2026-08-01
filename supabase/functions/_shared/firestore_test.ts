@@ -1,4 +1,5 @@
 import {
+  batchGetDocuments,
   commitWrites,
   decodeDocumentFields,
   decodeValue,
@@ -36,6 +37,83 @@ Deno.test("Firestore values preserve strings, numbers, booleans, lists and maps"
   assertEquals(fields.count, { integerValue: "3" });
   assertEquals(decodeDocumentFields(fields), source);
   assertEquals(decodeValue(encodeFirestoreValue(-12)), -12);
+});
+
+Deno.test("batch get keeps resource names raw, applies a mask and decodes unordered found rows", async () => {
+  let requestUrl = "";
+  let requestBody: unknown = null;
+  const fixtureFetch =
+    (async (input: string | URL | Request, init?: RequestInit) => {
+      requestUrl = String(input);
+      requestBody = JSON.parse(String(init?.body));
+      return Response.json([
+        {
+          missing:
+            "projects/fixture/databases/(default)/documents/users/missing",
+          readTime: "2026-07-30T00:00:00Z",
+        },
+        {
+          found: {
+            name:
+              "projects/fixture/databases/(default)/documents/users/kakao:123",
+            fields: {
+              planId: { stringValue: "readable_new" },
+              isDeleted: { booleanValue: false },
+            },
+          },
+        },
+      ]);
+    }) as typeof fetch;
+
+  const documents = await batchGetDocuments<{
+    planId: string;
+    isDeleted: boolean;
+  }>(
+    "fixture-token",
+    "fixture",
+    ["users/kakao:123", "users/missing"],
+    {
+      fieldPaths: ["planId", "isDeleted"],
+      transaction: "fixture-transaction",
+      fetcher: fixtureFetch,
+    },
+  );
+
+  assertEquals(
+    requestUrl,
+    "https://firestore.googleapis.com/v1/projects/fixture/databases/(default)/documents:batchGet",
+  );
+  assertEquals(requestBody, {
+    documents: [
+      "projects/fixture/databases/(default)/documents/users/kakao:123",
+      "projects/fixture/databases/(default)/documents/users/missing",
+    ],
+    mask: { fieldPaths: ["planId", "isDeleted"] },
+    transaction: "fixture-transaction",
+  });
+  assertEquals(documents.map(({ data }) => data), [{
+    planId: "readable_new",
+    isDeleted: false,
+  }]);
+});
+
+Deno.test("batch get rejects empty, oversized and duplicate path sets", async () => {
+  for (
+    const paths of [
+      [],
+      Array.from({ length: 101 }, (_, index) => `users/u-${index}`),
+      ["users/u-1", "users/u-1"],
+    ]
+  ) {
+    try {
+      await batchGetDocuments("token", "project", paths);
+      throw new Error("expected rejection");
+    } catch (error) {
+      if (!(error instanceof PlatformError) || error.code !== "BAD_REQUEST") {
+        throw error;
+      }
+    }
+  }
 });
 
 Deno.test("document paths are encoded by segment and writes use full resource names", () => {

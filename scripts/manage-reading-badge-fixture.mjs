@@ -16,14 +16,17 @@ const apply = process.argv.includes('--apply');
 const confirmation = process.argv.find(value => value.startsWith('--confirm='))?.slice(10) || '';
 const fail = message => { throw new Error(message); };
 
-if (!['preview', 'create', 'audit', 'repair'].includes(command)) {
-    fail('Usage: node scripts/manage-reading-badge-fixture.mjs preview|audit|create|repair [--apply --confirm=...]');
+if (!['preview', 'create', 'audit', 'repair', 'delete'].includes(command)) {
+    fail('Usage: node scripts/manage-reading-badge-fixture.mjs preview|audit|create|repair|delete [--apply --confirm=...]');
 }
 if (command === 'create' && apply && confirmation !== 'CREATE_READING_BADGE_FIXTURE') {
     fail('create requires --apply --confirm=CREATE_READING_BADGE_FIXTURE');
 }
 if (command === 'repair' && (!apply || confirmation !== 'REPAIR_READING_BADGE_FIXTURE')) {
     fail('repair requires --apply --confirm=REPAIR_READING_BADGE_FIXTURE');
+}
+if (command === 'delete' && (!apply || confirmation !== 'DELETE_READING_BADGE_FIXTURE')) {
+    fail('delete requires --apply --confirm=DELETE_READING_BADGE_FIXTURE');
 }
 
 const firebaseToolsRoot = [
@@ -81,7 +84,10 @@ const requestJson = async (url, init = {}, allowedStatuses = []) => {
 };
 const getDocument = async documentPath => {
     const result = await requestJson(`${firestoreRoot}/${encodePath(documentPath)}`, {}, [404]);
-    return result.response.status === 404 ? null : { data: decodeFields(result.body.fields || {}) };
+    return result.response.status === 404 ? null : {
+        data: decodeFields(result.body.fields || {}),
+        updateTime: result.body.updateTime,
+    };
 };
 const queryUsers = async () => {
     const body = {
@@ -130,6 +136,10 @@ const updateWrite = (documentPath, data) => ({
     update: { name: fullName(documentPath), fields: encodeFields(data) },
     updateMask: { fieldPaths: Object.keys(data) },
     currentDocument: { exists: true },
+});
+const deleteWrite = (documentPath, updateTime) => ({
+    delete: fullName(documentPath),
+    currentDocument: { updateTime },
 });
 
 const church = await getDocument(`churches/${CHURCH_ID}`);
@@ -257,6 +267,81 @@ if (command === 'audit') {
     const ok = JSON.stringify(actual) === JSON.stringify(expected) && authMatches.every(Boolean);
     console.log(JSON.stringify({ ok, firestoreCount: actual.length, authCount: authMatches.filter(Boolean).length, rounds: actual.map(user => user.completedRounds) }, null, 2));
     if (!ok) process.exitCode = 1;
+    process.exit();
+}
+
+if (command === 'delete') {
+    if (existingFixtureUsers.length !== MEMBER_COUNT) {
+        fail(`Expected ${MEMBER_COUNT} existing fixture users, found ${existingFixtureUsers.length}.`);
+    }
+    const expectedByUid = new Map(users.map(user => [user.uid, user]));
+    const privateAuthDocs = [];
+    const authAccounts = [];
+    for (const existing of existingFixtureUsers) {
+        const expected = expectedByUid.get(existing.uid);
+        if (
+            !expected
+            || existing.fixtureType !== 'reading-badge-test'
+            || existing.name !== expected.name
+            || String(existing.email || '').toLowerCase() !== expected.email.toLowerCase()
+        ) {
+            fail(`Fixture identity mismatch: ${existing.uid}`);
+        }
+        const privateAuth = await getDocument(`users/${existing.uid}/private/auth`);
+        if (!privateAuth) fail(`Fixture private auth missing: ${existing.uid}`);
+        privateAuthDocs.push({ uid: existing.uid, ...privateAuth });
+        const matches = await lookupAuth({ localId: [existing.uid] });
+        if (
+            matches.length > 1
+            || (matches.length === 1 && String(matches[0].email || '').toLowerCase() !== expected.email.toLowerCase())
+        ) {
+            fail(`Fixture Auth identity mismatch: ${existing.uid}`);
+        }
+        if (matches.length === 1) authAccounts.push({ uid: existing.uid, email: matches[0].email });
+    }
+
+    const backupPath = path.join(manifestDir, `${CHURCH_ID}-deleted-${now.toISOString().replace(/[:.]/g, '-')}.json`);
+    fs.mkdirSync(manifestDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(backupPath, JSON.stringify({
+        schemaVersion: 1,
+        projectId: PROJECT_ID,
+        churchId: CHURCH_ID,
+        churchName: CHURCH_NAME,
+        deletedAt: now.toISOString(),
+        users: existingFixtureUsers,
+        privateAuthDocs,
+        authAccounts,
+        sourceManifest: existingManifest,
+    }, null, 2), { mode: 0o600, flag: 'wx' });
+
+    for (const account of authAccounts) await deleteAuth(account.uid);
+    const writes = [];
+    for (const existing of existingFixtureUsers) {
+        const privateAuth = privateAuthDocs.find(item => item.uid === existing.uid);
+        writes.push(deleteWrite(`users/${existing.uid}/private/auth`, privateAuth.updateTime));
+        const root = await getDocument(`users/${existing.uid}`);
+        if (!root) fail(`Fixture disappeared before delete: ${existing.uid}`);
+        writes.push(deleteWrite(`users/${existing.uid}`, root.updateTime));
+    }
+    await commit(writes);
+
+    const remainingUsers = (await queryUsers()).filter(user => user.uid.startsWith(PREFIX));
+    let remainingAuth = 0;
+    for (const user of users) {
+        remainingAuth += (await lookupAuth({ localId: [user.uid] })).length;
+    }
+    if (remainingUsers.length > 0 || remainingAuth > 0) {
+        fail(`Delete verification failed: users=${remainingUsers.length}, auth=${remainingAuth}`);
+    }
+    console.log(JSON.stringify({
+        status: 'deleted',
+        firestoreUsersDeleted: existingFixtureUsers.length,
+        privateAuthDocsDeleted: privateAuthDocs.length,
+        authAccountsDeleted: authAccounts.length,
+        remainingFixtureUsers: remainingUsers.length,
+        remainingFixtureAuth: remainingAuth,
+        backupPath,
+    }, null, 2));
     process.exit();
 }
 

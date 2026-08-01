@@ -113,9 +113,9 @@ for (const loginHelpText of [
 assert.match(loginView, /aria-label="로그인 도움"[\s\S]*setShowReadingGuide\(true\)[\s\S]*min-h-11[\s\S]*도움말/);
 assert.doesNotMatch(loginView, /로그인·기록 문의|setShowAdminContact|AdminContactModal/);
 assert.match(loginView, /onClick=\{\(\) => setShowReadingGuide\(true\)\}[^>]*>읽는 방법<\/button>/);
-assert.match(loginView, /aria-label="로그인 도움" className="[^"]*md:hidden"[\s\S]{0,420}도움말/);
-assert.match(loginView, /hidden md:grid grid-cols-4/);
-assert.match(loginView, /hidden md:block bg-cream-card/);
+assert.match(loginView, /aria-label="로그인 도움" className="[^"]*lg:hidden"[\s\S]{0,420}도움말/);
+assert.match(loginView, /hidden lg:grid grid-cols-4/);
+assert.match(loginView, /hidden lg:block bg-cream-card/);
 assert.doesNotMatch(loginView, /5초만에 빠른 시작|기존 성도 안내 다시 보기/);
 assert.match(loginView, /type=\{showMemberEntryCode \? 'text' : 'password'\}/);
 assert.match(loginView, /aria-label=\{showMemberEntryCode \? '교회 입장코드 숨기기' : '교회 입장코드 보기'\}/);

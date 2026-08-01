@@ -3,16 +3,32 @@ import { getMembershipList } from './memberships';
 // 메모 키 파싱: "3_42" → {round:3, day:42} / 구형 "42" → {round:1, day:42}
 const parseMemoKeyForExport = (key) => {
     const parts = String(key).split('_');
-    if (parts.length === 2) return { round: Number(parts[0]), day: Number(parts[1]) };
+    if (parts.length >= 2) return { round: Number(parts[0]), day: Number(parts[1]) };
     return { round: 1, day: Number(key) };
 };
 
-export const generateMemosHTML = (userName, userMemos, userStats = {}) => {
+const escapeHtml = value => String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+
+export const generateMemosHTML = (userName, userMemos, userStats = {}, options = {}) => {
+    const archiveYear = Number.isSafeInteger(options.year) ? options.year : null;
     const entries = Object.entries(userMemos)
         .map(([key, memo]) => ({ key, memo, ...parseMemoKeyForExport(key) }))
+        .filter(({ memo }) => {
+            if (!archiveYear) return true;
+            const date = memo?.date ? new Date(memo.date) : null;
+            return date && !Number.isNaN(date.getTime()) && date.getFullYear() === archiveYear;
+        })
         .sort((a, b) => a.round - b.round || a.day - b.day);
 
     const memoCount = entries.length;
+    if (memoCount === 0) return false;
+    const safeUserName = escapeHtml(userName);
+    const archiveLabel = archiveYear ? `${archiveYear}년` : '전체';
 
     // 묵상 항목들 HTML 생성
     let memosHTML = '';
@@ -25,11 +41,11 @@ export const generateMemosHTML = (userName, userMemos, userStats = {}) => {
                     <div style="background: white; border-radius: 16px; padding: 24px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #e2e8f0;">
                             <span style="background: linear-gradient(135deg, #4f46e5, #7c3aed); color: white; padding: 8px 20px; border-radius: 25px; font-weight: bold; font-size: 18px;">${label}</span>
-                            <span style="color: #64748b; font-size: 16px;">${dateStr}</span>
+                            <span style="color: #64748b; font-size: 16px;">${escapeHtml(dateStr)}</span>
                         </div>
-                        <div style="color: #475569; font-size: 17px; font-weight: 600; margin-bottom: 16px;">${memo.title || ''}</div>
+                        <div style="color: #475569; font-size: 17px; font-weight: 600; margin-bottom: 16px;">${escapeHtml(memo.title || '')}</div>
                         ${memoTexts.map((text, idx) => `
-                            <div style="color: #1e293b; font-size: 18px; line-height: 1.9; white-space: pre-wrap; ${memoTexts.length > 1 ? 'background: #f8fafc; padding: 16px; border-radius: 12px; margin-bottom: 12px;' : ''}">${text}</div>
+                            <div style="color: #1e293b; font-size: 18px; line-height: 1.9; white-space: pre-wrap; ${memoTexts.length > 1 ? 'background: #f8fafc; padding: 16px; border-radius: 12px; margin-bottom: 12px;' : ''}">${escapeHtml(text)}</div>
                         `).join('')}
                     </div>
                 `;
@@ -40,7 +56,7 @@ export const generateMemosHTML = (userName, userMemos, userStats = {}) => {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${userName}의 묵상 기록</title>
+<title>${safeUserName}의 ${archiveLabel} 묵상 기록</title>
 <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { 
@@ -62,8 +78,8 @@ export const generateMemosHTML = (userName, userMemos, userStats = {}) => {
     <!-- 표지 -->
     <div style="background: linear-gradient(135deg, #4f46e5, #7c3aed); border-radius: 24px; padding: 50px 30px; text-align: center; color: white; margin-bottom: 30px;">
         <div style="font-size: 60px; margin-bottom: 20px;">📖</div>
-        <div style="font-size: 32px; font-weight: bold; margin-bottom: 10px;">${userName}</div>
-        <div style="font-size: 22px; opacity: 0.9;">2025 묵상 기록</div>
+        <div style="font-size: 32px; font-weight: bold; margin-bottom: 10px;">${safeUserName}</div>
+        <div style="font-size: 22px; opacity: 0.9;">${archiveLabel} 묵상 기록</div>
         <div style="font-size: 16px; opacity: 0.7; margin-top: 10px;">성경통독 365</div>
     </div>
     
@@ -129,9 +145,10 @@ export const generateMemosHTML = (userName, userMemos, userStats = {}) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${userName}_묵상기록_2025.html`;
+    a.download = `${String(userName || '나').replace(/[\\/:*?"<>|]/g, '_')}_묵상기록_${archiveYear || '전체'}.html`;
     a.click();
     URL.revokeObjectURL(url);
+    return true;
 };
 
 const escapeCsvCell = (value) => {

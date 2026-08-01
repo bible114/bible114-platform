@@ -1,5 +1,6 @@
 import { PlatformError } from "../_shared/errors.ts";
 import {
+  batchGetDocuments,
   commitWrites,
   type FirestoreDocument,
   getDocument,
@@ -16,11 +17,30 @@ import {
   legacyDateToIso,
   mergeCommunityProgressMembers,
   projectCommunityProgressMember,
+  projectRosterCommunityProgressMember,
   splitCommunityProgressMembers,
 } from "./communityProgressCore.ts";
 
 type ServiceAccess = { token: string; projectId: string };
 type UnknownRecord = Record<string, unknown>;
+type CommunityProgressSourceDependencies = {
+  loadPrimaryDocuments: (
+    service: ServiceAccess,
+    orgId: string,
+  ) => Promise<FirestoreDocument<UnknownRecord>[]>;
+  loadRosterDocuments: (
+    service: ServiceAccess,
+    orgId: string,
+  ) => Promise<FirestoreDocument<UnknownRecord>[]>;
+  loadUserProfiles: (
+    service: ServiceAccess,
+    paths: string[],
+  ) => Promise<FirestoreDocument<UnknownRecord>[]>;
+};
+
+const PROFILE_BATCH_SIZE = 100;
+const PROFILE_BATCH_CONCURRENCY = 5;
+const PROFILE_FIELD_PATHS = ["planId", "fixtureType", "isDeleted"];
 
 const documentId = (name: string) =>
   decodeURIComponent(name.split("/documents/")[1]?.split("/").at(-1) || "");
@@ -42,27 +62,88 @@ const memberFromDocument = (
   return projectCommunityProgressMember(uid, document.data);
 };
 
-const loadCanonicalMembers = async (
-  service: ServiceAccess,
-  orgId: string,
+const rosterSourceFromDocument = (
+  document: FirestoreDocument<UnknownRecord>,
 ) => {
-  const [primaryDocuments, rosterDocuments] = await Promise.all([
-    orgId === "unaffiliated_v1"
-      ? Promise.resolve([])
-      : runRootCollectionQuery<UnknownRecord>(
-        service.token,
-        service.projectId,
-        "users",
-        "churchId",
-        orgId,
-        { limit: 5_000 },
-      ),
+  const uid = typeof document.data.uid === "string" ? document.data.uid : "";
+  if (!uid || uid !== documentId(document.name)) return null;
+  return { uid, data: document.data };
+};
+
+const DEFAULT_SOURCE_DEPENDENCIES: CommunityProgressSourceDependencies = {
+  loadPrimaryDocuments: (service, orgId) =>
+    runRootCollectionQuery<UnknownRecord>(
+      service.token,
+      service.projectId,
+      "users",
+      "churchId",
+      orgId,
+      { limit: 5_000 },
+    ),
+  loadRosterDocuments: (service, orgId) =>
     listCollectionDocuments<UnknownRecord>(
       service.token,
       service.projectId,
       `churches/${orgId}/roster`,
       { pageSize: 500 },
     ),
+  loadUserProfiles: (service, paths) =>
+    batchGetDocuments<UnknownRecord>(
+      service.token,
+      service.projectId,
+      paths,
+      { fieldPaths: PROFILE_FIELD_PATHS },
+    ),
+};
+
+const loadRosterUserProfiles = async (
+  service: ServiceAccess,
+  uids: string[],
+  loadUserProfiles: CommunityProgressSourceDependencies["loadUserProfiles"],
+) => {
+  const uniqueUids = [...new Set(uids)];
+  const chunks = Array.from(
+    { length: Math.ceil(uniqueUids.length / PROFILE_BATCH_SIZE) },
+    (_, index) =>
+      uniqueUids.slice(
+        index * PROFILE_BATCH_SIZE,
+        (index + 1) * PROFILE_BATCH_SIZE,
+      ).map((uid) => `users/${uid}`),
+  );
+  const documents: FirestoreDocument<UnknownRecord>[] = [];
+  for (
+    let offset = 0;
+    offset < chunks.length;
+    offset += PROFILE_BATCH_CONCURRENCY
+  ) {
+    const wave = await Promise.all(
+      chunks.slice(offset, offset + PROFILE_BATCH_CONCURRENCY).map((paths) =>
+        loadUserProfiles(service, paths)
+      ),
+    );
+    documents.push(...wave.flat());
+  }
+
+  const requested = new Set(uniqueUids);
+  const profiles = new Map<string, UnknownRecord>();
+  for (const document of documents) {
+    const uid = documentId(document.name);
+    if (requested.has(uid)) profiles.set(uid, document.data);
+  }
+  return profiles;
+};
+
+export const loadCanonicalCommunityProgressMembers = async (
+  service: ServiceAccess,
+  orgId: string,
+  overrides: Partial<CommunityProgressSourceDependencies> = {},
+) => {
+  const dependencies = { ...DEFAULT_SOURCE_DEPENDENCIES, ...overrides };
+  const [primaryDocuments, rosterDocuments] = await Promise.all([
+    orgId === "unaffiliated_v1"
+      ? Promise.resolve([] as FirestoreDocument<UnknownRecord>[])
+      : dependencies.loadPrimaryDocuments(service, orgId),
+    dependencies.loadRosterDocuments(service, orgId),
   ]);
   const primary = primaryDocuments.flatMap((document) => {
     // 기존 클라이언트 쿼리(password == null)와 결과 집합을 맞춘다.
@@ -70,8 +151,21 @@ const loadCanonicalMembers = async (
     const member = memberFromDocument(document);
     return member ? [member] : [];
   });
-  const roster = rosterDocuments.flatMap((document) => {
-    const member = memberFromDocument(document, { roster: true });
+  const rosterSources = rosterDocuments.flatMap((document) => {
+    const source = rosterSourceFromDocument(document);
+    return source ? [source] : [];
+  });
+  const profiles = await loadRosterUserProfiles(
+    service,
+    rosterSources.map(({ uid }) => uid),
+    dependencies.loadUserProfiles,
+  );
+  const roster = rosterSources.flatMap(({ uid, data }) => {
+    const member = projectRosterCommunityProgressMember(
+      uid,
+      data,
+      profiles.get(uid) ?? null,
+    );
     return member ? [member] : [];
   });
   return mergeCommunityProgressMembers(primary, roster);
@@ -116,7 +210,7 @@ const rebuildBoard = async (
   serviceDate: string,
   now: Date,
 ) => {
-  const members = await loadCanonicalMembers(service, orgId);
+  const members = await loadCanonicalCommunityProgressMembers(service, orgId);
   const shards = splitCommunityProgressMembers(members);
   const writes = shards.map((shard, index) =>
     updateWrite(service.projectId, boardShardPath(orgId, index), {
@@ -155,7 +249,11 @@ const canonicalCallerMember = async (
     `churches/${orgId}/roster/${uid}`,
   );
   if (!rosterDocument || rosterDocument.data.uid !== uid) return null;
-  return projectCommunityProgressMember(uid, rosterDocument.data);
+  return projectRosterCommunityProgressMember(
+    uid,
+    rosterDocument.data,
+    userDocument.data,
+  );
 };
 
 const syncCallerShard = async (

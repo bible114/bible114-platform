@@ -1,4 +1,5 @@
 import { PLATFORM_API_URL } from '../data/constants.js';
+import { withAsyncTimeout } from './asyncTimeout.js';
 
 const DEFAULT_TIMEOUT_MS = 12_000;
 const DAILY_VIDEO_TIMEOUT_MS = 70_000;
@@ -26,6 +27,22 @@ const ADMIN_CHURCH_LIFECYCLE_REQUEST_KEYS = new Set(['churchId', 'active']);
 const ADMIN_CHURCH_LIFECYCLE_RESULT_KEYS = new Set([
     'status', 'churchId', 'active', 'affectedUsers', 'positiveRosterCount',
     'positiveTalentTotal', 'pendingPurchaseCount',
+]);
+const MEMBER_ACTIVE_STATE_REQUEST_KEYS = new Set(['memberUid', 'active']);
+const MEMBER_ACTIVE_STATE_RESULT_KEYS = new Set([
+    'status', 'memberUid', 'active', 'counted', 'totalReaders', 'deletedAt', 'deletedBy',
+]);
+const REBUILD_PLATFORM_STATS_RESULT_KEYS = new Set([
+    'dryRun', 'applied', 'expected', 'current', 'changed', 'markerBackfill', 'externalSources',
+]);
+const REBUILD_PLATFORM_STATS_VALUE_KEYS = new Set([
+    'total_readers', 'total_churches', 'readers_today', 'finished_total', 'today_date',
+]);
+const REBUILD_PLATFORM_STATS_MARKER_KEYS = new Set([
+    'total', 'toCounted', 'toUncounted',
+]);
+const REBUILD_PLATFORM_STATS_EXTERNAL_SOURCE_KEYS = new Set([
+    'id', 'churchId', 'todayDate',
 ]);
 const COMPLETE_CHURCH_ADMIN_SIGNUP_REQUEST_KEYS = new Set([
     'name', 'contactEmail', 'churchName', 'pastorName', 'denomination', 'entryCode',
@@ -165,9 +182,12 @@ const NORMALIZE_LEGACY_READING_POSITION_RESULT_KEYS = new Set([
 const COMPLETE_MEMBER_ONBOARDING_RESPONSE_KEYS = new Set([
     'ok', 'action', 'requestId', 'alreadyCompleted', 'committed', 'result',
 ]);
-const COMPLETE_MEMBER_ONBOARDING_RESULT_KEYS = new Set([
+const COMPLETE_MEMBER_ONBOARDING_RESULT_V1_KEYS = new Set([
     'status', 'orgId', 'planId', 'departmentId', 'departmentName',
     'subgroupId', 'subgroupName',
+]);
+const COMPLETE_MEMBER_ONBOARDING_RESULT_V2_KEYS = new Set([
+    ...COMPLETE_MEMBER_ONBOARDING_RESULT_V1_KEYS, 'currentDay',
 ]);
 const MEMBER_ONBOARDING_PLAN_IDS = new Set([
     '1year_sequential', '1year_revised', '1year_new', 'nt_new',
@@ -251,11 +271,23 @@ const authChangedError = () => new PlatformApiError('로그인 계정이 바뀌�
     code: 'AUTH_CHANGED', status: 401, retryable: false,
 });
 
+const requestTimeoutError = () => new PlatformApiError('플랫폼 API 요청 시간이 초과되었습니다.', {
+    code: 'TIMEOUT', status: 0, retryable: true,
+});
+
+const remainingRequestTime = deadline => Math.max(0, deadline - Date.now());
+
 const postOnce = async ({ action, payload, requestId, timeoutMs, forceRefresh, expectedUid }) => {
+    const deadline = Date.now() + timeoutMs;
     let auth;
     try {
-        auth = await loadAuth();
+        auth = await withAsyncTimeout(
+            loadAuth(),
+            remainingRequestTime(deadline),
+            requestTimeoutError,
+        );
     } catch (cause) {
+        if (cause instanceof PlatformApiError) throw cause;
         throw new PlatformApiError('로그인 모듈을 준비하지 못했습니다.', {
             code: 'AUTH_INIT_ERROR', status: 0, retryable: true, cause,
         });
@@ -270,8 +302,13 @@ const postOnce = async ({ action, payload, requestId, timeoutMs, forceRefresh, e
 
     let token;
     try {
-        token = await requestUser.getIdToken(forceRefresh);
+        token = await withAsyncTimeout(
+            requestUser.getIdToken(forceRefresh),
+            remainingRequestTime(deadline),
+            requestTimeoutError,
+        );
     } catch (cause) {
+        if (cause instanceof PlatformApiError) throw cause;
         throw new PlatformApiError('로그인 인증 정보를 확인하지 못했습니다.', {
             code: 'AUTH_TOKEN_ERROR', status: 401, retryable: true, cause,
         });
@@ -281,7 +318,9 @@ const postOnce = async ({ action, payload, requestId, timeoutMs, forceRefresh, e
         throw authChangedError();
     }
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const fetchTimeoutMs = remainingRequestTime(deadline);
+    if (fetchTimeoutMs <= 0) throw requestTimeoutError();
+    const timeoutId = setTimeout(() => controller.abort(), fetchTimeoutMs);
     try {
         const response = await fetch(PLATFORM_API_URL, {
             method: 'POST',
@@ -1577,6 +1616,13 @@ export const validateCompleteMemberOnboardingResponse = (
     result,
     expectedRequestId,
 ) => {
+    const hasCompatibleResultShape = hasExactKeys(
+        result?.result,
+        COMPLETE_MEMBER_ONBOARDING_RESULT_V1_KEYS,
+    ) || hasExactKeys(
+        result?.result,
+        COMPLETE_MEMBER_ONBOARDING_RESULT_V2_KEYS,
+    );
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)
         || !ACTIVITY_REQUEST_ID_PATTERN.test(expectedRequestId)
         || !hasExactKeys(result, COMPLETE_MEMBER_ONBOARDING_RESPONSE_KEYS)
@@ -1585,7 +1631,7 @@ export const validateCompleteMemberOnboardingResponse = (
         || result.requestId !== expectedRequestId
         || typeof result.alreadyCompleted !== 'boolean'
         || typeof result.committed !== 'boolean'
-        || !hasExactKeys(result.result, COMPLETE_MEMBER_ONBOARDING_RESULT_KEYS)) {
+        || !hasCompatibleResultShape) {
         return invalidCompleteMemberOnboardingResponse();
     }
 
@@ -1606,8 +1652,16 @@ export const validateCompleteMemberOnboardingResponse = (
             && !result.alreadyCompleted
             && !result.committed)
     );
+    const totalDays = ['readable_revised', 'readable_new'].includes(membership.planId)
+        ? 60
+        : 365;
+    const validCurrentDay = membership.currentDay === undefined
+        || (Number.isSafeInteger(membership.currentDay)
+            && membership.currentDay >= 1
+            && membership.currentDay <= totalDays);
     if (!exactEcho || !validIds || !validNames
         || !MEMBER_ONBOARDING_PLAN_IDS.has(membership.planId)
+        || !validCurrentDay
         || !validOutcome
         || (result.alreadyCompleted && membership.status !== 'completed')) {
         return invalidCompleteMemberOnboardingResponse();
@@ -1623,6 +1677,7 @@ export const validateCompleteMemberOnboardingResponse = (
             status: membership.status,
             orgId: membership.orgId,
             planId: membership.planId,
+            ...(membership.currentDay === undefined ? {} : { currentDay: membership.currentDay }),
             departmentId: membership.departmentId,
             departmentName: membership.departmentName,
             subgroupId: membership.subgroupId,
@@ -2087,6 +2142,56 @@ export const adminSetChurchLifecycle = (input, options = {}) => {
         });
 };
 
+export const setMemberActiveState = (input, options = {}) => {
+    if (!isResponseRecord(input) || !hasExactKeys(input, MEMBER_ACTIVE_STATE_REQUEST_KEYS)) {
+        throw new PlatformApiError('회원 활성 상태 요청 형식이 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const memberUid = typeof input.memberUid === 'string' ? input.memberUid.trim() : '';
+    if (!memberUid || memberUid !== input.memberUid || memberUid.length > 128
+        || memberUid.includes('/') || memberUid === '.' || memberUid === '..'
+        || /[\u0000-\u001f\u007f]/.test(memberUid)
+        || typeof input.active !== 'boolean') {
+        throw new PlatformApiError('회원 활성 상태 요청 형식이 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    const payload = { memberUid, active: input.active };
+    const requestId = options.requestId || createRequestId();
+    if (!ACTIVITY_REQUEST_ID_PATTERN.test(requestId)) {
+        throw new PlatformApiError('회원 활성 상태 요청 번호가 올바르지 않습니다.', {
+            code: 'INVALID_PAYLOAD', status: 0, retryable: false,
+        });
+    }
+    return callPlatformApi('setMemberActiveState', payload, {
+        ...options,
+        requestId,
+        timeoutMs: 30_000,
+    }).then(response => {
+        const result = response?.result;
+        const validDeletedAudit = (
+            (result?.deletedAt === null || typeof result?.deletedAt === 'string')
+            && (result?.deletedBy === null || typeof result?.deletedBy === 'string')
+        );
+        if (!hasExactKeys(response, new Set(['ok', 'action', 'requestId', 'result']))
+            || response.ok !== true || response.action !== 'setMemberActiveState'
+            || response.requestId !== requestId
+            || !hasExactKeys(result, MEMBER_ACTIVE_STATE_RESULT_KEYS)
+            || !['deactivated', 'restored', 'alreadySet'].includes(result.status)
+            || result.memberUid !== memberUid || result.active !== input.active
+            || typeof result.counted !== 'boolean'
+            || !Number.isSafeInteger(result.totalReaders) || result.totalReaders < 0
+            || !validDeletedAudit
+            || (input.active && (result.deletedAt !== null || result.deletedBy !== null))) {
+            throw new PlatformApiError('회원 활성 상태 결과를 안전하게 확인하지 못했습니다.', {
+                code: 'INVALID_RESPONSE', status: 200, retryable: true,
+            });
+        }
+        return result;
+    });
+};
+
 export const rebuildPlatformStats = ({ dryRun = true } = {}, options = {}) => {
     if (typeof dryRun !== 'boolean') {
         throw new PlatformApiError('통계 재계산 요청 형식이 올바르지 않습니다.', { code: 'INVALID_PAYLOAD' });
@@ -2096,15 +2201,35 @@ export const rebuildPlatformStats = ({ dryRun = true } = {}, options = {}) => {
         .then(response => {
             const result = response?.result;
             const statsKeys = ['total_readers', 'total_churches', 'readers_today', 'finished_total', 'today_date'];
+            const markerBackfill = result?.markerBackfill;
+            const externalSources = result?.externalSources;
+            const needsApply = Array.isArray(result?.changed)
+                && result.changed.length + Number(markerBackfill?.total || 0) > 0;
             if (!hasExactKeys(response, new Set(['ok', 'action', 'requestId', 'result']))
                 || response.ok !== true || response.action !== 'rebuildPlatformStats'
                 || response.requestId !== requestId || !isResponseRecord(result)
-                || !hasExactKeys(result, new Set(['dryRun', 'applied', 'expected', 'current', 'changed']))
+                || !hasExactKeys(result, REBUILD_PLATFORM_STATS_RESULT_KEYS)
                 || result.dryRun !== dryRun || typeof result.applied !== 'boolean'
                 || !isResponseRecord(result.expected) || !isResponseRecord(result.current)
+                || !hasExactKeys(result.expected, REBUILD_PLATFORM_STATS_VALUE_KEYS)
+                || !hasExactKeys(result.current, REBUILD_PLATFORM_STATS_VALUE_KEYS)
                 || !Array.isArray(result.changed) || result.changed.some(key => !statsKeys.includes(key))
+                || new Set(result.changed).size !== result.changed.length
                 || statsKeys.slice(0, 4).some(key => !Number.isSafeInteger(result.expected[key]) || result.expected[key] < 0)
-                || typeof result.expected.today_date !== 'string') {
+                || typeof result.expected.today_date !== 'string'
+                || !hasExactKeys(markerBackfill, REBUILD_PLATFORM_STATS_MARKER_KEYS)
+                || ['total', 'toCounted', 'toUncounted'].some(key => (
+                    !Number.isSafeInteger(markerBackfill[key]) || markerBackfill[key] < 0
+                ))
+                || markerBackfill.total !== markerBackfill.toCounted + markerBackfill.toUncounted
+                || !Array.isArray(externalSources)
+                || externalSources.some(source => (
+                    !hasExactKeys(source, REBUILD_PLATFORM_STATS_EXTERNAL_SOURCE_KEYS)
+                    || typeof source.id !== 'string' || !source.id
+                    || typeof source.churchId !== 'string' || !source.churchId
+                    || !(source.todayDate === null || typeof source.todayDate === 'string')
+                ))
+                || result.applied !== (!dryRun && needsApply)) {
                 throw new PlatformApiError('통계 재계산 결과를 안전하게 확인하지 못했습니다.', { code: 'INVALID_RESPONSE', status: 200, retryable: true });
             }
             return result;
@@ -2565,6 +2690,18 @@ export const completeMemberSignup = ({ churchId, entryCode = '', joinTicket = ''
     const normalizedJoinTicket = typeof joinTicket === 'string' ? joinTicket.trim() : '';
     const normalizedName = typeof name === 'string' ? name.trim() : '';
     const normalizedBirthdate = typeof birthdate === 'string' ? birthdate.trim() : '';
+    const isUnaffiliated = normalizedChurchId === 'unaffiliated_v1';
+    const entryCodeSupplied = normalizedEntryCode.length > 0;
+    const joinTicketSupplied = normalizedJoinTicket.length > 0;
+    const hasValidEntryCode = normalizedEntryCode.length >= 4
+        && normalizedEntryCode.length <= 128
+        && !/[\u0000-\u001f\u007f]/.test(normalizedEntryCode);
+    const hasValidJoinTicket = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        .test(normalizedJoinTicket);
+    const hasInvalidJoinCredential = isUnaffiliated
+        ? Boolean(normalizedEntryCode || normalizedJoinTicket)
+        : entryCodeSupplied === joinTicketSupplied
+            || (entryCodeSupplied ? !hasValidEntryCode : !hasValidJoinTicket);
     const normalizedGuestProgress = guestProgress && typeof guestProgress === 'object' && !Array.isArray(guestProgress)
         ? {
             currentDay: Number(guestProgress.currentDay),
@@ -2573,10 +2710,10 @@ export const completeMemberSignup = ({ churchId, entryCode = '', joinTicket = ''
             planId: String(guestProgress.planId || ''),
         }
         : null;
-    if (!normalizedChurchId || normalizedChurchId === 'unaffiliated_v1'
+    if (!normalizedChurchId
         || normalizedChurchId.length > 128 || normalizedChurchId.includes('/')
         || /[\u0000-\u001f\u007f]/.test(normalizedChurchId)
-        || ((normalizedEntryCode.length >= 4 && normalizedEntryCode.length <= 128) === /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedJoinTicket))
+        || hasInvalidJoinCredential
         || !normalizedName || normalizedName.length > 50
         || !/^\d{8}$/.test(normalizedBirthdate)
         || !normalizedGuestProgress

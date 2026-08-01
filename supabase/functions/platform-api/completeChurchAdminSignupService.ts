@@ -467,6 +467,7 @@ const executeCompleteChurchAdminSignup = async (
         departmentName: null,
         subgroupId: null,
         consentSummary: signup.consentSummary,
+        platformStatsReaderCounted: true,
         createdAt: now,
         updatedAt: now,
       }, { exists: false }),

@@ -858,6 +858,30 @@ Deno.test("최초 교인 가입 요청의 최소 프로필을 정규화한다", 
   assert(parsed.name === "홍길동", "name mismatch");
   assert(parsed.guestProgress.currentDay === 42, "guest progress mismatch");
 
+  const unaffiliated = parsePlatformApiRequest({
+    action: "completeMemberSignup",
+    requestId: "123e4567-e89b-12d3-a456-426614174000",
+    churchId: "unaffiliated_v1",
+    entryCode: "",
+    joinTicket: "",
+    name: "홍길동",
+    birthdate: "20000101",
+    guestProgress: {
+      currentDay: 1,
+      streak: 0,
+      lastReadDate: null,
+      planId: "1year_revised",
+    },
+  });
+  assert(
+    unaffiliated.action === "completeMemberSignup",
+    "unaffiliated member signup rejected",
+  );
+  if (unaffiliated.action === "completeMemberSignup") {
+    assert(unaffiliated.entryCode === "", "unaffiliated entry code mismatch");
+    assert(unaffiliated.joinTicket === "", "unaffiliated ticket mismatch");
+  }
+
   for (
     const payload of [
       {
@@ -874,6 +898,20 @@ Deno.test("최초 교인 가입 요청의 최소 프로필을 정규화한다", 
       },
       {
         churchId: "church-1",
+        entryCode: "123",
+        joinTicket: "123e4567-e89b-12d3-a456-426614174000",
+        name: "홍길동",
+        birthdate: "20000101",
+      },
+      {
+        churchId: "church-1",
+        entryCode: "1234",
+        joinTicket: "not-a-ticket",
+        name: "홍길동",
+        birthdate: "20000101",
+      },
+      {
+        churchId: "church-1",
         entryCode: "1234",
         name: "",
         birthdate: "20000101",
@@ -883,6 +921,18 @@ Deno.test("최초 교인 가입 요청의 최소 프로필을 정규화한다", 
         entryCode: "1234",
         name: "홍길동",
         birthdate: "200001",
+      },
+      {
+        churchId: "unaffiliated_v1",
+        entryCode: "forged",
+        name: "홍길동",
+        birthdate: "20000101",
+      },
+      {
+        churchId: "unaffiliated_v1",
+        joinTicket: "123e4567-e89b-12d3-a456-426614174000",
+        name: "홍길동",
+        birthdate: "20000101",
       },
     ]
   ) {
@@ -1150,6 +1200,40 @@ Deno.test("입장코드 회전과 무소속 점검은 버전 및 exact 입력만
   );
 });
 
+Deno.test("회원 활성 상태 변경은 exact 회원 ID와 boolean만 받는다", () => {
+  const requestId = "123e4567-e89b-42d3-a456-426614174000";
+  const parsed = parsePlatformApiRequest({
+    action: "setMemberActiveState",
+    requestId,
+    memberUid: "member-1",
+    active: false,
+  });
+  assert(
+    parsed.action === "setMemberActiveState" &&
+      parsed.memberUid === "member-1" &&
+      parsed.active === false,
+    "member lifecycle request rejected",
+  );
+  for (
+    const invalid of [
+      { memberUid: " member-1", active: false },
+      { memberUid: "../member-1", active: false },
+      { memberUid: "member-1", active: "false" },
+      { memberUid: "member-1", active: false, actorUid: "forged" },
+    ]
+  ) {
+    assertRequestError(
+      () =>
+        parsePlatformApiRequest({
+          action: "setMemberActiveState",
+          requestId,
+          ...invalid,
+        }),
+      "INVALID_PAYLOAD",
+    );
+  }
+});
+
 Deno.test("알 수 없는 action은 거부한다", () => {
   assertRequestError(
     () =>
@@ -1167,11 +1251,23 @@ Deno.test("진행판과 읽기 달력 조회는 최소 입력만 받는다", () 
     action: "getCommunityProgress",
     requestId,
     orgId: "church-1",
+    projectionVersion: 2,
   });
   assert(
     progress.action === "getCommunityProgress" &&
-      progress.orgId === "church-1",
+      progress.orgId === "church-1" &&
+      progress.projectionVersion === 2,
     "progress request rejected",
+  );
+  const legacyProgress = parsePlatformApiRequest({
+    action: "getCommunityProgress",
+    requestId,
+    orgId: "church-1",
+  });
+  assert(
+    legacyProgress.action === "getCommunityProgress" &&
+      legacyProgress.projectionVersion === 1,
+    "legacy progress request rejected",
   );
   const calendar = parsePlatformApiRequest({
     action: "getReadingCalendar",
@@ -1186,6 +1282,11 @@ Deno.test("진행판과 읽기 달력 조회는 최소 입력만 받는다", () 
     const invalid of [
       { action: "getCommunityProgress", orgId: "../church" },
       { action: "getCommunityProgress", orgId: "church-1", uid: "forged" },
+      {
+        action: "getCommunityProgress",
+        orgId: "church-1",
+        projectionVersion: 3,
+      },
       { action: "getReadingCalendar", year: 1999 },
       { action: "getReadingCalendar", year: 2026, uid: "forged" },
     ]

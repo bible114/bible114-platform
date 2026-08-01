@@ -26,6 +26,8 @@ const userStateSync = read('src/utils/userStateSync.js');
 const rosterClient = read('src/utils/roster.js');
 const bibleLogic = read('src/hooks/useBibleLogic.js');
 const quizProgressSource = read('src/utils/quizProgress.js');
+const asyncTimeoutSource = read('src/utils/asyncTimeout.js');
+const serverIndex = read('supabase/functions/platform-api/index.ts');
 const packageJson = JSON.parse(read('package.json'));
 
 assert.match(constants, /export const PLATFORM_API_URL = import\.meta\.env\?\.VITE_PLATFORM_API_URL \|\| '';/);
@@ -33,7 +35,7 @@ assert.match(envExample, /^VITE_PLATFORM_API_URL=$/m);
 assert.equal(packageJson.scripts['validate:round24'], 'node scripts/validate-round24.mjs');
 assert.match(
     packageJson.scripts.validate,
-    /npm run validate:round24 && npm run validate:round29 && npm run validate:daily-video-server && npm run validate:public-directory && npm run validate:church-lifecycle && npm run validate:t132-final-lockdown && npm run validate:platform-api$/,
+    /npm run validate:round24 && npm run validate:round29 && npm run validate:national-ranking && npm run validate:daily-video-server && npm run validate:public-directory && npm run validate:church-lifecycle && npm run validate:member-lifecycle && npm run validate:t132-final-lockdown && npm run validate:platform-api$/,
 );
 assert.match(packageJson.scripts['validate:platform-api'], /deno test[\s\S]*deno check[\s\S]*deno fmt --check/);
 assert.match(
@@ -127,7 +129,7 @@ for (const pattern of [
     /Number\.isInteger\(day\)/,
     /callPlatformApi\('previewReadCompletion', \{ cycle, day \}, options\)/,
     /const requestUser = auth\.currentUser/,
-    /requestUser\.getIdToken\(forceRefresh\)/,
+    /withAsyncTimeout\([\s\S]*requestUser\.getIdToken\(forceRefresh\)[\s\S]*remainingRequestTime\(deadline\)[\s\S]*requestTimeoutError/,
     /expectedUid && requestUser\.uid !== expectedUid/,
     /auth\.currentUser\?\.uid !== requestUser\.uid/,
     /code: 'AUTH_CHANGED'/,
@@ -136,8 +138,10 @@ for (const pattern of [
     /export const createRequestId = \(cryptoImpl = globalThis\.crypto, random = Math\.random\)/,
     /return formatUuidV4\(bytes\)/,
     /const DEFAULT_TIMEOUT_MS = 12_000/,
+    /const deadline = Date\.now\(\) \+ timeoutMs/,
+    /const fetchTimeoutMs = remainingRequestTime\(deadline\)/,
     /new AbortController\(\)/,
-    /setTimeout\(\(\) => controller\.abort\(\), timeoutMs\)/,
+    /setTimeout\(\(\) => controller\.abort\(\), fetchTimeoutMs\)/,
     /Authorization: `Bearer \$\{token\}`/,
     /JSON\.stringify\(\{ action, requestId, \.\.\.payload \}\)/,
     /code: 'FEATURE_DISABLED'/,
@@ -155,6 +159,7 @@ assert.doesNotMatch(
 
 // Node에서 오류 타입과 URL 미설정 안전장치를 import/실행할 수 있어야 한다.
 const platformApi = await import('../src/utils/platformApi.js');
+const { withAsyncTimeout } = await import('../src/utils/asyncTimeout.js');
 const { ACHIEVEMENTS } = await import('../src/data/achievements.js');
 const quizProgressRuntime = await import('../src/utils/quizProgress.js');
 const { strictCanonicalRosterEntries } = await import('../src/utils/rosterSnapshot.js');
@@ -173,6 +178,16 @@ const sampleError = new platformApi.PlatformApiError('fixture', { code: 'FIXTURE
 assert.equal(sampleError.code, 'FIXTURE');
 assert.equal(sampleError.status, 418);
 assert.equal(sampleError.retryable, false);
+assert.match(asyncTimeoutSource, /clearTimeout\(timeoutId\)/);
+assert.equal(await withAsyncTimeout(Promise.resolve('ready'), 20), 'ready');
+await assert.rejects(
+    withAsyncTimeout(
+        new Promise(() => {}),
+        5,
+        () => Object.assign(new Error('fixture timeout'), { code: 'TIMEOUT' }),
+    ),
+    error => error?.code === 'TIMEOUT',
+);
 const makeCanonicalRosterSnapshot = (orgIds, overrides = {}) => ({
     docs: orgIds.map((orgId, index) => {
         const uid = overrides.uid ?? 'user-1';
@@ -790,6 +805,11 @@ assert.equal(exists('src/components/modals/SubgroupChangeModal.jsx'), false,
 // 최초 교인 온보딩은 plan과 선택 ID만 서버에 보내고 조직명은 서버가 파생한다.
 assert.match(client, /callPlatformApi\('completeMemberOnboarding', payload, \{ \.\.\.options, requestId \}\)[\s\S]*validateCompleteMemberOnboardingResponse\(payload, result, requestId\)/,
     '최초 온보딩은 strict 서버 action과 응답 검증을 거쳐야 한다.');
+assert.match(
+    serverIndex,
+    /completeMemberOnboarding\(service, verifiedUser,[\s\S]*const \{ currentDay: _verifiedCurrentDay, \.\.\.compatibleResult \}[\s\S]*result: compatibleResult/,
+    'Edge-first 배포 중 캐시된 구 웹을 위해 공개 온보딩 응답 schema1을 유지해야 한다.',
+);
 const onboardingRequestId = 'd23e4567-e89b-42d3-a456-426614174000';
 const onboardingPayload = {
     orgId: 'church-1',
@@ -806,12 +826,20 @@ const validOnboardingResponse = {
     result: {
         status: 'completed',
         ...onboardingPayload,
+        currentDay: 365,
         departmentName: '장년부',
         subgroupName: '1구역',
     },
 };
 for (const validOutcome of [
     validOnboardingResponse,
+    {
+        ...validOnboardingResponse,
+        result: Object.fromEntries(
+            Object.entries(validOnboardingResponse.result)
+                .filter(([key]) => key !== 'currentDay'),
+        ),
+    },
     { ...validOnboardingResponse, alreadyCompleted: true },
     {
         ...validOnboardingResponse,
@@ -851,6 +879,9 @@ for (const [label, mutate] of [
     ['wrong plan', response => { response.result.planId = 'nt_new'; }],
     ['wrong department', response => { response.result.departmentId = 'kids'; }],
     ['wrong subgroup', response => { response.result.subgroupId = 'cell-2'; }],
+    ['zero current day', response => { response.result.currentDay = 0; }],
+    ['fractional current day', response => { response.result.currentDay = 1.5; }],
+    ['oversized current day', response => { response.result.currentDay = 366; }],
     ['unsafe name', response => { response.result.departmentName = ' 장년부'; }],
     ['empty department name', response => { response.result.departmentName = ''; }],
     ['empty subgroup mismatch', response => { response.result.subgroupName = ''; }],
@@ -863,7 +894,7 @@ for (const [label, mutate] of [
 ]) expectInvalidOnboardingResponse(mutate, label);
 assert.match(appSource, /await completeMemberOnboarding\(\{[\s\S]*orgId,[\s\S]*planId,[\s\S]*departmentId,[\s\S]*subgroupId,[\s\S]*\}, \{ expectedUid: requestUid \}\)/,
     '온보딩 UI는 서버 action에 인증 UID를 결속해야 한다.');
-assert.match(appSource, /completeMemberOnboarding[\s\S]*\.get\(\{ source: 'server' \}\)[\s\S]*stored\.planId !== membership\.planId[\s\S]*stored\.subgroupName !== membership\.subgroupName/,
+assert.match(appSource, /completeMemberOnboarding[\s\S]*\.get\(\{ source: 'server' \}\)[\s\S]*normalizedOnboardingDay[\s\S]*stored\.planId !== membership\.planId[\s\S]*stored\.currentDay !== normalizedOnboardingDay[\s\S]*stored\.subgroupName !== membership\.subgroupName/,
     '성공 뒤 users source-server 상태를 exact membership과 대조해야 한다.');
 const onboardingHandlerStart = appSource.indexOf('const handleSubgroupSelect = async');
 const onboardingHandlerEnd = appSource.indexOf('\n    };', onboardingHandlerStart) + 7;
@@ -880,28 +911,16 @@ assert.match(useAuthSource, /completeChurchAdminSignupViaApi\(\{[\s\S]*password:
     '이메일·Google 관리자 가입은 같은 서버 action을 사용해야 한다.');
 assert.match(churchAdminSignupService, /role: "churchAdmin",[\s\S]*planId: null,[\s\S]*onboardingPending: true,[\s\S]*departmentId: null,[\s\S]*departmentName: null,[\s\S]*subgroupId: null/,
     '서버가 신규 공동체 관리자 문서를 재개 가능한 pending 상태로 만들어야 한다.');
-const usersCreateStart = firestoreRules.indexOf("allow create: if isRealUser() && request.auth.uid == uid &&");
-const usersCreateEnd = firestoreRules.indexOf('// 본인 수정은', usersCreateStart);
+const usersRuleStart = firestoreRules.indexOf('match /users/{uid}');
+const usersCreateStart = firestoreRules.indexOf('allow create:', usersRuleStart);
+const usersCreateEnd = firestoreRules.indexOf('allow update:', usersCreateStart);
 assert.ok(usersCreateStart >= 0 && usersCreateEnd > usersCreateStart,
     'users 최초 생성 rules 구간이 필요하다.');
 const usersCreateRules = firestoreRules.slice(usersCreateStart, usersCreateEnd);
-assert.match(usersCreateRules, /request\.resource\.data\.role == 'member'[\s\S]*request\.resource\.data\.churchId == 'unaffiliated_v1'/,
-    '브라우저 users create는 기존 무소속 성도 호환 경로로만 제한해야 한다.');
-assert.doesNotMatch(usersCreateRules, /role == 'churchAdmin'/,
-    '공동체 관리자 users 문서는 completeChurchAdminSignup 서버만 생성해야 한다.');
-for (const field of ['departmentId', 'departmentName', 'subgroupId', 'subgroupName']) {
-    const emptyField = new RegExp(`request\\.resource\\.data\\.get\\('${field}', null\\) == null`);
-    assert.match(usersCreateRules, emptyField,
-        `무소속 성도 create는 ${field}를 직접 seed할 수 없어야 한다.`);
-}
-assert.match(usersCreateRules, /request\.resource\.data\.get\('score', 0\) == 0/,
-    '브라우저 users create는 초기 score를 seed할 수 없어야 한다.');
-assert.match(usersCreateRules, /request\.resource\.data\.get\('talent', 0\) == 0/,
-    '브라우저 users create는 초기 talent를 seed할 수 없어야 한다.');
-assert.match(usersCreateRules, /request\.resource\.data\.get\('talentMigrated', false\) == true/,
-    '신규 users는 legacy false→true 이관 예외를 재사용할 수 없게 시작해야 한다.');
-assert.match(usersCreateRules, /request\.resource\.data\.extraMemberships is list[\s\S]*extraMemberships\.size\(\) == 0/,
-    '신규 users는 추가 소속을 create payload로 seed할 수 없어야 한다.');
+assert.match(usersCreateRules, /allow create: if false;/,
+    '브라우저 users create는 역할과 가입 유형에 관계없이 닫혀 있어야 한다.');
+assert.doesNotMatch(usersCreateRules, /role|churchId|accountType|score|talent|extraMemberships/,
+    '브라우저 users create에 데이터별 우회 분기가 남으면 안 된다.');
 assert.match(appSource, /requestUser\.role === 'churchAdmin' && stored\.onboardingPending !== false/,
     '관리자 온보딩 성공은 서버가 pending marker를 닫은 상태까지 확인해야 한다.');
 assert.match(appSource, /memberOnboardingRequestRef\.current[\s\S]*finally[\s\S]*memberOnboardingRequestRef\.current = null/,
@@ -1367,7 +1386,10 @@ const syncLatestUserStart = userBibleActions.indexOf('const syncLatestUser = use
 const syncLatestUserEnd = userBibleActions.indexOf('const checkAchievements = useCallback(', syncLatestUserStart);
 assert.ok(syncLatestUserStart >= 0 && syncLatestUserEnd > syncLatestUserStart, 'fresh user sync helper가 필요하다.');
 const syncLatestUserContract = userBibleActions.slice(syncLatestUserStart, syncLatestUserEnd);
-assert.match(syncLatestUserContract, /await loadCanonicalUserStateFromServer\(uid\)/);
+assert.match(
+    syncLatestUserContract,
+    /await withAsyncTimeout\([\s\S]*loadCanonicalUserStateFromServer\(uid\)[\s\S]*READ_STATE_SYNC_TIMEOUT_MS[\s\S]*readStateSyncTimeoutError/,
+);
 assert.match(syncLatestUserContract, /isLatestCanonicalUserState\(uid, freshUser\)/);
 assert.match(syncLatestUserContract, /auth\.currentUser\?\.uid !== uid/);
 assert.match(syncLatestUserContract, /setCurrentUser\(freshUser\)/);
@@ -1409,10 +1431,10 @@ const saveMemoStart = useMemosSource.indexOf('const saveMemo = useCallback(');
 const saveMemoEnd = useMemosSource.indexOf('\n    return {', saveMemoStart);
 assert.ok(saveMemoStart >= 0 && saveMemoEnd > saveMemoStart, 'saveMemo 계약 구간이 필요하다.');
 const saveMemoContract = useMemosSource.slice(saveMemoStart, saveMemoEnd);
-const memoWriteStart = saveMemoContract.indexOf("await db.collection('users').doc(uid).set(");
+const memoWriteStart = saveMemoContract.indexOf('await db.runTransaction(');
 const memoAchievementStart = saveMemoContract.indexOf("await checkAchievements(currentUser, 'memo')");
 const memoAchievementCatch = saveMemoContract.indexOf('catch (achievementError)', memoAchievementStart);
-const memoOnComplete = saveMemoContract.indexOf("typeof onComplete === 'function'", memoAchievementStart);
+const memoOnComplete = saveMemoContract.lastIndexOf("typeof onComplete === 'function'");
 assert.ok(
     memoWriteStart >= 0
         && memoAchievementStart > memoWriteStart
@@ -1866,7 +1888,6 @@ const indexPath = 'supabase/functions/platform-api/index.ts';
 assert.equal(exists(corePath), true, `${corePath}가 필요하다.`);
 assert.equal(exists(indexPath), true, `${indexPath}가 필요하다.`);
 const serverCore = read(corePath);
-const serverIndex = read(indexPath);
 
 // T127e: legacy 읽기 위치 보정은 인증 UID만으로 서버가 users와 canonical
 // roster를 원자 갱신하며, no-op에는 원장을 만들지 않는다.
@@ -2393,14 +2414,17 @@ assert.match(
 );
 assert.match(skipTodayContract, /clearActivityRequest\(activityRequest\)/);
 assert.match(skipTodayContract, /submissionStillCurrent\([\s\S]*submittedUid,[\s\S]*submittedEpoch,[\s\S]*submittedProgressKey,[\s\S]*submittedQuizConfigurationKey,[\s\S]*submittedRosterOrgId/);
-assert.match(skipTodayContract, /freshUser = await loadCanonicalUserStateFromServer\(submittedUid\)/);
+assert.match(
+    skipTodayContract,
+    /freshUser = await withAsyncTimeout\([\s\S]*loadCanonicalUserStateFromServer\(submittedUid\)[\s\S]*QUIZ_STATE_SYNC_TIMEOUT_MS/,
+);
 assert.match(skipTodayContract, /setCurrentUser\(freshUser\)/);
 assert.match(skipTodayContract, /getQuizConfigurationKey\(freshConfigurationUser\) !== submittedQuizConfigurationKey/);
 assert.match(skipTodayContract, /userAllowsQuizProgressKey\([\s\S]*response\.calendarDate/);
 assert.match(skipTodayContract, /freshUser\.quizProgress\?\.\[submittedProgressKey\]/);
 assert.ok(
     skipTodayContract.indexOf('clearActivityRequest(activityRequest)')
-        < skipTodayContract.indexOf('freshUser = await loadCanonicalUserStateFromServer(submittedUid)'),
+        < skipTodayContract.indexOf('loadCanonicalUserStateFromServer(submittedUid)'),
     '결정적 skip requestId를 정리한 뒤 source-server sync를 수행해야 한다.',
 );
 assert.doesNotMatch(
@@ -2424,14 +2448,17 @@ assert.match(
 );
 assert.match(submitAnswerContract, /clearActivityRequest\(activityRequest\)/);
 assert.match(submitAnswerContract, /submissionStillCurrent\([\s\S]*submittedUid,[\s\S]*submittedEpoch,[\s\S]*submittedProgressKey,[\s\S]*submittedQuizConfigurationKey,[\s\S]*submittedRosterOrgId/);
-assert.match(submitAnswerContract, /freshUser = await loadCanonicalUserStateFromServer\(submittedUid\)/);
+assert.match(
+    submitAnswerContract,
+    /freshUser = await withAsyncTimeout\([\s\S]*loadCanonicalUserStateFromServer\(submittedUid\)[\s\S]*QUIZ_STATE_SYNC_TIMEOUT_MS/,
+);
 assert.match(submitAnswerContract, /setCurrentUser\(freshUser\)/);
 assert.match(submitAnswerContract, /getQuizConfigurationKey\(freshConfigurationUser\) !== submittedQuizConfigurationKey/);
 assert.match(submitAnswerContract, /userAllowsQuizProgressKey\([\s\S]*response\.calendarDate/);
 assert.match(submitAnswerContract, /freshUser\.quizProgress\?\.\[submittedProgressKey\]/);
 assert.ok(
     submitAnswerContract.indexOf('clearActivityRequest(activityRequest)')
-        < submitAnswerContract.indexOf('freshUser = await loadCanonicalUserStateFromServer(submittedUid)'),
+        < submitAnswerContract.indexOf('loadCanonicalUserStateFromServer(submittedUid)'),
     '결정적 submit requestId를 정리한 뒤 source-server sync를 수행해야 한다.',
 );
 assert.match(
@@ -2810,10 +2837,18 @@ assert.match(
     /executeExpelRosterMember[\s\S]*transaction\.get\(rosterRef\)[\s\S]*latestTalent > 0[\s\S]*남아 있어 제명할 수 없습니다/,
     '관리자 제명도 source transaction의 최신 secondary roster 잔액이 0일 때만 삭제해야 한다.',
 );
+const t127SelfPreferenceRules = firestoreRules.match(
+    /function isSafeSelfPreferenceUpdate\(before, after\) \{([\s\S]*?)\n    \}/,
+)?.[1] || '';
 assert.match(
-    firestoreRules,
-    /before\.get\('talentMigrated', false\) == true[\s\S]*after\.get\('talentMigrated', false\) == true[\s\S]*afterTalent == beforeTalent[\s\S]*afterScore == beforeScore/,
-    '이관 완료 users의 self 쓰기는 users.score/talent를 완전히 동결해야 한다.',
+    t127SelfPreferenceRules,
+    /changed\.hasOnly\(\[[\s\S]*'primaryOrgId'[\s\S]*'updatedAt'/,
+    'users 본인 쓰기는 명시적인 환경설정 allowlist여야 한다.',
+);
+assert.doesNotMatch(
+    t127SelfPreferenceRules,
+    /score|talent|talentMigrated|talentWalletMigrated|currentDay|lastReadDate/,
+    'users 본인 환경설정 쓰기에 진도·점수·달란트 필드가 들어가면 안 된다.',
 );
 assert.doesNotMatch(
     firestoreRules,
@@ -2830,8 +2865,13 @@ const t127RosterUpdateRules = firestoreRules.match(
 )?.[1] || '';
 assert.match(
     t127RosterUpdateRules,
-    /get\('score', 0\) == resource\.data\.get\('score', 0\)[\s\S]*get\('talent', 0\) == resource\.data\.get\('talent', 0\)[\s\S]*get\('currentDay', 1\) == resource\.data\.get\('currentDay', 1\)/,
-    '모든 roster score/talent/진도를 브라우저에서 exact-freeze해야 한다.',
+    /isChurchAdmin\(churchId\)[\s\S]*affectedKeys\(\)\.hasOnly\(\[[\s\S]*'departmentId'[\s\S]*'updatedAt'/,
+    'roster update는 공동체 관리자의 소속 배정 allowlist여야 한다.',
+);
+assert.doesNotMatch(
+    t127RosterUpdateRules,
+    /allow update:[\s\S]*(?:request\.auth\.uid == memberUid|isRealUser\(\))/,
+    'roster 본인 update 경로가 남으면 안 된다.',
 );
 assert.doesNotMatch(
     t127RosterUpdateRules,
@@ -2898,6 +2938,11 @@ assert.match(serverCore, /COMPLETE_MEMBER_SIGNUP_ACTION\s*=\s*['"]completeMember
 for (const field of ['churchId', 'entryCode', 'name', 'birthdate', 'guestProgress']) {
     assert.match(serverCore, new RegExp(`action\\s*===\\s*COMPLETE_MEMBER_SIGNUP_ACTION[\\s\\S]*\\b${field}\\b`));
 }
+assert.match(
+    serverCore,
+    /const isUnaffiliated = normalizedChurchId === "unaffiliated_v1";[\s\S]*isUnaffiliated[\s\S]*Boolean\(normalizedEntryCode \|\| normalizedJoinTicket\)[\s\S]*hasEntryCodeOrTicket/,
+    '무소속 교인 가입은 입장코드·참여권 없이 허용하되 위조 자격증명은 거부해야 한다.',
+);
 const signupBranchStart = serverIndex.indexOf('if (parsed.action === "completeMemberSignup")');
 const firstUserRead = serverIndex.indexOf('const userDocument = await getDocument<UserDocument>');
 assert.ok(signupBranchStart >= 0 && firstUserRead > signupBranchStart, '최초 가입은 users 존재 검사보다 먼저 처리해야 한다.');
@@ -2907,12 +2952,82 @@ for (const pattern of [
     /getDocument<MemberSignupUser>/,
     /getDocument<MemberSignupChurch>/,
     /getDocument<MemberSignupConsent>/,
+    /getDocument<MemberSignupCredentials>/,
     /resolveJoinCredential\(service,/,
     /validateMemberSignup\(/,
     /updateWrite\(service\.projectId, userPath/,
     /commitWrites\(/,
 ]) assert.match(signupBranch, pattern);
+assert.match(
+    memberSignupCore,
+    /const password = typeof input\.credentials\?\.password[\s\S]*input\.signInProvider !== "password"[\s\S]*const phone4 = typeof input\.credentials\?\.phone4[\s\S]*expectedUnaffiliatedEmail[\s\S]*email !== expectedUnaffiliatedEmail[\s\S]*email !== expectedEmail/,
+    '모든 교인 가입은 password provider·private 암호·canonical 로그인 이메일을 서버에서 검증해야 한다.',
+);
+assert.match(
+    useAuthSource,
+    /await writeSignupConsent\(user\.uid, signupConsent\);[\s\S]*await writeMemberCredentials\(user\.uid, credentials\);[\s\S]*completeMemberSignupViaApi/,
+    '교인 가입은 보호 자격증명 저장이 실패하면 서버 완료 action을 호출하면 안 된다.',
+);
+assert.doesNotMatch(
+    useAuthSource,
+    /구 방식\(본문서 평문\)|newUser\.phone4 = credentials\.phone4/,
+    '서버가 사용하지 않는 무소속 평문 fallback을 남기면 자격증명 없이 가입 완료될 수 있다.',
+);
 assert.match(client, /callPlatformApi\(['"]completeMemberSignup['"],\s*\{/);
+const validUnaffiliatedMemberSignup = {
+    churchId: 'unaffiliated_v1',
+    entryCode: '',
+    joinTicket: '',
+    name: '홍길동',
+    birthdate: '20000101',
+    guestProgress: {
+        currentDay: 1,
+        streak: 0,
+        lastReadDate: null,
+        planId: '1year_revised',
+    },
+};
+assert.doesNotThrow(() => {
+    void platformApi.completeMemberSignup(validUnaffiliatedMemberSignup).catch(() => {});
+}, '무소속 교인 가입은 클라이언트 네트워크 전 검증을 통과해야 한다.');
+for (const forgedCredential of [
+    { entryCode: 'forged' },
+    { joinTicket: '123e4567-e89b-12d3-a456-426614174000' },
+]) {
+    assert.throws(
+        () => platformApi.completeMemberSignup({
+            ...validUnaffiliatedMemberSignup,
+            ...forgedCredential,
+        }),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_PAYLOAD'
+            && error.status === 0,
+        '무소속 교인 가입에 입장코드나 참여권을 끼워 넣으면 네트워크 전에 거부해야 한다.',
+    );
+}
+for (const invalidMixedCredential of [
+    {
+        churchId: 'church-1',
+        entryCode: '123',
+        joinTicket: '123e4567-e89b-12d3-a456-426614174000',
+    },
+    {
+        churchId: 'church-1',
+        entryCode: '1234',
+        joinTicket: 'not-a-ticket',
+    },
+]) {
+    assert.throws(
+        () => platformApi.completeMemberSignup({
+            ...validUnaffiliatedMemberSignup,
+            ...invalidMixedCredential,
+        }),
+        error => error instanceof platformApi.PlatformApiError
+            && error.code === 'INVALID_PAYLOAD'
+            && error.status === 0,
+        '입장코드와 참여권이 함께 들어오면 하나가 잘못된 값이어도 거부해야 한다.',
+    );
+}
 
 const personalSignupCorePath = 'supabase/functions/platform-api/personalSignupCore.ts';
 const personalSignupCoreTestPath = 'supabase/functions/platform-api/personalSignupCore_test.ts';

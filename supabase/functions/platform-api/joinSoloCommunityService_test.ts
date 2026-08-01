@@ -294,6 +294,8 @@ Deno.test("fresh join은 users/target/query/ledger를 한 transaction에서 읽�
     streak: 7,
     readCount: 2,
     lastReadDate: "Wed Jul 15 2026",
+    planId: "1year_revised",
+    fixtureType: null,
     departmentId: null,
     departmentName: null,
     subgroupId: null,

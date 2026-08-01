@@ -15,6 +15,7 @@ import {
   type ReadCompletionResult,
   type StoredReadUser,
 } from "./readCore.ts";
+import { projectCommunityProgressIdentity } from "./communityProgressCore.ts";
 import {
   normalizeStoredDocumentId,
   parseRosterTalentWallets,
@@ -56,6 +57,7 @@ type CompleteReadUserDocument = StoredReadUser & TalentMembershipUser & {
   churchId?: unknown;
   baseChurchId?: unknown;
   primaryOrgId?: unknown;
+  fixtureType?: unknown;
 };
 
 type CompleteReadRosterDocument = TalentMembershipUser & {
@@ -905,6 +907,7 @@ const executeCompleteRead = async (
     const userUpdate = { ...result.updateData, updatedAt: now };
     const nextUser = normalizeUser(uid, { ...user, ...result.updateData });
     const rosterProgress = {
+      ...projectCommunityProgressIdentity(user),
       currentDay: result.updateData.currentDay,
       readCount: result.updateData.readCount,
       readingYear: result.updateData.readingYear,

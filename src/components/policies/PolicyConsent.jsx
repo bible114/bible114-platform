@@ -27,18 +27,46 @@ const PolicyDocument = ({ policy }) => (
 
 const PolicyDialog = ({ policy, onClose }) => {
     const closeButtonRef = useRef(null);
+    const dialogRef = useRef(null);
 
     useEffect(() => {
+        const previouslyFocused = document.activeElement;
         const previousOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
         closeButtonRef.current?.focus();
         const onKeyDown = event => {
-            if (event.key === 'Escape') onClose();
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                onClose();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+            const focusable = dialogRef.current?.querySelectorAll(
+                'button:not([disabled]), a[href], summary, input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            );
+            if (!focusable?.length) {
+                event.preventDefault();
+                dialogRef.current?.focus();
+                return;
+            }
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (!dialogRef.current?.contains(document.activeElement)) {
+                event.preventDefault();
+                (event.shiftKey ? last : first).focus();
+            } else if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
         };
         window.addEventListener('keydown', onKeyDown);
         return () => {
             document.body.style.overflow = previousOverflow;
             window.removeEventListener('keydown', onKeyDown);
+            previouslyFocused?.focus?.();
         };
     }, [onClose]);
 
@@ -48,9 +76,11 @@ const PolicyDialog = ({ policy, onClose }) => {
             onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}
         >
             <div
+                ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={`policy-title-${policy.id}`}
+                tabIndex={-1}
                 className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
             >
                 <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
@@ -126,7 +156,7 @@ const PolicyConsent = ({
                             <button
                                 type="button"
                                 onClick={() => setOpenPolicyId(id)}
-                                className="shrink-0 text-xs font-bold text-slate-500 underline underline-offset-2"
+                                className="shrink-0 text-xs font-bold text-slate-700 underline underline-offset-2"
                                 aria-label={`${policy.title} 전문 보기`}
                             >
                                 전문 보기

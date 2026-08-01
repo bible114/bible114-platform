@@ -71,6 +71,15 @@ const AdminDataTable = ({
     };
 
     const clearSelection = () => setSelectedIds(new Set());
+    const removeSelection = (ids) => {
+        const idsToRemove = new Set(Array.isArray(ids) ? ids : []);
+        if (idsToRemove.size === 0) return;
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            idsToRemove.forEach(id => next.delete(id));
+            return next;
+        });
+    };
 
     const toggleRow = (id) => {
         setSelectedIds(prev => {
@@ -117,7 +126,12 @@ const AdminDataTable = ({
                 <div className="border-b border-indigo-100 bg-indigo-50 px-4 py-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <p className="text-sm font-black text-indigo-800">{selectedIds.size}명 선택됨</p>
                     <div className="flex flex-wrap items-center gap-2">
-                        {renderSelectionActions?.({ selectedRows, selectedIds: Array.from(selectedIds), clearSelection })}
+                        {renderSelectionActions?.({
+                            selectedRows,
+                            selectedIds: Array.from(selectedIds),
+                            clearSelection,
+                            removeSelection,
+                        })}
                         <button type="button" onClick={clearSelection} className="px-3 py-2 rounded-lg bg-white border border-indigo-100 text-xs font-bold text-indigo-700">
                             선택 해제
                         </button>

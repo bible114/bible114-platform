@@ -42,8 +42,10 @@ import {
   validateJoinCommunity,
 } from "./joinCore.ts";
 import {
+  buildMemberReactivation,
   type MemberSignupChurch,
   type MemberSignupConsent,
+  type MemberSignupCredentials,
   type MemberSignupUser,
   MemberSignupValidationError,
   validateMemberSignup,
@@ -97,6 +99,7 @@ import { joinSoloCommunity } from "./joinSoloCommunityService.ts";
 import { adminSetChurchVisibility } from "./adminChurchVisibilityService.ts";
 import { adminRenameChurch } from "./adminChurchRenameService.ts";
 import { adminSetChurchLifecycle } from "./adminChurchLifecycleService.ts";
+import { setMemberActiveState } from "./memberLifecycleService.ts";
 import {
   nextPlatformStatsAfterSignup,
   rebuildPlatformStats,
@@ -116,6 +119,7 @@ import {
   getCommunityProgress,
   getReadingCalendar,
 } from "./communityProgressService.ts";
+import { legacyCommunityProgressMember } from "./communityProgressCore.ts";
 
 // preview action은 계속 무쓰기 계산만 수행하고, 실제 읽기·퀴즈 변경은 아래의
 // 전용 서비스 transaction 모듈에만 위임한다.
@@ -457,6 +461,10 @@ const memberSignupValidationError = (error: MemberSignupValidationError) => {
       return new PlatformError("CONFLICT", {
         message: "기존 가입 정보와 충돌합니다. 관리자에게 문의해주세요.",
       });
+    case "STATS_REBUILD_REQUIRED":
+      return new PlatformError("CONFLICT", {
+        message: "회원 통계 원장을 먼저 전수 재계산해 주세요.",
+      });
   }
 };
 
@@ -687,11 +695,15 @@ Deno.serve(async (request) => {
         parsed.orgId,
         getServiceDateKst(),
       );
+      const members = parsed.projectionVersion === 2
+        ? result.members
+        : result.members.map(legacyCommunityProgressMember);
       return jsonResponse(origin, 200, {
         ok: true,
         action: parsed.action,
         requestId: parsed.requestId,
         ...result,
+        members,
       });
     }
 
@@ -742,6 +754,7 @@ Deno.serve(async (request) => {
           churchDocument,
           accessDocument,
           consentDocument,
+          credentialDocument,
           existingRoster,
           statsDocument,
         ] = await Promise.all([
@@ -767,6 +780,12 @@ Deno.serve(async (request) => {
             service.token,
             service.projectId,
             consentPath,
+            { transaction },
+          ),
+          getDocument<MemberSignupCredentials>(
+            service.token,
+            service.projectId,
+            `${userPath}/private/auth`,
             { transaction },
           ),
           getDocument<Record<string, unknown>>(
@@ -802,22 +821,35 @@ Deno.serve(async (request) => {
               : churchDocument.data.churchCodeHash,
           }
           : null;
+        const now = new Date();
+        const calendarDate = getCalendarDateKst();
         let decision;
+        let reactivation: ReturnType<typeof buildMemberReactivation> | null;
         try {
           decision = validateMemberSignup({
             uid,
             email: tokenEmail,
+            signInProvider: verifiedUser.signInProvider,
             churchId: parsed.churchId,
             entryCodeHash: credential.entryCodeHash,
             name: parsed.name,
             birthdate: parsed.birthdate,
             guestProgress: parsed.guestProgress,
-            calendarDate: getCalendarDateKst(),
+            calendarDate,
+            now,
             church: churchData,
             consent: consentDocument?.data || null,
+            credentials: credentialDocument?.data || null,
             existingUser: existingUser?.data || null,
             existingRoster: existingRoster?.data || null,
           });
+          reactivation = decision.status === "reactivate" && existingUser
+            ? buildMemberReactivation({
+              existingUser: existingUser.data,
+              consentSummary: decision.profile.consentSummary,
+              now,
+            })
+            : null;
         } catch (error) {
           if (error instanceof MemberSignupValidationError) {
             throw memberSignupValidationError(error);
@@ -841,9 +873,8 @@ Deno.serve(async (request) => {
           });
         }
 
-        const now = new Date();
         const { guestProgress, ...safeProfile } = decision.profile;
-        const userData = {
+        const newUserData = {
           ...safeProfile,
           password: null,
           role: "member",
@@ -868,18 +899,26 @@ Deno.serve(async (request) => {
           isDeleted: false,
           deletedAt: null,
           deletedBy: null,
+          platformStatsReaderCounted: true,
           createdAt: now,
           updatedAt: now,
         };
+        const userData = reactivation?.responseUser || newUserData;
         const writes = [
-          updateWrite(service.projectId, userPath, userData, {
-            exists: decision.status === "reactivate" ? true : false,
-          }),
+          updateWrite(
+            service.projectId,
+            userPath,
+            reactivation?.patch || newUserData,
+            {
+              ...(reactivation ? { updateMask: reactivation.updateMask } : {}),
+              exists: decision.status === "reactivate" ? true : false,
+            },
+          ),
           updateWrite(
             service.projectId,
             statsPath,
             nextPlatformStatsAfterSignup(statsDocument?.data || null, {
-              readerDelta: 1,
+              readerDelta: reactivation?.readerDelta ?? 1,
               churchDelta: 0,
               now,
             }),
@@ -1025,6 +1064,8 @@ Deno.serve(async (request) => {
               : churchDocument.data.churchCodeHash,
           }
           : null;
+        const now = new Date();
+        const calendarDate = getCalendarDateKst();
         let decision;
         try {
           decision = validatePersonalSignup({
@@ -1035,7 +1076,8 @@ Deno.serve(async (request) => {
             name: parsed.name,
             birthdate: parsed.birthdate,
             guestProgress: parsed.guestProgress,
-            calendarDate: getCalendarDateKst(),
+            calendarDate,
+            now,
             churchId: parsed.churchId,
             entryCodeHash: credential.entryCodeHash,
             departmentId: parsed.departmentId,
@@ -1069,8 +1111,7 @@ Deno.serve(async (request) => {
           });
         }
 
-        const now = new Date();
-        const progress = parsed.guestProgress;
+        const progress = decision.guestProgress;
         const churchName = parsed.churchId === "unaffiliated_v1"
           ? "성경 읽는 사람들"
           : (typeof churchDocument?.data.name === "string"
@@ -1110,6 +1151,7 @@ Deno.serve(async (request) => {
           isDeleted: false,
           deletedAt: null,
           deletedBy: null,
+          platformStatsReaderCounted: true,
           createdAt: now,
           updatedAt: now,
         };
@@ -1120,6 +1162,8 @@ Deno.serve(async (request) => {
             score: 0,
             talent: 0,
             currentDay: progress.currentDay,
+            planId: progress.planId,
+            fixtureType: null,
             streak: progress.streak,
             readCount: 1,
             lastReadDate: progress.lastReadDate,
@@ -1213,11 +1257,18 @@ Deno.serve(async (request) => {
         departmentId: parsed.departmentId,
         subgroupId: parsed.subgroupId,
       });
+      // 서비스/ledger 내부 schema2는 정규화 currentDay를 보유하지만 공개 응답은
+      // 기존 schema1 키를 유지한다. 이렇게 해야 Edge를 먼저 배포해도 캐시된 구 웹이
+      // strict exact-key 검증에서 실패하지 않는다. 새 웹은 source-server users 값을
+      // 선택 plan의 총일수로 다시 계산해 검증한다.
+      const { currentDay: _verifiedCurrentDay, ...compatibleResult } =
+        result.result;
       return jsonResponse(origin, 200, {
         ok: true,
         action: parsed.action,
         requestId: parsed.requestId,
         ...result,
+        result: compatibleResult,
       });
     }
 
@@ -1326,6 +1377,20 @@ Deno.serve(async (request) => {
       const result = await adminSetChurchLifecycle(service, verifiedUser, {
         requestId: parsed.requestId,
         churchId: parsed.churchId,
+        active: parsed.active,
+      });
+      return jsonResponse(origin, 200, {
+        ok: true,
+        action: parsed.action,
+        requestId: parsed.requestId,
+        result,
+      });
+    }
+
+    if (parsed.action === "setMemberActiveState") {
+      const result = await setMemberActiveState(service, verifiedUser, {
+        requestId: parsed.requestId,
+        memberUid: parsed.memberUid,
         active: parsed.active,
       });
       return jsonResponse(origin, 200, {

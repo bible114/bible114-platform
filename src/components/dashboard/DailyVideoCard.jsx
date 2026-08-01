@@ -598,13 +598,17 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
                     <div className="flex w-full shrink-0 items-center justify-between gap-2 sm:w-auto">
                         <div className="flex items-center bg-white/20 backdrop-blur-md rounded-full p-1 shrink-0">
                             <button
+                                type="button"
                                 onClick={() => handleModeChange('adult')}
+                                aria-pressed={mode === 'adult'}
                                 className={`min-h-11 rounded-full px-3 py-2 text-sm font-bold transition-all ${mode === 'adult' ? 'bg-white text-indigo-700 shadow-sm' : 'text-white/80'}`}
                             >
                                 성인용
                             </button>
                             <button
+                                type="button"
                                 onClick={() => handleModeChange('kids')}
+                                aria-pressed={mode === 'kids'}
                                 className={`min-h-11 rounded-full px-3 py-2 text-sm font-bold transition-all ${mode === 'kids' ? 'bg-white text-indigo-700 shadow-sm' : 'text-white/80'}`}
                             >
                                 어린이용

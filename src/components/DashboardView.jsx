@@ -5,7 +5,7 @@ import { getPlanTotalDays } from '../data/schedules';
 import { getLevelInfo } from '../data/levels';
 import { DEFAULT_DEPARTMENTS } from '../data/departments';
 import { belongsToDepartment, getMembershipList } from '../utils/memberships';
-import { getDaysRead } from '../utils/helpers';
+import { getDaysRead, getPlanProgressRate } from '../utils/helpers';
 import { auth, db } from '../utils/firebase';
 import { resolveTalentProgram } from '../utils/talentProgram';
 import {
@@ -15,7 +15,6 @@ import {
 } from '../utils/socialLoginTransition';
 import {
     scheduleScrollIntoView,
-    shouldScrollToReadingHeader,
 } from '../utils/readingFlowScroll';
 
 // Modals
@@ -79,6 +78,7 @@ const DashboardView = ({
     allMembersForRace,
     memos,
     memoLoadError,
+    memoMigrating,
     currentMemo,
     setCurrentMemo,
     announcement,
@@ -166,9 +166,11 @@ const DashboardView = ({
     const [calendarLoading, setCalendarLoading] = useState(false);
     const [calendarError, setCalendarError] = useState('');
     const bibleHeaderRef = useRef(null);
-    const observedCompletionRef = useRef({
+    const observedReadingPositionRef = useRef({
         uid: currentUser?.uid || null,
-        summary: completionSummary,
+        cycle: currentUser?.readCount || 1,
+        day: currentUser?.currentDay || 1,
+        epoch: currentUser?.readingEpoch || 0,
     });
     const currentUserUidRef = useRef(currentUser?.uid || null);
     currentUserUidRef.current = currentUser?.uid || null;
@@ -267,24 +269,38 @@ const DashboardView = ({
     };
 
     useEffect(() => {
-        const uid = currentUser?.uid || null;
-        const previous = observedCompletionRef.current;
-        const next = { uid, summary: completionSummary };
-        observedCompletionRef.current = next;
+        const next = {
+            uid: currentUser?.uid || null,
+            cycle: currentUser?.readCount || 1,
+            day: currentUser?.currentDay || 1,
+            epoch: currentUser?.readingEpoch || 0,
+        };
+        const previous = observedReadingPositionRef.current;
+        observedReadingPositionRef.current = next;
+        const moved = previous.uid === next.uid && (
+            previous.cycle !== next.cycle
+            || previous.day !== next.day
+            || previous.epoch !== next.epoch
+        );
+        if (!moved || Number(viewingDay) !== Number(next.day)) return undefined;
 
-        if (!shouldScrollToReadingHeader(previous, next)) return undefined;
-
-        const expectedUid = uid;
-        const expectedRequestId = completionSummary.requestId;
         return scheduleScrollIntoView(() => bibleHeaderRef.current, {
             block: 'start',
             behavior: 'auto',
             frameCount: 2,
-            isStillCurrent: () => currentUserUidRef.current === expectedUid
-                && observedCompletionRef.current.uid === expectedUid
-                && observedCompletionRef.current.summary?.requestId === expectedRequestId,
+            isStillCurrent: () => currentUserUidRef.current === next.uid
+                && observedReadingPositionRef.current.uid === next.uid
+                && observedReadingPositionRef.current.cycle === next.cycle
+                && observedReadingPositionRef.current.day === next.day
+                && observedReadingPositionRef.current.epoch === next.epoch,
         });
-    }, [completionSummary, currentUser?.uid]);
+    }, [
+        currentUser?.uid,
+        currentUser?.readCount,
+        currentUser?.currentDay,
+        currentUser?.readingEpoch,
+        viewingDay,
+    ]);
 
     useEffect(() => {
         if (!currentUser?.churchId || currentUser.role === 'guest') {
@@ -373,21 +389,23 @@ const DashboardView = ({
 
     // 격려 메시지 생성 로직
     const getEncouragementMessage = () => {
+        const myProgressRate = getPlanProgressRate(currentUser);
         const runnersNearby = departmentMembers.filter(r =>
             r.uid !== currentUser.uid &&
-            Math.abs(r.currentDay - currentDay) <= 1
+            Math.abs(getPlanProgressRate(r) - myProgressRate) <= 2
         ).length;
 
         const runnersAhead = departmentMembers.filter(r =>
             r.uid !== currentUser.uid &&
-            r.currentDay > currentDay
+            getPlanProgressRate(r) > myProgressRate
         ).length;
 
-        const avgDayValue = departmentMembers.length > 0
-            ? departmentMembers.reduce((sum, m) => sum + m.currentDay, 0) / departmentMembers.length
-            : currentDay;
+        const avgProgressRate = departmentMembers.length > 0
+            ? departmentMembers.reduce((sum, member) => sum + getPlanProgressRate(member), 0)
+                / departmentMembers.length
+            : myProgressRate;
 
-        const isBehind = currentDay < avgDayValue - 3;
+        const isBehind = myProgressRate < avgProgressRate - 3;
         const isWeeklyEncouragement = new Date().getDay() === 0;
 
         if (isBehind && isWeeklyEncouragement && runnersAhead > 0) {
@@ -683,6 +701,7 @@ const DashboardView = ({
                         setViewingDay={setViewingDay}
                         currentUser={currentUser}
                         daysRemaining={daysRemaining}
+                        totalPlanDays={totalPlanDays}
                         handleChangeVersionStart={handleChangeVersionStart}
                         getEncouragementMessage={getEncouragementMessage}
                         fontSize={fontSize}
@@ -751,6 +770,7 @@ const DashboardView = ({
                             readCount={currentUser?.readCount || 1}
                             memos={memos}
                             memoLoadError={memoLoadError}
+                            memoMigrating={memoMigrating}
                         />
                     </div>
 

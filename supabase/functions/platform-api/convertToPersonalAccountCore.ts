@@ -1,4 +1,5 @@
 import type { FirestoreDocument } from "../_shared/firestore.ts";
+import { projectCommunityProgressIdentity } from "./communityProgressCore.ts";
 import {
   parseRosterTalentWallets,
   type TalentMembershipUser,
@@ -29,6 +30,8 @@ export type ConvertToPersonalAccountUser = TalentMembershipUser & {
   streak?: unknown;
   readCount?: unknown;
   lastReadDate?: unknown;
+  planId?: unknown;
+  fixtureType?: unknown;
 };
 
 export type ConvertToPersonalAccountChurch = {
@@ -46,6 +49,8 @@ export type ConvertToPersonalAccountRoster = TalentMembershipUser & {
   streak?: unknown;
   readCount?: unknown;
   lastReadDate?: unknown;
+  planId?: unknown;
+  fixtureType?: unknown;
   joinedAt?: unknown;
   updatedAt?: unknown;
 };
@@ -66,6 +71,8 @@ export type ConvertToPersonalAccountRosterSeed = {
   streak: number;
   readCount: number;
   lastReadDate: string | null;
+  planId: string;
+  fixtureType: "reading-badge-test" | null;
   departmentId: string | null;
   departmentName: string | null;
   subgroupId: string | null;
@@ -544,6 +551,7 @@ export const decideConvertToPersonalAccount = (input: {
       uid,
       name: user.name,
       ...progress,
+      ...projectCommunityProgressIdentity(user),
       talent: 0,
       ...membership,
       extraMemberships: userExtras,

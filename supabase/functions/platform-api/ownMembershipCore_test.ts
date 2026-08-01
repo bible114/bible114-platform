@@ -43,6 +43,7 @@ const baseUser = (overrides: Record<string, unknown> = {}) => ({
   accountType: "church",
   isDeleted: false,
   planId: "1year_revised",
+  currentDay: 365,
   ...emptyMembership,
   ...overrides,
 });
@@ -60,6 +61,7 @@ const baseChurch = (overrides: Record<string, unknown> = {}) => ({
 const baseRoster = (overrides: Record<string, unknown> = {}) => ({
   uid: UID,
   isDeleted: false,
+  currentDay: 365,
   ...emptyMembership,
   ...overrides,
 });
@@ -105,7 +107,9 @@ Deno.test("fresh 일반 회원은 서버 파생 이름과 선택 plan으로 user
     status: "completed",
     orgId: ORG_ID,
     planId: "1year_new",
+    currentDay: 365,
     membership: canonicalMembership,
+    repairCurrentDay: false,
     writeUser: true,
     writeRoster: false,
   });
@@ -116,7 +120,9 @@ Deno.test("optional legacy roster가 있으면 users와 함께 같은 소속으�
     status: "completed",
     orgId: ORG_ID,
     planId: "1year_new",
+    currentDay: 365,
     membership: canonicalMembership,
+    repairCurrentDay: false,
     writeUser: true,
     writeRoster: true,
   });
@@ -159,7 +165,9 @@ Deno.test("canonical plan과 소속이 이미 같으면 no-op이다", () => {
       status: "alreadyCompleted",
       orgId: ORG_ID,
       planId: "1year_new",
+      currentDay: 365,
       membership: canonicalMembership,
+      repairCurrentDay: false,
       writeUser: false,
       writeRoster: false,
     },
@@ -175,6 +183,74 @@ Deno.test("canonical plan과 소속이 이미 같으면 no-op이다", () => {
     }).status,
     "alreadyCompleted",
   );
+});
+
+Deno.test("선택 plan 총일수에 맞춰 기존 currentDay를 modulo 정규화한다", () => {
+  assertEquals(
+    decide({ user: baseUser({ currentDay: 366 }) }).currentDay,
+    1,
+  );
+  assertEquals(
+    decide({
+      planId: "readable_new",
+      user: baseUser({ currentDay: 365 }),
+    }).currentDay,
+    5,
+  );
+  assertEquals(
+    decide({
+      planId: "readable_revised",
+      user: baseUser({ currentDay: 60 }),
+    }).currentDay,
+    60,
+  );
+});
+
+Deno.test("완료 상태라도 user/roster currentDay가 canonical이 아니면 함께 복구한다", () => {
+  assertEquals(
+    decide({
+      planId: "readable_new",
+      user: baseUser({
+        planId: "readable_new",
+        currentDay: 365,
+        ...canonicalMembership,
+      }),
+      roster: baseRoster({
+        currentDay: undefined,
+        ...canonicalMembership,
+      }),
+    }),
+    {
+      status: "completed",
+      orgId: ORG_ID,
+      planId: "readable_new",
+      currentDay: 5,
+      membership: canonicalMembership,
+      repairCurrentDay: true,
+      writeUser: true,
+      writeRoster: true,
+    },
+  );
+});
+
+Deno.test("currentDay는 양의 safe integer만 허용한다", () => {
+  for (
+    const currentDay of [
+      undefined,
+      null,
+      0,
+      -1,
+      1.5,
+      "1",
+      Number.NaN,
+      Number.MAX_SAFE_INTEGER + 1,
+    ]
+  ) {
+    expectValidationError(
+      () => decide({ user: baseUser({ currentDay }) }),
+      "INVALID_USER",
+    );
+  }
 });
 
 Deno.test("legacy string/object 조직을 joinCore와 같은 규칙으로 정규화한다", () => {

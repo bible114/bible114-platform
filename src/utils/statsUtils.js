@@ -1,8 +1,8 @@
 import { DEFAULT_DEPARTMENTS } from '../data/departments';
-import { getPlanTotalDays } from '../data/schedules';
 import { getMembershipList, belongsToDepartment, belongsToSubgroup } from './memberships';
-import { getDaysRead } from './helpers';
+import { getDaysRead, getPlanProgressRate } from './helpers';
 import { rankWeeklyMembers } from './weeklyRanking.js';
+import { hasVerifiedCommunityProgress } from './rosterMembers.js';
 
 // Firestore 문서는 uid별 1개지만, 잘못 합쳐진 입력이 와도 교회/그룹 지표에서
 // 같은 사용자를 두 번 세지 않는다. uid가 없는 레거시 객체는 서로 다른 사람일 수 있어 유지한다.
@@ -68,27 +68,31 @@ export const calculateSubgroupStats = (members, communities) => {
             belongsToSubgroup(member, departmentId, subgroupId)
             || (subgroupName !== subgroupId && belongsToSubgroup(member, departmentId, subgroupName))
         ));
+        const progressMembers = subMembers.filter(hasVerifiedCommunityProgress);
         const totalCount = subMembers.length;
-        const readTodayCount = subMembers.filter(m => m.lastReadDate === todayStr).length;
-        const rate = totalCount > 0 ? Math.round((readTodayCount / totalCount) * 100) : 0;
+        const progressMemberCount = progressMembers.length;
+        const readTodayCount = progressMembers.filter(m => m.lastReadDate === todayStr).length;
+        const rate = progressMemberCount > 0
+            ? Math.round((readTodayCount / progressMemberCount) * 100)
+            : 0;
 
-        const avgDay = totalCount > 0
-            ? subMembers.reduce((sum, m) => {
+        const avgDay = progressMemberCount > 0
+            ? progressMembers.reduce((sum, m) => {
                 return sum + getDaysRead(m);
-            }, 0) / totalCount
+            }, 0) / progressMemberCount
             : 0;
-        const progressRate = totalCount > 0
-            ? Math.round(subMembers.reduce((sum, member) => {
-                const totalDays = getPlanTotalDays(member.planId);
-                return sum + Math.min(100, (getDaysRead(member) / totalDays) * 100);
-            }, 0) / totalCount)
+        const progressRate = progressMemberCount > 0
+            ? Math.round(progressMembers.reduce((sum, member) => {
+                return sum + getPlanProgressRate(member);
+            }, 0) / progressMemberCount)
             : 0;
-        const totalScore = subMembers.reduce((sum, m) => sum + (m.score || 0), 0);
+        const totalScore = progressMembers.reduce((sum, m) => sum + (m.score || 0), 0);
 
         stats[JSON.stringify([departmentId, subgroupId || subgroupName])] = {
             rate,
             readCount: readTodayCount,
             totalCount,
+            progressMemberCount,
             progressRate,
             avgDay: Math.round(avgDay),
             totalScore,
@@ -104,6 +108,7 @@ export const calculateSubgroupStats = (members, communities) => {
 
 export const getWeeklyMVP = (departmentMembers) => {
     const uniqueDepartmentMembers = uniqueMembersByUid(departmentMembers)
+        .filter(hasVerifiedCommunityProgress)
         .filter(member => member.fixtureType !== 'reading-badge-test');
     if (uniqueDepartmentMembers.length === 0) return null;
 
@@ -208,12 +213,13 @@ export const formatProgressRanking = (subgroupStats) => {
                 avgDay: data.avgDay || 0,
                 totalScore: data.totalScore || 0,
                 totalCount: data.totalCount || 0,
+                progressMemberCount: data.progressMemberCount || 0,
                 departmentId: data.departmentId,
                 departmentName: data.departmentName,
                 subgroupId: data.subgroupId,
             };
         })
-        .filter(function (g) { return g.totalCount > 0; })
+        .filter(function (g) { return g.progressMemberCount > 0; })
         .sort(function (a, b) { return b.progressRate - a.progressRate; });
 };
 
@@ -236,7 +242,9 @@ const diffDays = (fromDate, toDateValue) => {
 };
 
 export const computeAtRisk = (members, todayStr) => {
-    const activeMembers = uniqueMembersByUid(members).filter(m => !m.isDeleted && m.role !== 'churchAdmin');
+    const activeMembers = uniqueMembersByUid(members)
+        .filter(hasVerifiedCommunityProgress)
+        .filter(m => !m.isDeleted && m.role !== 'churchAdmin');
     const noRead7Days = activeMembers
         .filter(m => {
             if (!m.lastReadDate) return true;

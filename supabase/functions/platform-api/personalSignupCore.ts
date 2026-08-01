@@ -1,3 +1,9 @@
+import {
+  SignupConsentValidationError,
+  type StoredSignupConsent,
+  validateStoredSignupConsent,
+} from "./signupConsentCore.ts";
+
 export type PersonalSignupChurch = {
   name?: unknown;
   churchCodeHash?: unknown;
@@ -6,14 +12,7 @@ export type PersonalSignupChurch = {
   isDeleted?: unknown;
 };
 
-export type PersonalSignupConsent = {
-  schemaVersion?: unknown;
-  policyVersions?: unknown;
-  agreedAt?: unknown;
-  audience?: unknown;
-  ageAssessment?: unknown;
-  agreements?: unknown;
-};
+export type PersonalSignupConsent = StoredSignupConsent;
 
 export type PersonalSignupUser = {
   role?: unknown;
@@ -57,20 +56,6 @@ const validDate = (value: string) => {
       date.getUTCDate() === Number(match[3])
     ? date
     : null;
-};
-
-const under14 = (birthdate: string, calendarDate: string) => {
-  const birth = validDate(birthdate);
-  const today = /^(\d{4})-(\d{2})-(\d{2})$/.exec(calendarDate);
-  if (!birth || !today) return null;
-  let age = Number(today[1]) - birth.getUTCFullYear();
-  const month = Number(today[2]);
-  const day = Number(today[3]);
-  if (
-    month < birth.getUTCMonth() + 1 ||
-    (month === birth.getUTCMonth() + 1 && day < birth.getUTCDate())
-  ) age -= 1;
-  return age < 0 ? null : age < 14;
 };
 
 const legacyDateKey = (value: string) => {
@@ -118,54 +103,6 @@ const unit = (value: unknown) => {
     : null;
 };
 
-const consentSummary = (
-  consent: PersonalSignupConsent | null,
-  birthdate: string,
-  calendarDate: string,
-) => {
-  const policies = record(consent?.policyVersions);
-  const agreements = record(consent?.agreements);
-  const assessment = record(consent?.ageAssessment);
-  const child = under14(birthdate, calendarDate);
-  if (
-    !consent || consent.schemaVersion !== 1 ||
-    consent.audience !== "personal" ||
-    typeof consent.agreedAt !== "string" ||
-    !Number.isFinite(Date.parse(consent.agreedAt)) ||
-    !policies || !agreements || !assessment || child === null
-  ) {
-    throw new PersonalSignupValidationError("INVALID_CONSENT");
-  }
-  for (const key of ["terms", "privacy", "sensitive", "community"]) {
-    if (
-      typeof policies[key] !== "string" || !policies[key] ||
-      record(agreements[key])?.agreed !== true
-    ) {
-      throw new PersonalSignupValidationError("INVALID_CONSENT");
-    }
-  }
-  if (assessment.birthdate !== birthdate || assessment.under14 !== child) {
-    throw new PersonalSignupValidationError("INVALID_CONSENT");
-  }
-  const guardian = record(agreements.childGuardian);
-  if (child && guardian?.agreed !== true) {
-    throw new PersonalSignupValidationError("INVALID_CONSENT");
-  }
-  return {
-    schemaVersion: 1,
-    policyVersions: Object.fromEntries(
-      ["terms", "privacy", "sensitive", "community", "childGuardian"]
-        .flatMap((key) =>
-          typeof policies[key] === "string" ? [[key, policies[key]]] : []
-        ),
-    ),
-    agreedAt: consent.agreedAt,
-    audience: "personal",
-    under14: child,
-    guardianConsentRecorded: guardian?.agreed === true,
-  };
-};
-
 export const validatePersonalSignup = (input: {
   uid: string;
   email: string | null;
@@ -180,6 +117,7 @@ export const validatePersonalSignup = (input: {
     planId: string;
   };
   calendarDate: string;
+  now: Date;
   churchId: string;
   entryCodeHash: string;
   departmentId: string;
@@ -223,11 +161,35 @@ export const validatePersonalSignup = (input: {
   ) {
     throw new PersonalSignupValidationError("INVALID_PROFILE");
   }
-  const summary = consentSummary(
-    input.consent,
-    input.birthdate,
-    input.calendarDate,
-  );
+  const planTotalDays = progress.planId === "readable_revised" ||
+      progress.planId === "readable_new"
+    ? 60
+    : 365;
+  const guestProgress = {
+    ...progress,
+    currentDay: ((progress.currentDay - 1) % planTotalDays) + 1,
+  };
+  let summary;
+  try {
+    const allowedSources = input.authProvider === "password"
+      ? ["manual_personal_signup"]
+      : input.authProvider === "google.com"
+      ? ["google_personal_signup", "google.com_personal_signup"]
+      : ["kakao_personal_signup", "kakao.com_personal_signup"];
+    summary = validateStoredSignupConsent({
+      consent: input.consent,
+      birthdate: input.birthdate,
+      calendarDate: input.calendarDate,
+      now: input.now,
+      audience: "personal",
+      allowedSources,
+    });
+  } catch (error) {
+    if (error instanceof SignupConsentValidationError) {
+      throw new PersonalSignupValidationError("INVALID_CONSENT");
+    }
+    throw error;
+  }
 
   let membership: Record<string, unknown> | null = null;
   if (input.churchId) {
@@ -300,6 +262,7 @@ export const validatePersonalSignup = (input: {
       membership,
       consentSummary: summary,
       email,
+      guestProgress,
     };
   }
   if (input.existingRoster) {
@@ -310,5 +273,6 @@ export const validatePersonalSignup = (input: {
     membership,
     consentSummary: summary,
     email,
+    guestProgress,
   };
 };

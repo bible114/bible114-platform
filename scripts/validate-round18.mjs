@@ -130,7 +130,9 @@ assert.match(reader, /disabled=\{readSubmitting \|\| !isCurrentProgressDay\}/);
 assert.match(reader, /isAdvanceRead[\s\S]*\? '한 장 더 읽기'/);
 assert.match(departmentHook, /loadAllMembers = useCallback\(async \(orgIdOverride\)/);
 assert.match(departmentHook, /const orgId = orgIdOverride \|\| currentUser\?\.churchId/);
-assert.match(departmentHook, /where\('churchId', '==', orgId\)[\s\S]*where\('password', '==', null\)/);
+assert.match(departmentHook, /await getCommunityProgress\(orgId[\s\S]*return response\.members/);
+assert.doesNotMatch(departmentHook, /collection\('users'\)/,
+    '공동체 진행판 실패 시 users 개인정보 원문 조회로 폴백하면 안 된다.');
 assert.match(departmentHook, /announcementRequestRef[\s\S]*setAnnouncement\(null\)/);
 assert.match(departmentHook, /kakaoRequestRef[\s\S]*setKakaoLink\(null\)/);
 assert.match(bibleLogic, /communityRequestRef[\s\S]*setAllMembersForRace\(\[\]\)[\s\S]*isCurrentRequest\(\)/);
@@ -215,7 +217,7 @@ assert.match(socialOnboarding, /getVisibleBibleVersions\(planType, \{ \.\.\.temp
 assert.doesNotMatch(socialOnboarding, /\(BIBLE_VERSIONS\[planType\] \|\| \[\]\)\.map/);
 assert.match(authFlow, /isPlanIdAllowedForUser\(guest\.planId, null\)/);
 assert.match(authFlow, /isPlanIdAllowedForUser\(planId, newUser\)/);
-assert.match(rules, /hasAny\(\['role', 'churchId', 'accountType', 'isDeleted', 'extraMemberships',[\s\S]*'talentWalletMigrated', 'departmentId', 'departmentName',[\s\S]*'subgroupId', 'subgroupName'\]\)/);
+assert.match(rules, /function isSafeSelfPreferenceUpdate\(before, after\)[\s\S]*changed\.hasOnly\(\[[\s\S]*'primaryOrgId'[\s\S]*'dayOffset'[\s\S]*'authProvider'[\s\S]*'quizLevel'[\s\S]*'videoMode'[\s\S]*'updatedAt'/);
 assert.match(rules, /existsAfter\([\s\S]*primaryOrgId[\s\S]*roster/);
 assert.match(rules, /function isPersonalPrimaryRoster\(churchId, memberUid\)[\s\S]*get\('accountType', null\) == 'personal'[\s\S]*get\('primaryOrgId', null\) == churchId/);
 assert.match(rules, /function isPersonalPrimaryRoster\(churchId, memberUid\)[\s\S]*let before = get\([\s\S]*let after = getAfter\([\s\S]*before\.get\('primaryOrgId', null\) == churchId[\s\S]*after\.get\('primaryOrgId', null\) == churchId/);
@@ -224,26 +226,39 @@ assert.match(rules, /allow delete: if !isPersonalPrimaryRoster\(churchId, member
 assert.match(membershipCard, /transaction\.get\(rosterRef\)[\s\S]*latestTalent > 0[\s\S]*남아 있어 탈퇴할 수 없어요/);
 assert.match(churchAdmin, /executeExpelRosterMember[\s\S]*transaction\.get\(rosterRef\)[\s\S]*latestTalent > 0[\s\S]*남아 있어 제명할 수 없습니다/);
 assert.match(churchAdmin, /executeExpelRosterMember[\s\S]*error\?\.code === 'permission-denied'[\s\S]*기본 공동체이거나 달란트 잔액이 남은 명부에서는 제명할 수 없습니다/);
-assert.match(rules, /function isSafeSelfScoreTalentUpdate\(before, after\)[\s\S]*before\.get\('talentMigrated', false\) == true[\s\S]*after\.get\('talentMigrated', false\) == true/,
-    '백필 완료 users만 본인 설정 쓰기를 계속할 수 있어야 한다.');
-assert.match(rules, /afterTalent == beforeTalent[\s\S]*afterScore == beforeScore/,
-    '이관 완료 users는 본인 브라우저에서 score/talent를 더 이상 바꾸지 못해야 한다.');
+assert.doesNotMatch(
+    rules.match(/function isSafeSelfPreferenceUpdate\(before, after\) \{([\s\S]*?)\n    \}/)?.[1] || '',
+    /readCount|readingEpoch|score|talent|quizProgress|quizRewardDate/,
+    '사용자 설정 allowlist에 읽기·보상·퀴즈 predicate가 들어가면 안 된다.',
+);
 assert.doesNotMatch(rules, /!wasMigrated|!isMigrated|afterTalent == beforeScore|afterScore >= beforeScore/,
     'legacy 브라우저 이관 분기는 백필 완료 뒤 제거되어야 한다.');
 assert.doesNotMatch(rules, /afterTalent <= beforeTalent \+ 17|afterScore <= beforeScore \+ 15/,
     '일반 공동체 계정의 구버전 브라우저 보상 호환 상한은 최종 차단 뒤 남으면 안 된다.');
 const rosterRules = rules.match(/match \/roster\/\{memberUid\} \{([\s\S]*?)\n        allow delete/)?.[1] || '';
-assert.match(rosterRules, /get\('score', 0\) == resource\.data\.get\('score', 0\)[\s\S]*get\('talent', 0\) == resource\.data\.get\('talent', 0\)[\s\S]*get\('currentDay', 1\) == resource\.data\.get\('currentDay', 1\)/,
-    '모든 roster 지갑과 진도는 브라우저 self-update에서도 동결해야 한다.');
+assert.match(rosterRules, /allow create: if false;/,
+    'roster 최초 생성은 서버 action만 수행해야 한다.');
+assert.doesNotMatch(rosterRules, /request\.auth\.uid == memberUid[\s\S]*allow update/,
+    'roster 본인 update는 서버 action 이관 뒤 다시 열리면 안 된다.');
 const usersRules = rules.match(/match \/users\/\{uid\} \{([\s\S]*?)\n      match \/private\/consent/)?.[1] || '';
 const primaryUserUpdateRule = usersRules.slice(
     usersRules.indexOf('allow update: if'),
     usersRules.indexOf('// users.talent'),
 );
-assert.match(usersRules, /resource\.data\.role == 'member'[\s\S]*request\.resource\.data\.role == 'member'[\s\S]*isChurchAdmin\(resource\.data\.churchId\)[\s\S]*affectedKeys\(\)\.hasOnly\(\[[\s\S]*'isDeleted'[\s\S]*'extraMemberships'[\s\S]*'updatedAt'/,
-    '교회 관리자의 same-church users 수정은 일반 교인 삭제·복원·소속 필드만 허용해야 한다.');
-assert.match(usersRules, /deletedAt == request\.time[\s\S]*deletedBy == request\.auth\.uid/,
-    '교회 관리자 삭제 감사값은 현재 요청에 결속해야 한다.');
+assert.match(usersRules, /resource\.data\.role == 'member'[\s\S]*request\.resource\.data\.role == 'member'[\s\S]*isChurchAdmin\(resource\.data\.churchId\)[\s\S]*affectedKeys\(\)\.hasOnly\(\[\s*'departmentId'[\s\S]*'extraMemberships'[\s\S]*'updatedAt'/,
+    '교회 관리자의 same-church users 수정은 일반 교인 소속 필드만 허용해야 한다.');
+assert.doesNotMatch(usersRules, /deletedAt == request\.time[\s\S]*deletedBy == request\.auth\.uid/,
+    '교회 관리자 브라우저 삭제·복원 분기는 서버 action 이관 뒤 남으면 안 된다.');
+assert.match(rules, /function isPlatformAdminMemberOrganizationUpdate\(before, after\)[\s\S]*changed\.hasOnly\(\[[\s\S]*'churchId'[\s\S]*'subgroupName', 'updatedAt'[\s\S]*after\.updatedAt == request\.time/,
+    '플랫폼 관리자의 타 회원 조직 수정은 정확한 소속 필드 allowlist여야 한다.');
+assert.match(rules, /function isPlatformAdminCredentialParentCleanup\(uid, before, after\)[\s\S]*changed\.hasOnly\(\['password', 'phone4'\]\)[\s\S]*after\.password == null[\s\S]*!after\.keys\(\)\.hasAny\(\['phone4'\]\)[\s\S]*hasProtectedCredentialCopy\(uid, before\)/,
+    '플랫폼 관리자의 평문 자격증명 정리는 private auth 사본과 결합되어야 한다.');
+assert.match(rules, /function isPlatformAdminTalentReset\(before, after\)[\s\S]*changed\.hasOnly\(\[[\s\S]*'talentWalletMigrated', 'updatedAt'[\s\S]*after\.talent == 0[\s\S]*after\.talentMigrated == true[\s\S]*after\.talentWalletMigrated == true/,
+    '플랫폼 관리자의 legacy 달란트 정리는 0과 완료 marker로만 수렴해야 한다.');
+assert.match(rules, /function isPlatformAdminTimestampTouch\(before, after\)[\s\S]*changed\.hasOnly\(\['updatedAt'\]\)[\s\S]*after\.updatedAt == request\.time/,
+    '플랫폼 관리자의 타 회원 timestamp 보정은 updatedAt 단독 쓰기여야 한다.');
+assert.match(usersRules, /\(isPlatformAdmin\(\) && \([\s\S]*isPlatformAdminMemberOrganizationUpdate\([\s\S]*isPlatformAdminCredentialParentCleanup\([\s\S]*isPlatformAdminTalentReset\([\s\S]*isPlatformAdminTimestampTouch\(/,
+    '플랫폼 관리자의 타 회원 쓰기는 네 개의 정밀 predicate로만 열려야 한다.');
 assert.doesNotMatch(primaryUserUpdateRule, /\(isSignedIn\(\) && isChurchAdmin\(resource\.data\.churchId\)\) \|\|/,
     '교회 관리자에게 same-church users 전체 update 권한을 주면 역할 상승이 가능하다.');
 assert.doesNotMatch(rules, /isExactPersonalTalentTransfer|isZeroPersonalTalentFinalization/,

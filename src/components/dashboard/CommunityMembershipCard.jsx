@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ChurchPicker from '../ChurchPicker';
 import { UNAFFILIATED_CHURCH_ID, UNAFFILIATED_CHURCH_NAME } from '../../data/constants';
-import { auth, db, firebase } from '../../utils/firebase';
+import { auth, db } from '../../utils/firebase';
 import { getChurchDirectory } from '../../utils/churchDirectory';
 import { migratePersonalTalentWalletIfNeeded } from '../../utils/helpers';
 import {
@@ -270,14 +270,8 @@ const CommunityMembershipCard = ({ currentUser, setCurrentUser, onboarding = fal
                 updatedAt: membership.updatedAt || null,
             };
             if (onboarding && onJoinComplete) {
-                // 신규 개인 계정은 성경 버전을 아직 로컬 온보딩 상태에만 들고 있다.
-                // 소속 생성은 서버가 담당하되 planId 저장은 기존 온보딩 계약을 유지한다.
-                if (currentUser.planId) {
-                    await db.collection('users').doc(currentUser.uid).set({
-                        planId: currentUser.planId,
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    }, { merge: true });
-                }
+                // 플랜·정규화 진도는 이 화면 진입 전에 users 원장에 확정된다.
+                // joinSoloCommunity는 그 서버 값을 읽어 roster에 같은 진도를 만든다.
                 onJoinComplete(runtimeOrg);
                 return;
             }

@@ -33,6 +33,7 @@ export const ADMIN_SET_CHURCH_VISIBILITY_ACTION =
 export const ADMIN_RENAME_CHURCH_ACTION = "adminRenameChurch" as const;
 export const ADMIN_SET_CHURCH_LIFECYCLE_ACTION =
   "adminSetChurchLifecycle" as const;
+export const SET_MEMBER_ACTIVE_STATE_ACTION = "setMemberActiveState" as const;
 export const REBUILD_PLATFORM_STATS_ACTION = "rebuildPlatformStats" as const;
 export const CONVERT_TO_PERSONAL_ACCOUNT_ACTION =
   "convertToPersonalAccount" as const;
@@ -50,6 +51,7 @@ export type PlatformApiRequest =
     action: typeof GET_COMMUNITY_PROGRESS_ACTION;
     requestId: string;
     orgId: string;
+    projectionVersion: 1 | 2;
   }
   | {
     action: typeof GET_READING_CALENDAR_ACTION;
@@ -100,6 +102,12 @@ export type PlatformApiRequest =
     action: typeof ADMIN_SET_CHURCH_LIFECYCLE_ACTION;
     requestId: string;
     churchId: string;
+    active: boolean;
+  }
+  | {
+    action: typeof SET_MEMBER_ACTIVE_STATE_ACTION;
+    requestId: string;
+    memberUid: string;
     active: boolean;
   }
   | {
@@ -334,10 +342,13 @@ const strictText = (
 };
 
 const hasEntryCodeOrTicket = (entryCode: string, joinTicket: string) => {
-  const hasEntryCode = entryCode.length >= 4 && entryCode.length <= 128 &&
+  const entryCodeSupplied = entryCode.length > 0;
+  const joinTicketSupplied = joinTicket.length > 0;
+  if (entryCodeSupplied === joinTicketSupplied) return false;
+  const validEntryCode = entryCode.length >= 4 && entryCode.length <= 128 &&
     !/[\u0000-\u001f\u007f]/.test(entryCode);
-  const hasTicket = isRequestId(joinTicket);
-  return hasEntryCode !== hasTicket;
+  const validJoinTicket = isRequestId(joinTicket);
+  return entryCodeSupplied ? validEntryCode : validJoinTicket;
 };
 
 export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
@@ -391,6 +402,7 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
     expectedVersion,
     operation,
     year,
+    projectionVersion,
   } = body as Record<string, unknown>;
   if (!isRequestId(requestId)) {
     throw new PlatformApiRequestError("INVALID_REQUEST_ID");
@@ -398,16 +410,27 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
 
   if (action === PREFLIGHT_ACTION) return { action, requestId };
   if (action === GET_COMMUNITY_PROGRESS_ACTION) {
-    const allowedKeys = new Set(["action", "requestId", "orgId"]);
+    const allowedKeys = new Set([
+      "action",
+      "requestId",
+      "orgId",
+      "projectionVersion",
+    ]);
     const normalizedOrgId = safeDocumentId(orgId);
     if (
       Object.keys(body).some((key) => !allowedKeys.has(key)) ||
       !normalizedOrgId || normalizedOrgId !== orgId ||
-      normalizedOrgId === "." || normalizedOrgId === ".."
+      normalizedOrgId === "." || normalizedOrgId === ".." ||
+      !(projectionVersion === undefined || projectionVersion === 2)
     ) {
       throw new PlatformApiRequestError("INVALID_PAYLOAD");
     }
-    return { action, requestId, orgId: normalizedOrgId };
+    return {
+      action,
+      requestId,
+      orgId: normalizedOrgId,
+      projectionVersion: projectionVersion === 2 ? 2 : 1,
+    };
   }
   if (action === GET_READING_CALENDAR_ACTION) {
     const allowedKeys = new Set(["action", "requestId", "year"]);
@@ -569,6 +592,24 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
       throw new PlatformApiRequestError("INVALID_PAYLOAD");
     }
     return { action, requestId, churchId: normalizedChurchId, active };
+  }
+  if (action === SET_MEMBER_ACTIVE_STATE_ACTION) {
+    const allowedKeys = new Set([
+      "action",
+      "requestId",
+      "memberUid",
+      "active",
+    ]);
+    const normalizedMemberUid = safeDocumentId(memberUid);
+    if (
+      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+      !normalizedMemberUid || normalizedMemberUid !== memberUid ||
+      normalizedMemberUid === "." || normalizedMemberUid === ".." ||
+      typeof active !== "boolean"
+    ) {
+      throw new PlatformApiRequestError("INVALID_PAYLOAD");
+    }
+    return { action, requestId, memberUid: normalizedMemberUid, active };
   }
   if (action === REBUILD_PLATFORM_STATS_ACTION) {
     const allowedKeys = new Set(["action", "requestId", "dryRun"]);
@@ -1040,12 +1081,15 @@ export const parsePlatformApiRequest = (body: unknown): PlatformApiRequest => {
         typeof guestProgress === "object" && !Array.isArray(guestProgress)
       ? guestProgress as Record<string, unknown>
       : null;
+    const isUnaffiliated = normalizedChurchId === "unaffiliated_v1";
+    const hasInvalidJoinCredential = isUnaffiliated
+      ? Boolean(normalizedEntryCode || normalizedJoinTicket)
+      : !hasEntryCodeOrTicket(normalizedEntryCode, normalizedJoinTicket);
     if (
       !normalizedChurchId || normalizedChurchId.length > 128 ||
       normalizedChurchId.includes("/") ||
       /[\u0000-\u001f\u007f]/.test(normalizedChurchId) ||
-      normalizedChurchId === "unaffiliated_v1" ||
-      !hasEntryCodeOrTicket(normalizedEntryCode, normalizedJoinTicket) ||
+      hasInvalidJoinCredential ||
       !normalizedName || normalizedName.length > 50 ||
       !/^\d{8}$/.test(normalizedBirthdate) || !normalizedGuestProgress
     ) {

@@ -2,9 +2,10 @@ import React, { Suspense, lazy, useState, useEffect, useCallback, useMemo, useRe
 import { db, auth, firebase } from './utils/firebase';
 import { DEFAULT_DEPARTMENTS } from './data/departments';
 import { BIBLE_VERSIONS } from './data/bible_options';
+import { getPlanTotalDays } from './data/schedules';
 import { userDocToState, dateToOffset } from './utils/helpers';
-import { completeMemberOnboarding } from './utils/platformApi';
-import { setMemberPasswordByAdmin } from './utils/adminPassword';
+import { completeMemberOnboarding, setMemberActiveState } from './utils/platformApi';
+import { adminPasswordErrorMessage, setMemberPasswordByAdmin } from './utils/adminPassword';
 import { calculateSubgroupStats, getWeeklyMVP, formatSubgroupRanking, formatProgressRanking, getAdminStats } from './utils/statsUtils';
 import { getSubgroupDisplay } from './utils/dashboardUtils';
 import { generateMemosHTML, downloadCSV, downloadPeriodStatsCSV } from './utils/exportUtils';
@@ -21,6 +22,7 @@ import SocialOnboardingView from './components/SocialOnboardingView';
 import { CommunityMembershipCard } from './components/dashboard';
 import { getPendingPersonalMigration, migrateChurchMemberToPersonal } from './utils/personalAccountMigration';
 import { normalizeOnboardingOrganizations } from './utils/onboardingOrganizations';
+import { loadCanonicalUserStateFromServer } from './utils/userStateSync';
 import { ToastContainer, useToast } from './components/admin';
 import { useTTS } from './hooks/useTTS';
 import { ADMIN_ENTRY_SESSION_KEY, UNAFFILIATED_CHURCH_ID } from './data/constants';
@@ -200,7 +202,7 @@ const App = () => {
         subgroupStats, setSubgroupStats,
         departmentMembers, setDepartmentMembers,
         allMembersForRace, setAllMembersForRace,
-        memos, setMemos, memoLoadError,
+        memos, setMemos, memoLoadError, memoMigrating,
         announcement, setAnnouncement,
         viewingDay, setViewingDay,
         hasReadToday, setHasReadToday,
@@ -409,13 +411,17 @@ const App = () => {
 
     const deleteUser = async (uid, userName) => {
         try {
-            await db.collection('users').doc(uid).set({
+            const result = await setMemberActiveState(
+                { memberUid: uid, active: false },
+                { expectedUid: currentUser?.uid }
+            );
+            setAllUsers(prev => prev.map(u => u.uid === uid ? {
+                ...u,
                 isDeleted: true,
-                deletedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                deletedBy: currentUser?.uid || null,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true });
-            setAllUsers(prev => prev.map(u => u.uid === uid ? { ...u, isDeleted: true } : u));
+                deletedAt: result.deletedAt,
+                deletedBy: result.deletedBy,
+                platformStatsReaderCounted: result.counted,
+            } : u));
             alert(`✅ ${userName}님이 삭제 처리되었습니다.`);
         } catch (e) { console.error(e); alert('삭제 실패: ' + e.message); }
     };
@@ -436,14 +442,15 @@ const App = () => {
 
             // 사용자 목록 업데이트
             setAllUsers(prev => prev.map(u =>
-                u.uid === uid ? { ...u, password: newPassword } : u
+                // 실제 평문은 private/auth에만 저장한다. 본문서의 이관 완료 마커는 유지한다.
+                u.uid === uid ? { ...u, password: null } : u
             ));
 
             setChangingPassword(null);
             setNewPassword('');
         } catch (e) {
             console.error(e);
-            alert('암호 변경 실패');
+            alert(`암호 변경 실패\n\n${adminPasswordErrorMessage(e)}`);
         }
     };
 
@@ -484,12 +491,6 @@ const App = () => {
                         subgroupId: editingUser.subgroupId,
                         subgroupName: editingUser.subgroupName || null,
                     } : {}),
-                    planId: editingUser.planId,
-                    currentDay: editingUser.currentDay,
-                    readCount: editingUser.readCount || 1,
-                    score: editingUser.score,
-                    streak: editingUser.streak,
-                    lastReadDate: editingUser.lastReadDate || null,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 };
                 transaction.set(userRef, updateData, { merge: true });
@@ -626,16 +627,79 @@ const App = () => {
         }
         const fullPlanId = `${selectedPlanType}_${versionId}`;
         if (tempUser) {
-            setTempUser(prev => ({ ...prev, planId: fullPlanId }));
-            setView(tempUser.accountType === 'personal' ? 'personal_community_onboarding' : 'community_select');
+            const requestUid = tempUser.uid;
+            const totalDays = getPlanTotalDays(fullPlanId);
+            const previousDay = Math.max(1, Number(tempUser.currentDay) || 1);
+            const normalizedDay = ((previousDay - 1) % totalDays) + 1;
+            if (tempUser.accountType === 'personal') {
+                try {
+                    if (!requestUid || auth.currentUser?.uid !== requestUid) {
+                        throw new Error('PERSONAL_ONBOARDING_AUTH_REQUIRED');
+                    }
+                    // 신규 개인 계정은 공동체 roster를 만들기 전에 플랜과 정규화된
+                    // 진도를 원장에 먼저 확정한다. joinSoloCommunity가 이 값을 읽어
+                    // roster를 만들기 때문에 60일 플랜에도 365일 진도가 복제되지 않는다.
+                    const beforeSnap = await db.collection('users').doc(requestUid).get({ source: 'server' });
+                    const before = beforeSnap.exists ? beforeSnap.data() : null;
+                    if (!before || before.isDeleted === true || before.accountType !== 'personal') {
+                        throw new Error('PERSONAL_ONBOARDING_STATE_INVALID');
+                    }
+                    const canonicalPreviousDay = Math.max(1, Number(before.currentDay) || 1);
+                    const canonicalDay = ((canonicalPreviousDay - 1) % totalDays) + 1;
+                    if (before.planId !== fullPlanId || before.currentDay !== canonicalDay) {
+                        await db.collection('users').doc(requestUid).set({
+                            planId: fullPlanId,
+                            currentDay: canonicalDay,
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        }, { merge: true });
+                    }
+                    const afterSnap = await db.collection('users').doc(requestUid).get({ source: 'server' });
+                    const after = afterSnap.exists ? afterSnap.data() : null;
+                    if (auth.currentUser?.uid !== requestUid
+                        || !after || after.planId !== fullPlanId
+                        || after.currentDay !== canonicalDay) {
+                        throw new Error('PERSONAL_ONBOARDING_PLAN_INVALID');
+                    }
+                    const canonicalUser = userDocToState(afterSnap);
+                    setTempUser(previous => previous?.uid === requestUid
+                        ? {
+                            ...canonicalUser,
+                            extraOrgs: Array.isArray(previous.extraOrgs) ? previous.extraOrgs : [],
+                        }
+                        : previous);
+                } catch (error) {
+                    console.error('개인 계정 플랜 저장 실패:', error);
+                    alert('읽기 계획을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
+                    return;
+                }
+                setView('personal_community_onboarding');
+                return;
+            }
+            setTempUser(prev => ({ ...prev, planId: fullPlanId, currentDay: normalizedDay }));
+            setView('community_select');
         }
         else if (currentUser) {
-            const updatedUser = { ...currentUser, planId: fullPlanId };
-            setCurrentUser(updatedUser);
+            const uid = auth.currentUser?.uid;
+            const totalDays = getPlanTotalDays(fullPlanId);
+            const previousDay = Math.max(1, Number(currentUser.currentDay) || 1);
+            const normalizedDay = ((previousDay - 1) % totalDays) + 1;
             try {
-                const uid = auth.currentUser ? auth.currentUser.uid : null;
-                if (uid) await db.collection('users').doc(uid).set({ planId: fullPlanId, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
-            } catch (e) { console.error(e); }
+                if (!uid || uid !== currentUser.uid) throw new Error('PLAN_CHANGE_AUTH_REQUIRED');
+                await db.collection('users').doc(uid).set({
+                    planId: fullPlanId,
+                    currentDay: normalizedDay,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                }, { merge: true });
+                if (auth.currentUser?.uid !== uid) return;
+                setCurrentUser(previous => previous?.uid === uid
+                    ? { ...previous, planId: fullPlanId, currentDay: normalizedDay }
+                    : previous);
+                setViewingDay(normalizedDay);
+            } catch (e) {
+                console.error(e);
+                alert('읽기 계획을 변경하지 못했습니다. 잠시 후 다시 시도해주세요.');
+                return;
+            }
             setView('dashboard');
             setShowConfetti(true); setTimeout(() => setShowConfetti(false), 2000);
         }
@@ -670,8 +734,14 @@ const App = () => {
             }
             const stored = userSnap.data() || {};
             const membership = response.result;
+            const totalDays = getPlanTotalDays(membership.planId);
+            const previousDay = Math.max(1, Number(requestUser.currentDay) || 1);
+            const normalizedOnboardingDay = ((previousDay - 1) % totalDays) + 1;
             if (stored.isDeleted === true
                 || stored.planId !== membership.planId
+                || stored.currentDay !== normalizedOnboardingDay
+                || (membership.currentDay !== undefined
+                    && membership.currentDay !== normalizedOnboardingDay)
                 || stored.churchId !== membership.orgId
                 || stored.departmentId !== membership.departmentId
                 || stored.departmentName !== membership.departmentName
@@ -699,27 +769,24 @@ const App = () => {
 
     const finishPersonalOnboarding = async (runtimeOrg = null) => {
         if (!tempUser?.uid || auth.currentUser?.uid !== tempUser.uid) return;
-        const nextUser = {
-            ...tempUser,
-            primaryOrgId: runtimeOrg?.orgId || null,
-            extraOrgs: runtimeOrg ? [runtimeOrg] : [],
-        };
+        const requestUid = tempUser.uid;
+        const expectedPlanId = tempUser.planId;
+        const expectedDay = tempUser.currentDay;
         try {
-            if (!runtimeOrg) {
-                await db.collection('users').doc(tempUser.uid).set({
-                    planId: tempUser.planId,
-                    primaryOrgId: null,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                }, { merge: true });
+            const canonicalUser = await loadCanonicalUserStateFromServer(requestUid);
+            if (auth.currentUser?.uid !== requestUid
+                || canonicalUser.planId !== expectedPlanId
+                || canonicalUser.currentDay !== expectedDay
+                || (runtimeOrg && canonicalUser.primaryOrgId !== runtimeOrg.orgId)) {
+                throw new Error('PERSONAL_ONBOARDING_CANONICAL_STATE_INVALID');
             }
+            setCurrentUser(canonicalUser);
+            setTempUser(null);
+            setView('dashboard');
         } catch (error) {
-            console.error('개인 계정 온보딩 저장 실패:', error);
-            alert('설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
-            return;
+            console.error('개인 계정 온보딩 확인 실패:', error);
+            alert('설정을 안전하게 확인하지 못했습니다. 잠시 후 다시 시도해주세요.');
         }
-        setCurrentUser(nextUser);
-        setTempUser(null);
-        setView('dashboard');
     };
 
     const handlePrimaryOrgChange = async (orgId) => {
@@ -954,6 +1021,7 @@ const App = () => {
                 allMembersForRace={allMembersForRace}
                 memos={memos}
                 memoLoadError={memoLoadError}
+                memoMigrating={memoMigrating}
                 currentMemo={currentMemo}
                 setCurrentMemo={setCurrentMemo}
                 announcement={announcement}

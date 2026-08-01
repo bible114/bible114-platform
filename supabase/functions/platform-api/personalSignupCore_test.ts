@@ -3,26 +3,51 @@ import {
   PersonalSignupValidationError,
   validatePersonalSignup,
 } from "./personalSignupCore.ts";
+import { SIGNUP_POLICY_VERSION } from "./signupConsentCore.ts";
 
 const consent = (under14 = false) => ({
   schemaVersion: 1,
   policyVersions: {
-    terms: "v1",
-    privacy: "v1",
-    sensitive: "v1",
-    community: "v1",
-    childGuardian: "v1",
+    terms: SIGNUP_POLICY_VERSION,
+    privacy: SIGNUP_POLICY_VERSION,
+    sensitive: SIGNUP_POLICY_VERSION,
+    community: SIGNUP_POLICY_VERSION,
+    childGuardian: SIGNUP_POLICY_VERSION,
   },
   agreedAt: "2026-07-15T00:00:00.000Z",
+  source: "google_personal_signup",
+  locale: "ko-KR",
   audience: "personal",
-  ageAssessment: { birthdate: under14 ? "20150101" : "19900101", under14 },
+  ageAssessment: {
+    birthdate: under14 ? "20150101" : "19900101",
+    asOfDate: "2026-07-15",
+    age: under14 ? 11 : 36,
+    under14,
+  },
   agreements: {
     terms: { agreed: true },
     privacy: { agreed: true },
     sensitive: { agreed: true },
     community: { agreed: true },
-    childGuardian: { agreed: under14 },
+    childGuardian: under14
+      ? {
+        required: true,
+        agreed: true,
+        method: "guardian_assertion",
+        guardianName: "홍보호",
+        relationship: "부",
+        identityVerifiedByPlatform: false,
+        legalAuthorityVerifiedByPlatform: false,
+      }
+      : {
+        required: false,
+        agreed: false,
+        method: null,
+        identityVerifiedByPlatform: false,
+        legalAuthorityVerifiedByPlatform: false,
+      },
   },
+  recordedAt: "2026-07-15T00:00:01.000Z",
 });
 
 const base = () => ({
@@ -39,6 +64,7 @@ const base = () => ({
     planId: "1year_revised",
   },
   calendarDate: "2026-07-15",
+  now: new Date("2026-07-15T00:01:00.000Z"),
   churchId: "church-1",
   entryCodeHash: "hash",
   departmentId: "children",
@@ -89,8 +115,24 @@ Deno.test("혼자 읽기와 비밀번호 개인 가입도 안전한 서버 경�
     departmentId: "",
     subgroupId: "",
     church: null,
+    consent: {
+      ...consent(),
+      source: "manual_personal_signup",
+    },
   });
   assertEquals(validatePersonalSignup(password).membership, null);
+});
+
+Deno.test("60일 플랜 가입 진도는 users와 roster에 쓸 범위로 정규화한다", () => {
+  const readable = base();
+  readable.guestProgress = {
+    ...readable.guestProgress,
+    currentDay: 185,
+    planId: "readable_new",
+  };
+  const result = validatePersonalSignup(readable);
+  assertEquals(result.guestProgress.currentDay, 5);
+  assertEquals(result.guestProgress.planId, "readable_new");
 });
 
 Deno.test("삭제 계정과 고아 roster는 재활성화하지 않고 거부한다", () => {

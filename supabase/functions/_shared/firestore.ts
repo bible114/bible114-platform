@@ -179,6 +179,88 @@ export const getDocument = async <T = Record<string, unknown>>(
 };
 
 /**
+ * Reads a bounded set of known document paths in one Firestore request.
+ * Firestore may return results out of order and emits missing documents as
+ * separate rows, so callers must identify found documents by their names.
+ */
+export const batchGetDocuments = async <T = Record<string, unknown>>(
+  token: string,
+  projectId: string,
+  paths: string[],
+  options: {
+    fieldPaths?: string[];
+    transaction?: string;
+    fetcher?: typeof fetch;
+  } = {},
+): Promise<FirestoreDocument<T>[]> => {
+  if (
+    !Array.isArray(paths) || paths.length === 0 || paths.length > 100
+  ) {
+    throw new PlatformError("BAD_REQUEST", {
+      message: "일괄 조회 문서는 1~100개여야 합니다.",
+    });
+  }
+  const normalizedPaths = paths.map(rawDocumentPath);
+  if (new Set(normalizedPaths).size !== normalizedPaths.length) {
+    throw new PlatformError("BAD_REQUEST", {
+      message: "일괄 조회 문서 경로가 중복되었습니다.",
+    });
+  }
+  const fieldPaths = options.fieldPaths ?? [];
+  if (
+    !Array.isArray(fieldPaths) ||
+    fieldPaths.some((fieldPath) =>
+      typeof fieldPath !== "string" || !fieldPath.trim()
+    ) ||
+    new Set(fieldPaths).size !== fieldPaths.length
+  ) {
+    throw new PlatformError("BAD_REQUEST", {
+      message: "일괄 조회 필드가 올바르지 않습니다.",
+    });
+  }
+  const response = await authenticatedFetch(
+    `${firestoreBaseUrl(projectId)}/documents:batchGet`,
+    token,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        documents: normalizedPaths.map((path) =>
+          `${databaseRoot(projectId)}/documents/${path}`
+        ),
+        ...(fieldPaths.length > 0 ? { mask: { fieldPaths } } : {}),
+        ...(options.transaction ? { transaction: options.transaction } : {}),
+      }),
+    },
+    options.fetcher,
+  );
+  if (!response.ok) {
+    throw new PlatformError("FIRESTORE_READ_FAILED", {
+      details: { status: response.status, documentCount: paths.length },
+    });
+  }
+  const payload = await response.json() as unknown;
+  if (!Array.isArray(payload)) {
+    throw new PlatformError("FIRESTORE_READ_FAILED", {
+      message: "Firestore 일괄 조회 응답이 올바르지 않습니다.",
+      details: { documentCount: paths.length },
+    });
+  }
+  return payload.flatMap((row) => {
+    if (!row || typeof row !== "object" || Array.isArray(row)) return [];
+    const found = (row as {
+      found?: Omit<FirestoreDocument<T>, "data">;
+    }).found;
+    if (!found || typeof found.name !== "string") return [];
+    const fields = found.fields ?? {};
+    return [{
+      ...found,
+      fields,
+      data: decodeFirestoreFields(fields) as T,
+    }];
+  });
+};
+
+/**
  * Lists every document directly under one collection, following Firestore REST
  * page tokens until the collection is exhausted. The collection path must end
  * at a collection (for example `churches` or `churches/{id}/roster`).

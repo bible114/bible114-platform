@@ -27,6 +27,8 @@ const fixture = (
     currentDay: 4,
     streak: 2,
     readCount: 1,
+    planId: "readable_new",
+    fixtureType: "reading-badge-test",
   },
   church: {
     churchCodeHash: "hash-ok",
@@ -66,6 +68,11 @@ Deno.test("서버 원장 값으로 roster와 personal 기본 공동체를 계산
   assert(
     result.membership.score === 12 && result.membership.talent === 0,
     "server wallet snapshot expected",
+  );
+  assert(
+    result.membership.planId === "readable_new" &&
+      result.membership.fixtureType === "reading-badge-test",
+    "community progress identity snapshot expected",
   );
 });
 

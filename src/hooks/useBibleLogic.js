@@ -45,7 +45,14 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
     );
 
     // 4. Memos Hook
-    const { memos, setMemos, memoLoadError, loadMemos, saveMemo } = useMemos(currentUser);
+    const {
+        memos,
+        setMemos,
+        memoLoadError,
+        memoMigrating,
+        loadMemos,
+        saveMemo,
+    } = useMemos(currentUser);
 
     // [Effect 1] Load Bible Content when viewingDay changes
     useEffect(() => {
@@ -140,6 +147,7 @@ export const useBibleLogic = (currentUser, setCurrentUser, view, communities, on
         allMembersForRace, setAllMembersForRace,
         memos, setMemos,
         memoLoadError,
+        memoMigrating,
         announcement,
         kakaoLink,
         viewingDay, setViewingDay,

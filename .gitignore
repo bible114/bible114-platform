@@ -6,7 +6,10 @@ supabase/.temp/
 .DS_Store
 *.log
 .claude/
+.codex-local/
 vite_dev.log
 *.local
 새번역_RNKSV_2001_자료/
 operations/private/
+promo_video/
+promo_video_v2/

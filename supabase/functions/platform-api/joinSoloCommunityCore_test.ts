@@ -55,6 +55,8 @@ const baseUser = (overrides: Data = {}): JoinSoloCommunityUser => ({
   streak: 7,
   readCount: 2,
   lastReadDate: "Wed Jul 15 2026",
+  planId: "readable_new",
+  fixtureType: "reading-badge-test",
   ...overrides,
 });
 
@@ -127,6 +129,8 @@ Deno.test("fresh solo 참여는 users snapshot으로 정확한 roster seed를 �
       streak: 7,
       readCount: 2,
       lastReadDate: "Wed Jul 15 2026",
+      planId: "readable_new",
+      fixtureType: "reading-badge-test",
       departmentId: null,
       departmentName: null,
       subgroupId: null,

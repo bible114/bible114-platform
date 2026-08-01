@@ -11,10 +11,17 @@ import {
     getOrCreateReadActivityRequest,
     getOrCreateRestartActivityRequest,
 } from '../utils/userActivityRequests';
+import { withAsyncTimeout } from '../utils/asyncTimeout';
 
 const TALENT_STREAK_MILESTONE_BONUSES = Object.freeze({
     7: 6, 30: 10, 60: 15, 90: 20, 120: 20, 180: 25, 270: 30, 365: 40,
 });
+const READ_STATE_SYNC_TIMEOUT_MS = 12_000;
+
+const readStateSyncTimeoutError = () => Object.assign(
+    new Error('user state sync timed out'),
+    { code: 'TIMEOUT', retryable: true },
+);
 
 const readingPosition = (user) => ({
     cycle: Number.isSafeInteger(user?.readCount) && user.readCount >= 1 ? user.readCount : 1,
@@ -46,6 +53,7 @@ export const useUserBibleActions = (
     const [newAchievement, setNewAchievement] = useState(null);
     const [readSubmitting, setReadSubmitting] = useState(false);
     const readSubmittingRef = useRef(false);
+    const readSubmissionTokenRef = useRef(0);
     const [restartSubmitting, setRestartSubmitting] = useState(false);
     const restartSubmittingRef = useRef(false);
     const achievementToastRef = useRef(null);
@@ -67,7 +75,11 @@ export const useUserBibleActions = (
 
     const syncLatestUser = useCallback(async (uid) => {
         if (auth.currentUser?.uid !== uid) return null;
-        const freshUser = await loadCanonicalUserStateFromServer(uid);
+        const freshUser = await withAsyncTimeout(
+            loadCanonicalUserStateFromServer(uid),
+            READ_STATE_SYNC_TIMEOUT_MS,
+            readStateSyncTimeoutError,
+        );
         if (auth.currentUser?.uid !== uid || freshUser?.uid !== uid
             || !isLatestCanonicalUserState(uid, freshUser)) return null;
         // 이어서 끝나는 다른 비동기 작업도 렌더 전의 오래된 ref를 보지 않게 한다.
@@ -76,6 +88,12 @@ export const useUserBibleActions = (
         setCurrentUser(freshUser);
         return freshUser;
     }, [setCurrentUser]);
+
+    const releaseReadSubmission = useCallback((submissionToken) => {
+        if (readSubmissionTokenRef.current !== submissionToken) return;
+        readSubmittingRef.current = false;
+        setReadSubmitting(false);
+    }, []);
 
     const showAchievementToast = useCallback((uid, achievementId, deferToast = false) => {
         const achievement = ACHIEVEMENTS.find(item => item.id === achievementId);
@@ -144,6 +162,7 @@ export const useUserBibleActions = (
         }
         readSubmittingRef.current = true;
         setReadSubmitting(true);
+        const submissionToken = ++readSubmissionTokenRef.current;
         const uid = requestStartUser.uid;
         const vDay = requestedDay;
         const submittedReadCount = requestStartUser.readCount || 1;
@@ -227,6 +246,11 @@ export const useUserBibleActions = (
                 setTimeout(() => setBonusToast(null), 4000);
                 return;
             }
+
+            // 핵심 저장과 서버 원본 확인이 끝나면 다음 본문을 읽을 수 있게 한다.
+            // 업적과 최종 보상 확인은 계속 수행하되, 이전 작업의 finally가 그 사이
+            // 시작된 다음 읽기 요청의 버튼 잠금을 풀지 못하도록 token으로 구분한다.
+            releaseReadSubmission(submissionToken);
 
             const summary = response.result.summary;
             let achievementIds = [];
@@ -331,8 +355,7 @@ export const useUserBibleActions = (
                 }
             }
         } finally {
-            readSubmittingRef.current = false;
-            setReadSubmitting(false);
+            releaseReadSubmission(submissionToken);
         }
     }, [
         viewingDay,
@@ -342,6 +365,7 @@ export const useUserBibleActions = (
         showAchievementToast,
         onReadComplete,
         requestCommunityRefresh,
+        releaseReadSubmission,
     ]);
 
     const handleRestart = useCallback(async () => {

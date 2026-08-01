@@ -8,13 +8,17 @@ const COMMUNITY_PROGRESS_RESPONSE_KEYS = new Set([
     'ok', 'action', 'requestId', 'members', 'rebuilt',
 ]);
 const COMMUNITY_PROGRESS_MEMBER_KEYS = new Set([
-    'uid', 'name', 'currentDay', 'readCount', 'readingYear', 'yearCompletedRounds',
+    'uid', 'name', 'planId', 'fixtureType', 'currentDay', 'readCount', 'readingYear', 'yearCompletedRounds',
     'lifetimeCompletedRounds', 'score', 'streak', 'lastReadDate', 'recentReadDates',
     'weeklyReadKey', 'weeklyReadCount', 'departmentId', 'departmentName',
     'subgroupId', 'subgroupName', 'extraMemberships',
 ]);
 const COMMUNITY_PROGRESS_MEMBERSHIP_KEYS = new Set([
     'departmentId', 'departmentName', 'subgroupId', 'subgroupName',
+]);
+const COMMUNITY_PROGRESS_PLAN_IDS = new Set([
+    '1year_sequential', '1year_revised', '1year_new', 'nt_new',
+    'readable_revised', 'readable_new',
 ]);
 const READING_CALENDAR_RESPONSE_KEYS = new Set([
     'ok', 'action', 'requestId', 'year', 'dates', 'readDays',
@@ -68,12 +72,17 @@ const isValidStoredDate = value => isValidIsoDate(value) || isValidLegacyDate(va
 const invalidResponse = message => new PlatformApiError(message, {
     code: 'INVALID_RESPONSE', status: 200, retryable: true,
 });
+const getCommunityProgressPlanDays = planId => (
+    planId === 'readable_revised' || planId === 'readable_new' ? 60 : 365
+);
 
-const normalizeCommunityProgressMember = value => {
+export const normalizeCommunityProgressMember = value => {
     if (!hasExactKeys(value, COMMUNITY_PROGRESS_MEMBER_KEYS)
         || !isValidCanonicalId(value.uid)
         || typeof value.name !== 'string' || !value.name || value.name.length > 120
-        || !isSafeIntegerInRange(value.currentDay, 1, 365)
+        || typeof value.planId !== 'string' || !COMMUNITY_PROGRESS_PLAN_IDS.has(value.planId)
+        || !(value.fixtureType === null || value.fixtureType === 'reading-badge-test')
+        || !isSafeIntegerInRange(value.currentDay, 1, getCommunityProgressPlanDays(value.planId))
         || !isSafeIntegerInRange(value.readCount, 1, Number.MAX_SAFE_INTEGER)
         || !(value.readingYear === null || isSafeIntegerInRange(value.readingYear, 2000, 2200))
         || !(value.yearCompletedRounds === null
@@ -115,7 +124,11 @@ export const getCommunityProgress = (orgId, options = {}) => {
         });
     }
     const requestId = options.requestId || createRequestId();
-    return callPlatformApi('getCommunityProgress', { orgId }, { ...options, requestId })
+    return callPlatformApi(
+        'getCommunityProgress',
+        { orgId, projectionVersion: 2 },
+        { ...options, requestId }
+    )
         .then(result => {
             if (!hasExactKeys(result, COMMUNITY_PROGRESS_RESPONSE_KEYS)
                 || result.ok !== true || result.action !== 'getCommunityProgress'

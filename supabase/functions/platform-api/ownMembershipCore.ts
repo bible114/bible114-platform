@@ -28,6 +28,7 @@ export type MemberOnboardingUser = {
   churchId?: unknown;
   isDeleted?: unknown;
   planId?: unknown;
+  currentDay?: unknown;
   onboardingPending?: unknown;
   departmentId?: unknown;
   departmentName?: unknown;
@@ -44,6 +45,7 @@ export type MemberOnboardingChurch = {
 export type MemberOnboardingRoster = {
   uid?: unknown;
   isDeleted?: unknown;
+  currentDay?: unknown;
   departmentId?: unknown;
   departmentName?: unknown;
   subgroupId?: unknown;
@@ -54,7 +56,9 @@ export type CompleteMemberOnboardingDecision = {
   status: "completed" | "alreadyCompleted";
   orgId: string;
   planId: MemberOnboardingPlanId;
+  currentDay: number;
   membership: MemberOnboardingMembership;
+  repairCurrentDay: boolean;
   writeUser: boolean;
   writeRoster: boolean;
 };
@@ -103,6 +107,26 @@ export const isMemberOnboardingPlanId = (
 ): value is MemberOnboardingPlanId =>
   typeof value === "string" &&
   (MEMBER_ONBOARDING_PLAN_IDS as readonly string[]).includes(value);
+
+const READABLE_MEMBER_ONBOARDING_PLAN_IDS = new Set<MemberOnboardingPlanId>([
+  "readable_revised",
+  "readable_new",
+]);
+
+export const getMemberOnboardingPlanTotalDays = (
+  planId: MemberOnboardingPlanId,
+): 60 | 365 => READABLE_MEMBER_ONBOARDING_PLAN_IDS.has(planId) ? 60 : 365;
+
+const normalizeMemberOnboardingCurrentDay = (
+  value: unknown,
+  planId: MemberOnboardingPlanId,
+): number => {
+  if (!Number.isSafeInteger(value) || (value as number) < 1) {
+    throw new MemberOnboardingValidationError("INVALID_USER");
+  }
+  const totalDays = getMemberOnboardingPlanTotalDays(planId);
+  return (((value as number) - 1) % totalDays) + 1;
+};
 
 type NormalizedUnit = {
   id: string;
@@ -302,6 +326,10 @@ export const decideCompleteMemberOnboarding = (input: {
     throw new MemberOnboardingValidationError("CHURCH_UNAVAILABLE");
   }
 
+  const currentDay = normalizeMemberOnboardingCurrentDay(
+    input.user.currentDay,
+    input.planId,
+  );
   const membership = resolveMembership(
     input.church,
     departmentId,
@@ -314,6 +342,8 @@ export const decideCompleteMemberOnboarding = (input: {
     ? membershipState(input.roster, membership)
     : null;
   const rosterConsistent = rosterState === null || rosterState === userState;
+  const currentDayConsistent = input.user.currentDay === currentDay &&
+    (!input.roster || input.roster.currentDay === currentDay);
 
   if (
     input.user.onboardingPending !== undefined &&
@@ -333,11 +363,25 @@ export const decideCompleteMemberOnboarding = (input: {
     userState === "exact" && rosterConsistent &&
     input.user.planId === input.planId
   ) {
+    if (!currentDayConsistent) {
+      return {
+        status: "completed",
+        orgId,
+        planId: input.planId,
+        currentDay,
+        membership,
+        repairCurrentDay: true,
+        writeUser: true,
+        writeRoster: Boolean(input.roster),
+      };
+    }
     return {
       status: "alreadyCompleted",
       orgId,
       planId: input.planId,
+      currentDay,
       membership,
+      repairCurrentDay: false,
       writeUser: false,
       writeRoster: false,
     };
@@ -349,7 +393,9 @@ export const decideCompleteMemberOnboarding = (input: {
     status: "completed",
     orgId,
     planId: input.planId,
+    currentDay,
     membership,
+    repairCurrentDay: false,
     writeUser: true,
     writeRoster: Boolean(input.roster),
   };

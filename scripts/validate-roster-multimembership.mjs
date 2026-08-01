@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { getMembershipList, normalizeExtraMemberships } from '../src/utils/memberships.js';
 import { rosterSnapshotToExtraOrgs } from '../src/utils/rosterSnapshot.js';
-import { rosterSnapshotToMembers } from '../src/utils/rosterMembers.js';
+import {
+    hasVerifiedCommunityProgress,
+    mergeCanonicalProgressIntoRosterMembers,
+    rosterSnapshotToMembers,
+} from '../src/utils/rosterMembers.js';
 
 const read = path => fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -36,10 +40,42 @@ const makeDoc = data => ({
 
 const legacySnapshot = { docs: [makeDoc({ uid: 'user-1', departmentId: 'adult', subgroupId: 'cell-1' })] };
 assert.deepEqual(rosterSnapshotToExtraOrgs(legacySnapshot, 'user-1')[0].extraMemberships, []);
-assert.deepEqual(rosterSnapshotToMembers(legacySnapshot)[0].extraMemberships, []);
+const legacyMember = rosterSnapshotToMembers(legacySnapshot)[0];
+assert.deepEqual(legacyMember.extraMemberships, []);
+assert.equal(legacyMember.communityProgressIdentityVerified, false);
+assert.equal(legacyMember.planId, null);
+assert.equal(legacyMember.currentDay, 1);
+assert.equal(legacyMember.lastReadDate, null);
+assert.equal(hasVerifiedCommunityProgress(legacyMember), false);
+const recoveredLegacyMember = mergeCanonicalProgressIntoRosterMembers(
+    [legacyMember],
+    [{
+        uid: 'user-1',
+        planId: 'readable_new',
+        fixtureType: 'reading-badge-test',
+        currentDay: 31,
+        readCount: 2,
+        readingYear: 2026,
+        yearCompletedRounds: 1,
+        lifetimeCompletedRounds: 1,
+        score: 50,
+        streak: 7,
+        lastReadDate: 'Mon Jul 20 2026',
+        recentReadDates: ['Mon Jul 20 2026'],
+        weeklyReadKey: 'Sun Jul 19 2026',
+        weeklyReadCount: 1,
+    }],
+)[0];
+assert.equal(hasVerifiedCommunityProgress(recoveredLegacyMember), true);
+assert.equal(recoveredLegacyMember.planId, 'readable_new');
+assert.equal(recoveredLegacyMember.currentDay, 31);
+assert.equal(recoveredLegacyMember.fixtureType, 'reading-badge-test');
+assert.equal(recoveredLegacyMember.departmentId, 'adult');
 
 const modernSnapshot = { docs: [makeDoc({
     uid: 'user-1',
+    planId: 'readable_new',
+    fixtureType: null,
     departmentId: 'adult',
     subgroupId: 'cell-1',
     recentReadDates: ['Sun Jul 19 2026', 'Mon Jul 20 2026'],
@@ -48,6 +84,9 @@ const modernSnapshot = { docs: [makeDoc({
 const modernOrg = rosterSnapshotToExtraOrgs(modernSnapshot, 'user-1')[0];
 const modernMember = rosterSnapshotToMembers(modernSnapshot)[0];
 assert.deepEqual(modernOrg.extraMemberships, modernMember.extraMemberships);
+assert.equal(modernMember.communityProgressIdentityVerified, true);
+assert.equal(modernMember.planId, 'readable_new');
+assert.equal(modernMember.fixtureType, null);
 assert.deepEqual(modernMember.recentReadDates, ['Sun Jul 19 2026', 'Mon Jul 20 2026']);
 assert.deepEqual(
     getMembershipList(modernMember).map(item => [item.departmentId, item.subgroupId]),
@@ -55,20 +94,22 @@ assert.deepEqual(
 );
 
 const rules = read('firestore.rules');
-assert.match(rules, /'subgroupId', 'subgroupName', 'extraMemberships'/);
-assert.match(rules, /request\.resource\.data\.extraMemberships\.size\(\) == 0/);
-assert.match(rules, /request\.resource\.data\.get\('extraMemberships', \[\]\) ==[\s\S]*resource\.data\.get\('extraMemberships', \[\]\)/);
+assert.match(rules, /'subgroupId', 'subgroupName',[\s\S]*'extraMemberships', 'updatedAt'/);
 assert.match(rules, /affectedKeys\(\)\.hasAny\(\['extraMemberships'\]\)[\s\S]*extraMemberships\.size\(\) <= 3/);
-assert.match(rules, /hasAny\(\['role', 'churchId', 'accountType', 'isDeleted', 'extraMemberships',[\s\S]*'talentWalletMigrated', 'departmentId', 'departmentName',[\s\S]*'subgroupId', 'subgroupName'\]\)/,
+const selfPreferenceRules = rules.match(
+    /function isSafeSelfPreferenceUpdate\(before, after\) \{([\s\S]*?)\n    \}/,
+)?.[1] || '';
+assert.doesNotMatch(selfPreferenceRules, /extraMemberships/,
     '일반 사용자가 users 문서의 추가 소속을 직접 바꾸지 못해야 한다.');
-assert.match(rules, /request\.resource\.data\.talent == 0[\s\S]*extraMemberships\.size\(\) == 0/,
-    '직접 생성 roster는 잔액 0, 추가 소속 없음으로 시작해야 한다.');
-assert.match(rules, /request\.resource\.data\.churchId == 'unaffiliated_v1'[\s\S]*request\.resource\.data\.get\('primaryOrgId', null\) == null[\s\S]*request\.resource\.data\.get\('score', 0\) == 0[\s\S]*request\.resource\.data\.get\('talent', 0\) == 0/,
-    '무소속 users 직접 생성은 임의 점수·달란트 seed로 시작할 수 없어야 한다.');
-assert.match(rules, /churchId == 'unaffiliated_v1'[\s\S]*\.data\.churchId == churchId/,
-    '기존 사용자의 임의 타 공동체 roster 직접 생성은 차단해야 한다.');
-assert.match(rules, /churchId == 'unaffiliated_v1'[\s\S]*\.data\.get\('isDeleted', false\) != true[\s\S]*request\.resource\.data\.score == get\(/,
-    '무소속 roster도 활성 users 원장의 점수·소속을 그대로 복사해야 한다.');
+const usersCreateRulesStart = rules.indexOf('allow create:', rules.indexOf('match /users/{uid}'));
+const usersCreateRulesEnd = rules.indexOf('allow update:', usersCreateRulesStart);
+assert.match(rules.slice(usersCreateRulesStart, usersCreateRulesEnd), /allow create: if false;/,
+    '무소속을 포함한 users 최초 생성은 검증된 서버 가입 action만 수행해야 한다.');
+const rosterRuleStart = rules.indexOf('match /roster/{memberUid}');
+const rosterCreateRulesStart = rules.indexOf('allow create:', rosterRuleStart);
+const rosterCreateRulesEnd = rules.indexOf('allow update:', rosterCreateRulesStart);
+assert.match(rules.slice(rosterCreateRulesStart, rosterCreateRulesEnd), /allow create: if false;/,
+    '추가 공동체와 개인계정 전환 roster 생성은 서버 action만 수행해야 한다.');
 assert.match(rules, /resource\.data\.churchId != 'unaffiliated_v1'[\s\S]*request\.resource\.data\.get\('primaryOrgId', null\) == resource\.data\.churchId[\s\S]*affectedKeys\(\)\.hasOnly\([\s\S]*'accountType', 'email', 'churchId', 'churchName', 'primaryOrgId', 'updatedAt'/,
     '개인계정 전환은 정상 필드만 바꾸고 무소속 seed 전환을 허용하지 않아야 한다.');
 assert.doesNotMatch(rules, /신규 소셜 가입은 users \+ roster/);
@@ -80,6 +121,8 @@ const joinCore = read('supabase/functions/platform-api/joinCore.ts');
 const joinSoloCore = read('supabase/functions/platform-api/joinSoloCommunityCore.ts');
 const app = read('src/App.jsx');
 const adminView = read('src/components/ChurchAdminView.jsx');
+const adminDashboard = read('src/components/churchAdmin/DashboardTab.jsx');
+const statsUtils = read('src/utils/statsUtils.js');
 const authHook = read('src/hooks/useAuth.js');
 const personalMigration = read('src/utils/personalAccountMigration.js');
 const convertPersonalCore = read('supabase/functions/platform-api/convertToPersonalAccountCore.ts');
@@ -116,5 +159,15 @@ assert.match(joinSoloCore, /rosterSeed:[\s\S]*extraMemberships: \[\]/,
 assert.match(app, /extraMemberships: Array\.isArray\(activeRosterOrg\.extraMemberships\)/);
 assert.match(adminView, /isExternalOrgMember[\s\S]*collection\('roster'\)/,
     '외부 명부 회원의 추가 소속은 해당 공동체 roster에 저장해야 한다.');
+assert.match(adminView, /progressMembers = members\.filter\(hasVerifiedCommunityProgress\)/,
+    '동기화되지 않은 외부 명부는 관리자 진행 집계에서 제외해야 한다.');
+assert.match(adminView, /진행 동기화 필요/,
+    '동기화되지 않은 외부 명부를 DAY 0으로 오표시하면 안 된다.');
+assert.match(adminView, /mergeCanonicalProgressIntoRosterMembers[\s\S]*getCommunityProgress/,
+    '관리자 명부는 서버 권위 진행판으로 기존 roster를 비동기 보강해야 한다.');
+assert.match(statsUtils, /filter\(hasVerifiedCommunityProgress\)/,
+    '위험·MVP·소그룹 진행 집계는 검증된 진행만 사용해야 한다.');
+assert.match(adminDashboard, /집계에서 제외합니다/,
+    '관리자에게 동기화 전 제외 상태를 명시해야 한다.');
 
 console.log('roster multi-membership validation passed');

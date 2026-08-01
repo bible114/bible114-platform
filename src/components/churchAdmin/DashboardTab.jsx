@@ -9,13 +9,18 @@ const DashboardTab = ({
         <div>
             <h2 className="font-black text-slate-800 text-lg">목양 대시보드</h2>
             <p className="text-xs text-slate-400 mt-1">오늘 읽기 비교는 현재 권한에서 접근 가능한 회원 문서 기준입니다. history 시간값은 앞으로 쌓이는 기록부터 적용됩니다.</p>
+            {dashboardStats.unsyncedProgressCount > 0 && (
+                <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
+                    외부 명부 {dashboardStats.unsyncedProgressCount}명의 진행을 확인 중입니다. 확인 전에는 진행률·위험·순위 집계에서 제외합니다.
+                </p>
+            )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <StatCard label="전체 교인" value={`${dashboardStats.total}명`} subvalue={`${deletedMembers.length}명 삭제 보관`} icon="👥" accent />
             <StatCard label="오늘 진도" value={`${dashboardStats.readToday}명`}
-                subvalue={`어제 최종 ${dashboardStats.readYesterday}명 · ${dashboardStats.readDelta >= 0 ? '+' : ''}${dashboardStats.readDelta}명`} icon="📖" />
-            <StatCard label="최근 7일 읽기율" value={`${dashboardStats.recent7Rate}%`} subvalue="최근 7일 내 1회 이상 읽음" icon="🗓️" />
-            <StatCard label="평균 진행 DAY" value={dashboardStats.avgDay || '-'} subvalue="올해 독수 포함 총 진행일 기준" icon="🏁" />
+                subvalue={`동기화 ${dashboardStats.progressTotal}명 기준 · 어제 ${dashboardStats.readYesterday}명 · ${dashboardStats.readDelta >= 0 ? '+' : ''}${dashboardStats.readDelta}명`} icon="📖" />
+            <StatCard label="최근 7일 읽기율" value={`${dashboardStats.recent7Rate}%`} subvalue={`동기화 ${dashboardStats.progressTotal}명 기준`} icon="🗓️" />
+            <StatCard label="평균 진행 DAY" value={dashboardStats.avgDay || '-'} subvalue={`동기화 ${dashboardStats.progressTotal}명 · 올해 독수 포함`} icon="🏁" />
             <div role="button" tabIndex={0} aria-label={`완독자 ${completedReaders.length}명 명단 보기`}
                 onClick={() => setShowCompletedReaders(true)}
                 onKeyDown={event => {
@@ -42,7 +47,7 @@ const DashboardTab = ({
                                 <div className="flex items-start justify-between gap-3 mb-3">
                                     <div>
                                         <p className="font-black text-slate-800">{dept.departmentName}</p>
-                                        <p className="text-xs text-slate-400">{dept.readCount}/{dept.totalCount}명 읽음 · 평균 DAY {dept.avgDay || '-'}</p>
+                                        <p className="text-xs text-slate-400">{dept.readCount}/{dept.progressMemberCount}명 읽음 · 전체 {dept.totalCount}명 · 평균 DAY {dept.avgDay || '-'}</p>
                                     </div>
                                     <DonutStat value={dept.rate} size={58} stroke={7} center={`${dept.rate}%`} />
                                 </div>

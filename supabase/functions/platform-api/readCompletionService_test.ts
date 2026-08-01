@@ -63,6 +63,8 @@ const baseUser = (overrides: Data = {}): Data => ({
   churchId: "base-org",
   departmentId: "adults",
   currentDay: 10,
+  planId: "1year_revised",
+  fixtureType: null,
   readCount: 1,
   readingYear: 2026,
   yearCompletedRounds: 0,
@@ -262,7 +264,10 @@ const expectPlatformError = async (
 
 Deno.test("첫 읽기는 users·canonical roster·history·ledger·통계를 한 commit에 쓴다", async () => {
   const harness = createHarness({
-    [`users/${UID}`]: baseUser(),
+    [`users/${UID}`]: baseUser({
+      planId: "readable_new",
+      fixtureType: "reading-badge-test",
+    }),
     [`churches/base-org/settings/talentShop`]: v2Shop(),
     [`churches/roster-a/roster/${UID}`]: {
       uid: UID,
@@ -333,6 +338,10 @@ Deno.test("첫 읽기는 users·canonical roster·history·ledger·통계를 한
   assert(
     rosterAAfterRead?.talent === 18 &&
       rosterBAfterRead?.talent === 9 &&
+      rosterAAfterRead?.planId === "readable_new" &&
+      rosterBAfterRead?.planId === "readable_new" &&
+      rosterAAfterRead?.fixtureType === "reading-badge-test" &&
+      rosterBAfterRead?.fixtureType === "reading-badge-test" &&
       Array.isArray(rosterAAfterRead?.recentReadDates) &&
       rosterAAfterRead.recentReadDates[0] === TODAY &&
       rosterAAfterRead?.weeklyReadKey === "Sun Jul 12 2026" &&

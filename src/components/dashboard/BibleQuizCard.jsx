@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { auth, db, firebase } from '../../utils/firebase';
 import { QUIZ_BANK, getKstDateString } from '../../data/bibleQuiz';
+import { getPlanTotalDays } from '../../data/schedules';
 import {
     getQuizConfigurationKey,
     getQuizLevel,
@@ -18,6 +19,7 @@ import {
     getOrCreateQuizActivityRequest,
     getOrCreateQuizSkipActivityRequest,
 } from '../../utils/userActivityRequests';
+import { withAsyncTimeout } from '../../utils/asyncTimeout';
 import {
     getReadingRangeForDay,
     loadNtEasyPoolForDay,
@@ -28,6 +30,13 @@ import {
     selectNtEasyQuiz,
     shuffleQuizChoices,
 } from '../../utils/quizEngine';
+
+const QUIZ_LOAD_TIMEOUT_MS = 12_000;
+const QUIZ_STATE_SYNC_TIMEOUT_MS = 12_000;
+const quizTimeoutError = message => () => Object.assign(
+    new Error(message),
+    { code: 'TIMEOUT', retryable: true },
+);
 
 export const QuizLevelToggle = ({ currentUser, setCurrentUser, finished = false }) => {
     const planType = String(currentUser?.planId || '').split('_')[0];
@@ -279,8 +288,16 @@ const BibleQuizCard = ({
             setQuizState({ loading: true, quiz: null, quizKey: null, error: '' });
             try {
                 const savedKey = progress?.quizKey || null;
-                const resolved = savedKey ? await resolveQuizKey(savedKey, currentUser, progressDay) : null;
-                const nextQuiz = resolved || await buildDayQuiz(currentUser, progressDay);
+                const nextQuiz = await withAsyncTimeout(
+                    (async () => {
+                        const resolved = savedKey
+                            ? await resolveQuizKey(savedKey, currentUser, progressDay)
+                            : null;
+                        return resolved || await buildDayQuiz(currentUser, progressDay);
+                    })(),
+                    QUIZ_LOAD_TIMEOUT_MS,
+                    quizTimeoutError('quiz load timed out'),
+                );
                 if (!cancelled) {
                     setQuizState(nextQuiz
                         ? { loading: false, ...nextQuiz, error: '' }
@@ -305,6 +322,36 @@ const BibleQuizCard = ({
         currentUser?.readingEpoch,
         todayKey,
         quizReloadToken,
+    ]);
+
+    useEffect(() => {
+        if (!currentUser || currentUser.role === 'guest') return undefined;
+        const totalPlanDays = getPlanTotalDays(currentUser.planId);
+        if (!Number.isSafeInteger(progressDay) || progressDay >= totalPlanDays) return undefined;
+
+        let cancelled = false;
+        const prepareNextQuiz = () => {
+            if (cancelled) return;
+            void buildDayQuiz(currentUser, progressDay + 1).catch(error => {
+                console.warn('다음 DAY 퀴즈 사전 준비 실패:', error);
+            });
+        };
+        const idleId = typeof window.requestIdleCallback === 'function'
+            ? window.requestIdleCallback(prepareNextQuiz, { timeout: 3000 })
+            : window.setTimeout(prepareNextQuiz, 900);
+
+        return () => {
+            cancelled = true;
+            if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(idleId);
+            else window.clearTimeout(idleId);
+        };
+    }, [
+        currentUser?.uid,
+        currentUser?.planId,
+        currentUser?.quizLevel,
+        currentUser?.readCount,
+        currentUser?.readingEpoch,
+        progressDay,
     ]);
 
     const quiz = quizState.quiz;
@@ -363,7 +410,11 @@ const BibleQuizCard = ({
             if (auth?.currentUser?.uid !== submittedUid) return;
             let freshUser;
             try {
-                freshUser = await loadCanonicalUserStateFromServer(submittedUid);
+                freshUser = await withAsyncTimeout(
+                    loadCanonicalUserStateFromServer(submittedUid),
+                    QUIZ_STATE_SYNC_TIMEOUT_MS,
+                    quizTimeoutError('quiz skip state sync timed out'),
+                );
             } catch (syncError) {
                 console.error('퀴즈 건너뛰기 후 최신 사용자 동기화 실패:', syncError);
                 if (submissionStillCurrent(
@@ -470,7 +521,11 @@ const BibleQuizCard = ({
             if (auth?.currentUser?.uid !== submittedUid) return;
             let freshUser;
             try {
-                freshUser = await loadCanonicalUserStateFromServer(submittedUid);
+                freshUser = await withAsyncTimeout(
+                    loadCanonicalUserStateFromServer(submittedUid),
+                    QUIZ_STATE_SYNC_TIMEOUT_MS,
+                    quizTimeoutError('quiz submission state sync timed out'),
+                );
             } catch (syncError) {
                 console.error('성경퀴즈 제출 후 최신 사용자 동기화 실패:', syncError);
                 if (submissionStillCurrent(

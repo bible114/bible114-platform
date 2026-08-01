@@ -7,6 +7,7 @@ const publicDirectoryService = fs.readFileSync(
     'utf8',
 );
 const platformApi = fs.readFileSync('src/utils/platformApi.js', 'utf8');
+const memberCredentials = fs.readFileSync('src/utils/memberCredentials.js', 'utf8');
 
 assert.match(
     rules,
@@ -14,9 +15,36 @@ assert.match(
     '삭제된 플랫폼 관리자 계정은 관리자 권한을 가져서는 안 된다.',
 );
 assert.match(
+    memberCredentials,
+    /db\.runTransaction\(async transaction =>[\s\S]*transaction\.set\(privateRef,[\s\S]*transaction\.update\(userRef,/,
+    '자격증명 보호 사본과 users null marker는 한 transaction으로 이관되어야 한다.',
+);
+const selfPreferenceRule = rules.match(
+    /function isSafeSelfPreferenceUpdate\(before, after\) \{([\s\S]*?)\n    \}/,
+)?.[1] || '';
+assert.match(
+    selfPreferenceRule,
+    /changed\.hasOnly\(\[[\s\S]*'primaryOrgId'[\s\S]*'videoMode'[\s\S]*'updatedAt'/,
+    'users 본인 수정은 환경설정 allowlist여야 한다.',
+);
+assert.doesNotMatch(
+    selfPreferenceRule,
+    /score|talent|readCount|readingEpoch|quizProgress|quizRewardDate/,
+    'users 본인 수정에서 서버 권위 상태를 허용하면 안 된다.',
+);
+assert.match(
     rules,
-    /before\.get\('talentMigrated', false\) == true[\s\S]*after\.get\('talentMigrated', false\) == true[\s\S]*afterTalent == beforeTalent[\s\S]*afterScore == beforeScore/,
-    '이관 완료 users의 score/talent는 브라우저에서 동결해야 한다.',
+    /function isSafeSelfPlanChange\(before, after\)[\s\S]*changed\.hasAny\(\['planId', 'currentDay'\]\)[\s\S]*changed\.hasOnly\(\['planId', 'currentDay', 'updatedAt'\]\)[\s\S]*after\.currentDay == \(\(beforeDay - 1\) % totalDays\) \+ 1/,
+    '플랜 전환의 currentDay는 새 플랜 길이로만 정규화되어야 한다.',
+);
+const usersRule = rules.match(
+    /match \/users\/\{uid\} \{([\s\S]*?)\n    \}\n\n    \/\/ 교회 문서/,
+)?.[1] || '';
+assert.match(usersRule, /allow create: if false;/, 'users 직접 생성이 열려 있다.');
+assert.match(
+    usersRule,
+    /match \/history\/\{historyId\} \{[\s\S]*allow create: if false;/,
+    '읽기 history 직접 생성이 열려 있다.',
 );
 assert.doesNotMatch(
     rules,
@@ -32,13 +60,12 @@ assert.doesNotMatch(
 const rosterRule = rules.match(
     /match \/roster\/\{memberUid\} \{([\s\S]*?)\n        allow delete/,
 )?.[1] || '';
-for (const field of ['score', 'talent', 'currentDay', 'streak', 'readCount', 'lastReadDate']) {
-    assert.match(
-        rosterRule,
-        new RegExp(`get\\('${field}', [^)]+\\) == resource\\.data\\.get\\('${field}', [^)]+\\)`),
-        `roster ${field} 브라우저 동결 규칙이 필요하다.`,
-    );
-}
+assert.match(rosterRule, /allow create: if false;/, 'roster 생성은 서버 action 전용이어야 한다.');
+assert.doesNotMatch(
+    rosterRule,
+    /request\.auth\.uid == memberUid[\s\S]*allow update/,
+    'roster 본인 update가 다시 열리면 안 된다.',
+);
 assert.doesNotMatch(rosterRule, /\+ 15|\+ 17/, 'roster 구버전 보상 호환 상한이 남아 있다.');
 
 const purchaseRule = rules.match(

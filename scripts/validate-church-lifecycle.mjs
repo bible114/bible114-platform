@@ -107,7 +107,7 @@ assert.doesNotMatch(adminSignup, /platformStats/);
 
 const codeRotation = sliceBetween(churchAdmin, 'const saveChurchCode = async', '\n    const saveOrg = async');
 assert.match(churchAdmin, /import \{ auth, db, firebase \} from '\.\.\/utils\/firebase'/);
-assert.match(churchAdmin, /const currentUserRef = useRef\(currentUser\);\s*currentUserRef\.current = currentUser/);
+assert.match(churchAdmin, /const currentUserRef = useRef\(currentUser\);[\s\S]{0,160}currentUserRef\.current = currentUser/);
 assert.match(churchAdmin, /\[currentUser\?\.uid, currentUser\?\.churchId\][\s\S]{0,160}\/\/ 조직 관리/);
 assert.match(codeRotation, /rotateChurchAccessCode/);
 assert.match(codeRotation, /private'\)\.doc\('access'\)\.get\(\{ source: 'server' \}\)/);

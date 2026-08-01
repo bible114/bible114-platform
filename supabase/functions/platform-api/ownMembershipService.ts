@@ -20,7 +20,8 @@ import {
   normalizeOwnMembershipDocumentId,
 } from "./ownMembershipCore.ts";
 
-const ACTIVITY_LEDGER_SCHEMA_VERSION = 1;
+const ACTIVITY_LEDGER_SCHEMA_VERSION = 2;
+const LEGACY_ACTIVITY_LEDGER_SCHEMA_VERSION = 1;
 const MAX_TRANSACTION_ATTEMPTS = 3;
 const UNAFFILIATED_CHURCH_ID = "unaffiliated_v1";
 const UNAFFILIATED_VIRTUAL_CHURCH: MemberOnboardingChurch = {
@@ -56,6 +57,7 @@ export type CompleteMemberOnboardingResult = MemberOnboardingMembership & {
   status: "completed" | "alreadyCompleted";
   orgId: string;
   planId: MemberOnboardingPlanId;
+  currentDay: number;
 };
 
 export type CompleteMemberOnboardingResponse = {
@@ -182,6 +184,7 @@ const resultFromDecision = (
   status,
   orgId: decision.orgId,
   planId: decision.planId,
+  currentDay: decision.currentDay,
   ...decision.membership,
 });
 
@@ -189,7 +192,10 @@ const validateReplay = (
   ledger: StoredMemberOnboardingLedger,
   input: CompleteMemberOnboardingInput,
   decision: CompleteMemberOnboardingDecision,
-): CompleteMemberOnboardingResult => {
+): {
+  result: CompleteMemberOnboardingResult;
+  upgradeLegacyLedger: boolean;
+} => {
   if (!isRecord(ledger)) {
     throw conflict("최초 소속 설정 원장이 올바르지 않습니다.");
   }
@@ -198,8 +204,11 @@ const validateReplay = (
     ["schemaVersion", "action", "requestId", "input", "result", "createdAt"],
     "최초 소속 설정 원장",
   );
+  const legacyLedger =
+    ledger.schemaVersion === LEGACY_ACTIVITY_LEDGER_SCHEMA_VERSION;
   if (
-    ledger.schemaVersion !== ACTIVITY_LEDGER_SCHEMA_VERSION ||
+    (!legacyLedger &&
+      ledger.schemaVersion !== ACTIVITY_LEDGER_SCHEMA_VERSION) ||
     ledger.action !== COMPLETE_MEMBER_ONBOARDING_ACTION ||
     ledger.requestId !== input.requestId ||
     !isFirestoreTimestamp(ledger.createdAt) || !isRecord(ledger.input) ||
@@ -214,15 +223,26 @@ const validateReplay = (
   );
   requireExactKeys(
     ledger.result,
-    [
-      "status",
-      "orgId",
-      "planId",
-      "departmentId",
-      "departmentName",
-      "subgroupId",
-      "subgroupName",
-    ],
+    legacyLedger
+      ? [
+        "status",
+        "orgId",
+        "planId",
+        "departmentId",
+        "departmentName",
+        "subgroupId",
+        "subgroupName",
+      ]
+      : [
+        "status",
+        "orgId",
+        "planId",
+        "currentDay",
+        "departmentId",
+        "departmentName",
+        "subgroupId",
+        "subgroupName",
+      ],
     "최초 소속 설정 원장 결과",
   );
   const exactInput = ledger.input.orgId === input.orgId &&
@@ -230,11 +250,16 @@ const validateReplay = (
     ledger.input.departmentId === input.departmentId &&
     ledger.input.subgroupId === input.subgroupId;
   const expected = resultFromDecision(decision, "completed");
+  const upgradeLegacyLedger = legacyLedger &&
+    decision.status === "completed" && decision.repairCurrentDay;
+  const validDecisionState = decision.status === "alreadyCompleted" ||
+    upgradeLegacyLedger;
   if (
-    !exactInput || decision.status !== "alreadyCompleted" ||
+    !exactInput || !validDecisionState ||
     ledger.result.status !== expected.status ||
     ledger.result.orgId !== expected.orgId ||
     ledger.result.planId !== expected.planId ||
+    (!legacyLedger && ledger.result.currentDay !== expected.currentDay) ||
     ledger.result.departmentId !== expected.departmentId ||
     ledger.result.departmentName !== expected.departmentName ||
     ledger.result.subgroupId !== expected.subgroupId ||
@@ -242,7 +267,7 @@ const validateReplay = (
   ) {
     throw conflict("최초 소속 설정 원장과 현재 상태가 일치하지 않습니다.");
   }
-  return expected;
+  return { result: expected, upgradeLegacyLedger };
 };
 
 const mapValidationError = (error: unknown): never => {
@@ -351,9 +376,61 @@ const executeCompleteMemberOnboarding = async (
     })();
 
     if (ledgerDocument) {
-      const result = validateReplay(ledgerDocument.data, input, decision);
+      const replay = validateReplay(ledgerDocument.data, input, decision);
+      if (replay.upgradeLegacyLedger) {
+        const now = dependencies.now();
+        if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
+          throw new PlatformError("INTERNAL");
+        }
+        const currentDayUpdate = {
+          currentDay: decision.currentDay,
+          updatedAt: now,
+        };
+        const writes = [
+          dependencies.updateWrite(
+            service.projectId,
+            userPath,
+            currentDayUpdate,
+            { updateMask: Object.keys(currentDayUpdate), exists: true },
+          ),
+          ...(decision.writeRoster
+            ? [
+              dependencies.updateWrite(
+                service.projectId,
+                rosterPath,
+                currentDayUpdate,
+                { updateMask: Object.keys(currentDayUpdate), exists: true },
+              ),
+            ]
+            : []),
+          dependencies.updateWrite(
+            service.projectId,
+            ledgerPath,
+            {
+              schemaVersion: ACTIVITY_LEDGER_SCHEMA_VERSION,
+              result: replay.result,
+            },
+            { updateMask: ["schemaVersion", "result"], exists: true },
+          ),
+        ];
+        await dependencies.commitWrites(
+          service.token,
+          service.projectId,
+          writes,
+          { transaction },
+        );
+        return {
+          alreadyCompleted: true,
+          committed: true,
+          result: replay.result,
+        };
+      }
       await rollbackQuietly(dependencies, service, transaction);
-      return { alreadyCompleted: true, committed: true, result };
+      return {
+        alreadyCompleted: true,
+        committed: true,
+        result: replay.result,
+      };
     }
     if (decision.status === "alreadyCompleted") {
       await rollbackQuietly(dependencies, service, transaction);
@@ -368,7 +445,11 @@ const executeCompleteMemberOnboarding = async (
     if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
       throw new PlatformError("INTERNAL");
     }
-    const membershipUpdate = { ...decision.membership, updatedAt: now };
+    const membershipUpdate = {
+      ...decision.membership,
+      currentDay: decision.currentDay,
+      updatedAt: now,
+    };
     const userUpdate = {
       planId: decision.planId,
       onboardingPending: false,

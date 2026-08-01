@@ -8,6 +8,9 @@ const MembersTab = ({ ctx }) => {
         deletedMembers, getMemberMembershipText, restoreMember, downloadCSV,
         getSubId, getSubName,
     } = ctx;
+    const passwordRecoveryMembers = members.filter(
+        member => member.passwordRecoveryRequired === true
+    );
 
     return (
                             <div className="space-y-5">
@@ -27,6 +30,22 @@ const MembersTab = ({ ctx }) => {
                                         CSV 내보내기
                                     </button>
                                 </div>
+
+                                {passwordRecoveryMembers.length > 0 && (
+                                    <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                                        <p className="text-sm font-black text-red-800">
+                                            비밀번호 복구 필요 {passwordRecoveryMembers.length}명
+                                        </p>
+                                        <p className="mt-1 text-xs font-bold leading-5 text-red-700">
+                                            재시도하지 말고 플랫폼 관리자에게 복구를 요청하세요.
+                                        </p>
+                                        <p className="mt-2 break-words text-xs font-semibold text-red-700">
+                                            {passwordRecoveryMembers
+                                                .map(member => member.name || '이름 없음')
+                                                .join(', ')}
+                                        </p>
+                                    </div>
+                                )}
 
                                 {members.length === 0 ? (
                                     <div className="text-center py-20 text-slate-300">
@@ -77,10 +96,13 @@ const MembersTab = ({ ctx }) => {
                                             initialSortKey="name"
                                             emptyMessage="조건에 맞는 교인이 없습니다."
                                             onRowClick={openMemberDetail}
-                                            renderSelectionActions={({ selectedRows, clearSelection }) => {
+                                            renderSelectionActions={({ selectedRows, clearSelection, removeSelection }) => {
                                                 const bulkComm = orgComms.find(c => c.id === bulkCommId);
                                                 const canChangeSubgroup = Boolean(bulkCommId && bulkSubId);
                                                 const hasExternalSelected = selectedRows.some(member => member.isExternalOrgMember);
+                                                const hasPasswordRecoverySelected = selectedRows.some(
+                                                    member => member.passwordRecoveryRequired === true
+                                                );
                                                 return (
                                                     <>
                                                         <select
@@ -121,7 +143,7 @@ const MembersTab = ({ ctx }) => {
                                                         </button>
                                                         <button
                                                             type="button"
-                                                            disabled={hasExternalSelected}
+                                                            disabled={hasExternalSelected || hasPasswordRecoverySelected}
                                                             onClick={() => setConfirmAction({
                                                                 type: 'bulkPassword',
                                                                 members: selectedRows,
@@ -130,12 +152,18 @@ const MembersTab = ({ ctx }) => {
                                                                 danger: true,
                                                                 confirmLabel: '초기화',
                                                                 after: clearSelection,
+                                                                afterSuccess: removeSelection,
                                                             })}
                                                             className="rounded-lg bg-red-600 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
                                                         >
                                                             비밀번호 초기화
                                                         </button>
                                                         {hasExternalSelected && <span className="text-[10px] font-bold text-violet-700">외부 멤버는 비밀번호 변경 제외</span>}
+                                                        {hasPasswordRecoverySelected && (
+                                                            <span className="text-[10px] font-bold text-red-700">
+                                                                복구 필요 회원은 재시도할 수 없음
+                                                            </span>
+                                                        )}
                                                     </>
                                                 );
                                             }}

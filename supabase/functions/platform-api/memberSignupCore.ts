@@ -1,3 +1,11 @@
+import {
+  type SignupConsentSummary,
+  SignupConsentValidationError,
+  type StoredSignupConsent,
+  validateStoredSignupConsent,
+} from "./signupConsentCore.ts";
+import { PLATFORM_STATS_READER_COUNTED_FIELD } from "./platformStatsCore.ts";
+
 export type MemberSignupChurch = {
   name?: unknown;
   churchCodeHash?: unknown;
@@ -6,18 +14,58 @@ export type MemberSignupChurch = {
 };
 
 export type MemberSignupUser = {
+  [key: string]: unknown;
   role?: unknown;
   churchId?: unknown;
   isDeleted?: unknown;
 };
 
-export type MemberSignupConsent = {
-  schemaVersion?: unknown;
-  policyVersions?: unknown;
-  agreedAt?: unknown;
-  audience?: unknown;
-  ageAssessment?: unknown;
-  agreements?: unknown;
+export const buildMemberReactivation = ({
+  existingUser,
+  consentSummary,
+  now,
+}: {
+  existingUser: MemberSignupUser;
+  consentSummary: SignupConsentSummary;
+  now: Date;
+}) => {
+  if (
+    existingUser.isDeleted !== true ||
+    existingUser[PLATFORM_STATS_READER_COUNTED_FIELD] !== false
+  ) {
+    throw new MemberSignupValidationError("STATS_REBUILD_REQUIRED");
+  }
+  const countedAfter = existingUser.excludeFromPublicStats !== true;
+  const patch = {
+    isDeleted: false,
+    deletedAt: null,
+    deletedBy: null,
+    [PLATFORM_STATS_READER_COUNTED_FIELD]: countedAfter,
+    consentSummary,
+    updatedAt: now,
+  };
+  return {
+    patch,
+    updateMask: [
+      "isDeleted",
+      "deletedAt",
+      "deletedBy",
+      PLATFORM_STATS_READER_COUNTED_FIELD,
+      "consentSummary",
+      "updatedAt",
+    ],
+    responseUser: { ...existingUser, ...patch } as
+      & MemberSignupUser
+      & typeof patch,
+    readerDelta: countedAfter ? 1 as const : 0 as const,
+  };
+};
+
+export type MemberSignupConsent = StoredSignupConsent;
+
+export type MemberSignupCredentials = {
+  password?: unknown;
+  phone4?: unknown;
 };
 
 export type MemberSignupFailureCode =
@@ -26,7 +74,8 @@ export type MemberSignupFailureCode =
   | "INVALID_PROFILE"
   | "INVALID_CONSENT"
   | "USER_CONFLICT"
-  | "ROSTER_CONFLICT";
+  | "ROSTER_CONFLICT"
+  | "STATS_REBUILD_REQUIRED";
 
 export class MemberSignupValidationError extends Error {
   readonly code: MemberSignupFailureCode;
@@ -50,28 +99,6 @@ const validDate = (value: string) => {
     ? { year, month, day }
     : null;
 };
-
-const calculateUnder14 = (birthdate: string, calendarDate: string) => {
-  const birth = validDate(birthdate);
-  const todayMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(calendarDate);
-  if (!birth || !todayMatch) return null;
-  const today = {
-    year: Number(todayMatch[1]),
-    month: Number(todayMatch[2]),
-    day: Number(todayMatch[3]),
-  };
-  let age = today.year - birth.year;
-  if (
-    today.month < birth.month ||
-    (today.month === birth.month && today.day < birth.day)
-  ) age -= 1;
-  return age < 0 ? null : age < 14;
-};
-
-const record = (value: unknown): Record<string, unknown> | null =>
-  value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
 
 const legacyDateKey = (value: string) => {
   const match =
@@ -100,63 +127,10 @@ const legacyDateKey = (value: string) => {
     : null;
 };
 
-const validateConsent = (
-  consent: MemberSignupConsent | null,
-  birthdate: string,
-  calendarDate: string,
-) => {
-  if (
-    !consent || consent.schemaVersion !== 1 || consent.audience !== "member"
-  ) {
-    throw new MemberSignupValidationError("INVALID_CONSENT");
-  }
-  if (
-    typeof consent.agreedAt !== "string" ||
-    !/^\d{4}-\d{2}-\d{2}T/.test(consent.agreedAt) ||
-    !Number.isFinite(Date.parse(consent.agreedAt))
-  ) throw new MemberSignupValidationError("INVALID_CONSENT");
-
-  const policyVersions = record(consent.policyVersions);
-  const agreements = record(consent.agreements);
-  const ageAssessment = record(consent.ageAssessment);
-  const under14 = calculateUnder14(birthdate, calendarDate);
-  if (!policyVersions || !agreements || !ageAssessment || under14 === null) {
-    throw new MemberSignupValidationError("INVALID_CONSENT");
-  }
-  for (const key of ["terms", "privacy", "sensitive", "community"]) {
-    if (
-      typeof policyVersions[key] !== "string" || !policyVersions[key] ||
-      record(agreements[key])?.agreed !== true
-    ) throw new MemberSignupValidationError("INVALID_CONSENT");
-  }
-  if (
-    ageAssessment.birthdate !== birthdate ||
-    ageAssessment.under14 !== under14
-  ) throw new MemberSignupValidationError("INVALID_CONSENT");
-  const guardian = record(agreements.childGuardian);
-  if (under14 && (!guardian || guardian.agreed !== true)) {
-    throw new MemberSignupValidationError("INVALID_CONSENT");
-  }
-  return {
-    schemaVersion: 1,
-    policyVersions: Object.fromEntries(
-      ["terms", "privacy", "sensitive", "community", "childGuardian"]
-        .flatMap((key) =>
-          typeof policyVersions[key] === "string"
-            ? [[key, policyVersions[key]]]
-            : []
-        ),
-    ),
-    agreedAt: consent.agreedAt,
-    audience: "member",
-    under14,
-    guardianConsentRecorded: guardian?.agreed === true,
-  };
-};
-
 export const validateMemberSignup = (input: {
   uid: string;
   email: string;
+  signInProvider: string | null;
   churchId: string;
   entryCodeHash: string;
   name: string;
@@ -168,16 +142,28 @@ export const validateMemberSignup = (input: {
     planId: string;
   };
   calendarDate: string;
+  now: Date;
   church: MemberSignupChurch | null;
   consent: MemberSignupConsent | null;
+  credentials: MemberSignupCredentials | null;
   existingUser: MemberSignupUser | null;
   existingRoster: Record<string, unknown> | null;
 }) => {
   const name = input.name.trim();
   const email = input.email.trim().toLowerCase();
+  const password = typeof input.credentials?.password === "string"
+    ? input.credentials.password
+    : "";
+  const expectedEmail = `${
+    encodeURIComponent(name)
+  }_${input.birthdate}_${input.churchId}@bible.local`
+    .toLowerCase();
   if (
     !input.uid || !name || name.length > 50 || !validDate(input.birthdate) ||
-    !email || email.length > 254 || !email.includes("@")
+    !email || email.length > 254 || !email.includes("@") ||
+    input.signInProvider !== "password" ||
+    password.length < 6 || password.length > 128 ||
+    /[\u0000-\u001f\u007f]/.test(password)
   ) throw new MemberSignupValidationError("INVALID_PROFILE");
   const allowedPlans = new Set([
     "1year_sequential",
@@ -199,7 +185,28 @@ export const validateMemberSignup = (input: {
     (guestProgress.lastReadDate !== null &&
       (!lastReadDateKey || lastReadDateKey > input.calendarDate))
   ) throw new MemberSignupValidationError("INVALID_PROFILE");
+  const planTotalDays = guestProgress.planId === "readable_revised" ||
+      guestProgress.planId === "readable_new"
+    ? 60
+    : 365;
+  const normalizedCurrentDay =
+    ((guestProgress.currentDay - 1) % planTotalDays) + 1;
   const isUnaffiliated = input.churchId === "unaffiliated_v1";
+  if (isUnaffiliated) {
+    const phone4 = typeof input.credentials?.phone4 === "string"
+      ? input.credentials.phone4.trim()
+      : "";
+    const expectedUnaffiliatedEmail = `${
+      encodeURIComponent(name)
+    }_${input.birthdate}p${phone4}_unaffiliated_v1@bible.local`
+      .toLowerCase();
+    if (
+      !/^\d{4}$/.test(phone4) ||
+      email !== expectedUnaffiliatedEmail
+    ) throw new MemberSignupValidationError("INVALID_PROFILE");
+  } else if (email !== expectedEmail) {
+    throw new MemberSignupValidationError("INVALID_PROFILE");
+  }
   if (
     !input.church || input.church.isDeleted === true ||
     typeof input.church.name !== "string" || !input.church.name.trim() ||
@@ -212,11 +219,22 @@ export const validateMemberSignup = (input: {
       input.church.churchCodeHash !== input.entryCodeHash)
   ) throw new MemberSignupValidationError("INVALID_ENTRY_CODE");
 
-  const consentSummary = validateConsent(
-    input.consent,
-    input.birthdate,
-    input.calendarDate,
-  );
+  let consentSummary;
+  try {
+    consentSummary = validateStoredSignupConsent({
+      consent: input.consent,
+      birthdate: input.birthdate,
+      calendarDate: input.calendarDate,
+      now: input.now,
+      audience: "member",
+      allowedSources: ["church_member_signup"],
+    });
+  } catch (error) {
+    if (error instanceof SignupConsentValidationError) {
+      throw new MemberSignupValidationError("INVALID_CONSENT");
+    }
+    throw error;
+  }
   let status: "create" | "reactivate" | "alreadyCompleted" = "create";
   if (input.existingUser) {
     if (
@@ -243,7 +261,7 @@ export const validateMemberSignup = (input: {
       churchName: input.church.name.trim(),
       consentSummary,
       guestProgress: {
-        currentDay: guestProgress.currentDay,
+        currentDay: normalizedCurrentDay,
         streak: guestProgress.streak,
         lastReadDate: guestProgress.lastReadDate,
         planId: guestProgress.planId,

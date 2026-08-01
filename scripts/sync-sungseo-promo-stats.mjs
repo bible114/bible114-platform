@@ -196,6 +196,11 @@ const upsertWrite = (documentPath, data, current) => ({
     ? { updateTime: current.updateTime }
     : { exists: false },
 });
+const maskedUpsertWrite = (documentPath, data, current) => ({
+  ...upsertWrite(documentPath, data, current),
+  // 집계 필드만 갱신하고 같은 문서의 개인정보 공개 차단 표식·순위 필드는 보존한다.
+  updateMask: { fieldPaths: Object.keys(data) },
+});
 
 const now = new Date();
 const today = legacyDateKst(now);
@@ -443,7 +448,7 @@ const platformStatsData = {
 await commitTarget([
   upsertWrite(`churches/${TARGET_CHURCH_ID}`, churchData, currentChurch),
   upsertWrite(EXTERNAL_STATS_PATH, externalData, currentExternal),
-  upsertWrite(PLATFORM_STATS_PATH, platformStatsData, currentStats),
+  maskedUpsertWrite(PLATFORM_STATS_PATH, platformStatsData, currentStats),
   upsertWrite(PUBLIC_CHURCH_PATH, {
     id: TARGET_CHURCH_ID,
     name: TARGET_CHURCH_NAME,

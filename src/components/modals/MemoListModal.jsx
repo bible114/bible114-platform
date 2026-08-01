@@ -96,7 +96,6 @@ const MemoListModal = ({
     const [selectedDateKey, setSelectedDateKey] = useState('');
     const [selectedBook, setSelectedBook] = useState('전체');
     const [bookQuery, setBookQuery] = useState('');
-
     const schedule = SCHEDULE_DATA[currentUser?.planId] || SCHEDULE_DATA.whole_bible || [];
     const entries = useMemo(() => Object.entries(memos || {})
         .map(([key, memo]) => {
@@ -265,7 +264,7 @@ const MemoListModal = ({
 
                 <footer className="shrink-0 border-t border-amber-100 bg-white/95 px-4 py-3 backdrop-blur sm:px-7">
                     {entries.length > 0 ? (
-                        <button onClick={() => generateMemosHTML(currentUser.name, memos, { currentDay, score, streak })} className="min-h-11 w-full rounded-2xl bg-slate-900 px-4 text-sm font-black text-white">내 묵상 일기 보관하기</button>
+                        <button onClick={() => generateMemosHTML(currentUser.name, memos, { currentDay, score, streak })} className="min-h-11 w-full rounded-2xl bg-slate-900 px-4 text-sm font-black text-white">전체 묵상 일기 보관하기</button>
                     ) : (
                         <button onClick={onClose} className="min-h-11 w-full rounded-2xl bg-violet-600 px-4 text-sm font-black text-white">오늘 묵상 쓰러 가기</button>
                     )}

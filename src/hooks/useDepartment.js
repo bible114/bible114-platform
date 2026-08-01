@@ -1,8 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { db } from '../utils/firebase';
-import { userDocToState } from '../utils/helpers';
 import { UNAFFILIATED_CHURCH_ID } from '../data/constants';
-import { mergePrimaryAndRosterMembers, rosterSnapshotToMembers } from '../utils/rosterMembers';
 
 export const useDepartment = currentUser => {
     const [subgroupStats, setSubgroupStats] = useState({});
@@ -27,34 +25,11 @@ export const useDepartment = currentUser => {
             });
             return response.members;
         } catch (apiError) {
-            // 새 진행판이 아직 배포되지 않았거나 일시적으로 실패하면 기존 읽기 경로로
-            // 복구한다. 서버/웹 배포 순서가 엇갈려도 대시보드를 비우지 않는다.
-            console.warn('공동체 진행판 요약 로딩 실패, 기존 명단 조회로 복구:', apiError);
-        }
-        try {
-            // password == null 필터는 firestore.rules의 같은 교회 read 허용 조건과 쌍이다 —
-            // 자격증명이 private로 이관 완료된 문서만 목록 조회가 규칙 증명을 통과한다.
-            const usersRequest = orgId === UNAFFILIATED_CHURCH_ID
-                ? Promise.resolve({ docs: [] })
-                : db.collection('users')
-                    .where('churchId', '==', orgId)
-                    .where('password', '==', null)
-                    .get();
-            const [usersResult, rosterResult] = await Promise.allSettled([
-                usersRequest,
-                db.collection('churches').doc(orgId).collection('roster').get(),
-            ]);
-            const primaryMembers = usersResult.status === 'fulfilled'
-                ? usersResult.value.docs.map(doc => userDocToState(doc))
-                : [];
-            const rosterMembers = rosterResult.status === 'fulfilled'
-                ? rosterSnapshotToMembers(rosterResult.value)
-                : [];
-            if (usersResult.status === 'rejected') console.error('주 소속 멤버 로딩 실패:', usersResult.reason);
-            if (rosterResult.status === 'rejected') console.error('외부 명부 로딩 실패:', rosterResult.reason);
-            return mergePrimaryAndRosterMembers(primaryMembers, rosterMembers).filter(member => !member.isDeleted);
-        } catch (e) {
-            console.error("멤버 로딩 실패:", e);
+            // users 문서에는 생년월일·이메일 등 진행판에 필요 없는 개인정보가 함께
+            // 있으므로 일반 회원 화면은 직접 users/roster 조회로 복구하지 않는다.
+            // 서버의 최소 필드 projection이 실패하면 개인정보 노출 대신 빈 진행판으로
+            // 안전하게 종료한다.
+            console.error('공동체 진행판 요약 로딩 실패:', apiError);
             return [];
         }
     }, [currentUser?.uid, currentUser?.churchId, currentUser?.accountType]);

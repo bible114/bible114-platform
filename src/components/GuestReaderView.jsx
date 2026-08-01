@@ -1,13 +1,41 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PLAN_TYPES, BIBLE_VERSIONS } from '../data/bible_options';
 import { getPlanTotalDays } from '../data/schedules';
 import { useBibleContent } from '../hooks/useBibleContent';
 import { useTTS } from '../hooks/useTTS';
 import { recordGuestRead, saveGuestState } from '../utils/guestStorage';
+import { scheduleScrollIntoView } from '../utils/readingFlowScroll';
 import { DailyVideoCard, BibleReader, QuizLevelToggle, HomeScreenHelpBanner } from './dashboard';
 
 const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupClick }) => {
     const { verseData, viewingDay, setViewingDay, loadContent } = useBibleContent(currentUser);
+    const bibleHeaderRef = useRef(null);
+    const pageHeadingRef = useRef(null);
+
+    useLayoutEffect(() => {
+        const previousScrollRestoration = window.history.scrollRestoration;
+        const resetGuestEntry = () => {
+            window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+            pageHeadingRef.current?.focus({ preventScroll: true });
+        };
+
+        // 새로고침에서는 브라우저의 자동 복원이 React mount 뒤에 예전 본문 위치를
+        // 다시 적용할 수 있다. 게스트 진입 동안 자동 복원을 끄고 두 프레임에 걸쳐
+        // 상단·접근성 초점을 확정한다.
+        window.history.scrollRestoration = 'manual';
+        resetGuestEntry();
+        let secondFrame = 0;
+        const firstFrame = window.requestAnimationFrame(() => {
+            resetGuestEntry();
+            secondFrame = window.requestAnimationFrame(resetGuestEntry);
+        });
+
+        return () => {
+            window.cancelAnimationFrame(firstFrame);
+            if (secondFrame) window.cancelAnimationFrame(secondFrame);
+            window.history.scrollRestoration = previousScrollRestoration;
+        };
+    }, []);
 
     // 게스트가 고를 수 있는 버전 목록 (운영 번역: 개역개정·새번역)
     const versionOptions = useMemo(() => {
@@ -29,7 +57,9 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
 
     const handleGuestVersionChange = (newPlanId) => {
         if (!newPlanId || newPlanId === currentPlanId) return;
-        const nextDay = showNextPlanPrompt ? 1 : (currentUser?.currentDay || 1);
+        const totalDays = getPlanTotalDays(newPlanId);
+        const previousDay = Math.max(1, Number(currentUser?.currentDay) || 1);
+        const nextDay = showNextPlanPrompt ? 1 : ((previousDay - 1) % totalDays) + 1;
         saveGuestState({ planId: newPlanId, currentDay: nextDay });
         setCurrentUser(prev => (prev ? { ...prev, planId: newPlanId, currentDay: nextDay } : prev));
         setViewingDay(nextDay);
@@ -83,11 +113,15 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
                 videoType: guest.videoType,
             } : prev);
             setViewingDay(guest.currentDay);
+            scheduleScrollIntoView(() => bibleHeaderRef.current, {
+                block: 'start',
+                behavior: 'auto',
+                frameCount: 2,
+            });
             if (guest.requiresNextPlan) setShowNextPlanPrompt(true);
             setShowConfetti(true);
             setTimeout(() => setShowConfetti(false), 3000);
             window.refreshKakaoAdBanner?.();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
             // 동기 localStorage 기록도 최소 한 렌더 동안 버튼을 잠가 상태를 분명히 보인다.
             await new Promise(resolve => setTimeout(resolve, 0));
         } finally {
@@ -103,6 +137,7 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
 
     return (
         <div className="min-h-screen bg-slate-50 overflow-hidden relative font-sans">
+            <h1 ref={pageHeadingRef} tabIndex={-1} className="sr-only">성경통독 114 게스트 읽기</h1>
             {showNextPlanPrompt && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="guest-next-plan-title">
                     <div className="w-full max-w-sm rounded-3xl border-2 border-amber-200 bg-white p-7 text-center shadow-2xl">
@@ -201,6 +236,7 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
                     setViewingDay={setViewingDay}
                     currentUser={currentUser}
                     daysRemaining={daysRemaining}
+                    totalPlanDays={totalPlanDays}
                     handleChangeVersionStart={onSignupClick}
                     getEncouragementMessage={getEncouragementMessage}
                     fontSize={fontSize}
@@ -222,6 +258,7 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
                     hasReadToday={hasReadToday}
                     handleRead={handleRead}
                     readSubmitting={readSubmitting}
+                    bibleHeaderRef={bibleHeaderRef}
                 />
             </div>
 

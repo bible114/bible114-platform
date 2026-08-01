@@ -9,6 +9,7 @@ const BibleReader = ({
     setViewingDay,
     currentUser,
     daysRemaining,
+    totalPlanDays = 365,
     handleChangeVersionStart,
     getEncouragementMessage,
     fontSize,
@@ -62,8 +63,8 @@ const BibleReader = ({
 
     return (
         <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
-            <div ref={bibleHeaderRef} id="tut-bible-header" className="scroll-mt-28 p-6 text-white relative bg-gradient-to-br from-indigo-600 to-blue-700 md:scroll-mt-20">
-                <div className="flex items-center justify-between mb-2 px-2">
+            <div ref={bibleHeaderRef} id="tut-bible-header" className="scroll-mt-28 p-5 text-white relative bg-gradient-to-br from-indigo-600 to-blue-700 sm:p-6 md:scroll-mt-20">
+                <div className="grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-3">
                     <button
                         onClick={() => setViewingDay(prev => Math.max(1, prev - 1))}
                         aria-label={`이전 본문 DAY ${Math.max(1, viewingDay - 1)} 보기`}
@@ -73,28 +74,30 @@ const BibleReader = ({
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
                     </button>
 
-                    <div className="text-center">
-                        <h2 className="mb-1 text-xl font-bold leading-tight sm:text-2xl">{verseData.loading ? '말씀을 불러오는 중' : verseData.title}</h2>
-                        <div className="flex items-center justify-center gap-2">
-                            <span className="text-xs bg-purple-500/90 px-2 py-0.5 rounded-full">🏆 올해 {yearCompletedRounds}독</span>
-                            <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">전체 {lifetimeCompletedRounds}독</span>
-                            {!isCurrentProgressDay && (
-                                <span className="rounded-full bg-amber-400/90 px-2 py-0.5 text-xs">
-                                    다른 DAY 보는 중
-                                </span>
-                            )}
-                            <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">🏁 D-{daysRemaining}</span>
-                        </div>
+                    <div className="min-w-0 text-center">
+                        <h2 className="text-lg font-black leading-snug tracking-[-0.02em] text-white sm:text-2xl">
+                            {verseData.loading ? '말씀을 불러오는 중' : verseData.title}
+                        </h2>
                     </div>
 
                     <button
-                        onClick={() => setViewingDay(prev => Math.min(365, prev + 1))}
-                        aria-label={`다음 본문 DAY ${Math.min(365, viewingDay + 1)} 보기`}
+                        onClick={() => setViewingDay(prev => Math.min(totalPlanDays, prev + 1))}
+                        aria-label={`다음 본문 DAY ${Math.min(totalPlanDays, viewingDay + 1)} 보기`}
                         className="flex min-h-11 min-w-11 items-center justify-center rounded-full bg-white/20 p-2 text-white transition-colors hover:bg-white/30 disabled:opacity-30"
-                        disabled={viewingDay >= 365}
+                        disabled={viewingDay >= totalPlanDays}
                     >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
                     </button>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-2 px-1">
+                    <span className="rounded-full bg-purple-500/90 px-3 py-1 text-[11px] font-bold shadow-sm">🏆 올해 {yearCompletedRounds}독</span>
+                    <span className="rounded-full bg-white/20 px-3 py-1 text-[11px] font-bold">전체 {lifetimeCompletedRounds}독</span>
+                    <span className="rounded-full bg-white/20 px-3 py-1 text-[11px] font-bold">🏁 D-{daysRemaining}</span>
+                    {!isCurrentProgressDay && (
+                        <span className="rounded-full bg-amber-400 px-3 py-1 text-[11px] font-black text-amber-950 shadow-sm">
+                            다른 DAY 보는 중
+                        </span>
+                    )}
                 </div>
                 {!isCurrentProgressDay && (
                     <button

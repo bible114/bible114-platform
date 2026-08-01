@@ -11,9 +11,14 @@ import {
   normalizeAdminChurchDocumentId,
   UNAFFILIATED_CHURCH_ID,
 } from "./adminChurchVisibilityCore.ts";
+import {
+  PLATFORM_STATS_READER_COUNTED_FIELD,
+  shouldCountPlatformReader,
+} from "./platformStatsCore.ts";
 
 export const ADMIN_SET_CHURCH_LIFECYCLE_ACTION =
   "adminSetChurchLifecycle" as const;
+export const ADMIN_CHURCH_LIFECYCLE_RELEASE_BLOCKED = true as const;
 const REQUEST_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_BATCH_WRITES = 400;
@@ -160,6 +165,11 @@ export const adminSetChurchLifecycle = async (
   dependencies: AdminChurchLifecycleDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<AdminChurchLifecycleResult> => {
   const input = validateInput(identity, rawInput);
+  if (ADMIN_CHURCH_LIFECYCLE_RELEASE_BLOCKED) {
+    throw conflict(
+      "외부 공동체 통계까지 원자적으로 정산하는 동안 공동체 비활성화·복원은 일시 중단되었습니다.",
+    );
+  }
   const [
     actorDoc,
     churchDoc,
@@ -221,13 +231,19 @@ export const adminSetChurchLifecycle = async (
     });
   }
   const currentActive = churchDoc.data.isDeleted !== true;
+  const lifecycleStatus = typeof churchDoc.data.lifecycleStatus === "string"
+    ? churchDoc.data.lifecycleStatus
+    : "";
   const storedGeneration =
     typeof churchDoc.data.deactivationGeneration === "string"
       ? churchDoc.data.deactivationGeneration
       : "";
   const resumingDeactivation = !input.active && !currentActive &&
-    churchDoc.data.lifecycleStatus === "deactivating" &&
-    storedGeneration === input.requestId;
+    lifecycleStatus === "deactivating" &&
+    REQUEST_ID_PATTERN.test(storedGeneration);
+  const resumingRestoration = input.active && !currentActive &&
+    lifecycleStatus === "restoring" &&
+    REQUEST_ID_PATTERN.test(storedGeneration);
   const summary = settlement(rosters, purchases);
   if (ledgerDoc) {
     const ledger = ledgerDoc.data;
@@ -241,7 +257,16 @@ export const adminSetChurchLifecycle = async (
     }
     return ledger.result as AdminChurchLifecycleResult;
   }
-  if (currentActive === input.active && !resumingDeactivation) {
+  if (
+    ["deactivating", "restoring"].includes(lifecycleStatus) &&
+    !resumingDeactivation && !resumingRestoration
+  ) {
+    throw conflict("다른 공동체 활성 상태 작업이 진행 중입니다.");
+  }
+  if (
+    currentActive === input.active &&
+    !resumingDeactivation && !resumingRestoration
+  ) {
     return {
       status: "alreadySet",
       churchId: input.churchId,
@@ -251,7 +276,9 @@ export const adminSetChurchLifecycle = async (
     };
   }
 
-  const generation = input.active ? storedGeneration : input.requestId;
+  const generation = input.active || resumingDeactivation
+    ? storedGeneration
+    : input.requestId;
   if (input.active && !REQUEST_ID_PATTERN.test(generation)) {
     throw conflict("복원할 비활성화 세대를 확인할 수 없습니다.");
   }
@@ -263,6 +290,14 @@ export const adminSetChurchLifecycle = async (
       ? data.deactivationGeneration === generation
       : data.isDeleted !== true || data.deactivationGeneration === generation;
   });
+  if (
+    managedUsers.some(({ data }) =>
+      data[PLATFORM_STATS_READER_COUNTED_FIELD] !==
+        shouldCountPlatformReader(data)
+    )
+  ) {
+    throw conflict("회원 통계 원장을 먼저 전수 재계산해 주세요.");
+  }
   const publicStatsManagedUsers = managedUsers.filter(({ data }) =>
     data.excludeFromPublicStats !== true
   );
@@ -356,6 +391,61 @@ export const adminSetChurchLifecycle = async (
     }
   }
 
+  if (input.active && !resumingRestoration) {
+    const transaction = await dependencies.beginTransaction(
+      service.token,
+      service.projectId,
+    );
+    try {
+      const freshChurch = await dependencies.getDocument<RecordValue>(
+        service.token,
+        service.projectId,
+        `churches/${input.churchId}`,
+        { transaction },
+      );
+      if (
+        !freshChurch || freshChurch.data.isDeleted !== true ||
+        freshChurch.data.lifecycleStatus !== "inactive" ||
+        freshChurch.data.deactivationGeneration !== generation
+      ) {
+        throw conflict("공동체 상태가 변경되었습니다.");
+      }
+      await dependencies.commitWrites(
+        service.token,
+        service.projectId,
+        [
+          dependencies.updateWrite(
+            service.projectId,
+            `churches/${input.churchId}`,
+            {
+              lifecycleStatus: "restoring",
+              restorationStartedAt: now,
+              restorationStartedBy: input.uid,
+              updatedAt: now,
+            },
+            {
+              updateMask: [
+                "lifecycleStatus",
+                "restorationStartedAt",
+                "restorationStartedBy",
+                "updatedAt",
+              ],
+              updateTime: freshChurch.updateTime,
+            },
+          ),
+        ],
+        { transaction },
+      );
+    } catch (error) {
+      await dependencies.rollbackTransaction(
+        service.token,
+        service.projectId,
+        transaction,
+      ).catch(() => {});
+      throw error;
+    }
+  }
+
   for (let offset = 0; offset < targets.length; offset += MAX_BATCH_WRITES) {
     const batch = targets.slice(offset, offset + MAX_BATCH_WRITES);
     await dependencies.commitWrites(
@@ -366,12 +456,15 @@ export const adminSetChurchLifecycle = async (
         const data = input.active
           ? {
             isDeleted: false,
+            [PLATFORM_STATS_READER_COUNTED_FIELD]:
+              document.data.excludeFromPublicStats !== true,
             restoredAt: now,
             restoredBy: input.uid,
             updatedAt: now,
           }
           : {
             isDeleted: true,
+            [PLATFORM_STATS_READER_COUNTED_FIELD]: false,
             deletedAt: now,
             deletedBy: input.uid,
             deactivationGeneration: generation,
@@ -419,7 +512,40 @@ export const adminSetChurchLifecycle = async (
       { transaction: finalTransaction },
     );
     if (freshLedger) {
+      await dependencies.rollbackTransaction(
+        service.token,
+        service.projectId,
+        finalTransaction,
+      ).catch(() => {});
       return freshLedger.data.result as AdminChurchLifecycleResult;
+    }
+    const expectedLifecycleStatus = input.active ? "restoring" : "deactivating";
+    if (
+      !freshChurch ||
+      freshChurch.data.isDeleted !== true ||
+      freshChurch.data.lifecycleStatus !== expectedLifecycleStatus ||
+      freshChurch.data.deactivationGeneration !== generation
+    ) {
+      const finalized = input.active
+        ? freshChurch?.data.isDeleted !== true &&
+          freshChurch?.data.lifecycleStatus === "active"
+        : freshChurch?.data.isDeleted === true &&
+          freshChurch?.data.lifecycleStatus === "inactive";
+      if (finalized) {
+        await dependencies.rollbackTransaction(
+          service.token,
+          service.projectId,
+          finalTransaction,
+        ).catch(() => {});
+        return {
+          status: "alreadySet",
+          churchId: input.churchId,
+          active: input.active,
+          affectedUsers: 0,
+          ...summary,
+        };
+      }
+      throw conflict("공동체 활성 상태 작업이 다른 요청과 충돌했습니다.");
     }
     const currentReaders = statsDocument?.data.total_readers;
     const currentChurches = statsDocument?.data.total_churches;

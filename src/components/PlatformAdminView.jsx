@@ -35,7 +35,6 @@ const PlatformAdminView = ({
     const [endDate, setEndDate] = React.useState('');
     const [selectedChurchId, setSelectedChurchId] = React.useState(null);
     const [announcementChurchId, setAnnouncementChurchId] = React.useState('');
-    const [seedingData, setSeedingData] = React.useState(false);
     const [statsRefreshing, setStatsRefreshing] = React.useState(false);
     const [deleteUserConfirm, setDeleteUserConfirm] = React.useState(null); // { uid, name }
     const [viewingChurchAsAdmin, setViewingChurchAsAdmin] = React.useState(false);
@@ -58,13 +57,15 @@ const PlatformAdminView = ({
     const [accessSecretsReport, setAccessSecretsReport] = React.useState(null);
     const [checkingUnaffiliatedChurch, setCheckingUnaffiliatedChurch] = React.useState(false);
     const [fetchedCurrentPassword, setFetchedCurrentPassword] = React.useState(null); // changingPassword 모달에서 조회한 현재 암호
+    const passwordCredentialRequestRef = React.useRef(0);
     const [credentialMigrating, setCredentialMigrating] = React.useState(false);
     const [credentialMigrationProgress, setCredentialMigrationProgress] = React.useState({ done: 0, total: 0 });
+    const [credentialMigrationSummary, setCredentialMigrationSummary] = React.useState(null);
     const [talentResetting, setTalentResetting] = React.useState(false);
     const [talentResetProgress, setTalentResetProgress] = React.useState({ done: 0, total: 0 });
     const pendingCredentialMigration = React.useMemo(() => (
         (Array.isArray(allUsers) ? allUsers : [])
-            .filter(u => typeof u?.password === 'string' && u.password.length > 0).length
+            .filter(u => u?.password !== null).length
     ), [allUsers]);
 
     // 매일 영상 관리
@@ -290,16 +291,38 @@ const PlatformAdminView = ({
 
     // 암호 변경 모달을 열 때, 본문서 password가 이미 null 마커로 이관되었다면 private 하위문서에서 조회한다.
     React.useEffect(() => {
-        if (!changingPassword?.uid) { setFetchedCurrentPassword(null); return; }
+        const requestId = ++passwordCredentialRequestRef.current;
+        setNewPassword('');
+        if (!changingPassword?.uid) { setFetchedCurrentPassword(null); return undefined; }
         if (typeof changingPassword.password === 'string' && changingPassword.password) {
             setFetchedCurrentPassword(null);
-            return;
+            return undefined;
         }
         setFetchedCurrentPassword('__loading__');
         fetchMemberCredentials(changingPassword.uid)
-            .then(data => setFetchedCurrentPassword(data?.password || null))
-            .catch(() => setFetchedCurrentPassword('__error__'));
-    }, [changingPassword?.uid]);
+            .then(data => {
+                if (passwordCredentialRequestRef.current === requestId) {
+                    setFetchedCurrentPassword(data?.password || null);
+                }
+            })
+            .catch(() => {
+                if (passwordCredentialRequestRef.current === requestId) {
+                    setFetchedCurrentPassword('__error__');
+                }
+            });
+        return () => {
+            if (passwordCredentialRequestRef.current === requestId) {
+                passwordCredentialRequestRef.current += 1;
+            }
+        };
+    }, [changingPassword?.uid, changingPassword?.password, setNewPassword]);
+
+    const closePasswordModal = () => {
+        passwordCredentialRequestRef.current += 1;
+        setFetchedCurrentPassword(null);
+        setNewPassword('');
+        setChangingPassword(null);
+    };
 
     const savePlatformKakao = async () => {
         if (!db) return;
@@ -320,11 +343,11 @@ const PlatformAdminView = ({
         setStatsRefreshing(true);
         try {
             const preview = await rebuildPlatformStats({ dryRun: true }, { expectedUid: currentUser?.uid });
-            const summary = `공동체 ${preview.current.total_churches ?? '-'} → ${preview.expected.total_churches}\n독자 ${preview.current.total_readers ?? '-'} → ${preview.expected.total_readers}\n오늘 독자 ${preview.current.readers_today ?? '-'} → ${preview.expected.readers_today}\n누적 완독 ${preview.current.finished_total ?? '-'} → ${preview.expected.finished_total}`;
-            if (preview.changed.length === 0) { alert(`✅ 통계가 이미 정확합니다.\n\n${summary}`); return; }
+            const summary = `공동체 ${preview.current.total_churches ?? '-'} → ${preview.expected.total_churches}\n독자 ${preview.current.total_readers ?? '-'} → ${preview.expected.total_readers}\n오늘 독자 ${preview.current.readers_today ?? '-'} → ${preview.expected.readers_today}\n누적 완독 ${preview.current.finished_total ?? '-'} → ${preview.expected.finished_total}\n회원 통계 표식 보정 ${preview.markerBackfill.total}명`;
+            if (preview.changed.length === 0 && preview.markerBackfill.total === 0) { alert(`✅ 통계가 이미 정확합니다.\n\n${summary}`); return; }
             if (!confirm(`서버 전수 재계산 결과를 반영할까요?\n\n${summary}`)) return;
             const applied = await rebuildPlatformStats({ dryRun: false }, { expectedUid: currentUser?.uid });
-            alert(`✅ 통계 재계산 완료\n\n공동체 ${applied.expected.total_churches}개 / 독자 ${applied.expected.total_readers}명 / 누적 완독 ${applied.expected.finished_total}회`);
+            alert(`✅ 통계 재계산 완료\n\n공동체 ${applied.expected.total_churches}개 / 독자 ${applied.expected.total_readers}명 / 누적 완독 ${applied.expected.finished_total}회 / 회원 표식 ${applied.markerBackfill.total}명 보정`);
         } catch (e) {
             alert('갱신 실패: ' + e.message);
         } finally {
@@ -467,21 +490,55 @@ const PlatformAdminView = ({
         if (!db) return;
         if (!confirm('전체 회원의 자격증명을 private 하위문서로 이관합니다. 계속하시겠습니까?')) return;
         setCredentialMigrating(true);
+        setCredentialMigrationSummary(null);
         try {
             const snap = await db.collection('users').get();
             const docs = snap.docs;
             setCredentialMigrationProgress({ done: 0, total: docs.length });
             let migrated = 0;
             let skipped = 0;
+            const failed = [];
             for (let i = 0; i < docs.length; i += 10) {
                 const chunk = docs.slice(i, i + 10);
                 const results = await Promise.all(
-                    chunk.map(doc => migrateCredentialsIfNeeded(doc.id, doc.data()))
+                    chunk.map(doc => migrateCredentialsIfNeeded(
+                        doc.id,
+                        doc.data(),
+                        { returnResult: true }
+                    ))
                 );
-                results.forEach(changed => { if (changed) migrated++; else skipped++; });
+                results.forEach((result, index) => {
+                    if (result.status === 'migrated') migrated++;
+                    else if (result.status === 'skipped') skipped++;
+                    else failed.push({
+                        name: String(chunk[index].data()?.name || '이름 없음'),
+                        message: result.error?.message || '알 수 없는 오류',
+                    });
+                });
                 setCredentialMigrationProgress({ done: Math.min(i + 10, docs.length), total: docs.length });
             }
-            alert(`이관 완료: ${migrated}명 이관, ${skipped}명은 이미 완료/대상 아님`);
+            setCredentialMigrationSummary({
+                total: docs.length,
+                migrated,
+                skipped,
+                failed: failed.length,
+                checkedAt: new Date().toISOString(),
+            });
+            if (failed.length > 0) {
+                console.error(
+                    '자격증명 전수 이관 실패:',
+                    failed.map(entry => entry.message)
+                );
+                const failedNames = failed.slice(0, 5).map(entry => entry.name).join(', ');
+                alert(
+                    `이관 부분 완료: ${migrated}명 이관, ${skipped}명은 이미 완료/대상 아님, `
+                    + `${failed.length}명 실패\n\n실패: ${failedNames}`
+                    + `${failed.length > 5 ? ` 외 ${failed.length - 5}명` : ''}`
+                    + '\n실패 대상을 점검한 뒤 재처리해야 합니다.'
+                );
+            } else {
+                alert(`이관 완료: ${migrated}명 이관, ${skipped}명은 이미 완료/대상 아님`);
+            }
         } catch (e) {
             alert('자격증명 이관 실패: ' + e.message);
         } finally {
@@ -529,89 +586,13 @@ const PlatformAdminView = ({
         }
     };
 
-    const LASTNAMES = ['김', '이', '박', '최', '정', '강', '조', '윤', '장', '임', '한', '오', '서', '신', '권', '황', '안', '송', '류', '전'];
-    const FIRSTNAMES_M = ['민준', '서준', '도윤', '예준', '시우', '하준', '주원', '지호', '준서', '준혁', '도현', '건우', '현우', '우진', '성민', '재원', '태양', '승현', '찬호', '정우'];
-    const FIRSTNAMES_F = ['서연', '서윤', '지우', '서현', '민서', '하은', '하윤', '윤서', '지유', '채원', '수아', '지아', '지민', '예원', '수빈', '나연', '예진', '혜원', '다인', '지현'];
-
-    const seedFakeUsers = async (church) => {
-        if (!confirm(`"${church.name}"에 가짜 교인 50명을 추가합니다. 계속하시겠습니까?`)) return;
-        const comms = church.departments || church.communities || [];
-        if (comms.length === 0) {
-            alert('먼저 이 교회의 조직(부서/소그룹)을 설정해주세요.'); return;
-        }
-        setSeedingData(true);
-        const today = new Date();
-        const todayStr = today.toDateString();
-        const ts = Date.now();
-        try {
-            const batch = db.batch();
-            for (let i = 0; i < 50; i++) {
-                const isMale = Math.random() > 0.45;
-                const lastName = LASTNAMES[Math.floor(Math.random() * LASTNAMES.length)];
-                const firstName = (isMale ? FIRSTNAMES_M : FIRSTNAMES_F)[Math.floor(Math.random() * 20)];
-                const name = lastName + firstName;
-                const birthYear = 1945 + Math.floor(Math.random() * 62);
-                const birthMonth = String(Math.floor(Math.random() * 12) + 1).padStart(2, '0');
-                const birthDay = String(Math.floor(Math.random() * 28) + 1).padStart(2, '0');
-                const birthdate = `${birthYear}${birthMonth}${birthDay}`;
-                const comm = comms[Math.floor(Math.random() * comms.length)];
-                const subs = (comm.subgroups || []).filter(s => s);
-                const subgroup = subs.length > 0 ? subs[Math.floor(Math.random() * subs.length)] : '';
-                const currentDay = Math.floor(Math.random() * 365) + 1;
-                const readCount = Math.random() > 0.93 ? 2 : 1;
-                const rand = Math.random();
-                let lastReadDate = null;
-                if (rand > 0.65) {
-                    lastReadDate = todayStr;
-                } else if (rand > 0.45) {
-                    const d = new Date(today); d.setDate(d.getDate() - (Math.floor(Math.random() * 3) + 1)); lastReadDate = d.toDateString();
-                } else if (rand > 0.25) {
-                    const d = new Date(today); d.setDate(d.getDate() - (Math.floor(Math.random() * 11) + 4)); lastReadDate = d.toDateString();
-                } else if (rand > 0.10) {
-                    const d = new Date(today); d.setDate(d.getDate() - (Math.floor(Math.random() * 16) + 15)); lastReadDate = d.toDateString();
-                }
-                const score = currentDay * 8 + Math.floor(Math.random() * 400);
-                const streak = lastReadDate === todayStr ? Math.floor(Math.random() * 20) + 1 : 0;
-                batch.set(db.collection('users').doc(`seed_${ts}_${i}`), {
-                    // 시드 계정은 실제 Auth 계정이 없다 — null 마커를 심어 교인 랭킹/달리기 지도에도 노출되게 한다.
-                    name, birthdate, password: null,
-                    email: `${encodeURIComponent(name)}_${birthdate}@bible.local`,
-                    role: 'member', churchId: church.id, churchName: church.name,
-                    extraMemberships: [],
-                    departmentId: comm.id, departmentName: comm.name, subgroupId: subgroup,
-                    planId: '1year_revised', currentDay, readCount, score, streak,
-                    lastReadDate, gender: isMale ? 'male' : 'female',
-                    achievements: [], memos: {}, readHistory: [], dayOffset: 0,
-                    startDate: todayStr,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                });
-            }
-            await batch.commit();
-            alert('✅ 가짜 교인 50명이 추가되었습니다!\n페이지를 새로고침합니다.');
-            window.location.reload();
-        } catch (e) {
-            alert('삽입 실패: ' + e.message);
-            setSeedingData(false);
-        }
+    const seedFakeUsers = () => {
+        alert('테스트 계정 생성은 통계 원장과 결속된 서버 작업이 마련될 때까지 지원하지 않습니다.');
     };
 
     const deleteSeedUsers = async (churchId) => {
-        if (!confirm('이 교회의 테스트 데이터(seed_ 계정)를 모두 삭제하시겠습니까?')) return;
-        setSeedingData(true);
-        try {
-            const snap = await db.collection('users').where('churchId', '==', churchId).get();
-            const seedDocs = snap.docs.filter(d => d.id.startsWith('seed_'));
-            if (seedDocs.length === 0) { alert('삭제할 테스트 데이터가 없습니다.'); setSeedingData(false); return; }
-            const batch = db.batch();
-            seedDocs.forEach(d => batch.delete(d.ref));
-            await batch.commit();
-            alert(`✅ ${seedDocs.length}명의 테스트 데이터가 삭제되었습니다.\n페이지를 새로고침합니다.`);
-            window.location.reload();
-        } catch (e) {
-            alert('삭제 실패: ' + e.message);
-            setSeedingData(false);
-        }
+        void churchId;
+        alert('테스트 계정 삭제는 통계 원장과 결속된 서버 작업이 마련될 때까지 지원하지 않습니다.');
     };
 
     const deleteChurch = async church => {
@@ -946,23 +927,26 @@ const PlatformAdminView = ({
                                         <p className="text-xs font-bold text-red-400 mb-3">🧪 테스트 데이터 관리 (개발용)</p>
                                         <div className="flex gap-2 mb-3">
                                             <button
-                                                onClick={() => seedFakeUsers(selectedChurch)}
-                                                disabled={seedingData}
+                                                onClick={seedFakeUsers}
+                                                disabled
                                                 className="flex-1 bg-red-50 text-red-500 py-2.5 rounded-xl text-xs font-bold hover:bg-red-100 border border-red-100 disabled:opacity-50 transition-colors">
-                                                {seedingData ? '처리 중...' : '가짜 교인 50명 추가'}
+                                                가짜 교인 추가 일시중단
                                             </button>
                                             <button
                                                 onClick={() => deleteSeedUsers(selectedChurch.id)}
-                                                disabled={seedingData}
+                                                disabled
                                                 className="flex-1 bg-slate-50 text-slate-400 py-2.5 rounded-xl text-xs font-bold hover:bg-slate-100 border border-slate-200 disabled:opacity-50 transition-colors">
-                                                테스트 데이터 삭제
+                                                테스트 데이터 삭제 일시중단
                                             </button>
                                         </div>
+                                        <p className="mb-3 text-center text-[11px] font-bold text-amber-700">
+                                            통계 정산 보완 중 — 공동체 비활성화·복원 일시중단
+                                        </p>
                                         <button
                                             onClick={() => deleteChurch(selectedChurch)}
-                                            disabled={seedingData || lifecycleChurchId === selectedChurch.id}
+                                            disabled
                                             className="w-full bg-amber-100 hover:bg-amber-200 text-amber-800 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition-colors border border-amber-300">
-                                            {lifecycleChurchId === selectedChurch.id ? '처리 중...' : (selectedChurch.isDeleted === true ? '♻️ 공동체 복원' : '⚠️ 공동체 비활성화')}
+                                            {selectedChurch.isDeleted === true ? '♻️ 공동체 복원 일시중단' : '⚠️ 공동체 비활성화 일시중단'}
                                         </button>
                                     </div>
                                 </div>
@@ -1104,7 +1088,7 @@ const PlatformAdminView = ({
                                                                 ? <button onClick={() => setChangingPassword(u)} className="text-purple-500 p-1 bg-purple-50 rounded" title="암호 확인 및 변경"><Icon name="refresh" size={14} /></button>
                                                                 : <span className="rounded bg-slate-100 px-1.5 py-1 text-[10px] font-bold text-slate-400" title="소셜 개인 계정은 비밀번호가 없습니다">{['kakao.com', 'oidc.kakao'].includes(u.authProvider) ? '카카오 로그인' : 'Google 로그인'}</span>}
                                                             <button onClick={() => startEditUser(u)} className="text-blue-500 p-1 bg-blue-50 rounded" title="정보 수정"><Icon name="edit" size={14} /></button>
-                                                            <button onClick={() => setDeleteUserConfirm({ uid: u.uid, name: u.name })} className="text-red-500 p-1 bg-red-50 rounded" title="삭제"><Icon name="trash" size={14} /></button>
+                                                            {u.role === 'member' && <button onClick={() => setDeleteUserConfirm({ uid: u.uid, name: u.name })} className="text-red-500 p-1 bg-red-50 rounded" title="삭제"><Icon name="trash" size={14} /></button>}
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -1574,27 +1558,32 @@ const PlatformAdminView = ({
                         </div>
 
                         {/* 자격증명 보안 이관 */}
-                        {pendingCredentialMigration > 0 ? (
-                            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6">
-                                <h3 className="text-sm font-bold text-indigo-800 mb-1">🔐 자격증명 보안 이관 (랭킹 활성화)</h3>
-                                <p className="text-xs text-indigo-700 mb-3">
-                                    회원 문서의 평문 비밀번호를 비공개 하위문서로 옮깁니다. 모든 회원이 이관되어야 교인 랭킹·달리기 지도가 정상 표시됩니다.
+                        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6">
+                            <h3 className="text-sm font-bold text-indigo-800 mb-1">🔐 자격증명 보호 상태 확인·이관</h3>
+                            <p className="text-xs text-indigo-700 mb-3">
+                                회원 원문을 전수 확인해 평문 비밀번호·전화번호 뒤 4자리를 비공개 하위문서로 옮깁니다.
+                                화면 목록만으로는 전화번호 전용 레거시 상태를 알 수 없어 자동으로 “완료”라고 단정하지 않습니다.
+                            </p>
+                            <button
+                                onClick={handleMigrateCredentials}
+                                disabled={credentialMigrating}
+                                className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+                            >
+                                {credentialMigrating
+                                    ? `확인·이관 중... (${credentialMigrationProgress.done}/${credentialMigrationProgress.total})`
+                                    : credentialMigrationSummary?.failed === 0
+                                        ? '전체 회원 상태 다시 확인·이관'
+                                        : pendingCredentialMigration > 0
+                                        ? `전체 회원 확인·이관 (${pendingCredentialMigration}명 이상 점검 필요)`
+                                        : '전체 회원 상태 다시 확인·이관'}
+                            </button>
+                            {credentialMigrationSummary && (
+                                <p className={`mt-2 text-xs font-bold ${credentialMigrationSummary.failed > 0 ? 'text-red-700' : 'text-indigo-700'}`}>
+                                    최근 전수 확인: 총 {credentialMigrationSummary.total}명 · 이관 {credentialMigrationSummary.migrated}명 ·
+                                    기존 완료/대상 아님 {credentialMigrationSummary.skipped}명 · 실패 {credentialMigrationSummary.failed}명
                                 </p>
-                                <button
-                                    onClick={handleMigrateCredentials}
-                                    disabled={credentialMigrating}
-                                    className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-                                >
-                                    {credentialMigrating
-                                        ? `이관 중... (${credentialMigrationProgress.done}/${credentialMigrationProgress.total})`
-                                        : `전체 회원 이관 실행 (${pendingCredentialMigration}명 대기)`}
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="bg-slate-50 rounded-lg px-3 py-1.5 mb-6">
-                                <p className="text-xs text-slate-400">🔐 자격증명 보안 이관 완료 — 모든 회원이 이관되었습니다.</p>
-                            </div>
-                        )}
+                            )}
+                        </div>
 
                         {/* 달란트 잔액 전원 초기화 */}
                         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
@@ -1664,21 +1653,21 @@ const PlatformAdminView = ({
                                 })()}
                             </select>
                         </div>}
-                        {editingUser.role === 'member' && editingUser.accountType === 'personal' && <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-700">개인 계정의 공동체 소속은 roster에서 관리됩니다. 이 화면에서는 읽기 진도만 수정합니다.</div>}
+                        {editingUser.role === 'member' && editingUser.accountType === 'personal' && <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-700">개인 계정의 공동체 소속은 roster에서 관리됩니다. 읽기 진도는 서버 읽기 원장에서 관리됩니다.</div>}
                         {editingUser.role !== 'member' && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">관리자 계정의 소속 교회는 권한 범위를 결정하므로 이 화면에서 변경할 수 없습니다. 정식 관리자 위임 절차를 이용해주세요.</div>}
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 mb-1">현재 Day</label>
-                                <input type="number" min="1" max="365" value={editingUser.currentDay || 1}
-                                    onChange={e => setEditingUser({ ...editingUser, currentDay: parseInt(e.target.value) || 1 })}
-                                    className="w-full border rounded p-2 text-sm" />
+                        {/* 서버 읽기 원장 참고값 — 이 모달에서는 수정하지 않는다. */}
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <p className="text-[11px] font-bold text-slate-500">현재 Day</p>
+                                    <p className="mt-1 text-sm font-black text-slate-700">DAY {editingUser.currentDay || 1}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[11px] font-bold text-slate-500">회독</p>
+                                    <p className="mt-1 text-sm font-black text-slate-700">{editingUser.readCount || 1}독</p>
+                                </div>
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 mb-1">독수 (readCount)</label>
-                                <input type="number" min="1" value={editingUser.readCount || 1}
-                                    onChange={e => setEditingUser({ ...editingUser, readCount: parseInt(e.target.value) || 1 })}
-                                    className="w-full border rounded p-2 text-sm" />
-                            </div>
+                            <p className="mt-2 text-[11px] font-bold text-slate-500">읽기 진도와 회독은 서버 읽기 원장에서만 변경됩니다.</p>
                         </div>
                         <div className="flex gap-2 pt-4">
                             <button onClick={saveEditUser} className="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700">저장</button>
@@ -1690,7 +1679,7 @@ const PlatformAdminView = ({
 
             {/* Change Password Modal */}
             {changingPassword && (
-                <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setChangingPassword(null)}>
+                <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={closePasswordModal}>
                     <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
                         <h3 className="text-xl font-bold text-slate-800 mb-4 border-b pb-2">🔑 암호 변경</h3>
                         <div className="bg-blue-50 p-3 rounded-lg mb-4">
@@ -1719,7 +1708,7 @@ const PlatformAdminView = ({
                                 className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-bold">
                                 암호 변경
                             </button>
-                            <button onClick={() => { setChangingPassword(null); setNewPassword(''); }}
+                            <button onClick={closePasswordModal}
                                 className="flex-1 bg-slate-200 text-slate-600 py-3 rounded-lg hover:bg-slate-300 font-bold">
                                 취소
                             </button>

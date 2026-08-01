@@ -323,6 +323,8 @@ Deno.test("fresh conversion은 users/ledger/source church/source roster/query를
     streak: 7,
     readCount: 2,
     lastReadDate: "Wed Jul 15 2026",
+    planId: "1year_revised",
+    fixtureType: null,
     talent: 0,
     departmentId: "adult",
     departmentName: "장년부",

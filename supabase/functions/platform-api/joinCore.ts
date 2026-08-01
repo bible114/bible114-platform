@@ -1,3 +1,5 @@
+import { projectCommunityProgressIdentity } from "./communityProgressCore.ts";
+
 export type JoinCommunityUser = {
   uid?: unknown;
   name?: unknown;
@@ -10,6 +12,8 @@ export type JoinCommunityUser = {
   streak?: unknown;
   readCount?: unknown;
   lastReadDate?: unknown;
+  planId?: unknown;
+  fixtureType?: unknown;
   isDeleted?: unknown;
 };
 
@@ -146,6 +150,7 @@ export const validateJoinCommunity = (input: JoinCommunityInput) => {
       streak: finiteNumber(input.user.streak, 0),
       readCount: finiteNumber(input.user.readCount, 1),
       lastReadDate: input.user.lastReadDate ?? null,
+      ...projectCommunityProgressIdentity(input.user),
       departmentId: department.id,
       departmentName: department.name,
       subgroupId: subgroup?.id || "",

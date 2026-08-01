@@ -50,11 +50,16 @@ const membership = {
   subgroupId: "group-1",
   subgroupName: "믿음반",
 };
-const result = (status: "completed" | "alreadyCompleted" = "completed") => ({
+const result = (
+  status: "completed" | "alreadyCompleted" = "completed",
+  overrides: Data = {},
+) => ({
   status,
   orgId: ORG_ID,
   planId: "1year_new",
+  currentDay: 365,
   ...membership,
+  ...overrides,
 });
 const baseUser = (overrides: Data = {}): Data => ({
   uid: UID,
@@ -65,6 +70,7 @@ const baseUser = (overrides: Data = {}): Data => ({
   churchId: ORG_ID,
   isDeleted: false,
   planId: "1year_revised",
+  currentDay: 365,
   ...emptyMembership,
   unrelated: { keep: true },
   ...overrides,
@@ -80,13 +86,14 @@ const baseChurch = (overrides: Data = {}): Data => ({
 });
 const baseRoster = (overrides: Data = {}): Data => ({
   uid: UID,
+  currentDay: 365,
   ...emptyMembership,
   talent: 99,
   extraMemberships: [{ keep: true }],
   ...overrides,
 });
 const storedLedger = (overrides: Data = {}): Data => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   action: "completeMemberOnboarding",
   requestId: REQUEST_ID,
   input: {
@@ -96,6 +103,25 @@ const storedLedger = (overrides: Data = {}): Data => ({
     subgroupId: "group-1",
   },
   result: result(),
+  createdAt: NOW.toISOString(),
+  ...overrides,
+});
+const storedLegacyLedger = (overrides: Data = {}): Data => ({
+  schemaVersion: 1,
+  action: "completeMemberOnboarding",
+  requestId: REQUEST_ID,
+  input: {
+    orgId: ORG_ID,
+    planId: "1year_new",
+    departmentId: "dept-1",
+    subgroupId: "group-1",
+  },
+  result: {
+    status: "completed",
+    orgId: ORG_ID,
+    planId: "1year_new",
+    ...membership,
+  },
   createdAt: NOW.toISOString(),
   ...overrides,
 });
@@ -248,7 +274,7 @@ const expectError = async (callback: () => Promise<unknown>, code: string) => {
   }
 };
 
-Deno.test("fresh users-only 온보딩은 plan+소속과 최소 schema1 원장을 원자 commit한다", async () => {
+Deno.test("fresh users-only 온보딩은 plan+currentDay+소속과 schema2 원장을 원자 commit한다", async () => {
   const original = baseUser();
   const harness = createHarness({
     [userPath]: original,
@@ -273,6 +299,7 @@ Deno.test("fresh users-only 온보딩은 plan+소속과 최소 schema1 원장을
     "departmentName",
     "subgroupId",
     "subgroupName",
+    "currentDay",
     "updatedAt",
   ], null]);
   assertEquals(harness.state.get(userPath), {
@@ -280,6 +307,7 @@ Deno.test("fresh users-only 온보딩은 plan+소속과 최소 schema1 원장을
     planId: "1year_new",
     onboardingPending: false,
     ...membership,
+    currentDay: 365,
     updatedAt: NOW.toISOString(),
   });
   assertEquals(harness.state.get(ledgerPath), storedLedger());
@@ -317,12 +345,13 @@ Deno.test("신규 교회 관리자는 빈 plan과 pending marker를 서버 완�
     planId: "1year_new",
     onboardingPending: false,
     ...membership,
+    currentDay: 365,
     updatedAt: NOW.toISOString(),
   });
 });
 
-Deno.test("optional roster는 소속 4필드+updatedAt만 미러하고 잔액/extra를 보존한다", async () => {
-  const roster = baseRoster();
+Deno.test("optional roster는 소속+currentDay만 미러하고 잔액/extra를 보존한다", async () => {
+  const roster = baseRoster({ currentDay: 17 });
   const harness = createHarness({
     [userPath]: baseUser(),
     [churchPath]: baseChurch(),
@@ -335,13 +364,67 @@ Deno.test("optional roster는 소속 4필드+updatedAt만 미러하고 잔액/ex
     "departmentName",
     "subgroupId",
     "subgroupName",
+    "currentDay",
     "updatedAt",
   ]);
   assertEquals(harness.state.get(rosterPath), {
     ...roster,
     ...membership,
+    currentDay: 365,
     updatedAt: NOW.toISOString(),
   });
+});
+
+Deno.test("60일 plan은 기존 day를 modulo 정규화해 user+roster+ledger에 원자 저장한다", async () => {
+  const originalUser = baseUser({ currentDay: 365 });
+  const originalRoster = baseRoster({ currentDay: 60 });
+  const harness = createHarness({
+    [userPath]: originalUser,
+    [churchPath]: baseChurch(),
+    [rosterPath]: originalRoster,
+  });
+  const readableInput = input({ planId: "readable_new" });
+  const readableResult = result("completed", {
+    planId: "readable_new",
+    currentDay: 5,
+  });
+
+  assertEquals(await complete(harness, readableInput), {
+    alreadyCompleted: false,
+    committed: true,
+    result: readableResult,
+  });
+  assertEquals(harness.commits[0].paths, [
+    userPath,
+    rosterPath,
+    ledgerPath,
+  ]);
+  assertEquals(harness.state.get(userPath), {
+    ...originalUser,
+    planId: "readable_new",
+    onboardingPending: false,
+    ...membership,
+    currentDay: 5,
+    updatedAt: NOW.toISOString(),
+  });
+  assertEquals(harness.state.get(rosterPath), {
+    ...originalRoster,
+    ...membership,
+    currentDay: 5,
+    updatedAt: NOW.toISOString(),
+  });
+  assertEquals(
+    harness.state.get(ledgerPath),
+    storedLedger({
+      input: {
+        orgId: ORG_ID,
+        planId: "readable_new",
+        departmentId: "dept-1",
+        subgroupId: "group-1",
+      },
+      result: readableResult,
+    }),
+  );
 });
 
 Deno.test("무소속 교회 문서가 없으면 canonical virtual 조직으로 최초 온보딩한다", async () => {
@@ -364,6 +447,7 @@ Deno.test("무소속 교회 문서가 없으면 canonical virtual 조직으로 �
     status: "completed",
     orgId: virtualOrgId,
     planId: "1year_new",
+    currentDay: 365,
     departmentId: "personal",
     departmentName: "개인 성도",
     subgroupId: "성경읽기 동행",
@@ -397,12 +481,23 @@ Deno.test("exact ledger+canonical state만 replay하고 malformed ledger/state�
     committed: true,
     result: result(),
   });
+  const legacy = createHarness({
+    [userPath]: canonical,
+    [churchPath]: baseChurch(),
+    [ledgerPath]: storedLegacyLedger(),
+  });
+  assertEquals(await complete(legacy), {
+    alreadyCompleted: true,
+    committed: true,
+    result: result(),
+  });
   for (
     const ledger of [
       storedLedger({ extra: true }),
       storedLedger({ action: "other" }),
       storedLedger({ input: { orgId: ORG_ID } }),
       storedLedger({ result: { ...result(), departmentName: "위조" } }),
+      storedLedger({ result: { ...result(), currentDay: 364 } }),
       storedLedger({ createdAt: "2026-02-30T00:00:00Z" }),
     ]
   ) {
@@ -419,6 +514,101 @@ Deno.test("exact ledger+canonical state만 replay하고 malformed ledger/state�
     [ledgerPath]: storedLedger(),
   });
   await expectError(() => complete(stateMismatch), "CONFLICT");
+});
+
+Deno.test("schema1 readable replay는 currentDay 복구와 schema2 원장 승격을 원자 commit한다", async () => {
+  const readableInput = input({ planId: "readable_new" });
+  const readableResult = result("completed", {
+    planId: "readable_new",
+    currentDay: 5,
+  });
+  const legacyResult = {
+    status: "completed",
+    orgId: ORG_ID,
+    planId: "readable_new",
+    ...membership,
+  };
+  const legacyInput = {
+    orgId: ORG_ID,
+    planId: "readable_new",
+    departmentId: "dept-1",
+    subgroupId: "group-1",
+  };
+  const originalUser = baseUser({
+    planId: "readable_new",
+    currentDay: 365,
+    ...membership,
+  });
+  const originalRoster = baseRoster({
+    currentDay: 365,
+    ...membership,
+  });
+  const originalLedger = storedLegacyLedger({
+    input: legacyInput,
+    result: legacyResult,
+  });
+  const harness = createHarness({
+    [userPath]: originalUser,
+    [churchPath]: baseChurch(),
+    [rosterPath]: originalRoster,
+    [ledgerPath]: originalLedger,
+  });
+
+  assertEquals(await complete(harness, readableInput), {
+    alreadyCompleted: true,
+    committed: true,
+    result: readableResult,
+  });
+  assertEquals(harness.commits[0].paths, [
+    userPath,
+    rosterPath,
+    ledgerPath,
+  ]);
+  assertEquals(harness.commits[0].masks, [
+    ["currentDay", "updatedAt"],
+    ["currentDay", "updatedAt"],
+    ["schemaVersion", "result"],
+  ]);
+  assertEquals(harness.state.get(userPath), {
+    ...originalUser,
+    currentDay: 5,
+    updatedAt: NOW.toISOString(),
+  });
+  assertEquals(harness.state.get(rosterPath), {
+    ...originalRoster,
+    currentDay: 5,
+    updatedAt: NOW.toISOString(),
+  });
+  assertEquals(harness.state.get(ledgerPath), {
+    ...originalLedger,
+    schemaVersion: 2,
+    result: readableResult,
+  });
+
+  for (
+    const ledger of [
+      storedLegacyLedger({
+        input: { ...legacyInput, planId: "1year_new" },
+        result: legacyResult,
+      }),
+      storedLegacyLedger({
+        input: legacyInput,
+        result: { ...legacyResult, departmentName: "위조" },
+      }),
+    ]
+  ) {
+    const malformed = createHarness({
+      [userPath]: originalUser,
+      [churchPath]: baseChurch(),
+      [rosterPath]: originalRoster,
+      [ledgerPath]: ledger,
+    });
+    await expectError(
+      () => complete(malformed, readableInput),
+      "CONFLICT",
+    );
+    assertEquals(malformed.commits, []);
+  }
 });
 
 Deno.test("409는 최대 3회 재시도하고 apply-then-409는 exact replay로 종료한다", async () => {
@@ -503,6 +693,10 @@ Deno.test("missing/삭제/개인/다른 교회/다른 기존 소속과 malformed
         [userPath]: baseUser(),
         [churchPath]: baseChurch(),
         [rosterPath]: baseRoster({ uid: "other" }),
+      },
+      {
+        [userPath]: baseUser({ currentDay: 0 }),
+        [churchPath]: baseChurch(),
       },
     ] as Array<Record<string, Data>>
   ) {

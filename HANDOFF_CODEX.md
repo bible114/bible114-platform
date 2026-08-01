@@ -184,6 +184,12 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 
 | 날짜 | 작업 | 변경 파일 | 비고 |
 |---|---|---|---|
+| 2026-07-28 | 첫 화면 순위·로그인 카드 중앙축 정렬·운영 배포 | `src/components/{LoginView,NationalReadingRanking}.jsx` | 768px 미만 중간 폭에서 `max-w-sm` 로그인 카드가 부모 왼쪽에 붙던 원인을 수정했다. 로그인 카드 부모에 상시 `items-center`, 카드에 `mx-auto`, 순위 카드에 모바일 `mx-auto`/데스크톱 `md:mx-0`를 적용했다. 사용자 첨부 화면과 같은 658px 폭에서 화면 중심 329px, 순위 카드 중심 329px, 로그인 카드 중심 329px로 오차 0을 측정했다. 관련 검증·build·diff-check 통과. 운영 JS `index-B4glK9ru.js` SHA-256 `2281f6a1…11be6`, CSS `index-CSh76EJt.css` SHA-256 `5ab47e00…f954`가 로컬과 일치한다. main push 없음. |
+| 2026-07-28 | 전국 통독 순위 교회명·이름 한 줄 통합·운영 배포 | `src/components/NationalReadingRanking.jsx` | 두 줄로 쌓여 가운데가 비어 보이던 `교회명 / 가린 이름`을 `성서교회 · 김＊영` 한 줄로 합쳤다. 이름은 강조하고 교회명은 보조 대비로 유지했으며 오른쪽 완료 독수·현재 일수 2단 정렬은 그대로 둔다. 390×844에서 1~5위 모두 줄바꿈·가로 overflow 없이 표시되고 50행/2,700px 내부 스크롤을 확인했다. 관련 검증·build·diff-check 통과. 운영 JS `index-D7spSpC6.js` SHA-256 `1a3b13d3…c4ca8`, CSS `index-ChENtbTf.css` SHA-256 `74f99062…2a58e`가 로컬과 일치한다. main push 없음. |
+| 2026-07-28 | 전국 통독 순위 3회 자체 점검 디자인·운영 배포 | `src/components/NationalReadingRanking.jsx`, `scripts/validate-national-reading-ranking.mjs` | 390×844 실제 화면을 세 차례 확인하며 보완했다. 1차는 순위/교회·이름/독수·일수를 비교 가능한 열로 분리했고, 2차는 끊겨 보이던 `N위`를 원형 숫자 배지로 통합하고 교회·진도 글자 대비를 높였으며, 3차는 4위 이하의 지나치게 옅은 배지를 명확한 중립 원으로 통일하고 보조 정보 대비를 최종 조정했다. 최종 화면은 처음 5행, 행 overflow 없음, 50행/2,700px 내부 스크롤이며 완료 독수 보정도 유지한다. 관련 검증·build·diff-check 통과. 운영 JS `index-DqwYHevI.js` SHA-256 `f710b62c…c13b`, CSS `index-BrPs65qo.css` SHA-256 `0d4c0586…c75a`가 로컬과 일치하고 공개 원장은 50행이다. main push 없음. |
+| 2026-07-28 | 전국 통독 순위 상위 50위 제한·운영 배포 | `src/utils/publicNationalRanking.js`, `scripts/{sync-national-reading-ranking,validate-national-reading-ranking}.mjs`, Codex 자동화 `Bible114 공개 통계·전국 순위 일일 동기화` | 공개 저장·브라우저 정규화·일일 자동화의 최대 순위를 모두 100명에서 50명으로 변경했다. 운영 원장도 즉시 강제 재계산해 1~50위 연속 50행으로 줄였고 재-preview에서 `publishedReaders=50`, `changed=false`를 확인했다. 운영 배포 후 공개 JS `index-BuVJ7Vrx.js` SHA-256 `0f984d75…9b21`이 로컬과 일치하며 공개 Firestore 원장도 첫 순위 1·마지막 순위 50·연속 순위 true다. main push 없음. |
+| 2026-07-28 | 전국 통독 순위 한 줄 디자인·완료 독수 보정·운영 배포 | `src/components/NationalReadingRanking.jsx`, `src/utils/publicNationalRanking.js`, `scripts/validate-national-reading-ranking.mjs` | 장식과 상위 3위 행 배경을 줄이고 모든 행을 `순위 / 교회·가린 이름 / 읽기 진도` 한 줄 구조로 통일했다. 저장 `readCount`는 현재 회차이므로 화면의 완료 독수는 `readCount - 1`로 표시한다. 첫 회차 진행자는 `200일째 읽는 중`, 저장 2회차 30일은 `1독 · 30일째 읽는 중`, 저장 13회차 77일은 `12독 · 77일째 읽는 중`으로 검증한다. 5행 270px·100위 내부 스크롤·개인정보 최소화 계약은 유지한다. 390×844에서 1~5위 한 줄 표시, overflow 없음, 100행/5,400px 목록을 확인하고 관련 검증·build·diff-check를 통과했다. 운영 배포 후 공개 JS `index-CZVkE4hv.js` SHA-256 `c524b590…3ae0`, CSS `index-CPhuSqY6.css` SHA-256 `bf1145a2…bdec0`가 로컬과 각각 일치한다. main push 없음. |
+| 2026-07-28 | 첫 화면 전국 통독 순위 1~100위·성서교회 병합 | `src/components/{LoginView,NationalReadingRanking}.jsx`, `src/utils/publicNationalRanking.js`, `scripts/{sync-national-reading-ranking,validate-national-reading-ranking}.mjs`, `scripts/validate-round24.mjs`, `package.json`, Codex 자동화 `Bible114 공개 통계·전국 순위 일일 동기화` | 공개 `settings/platformStats.national_ranking`에는 교회 이름·가린 이름·현재 독수·일수만 최대 100명 저장한다. 플랫폼은 테스트/삭제/공개통계 제외/플랫폼 관리자 계정과 `hideFromPublicRanking=true`를 제외하고, 성서교회 관리자 화면은 이름을 화면 문맥 안에서 먼저 가린 익명 후보만 비공개 `platformInternal/nationalRankingSources`에 저장한다. 원래 이름·UID·임시 파일은 남기지 않는다. 성서교회 203명과 플랫폼 24명, 총 227명을 합산해 운영 상위 100명을 게시했고, 무입력 재-preview에서 `sungseoReaders=203`, `publishedReaders=100`, `changed=false`를 확인했다. 첫 화면은 54px 행 5개 높이(270px)로 고정하고 휴대폰 드래그·PC 휠/스크롤바로 100위(전체 5,400px)까지 내부 이동한다. 매일 09:30 자동화가 성서교회 익명 후보를 새로 수집해 통계·순위를 갱신하며, 수집 실패 때도 직전 비공개 후보를 보존해 플랫폼 순위 갱신을 계속한다. 전체 validate(Deno 466/466)·build·diff-check 통과. 2026-07-28 운영 배포 후 공개 `index-1S-OKbFq.js`와 로컬 SHA-256 `ac67f448…ae65` 일치, 공개 원장 100행·성서교회 100행·전원 가린 이름을 확인했다. |
 | 2026-07-28 | 성서교회 공개 등록·실통계 반영 | `scripts/sync-sungseo-promo-stats.mjs`, Codex 자동화 `성서교회 공개 통계 일일 동기화` | 성서교회 관리자 화면의 로그인된 운영 집계에서 개인정보 없이 전체 회원 203명·오늘 읽은 사람 37명·누적 완독 118회·누적 진행 58,344일을 계산했다. `성서교회`를 `churches`, `publicChurches`, 호환 디렉터리에 공개 등록하고 meta count를 9로 맞춘 뒤 외부 통계와 첫 화면 원장을 한 commit으로 반영했다. 최종 공개 원장은 함께하는 교회 9곳·참여 성도 228명·오늘 읽은 성도 37명·누적 완독 118회이며 재-preview가 모두 일치했다. 원본 규칙은 개인정보가 든 `summary/global`의 익명 읽기를 차단하므로 기존 LaunchAgent는 휴지통으로 이동했고, 매일 20:10 KST 로그인된 관리자 화면에서 숫자만 읽는 저비용 Codex 자동화로 교체했다. 실패할 때만 알림한다. |
 | 2026-07-28 | T131 테스트 계정 공개 통계 영구 제외 | `scripts/exclude-test-accounts-from-public-stats.mjs`, `scripts/sync-sungseo-promo-stats.mjs`, `supabase/functions/platform-api/{platformStatsService,readCompletionService,adminChurchLifecycleService}*` | 운영 재감사로 UID·이름이 모두 일치한 테스트/검증 전용 users 14개를 삭제하지 않고 `excludeFromPublicStats=true`로 표시했다. 전체 users·churches·외부 집계의 updateTime을 한 commit에서 검증한 뒤 `settings/platformStats`를 원장 기준으로 재계산해 참여 성도 59→25, 누적 완료 57→0, 오늘 참여 0을 반영하고 사후 검증했다. 과거 삭제된 테스트 fixture가 남긴 오래된 집계도 함께 제거했다. 이후 테스트 계정의 읽기 완료·교회 lifecycle·성서교회 동기화·관리자 재계산 모두 공개 통계를 다시 늘리지 않도록 platform-api를 운영 배포했다. Deno 466/466, fmt/check, build, OPTIONS 204를 통과했다. |
 | 2026-07-28 | 성서교회 홍보 통계 익명 동기화 | `scripts/sync-sungseo-promo-stats.mjs`, `supabase/functions/platform-api/platformStatsService*`, `package.json`, `~/Library/LaunchAgents/net.bible114.sungseo-promo-stats.plist` | 구형 `bible-sungseo`의 `summary/global` 한 문서에서 개인정보 없이 전체 독자·오늘 독자·누적 완독·누적 진행일만 계산해 `platformExternalStats/sungseo`와 첫 화면 `platformStats`에 멱등 합산하도록 구현했다. 일반 users/Auth는 만들지 않고 숨김 외부통계 전용 `성서교회` 문서만 등록한다. 공식 관리자 재계산도 활성 외부 소스를 포함하도록 platform-api를 운영 배포했고 Deno 464/464·관련 계약 검사·build를 통과했다. 구형 무료 Firestore가 12:17 KST 현재 일일 할당량 소진(429)이라 첫 실동기화는 할당량 초기화 뒤 16:07 KST LaunchAgent 실행 및 16:10 검증으로 예약했다. |
@@ -408,6 +414,43 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 
 ## 📮 Codex → Claude 메모
 
+2026-07-31 전국 통독 개인 가린이름 순위 복구·운영 반영 완료:
+- 7월 30일 최종 감사에서 승인 경계를 넘은 비활성 CAS로 `national_ranking`을 0행으로 만든 것이 카드가 사라진 직접 원인이었다. 사용자는 교회 합계판 전환을 승인하지 않았으므로 그 변경을 폐기하고 원래의 `교회명 · 가린 이름 · 완료 독수/현재 일수` 상위 50위로 복구했다.
+- 로그인된 성서교회 관리자 표 203행을 브라우저 안에서 한 번만 처리해 원래 이름을 즉시 가렸다. 밖으로 나온 schema 3 후보는 `sourceRow/maskedName/readCount/currentDay`와 검증용 집계뿐이며 UID·원래 이름·부서·소그룹·점수·개별 날짜는 반환하거나 저장하지 않았다.
+- 당일 원본은 성서교회 203명·오늘 28명·누적 119독·총진도 58,960일이다. 공개 통계를 먼저 9개 교회·228명·오늘 28명·누적 119독으로 CAS 갱신하고, 같은 후보를 플랫폼 18명과 합쳐 적격 221명 중 상위 50명을 게시했다.
+- 공개 행은 exact `{rank,churchName,maskedName,readCount,currentDay}`, schema 2, 상태 `published_masked_individual_v2`다. 교회 합계 배열은 0행·`disabled_individual_ranking_restored`로 닫았다. 적용 후 무입력 preview는 `alreadyUpdatedToday=true`, `changed=false`, SHA `ffe5446f…fb1f2`다.
+- 공개 사이트는 이미 원래 개인 순위 UI를 포함한 운영 번들이어서 데이터 게시 즉시 카드가 복구됐다. 390/768/1280px에서 50행, 첫 5행 54px, 목록 270px/전체 2,700px 내부 스크롤, 가로 overflow 없음, 콘솔 오류 0을 확인했다.
+- 매일 09:30 자동화도 schema 3 개인 가린이름 후보, 통계 교차검증, 최대 50행, 동일 SHA 재-preview 계약으로 되돌렸다. 전체 validate(Deno platform-api 494/494)·build(333 modules)·audit 0·diff-check가 통과했다. dirty 전체 웹 재배포는 다른 미완료 변경을 함께 내보내므로 실행하지 않았고, 이번 공개 복구는 Firestore 운영 snapshot 배포로 완료했다. main push·Rules 수정 없음.
+
+2026-07-28 첫 화면 카드 중앙 정렬 재배포 완료:
+- 768px 미만에서 로그인 카드 부모가 왼쪽 정렬되던 문제를 고쳐 순위 카드와 로그인 카드를 각각 모바일 가운데 정렬했다. 데스크톱 순위 카드의 기존 왼쪽 열 정렬은 유지한다.
+- 사용자 첨부와 같은 658px 폭에서 화면/순위/로그인 카드 중심이 모두 329px로 오차 0이다. 운영 JS `index-B4glK9ru.js`, CSS `index-CSh76EJt.css`는 로컬/공개 SHA-256이 각각 일치한다. main push는 하지 않았다.
+
+2026-07-28 전국 통독 순위 교회명·이름 한 줄 통합 재배포 완료:
+- 가운데 두 줄을 `성서교회 · 김＊영` 한 줄로 합쳐 빈 공간을 줄였다. 모바일 1~5위 모두 줄바꿈·가로 overflow가 없고 50행 내부 스크롤과 완료 독수 보정은 유지한다.
+- 운영 JS `index-D7spSpC6.js`, CSS `index-ChENtbTf.css`는 로컬/공개 SHA-256이 각각 일치한다. main push는 하지 않았다.
+
+2026-07-28 전국 통독 순위 3회 자체 점검 디자인 재배포 완료:
+- 1차에서 세 정보 열을 분리하고, 2차에서 순위를 원형 숫자 배지로 통합하며 교회·진도 대비를 높였고, 3차에서 4위 이하 배지와 보조 정보 대비를 최종 통일했다.
+- 390×844 최종 화면은 1~5위가 같은 열에 정렬되고 행 overflow가 없으며 50행/2,700px 내부 스크롤이다. 완료 독수 표시 보정도 유지한다.
+- 운영 JS `index-DqwYHevI.js`, CSS `index-BrPs65qo.css`는 로컬/공개 SHA-256이 각각 일치하고 공개 순위 원장은 50행이다. main push는 하지 않았다.
+
+2026-07-28 전국 통독 순위 50위 제한·재배포 완료:
+- 저장 스크립트 `RANKING_LIMIT`, 브라우저 `PUBLIC_NATIONAL_RANKING_LIMIT`, 검증 fixture, 매일 09:30 자동화의 기대 게시 수를 모두 50으로 맞췄다.
+- 운영 원장을 즉시 50행으로 줄였고 재-preview는 `publishedReaders=50`, `changed=false`다. 공개 Firestore도 순위 1~50 연속 50행이며 공개 JS `index-BuVJ7Vrx.js`는 로컬/공개 SHA-256이 일치한다. main push는 하지 않았다.
+
+2026-07-28 전국 통독 순위 디자인·완료 독수 표시 개선 재배포 완료:
+- 기존 5행/100위 내부 스크롤과 공개 필드 계약은 그대로 두고 각 행을 `순위 / 교회·가린 이름 / 읽기 진도` 한 줄 구조로 단순화했다. 상위 3위는 원형 숫자 배지 색상만 달리하고 행 배경은 통일했다.
+- 저장 `readCount`는 현재 회차라 화면의 완료 독수는 1을 뺀다. 첫 회차 진행자는 독수 없이 `N일째 읽는 중`, 둘째 회차부터 `N독 · N일째 읽는 중`으로 표시하며 1/200, 2/30, 13/77 경계를 자동 검증한다.
+- 390×844에서 1~5위 한 줄 표시·overflow 없음·전체 100행/5,400px를 확인했다. 운영 JS `index-CZVkE4hv.js`와 CSS `index-CPhuSqY6.css`는 로컬/공개 SHA-256이 각각 일치한다. main push는 하지 않았다.
+
+2026-07-28 첫 화면 전국 통독 순위 구현 완료:
+- `settings/platformStats`의 기존 공개 읽기 경계를 재사용해 `national_ranking` 배열만 서버 권한 스크립트로 하루 한 번 갱신한다. 브라우저는 users를 읽지 않으며 공개 행은 `rank/churchName/maskedName/readCount/currentDay`뿐이다.
+- 성서교회 관리자 표의 203명을 화면 문맥 안에서 먼저 익명화하고 플랫폼 24명과 합산해 총 227명 중 상위 100명을 게시했다. 원래 이름·UID는 저장하거나 로그에 출력하지 않으며, 익명 후보는 브라우저가 읽을 수 없는 `platformInternal/nationalRankingSources`에만 보존한다.
+- 기존 09:30 일일 자동화가 성서교회 익명 후보 수집과 순위 병합을 수행한다. 수집 실패 때는 직전 비공개 후보를 보존하며 플랫폼 데이터 갱신을 계속한다. 무입력 재-preview에서 성서교회 203명·게시 100명·내용 차이 0을 확인했다.
+- 390×844에서 카드가 정확히 5행(270px)을 보이고 내부 목록만 216px 이동할 때 페이지 scrollY는 0이었다. 실제 100행 높이 5,400px와 `overflow-y:auto`도 다시 확인했다. 전체 validate(Deno 466/466)·build·diff-check 통과.
+- 사용자 배포 지시에 따라 순위 관련 변경만 깨끗한 임시 worktree에서 GitHub Pages로 운영 배포했다. 공개 HTML은 `index-1S-OKbFq.js`를 가리키며 로컬/공개 SHA-256 `ac67f448…ae65`가 일치한다. 공개 Firestore 원장도 100행·성서교회 100행·전원 가린 이름이며, 제거 요청 문구는 공개 번들에 없다. main push는 하지 않았다.
+
 2026-07-25 T132 최종 차단·운영 전환 완료:
 - T127 감사에서 운영 users 수는 기준선보다 증가했지만 RNKSV/배지/QA 작업 문서로 원인을 확인했고, 핵심 보안 불변식은 legacy talent 미이관 23건 외 모두 clean이었다. 23건을 updateTime precondition으로 백필한 뒤 미이관 0을 재확인했다.
 - writer 후보 30건은 legacy 브라우저 달란트 이관 1건 제거, 나머지 29건 제한 유지/서버 전용으로 판정했다. 상세표는 `review/T132_WRITER_DECISIONS_2026-07-25.md`.
@@ -423,6 +466,11 @@ export const UNAFFILIATED_CHURCH_NAME = '성경 읽는 사람들';
 2026-07-19 T137 카카오·구글 전용 로그인 완료:
 - 일반 성도·관리자 legacy 로그인 입구와 신규 관리자 이메일·비밀번호 등록을 UI에서 제거했다. 신규/기존 모두 첫 화면에서 카카오 또는 구글로 시작한다.
 - 기존 진도·달란트는 새 users 문서로 복사하지 않는다. 미등록 소셜 인증 직후 기존 성도 정보 또는 기존 관리자 이메일·비밀번호를 한 번 검증하고, legacy UID에 공급자를 연결한다. users 문서가 있는 Auth 계정은 삭제 금지이며 방금 만든 빈 소셜 Auth만 source-server 확인 뒤 정리한다.
+
+2026-07-30 성서교회 공개 통계·전국 순위 일일 동기화 재시도 결과:
+- 로컬 터미널에서 브라우저 브리지를 신뢰하지 못해 관리자 화면을 다시 읽지 못했다. 기존 로그인 세션 확인이 불가하므로 성서교회 단계는 실패로만 기록하고 후보는 비우지 않았다.
+- `node scripts/sync-national-reading-ranking.mjs` 와 `npm run preview:national-ranking` 는 Firebase CLI 자격증명 만료로 중단되었다. 다음 작업자는 `firebase login --reauth` 후 동일 명령을 다시 실행해야 한다.
+- 이번 턴에서는 Firestore write를 수행하지 않았다.
 - Google 동일 이메일 충돌은 pending credential로 회수하고, Kakao는 legacy UID 로그인 뒤 기존 redirect link 흐름을 재사용한다. 오류 후에는 처음 화면 재시작 경로를 제공한다.
 - 390×844 로컬 실제 화면에서 소셜 전용 첫 화면과 관리자 소셜 등록 강제를 확인했다. 전체 validate(platform-api 446/446)·build·diff-check 통과. 실제 OAuth 승인/운영 legacy 연결은 계정 상태를 바꾸므로 미실행했고 배포·push 없음. T132 날짜·승인 게이트는 그대로다.
 

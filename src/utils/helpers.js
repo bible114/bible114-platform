@@ -4,7 +4,10 @@ import {
     migratePersonalTalentWallet as migratePersonalTalentWalletViaApi,
     PlatformApiError,
 } from './platformApi';
-import { getYearCompletedRounds } from './annualReading.js';
+import {
+    getDaysRead,
+    getPlanProgressRate,
+} from './readingProgress.js';
 
 export { titleMatchesDate };
 export { parseChapters, mapToStandardLabel, parseAndMapChapters } from './dailyVideoChapters.js';
@@ -20,10 +23,7 @@ export const makeUnaffiliatedIdentity = (birthdate, phone4) =>
 
 // currentDay는 "다음에 읽을 날"이다. 누적 진행/랭킹처럼 실제로 읽은 날 수를
 // 보여줄 때만 이 값을 사용하고, 본문 DAY·달리기 위치에는 currentDay를 그대로 쓴다.
-export const getDaysRead = (member) => (
-    getYearCompletedRounds(member) * 365
-    + Math.max(0, (member?.currentDay || 1) - 1)
-);
+export { getDaysRead, getPlanProgressRate };
 
 // T132에서 운영 미이관 계정을 사전 백필하고 브라우저 이관 writer를 제거했다.
 // 기존 호출부는 호환을 위해 유지하되 운영 데이터를 쓰지 않는다.

@@ -191,14 +191,22 @@ assert.match(authHook, /consentSummary: buildSignupConsentSummary\(signupConsent
 // 일반 교인·개인 계정 가입의 기존 서버 authority 계약도 계속 유지되어야 한다.
 assert.match(authHook, /completeMemberSignupViaApi\(\{[\s\S]*churchId,[\s\S]*entryCode:\s*churchId === UNAFFILIATED_CHURCH_ID \|\| joinTicket \? '' : churchCode,[\s\S]*joinTicket:\s*churchId === UNAFFILIATED_CHURCH_ID \? '' : joinTicket,[\s\S]*name:\s*newUser\.name,[\s\S]*birthdate:\s*newUser\.birthdate,[\s\S]*guestProgress:/);
 assert.doesNotMatch(authHook, /collection\('settings'\)\.doc\('platformStats'\)/);
-assert.match(authHook, /const migrateGuest = shouldMigrateGuestState\(\);[\s\S]*if \(migrateGuest\)[\s\S]*migratedAt/);
-assert.match(authHook, /finishMemberSignup\(\{\s*user:\s*cred\.user,[\s\S]*churchCode,[\s\S]*joinTicket,[\s\S]*signupConsent\s*\}\)/);
 assert.match(
-    firestoreRules,
-    /request\.resource\.data\.role == 'member'[\s\S]*request\.resource\.data\.churchId == 'unaffiliated_v1'[\s\S]*accountType', null\) != 'personal'/,
-    '개인 계정의 users 직접 create는 닫고 기존 무소속 교인 예외만 남겨야 한다.',
+    authHook,
+    /const migrateGuest = shouldMigrateGuestState\(\);[\s\S]*if \(result\.created === true && migrateGuest\)[\s\S]*migratedAt/,
+    '삭제 계정 재활성화에서는 보존되지 않은 게스트 진도를 이관 완료로 표시하면 안 된다.',
 );
-assert.doesNotMatch(firestoreRules, /request\.resource\.data\.accountType == 'personal'[\s\S]*request\.resource\.data\.churchId == null/);
+assert.match(authHook, /finishMemberSignup\(\{\s*user:\s*cred\.user,[\s\S]*churchCode,[\s\S]*joinTicket,[\s\S]*signupConsent\s*\}\)/);
+const signupUsersRuleStart = firestoreRules.indexOf('match /users/{uid}');
+const signupUsersCreateStart = firestoreRules.indexOf('allow create:', signupUsersRuleStart);
+const signupUsersCreateEnd = firestoreRules.indexOf('allow update:', signupUsersCreateStart);
+const signupUsersCreateRule = firestoreRules.slice(signupUsersCreateStart, signupUsersCreateEnd);
+assert.match(
+    signupUsersCreateRule,
+    /allow create: if false;/,
+    '개인·공동체·무소속 users 최초 생성은 모두 검증된 서버 가입 action만 수행해야 한다.',
+);
+assert.doesNotMatch(signupUsersCreateRule, /accountType|churchId|role/);
 assert.match(authHook, /completePersonalSignupViaApi\(\{[\s\S]*authProvider:[\s\S]*guestProgress:/);
 assert.doesNotMatch(authHook, /transaction\.set\(rosterRef,[\s\S]*transaction\.set\(userRef, newUser\)/);
 
@@ -345,17 +353,14 @@ assert.match(adminSignupCoreTest, /동의 정책 버전·source·성인 확인·
 assert.match(adminSignupServiceTest, /공동체·관리자·private·두 디렉토리·원장을 한 transaction으로 생성한다/);
 assert.match(adminSignupServiceTest, /응답 유실 뒤 새 UUID도 canonical 기존 churchAdmin으로 수렴한다/);
 
-// 브라우저 규칙에는 무소속 교인 호환 create만 남고 관리자·공동체·보호 문서는 닫혀 있어야 한다.
+// 모든 최초 users 문서는 서버 가입 action만 만들고 관리자·공동체·보호 문서는 닫혀 있어야 한다.
 const usersRuleStart = firestoreRules.indexOf('match /users/{uid}');
 const usersCreateStart = firestoreRules.indexOf('allow create:', usersRuleStart);
-const usersCreateEnd = firestoreRules.indexOf('// 본인 수정', usersCreateStart);
+const usersCreateEnd = firestoreRules.indexOf('// 본인은', usersCreateStart);
 assert.ok(usersRuleStart >= 0 && usersCreateStart > usersRuleStart && usersCreateEnd > usersCreateStart);
 const usersCreateRule = firestoreRules.slice(usersCreateStart, usersCreateEnd);
-assert.match(
-    usersCreateRule,
-    /request\.resource\.data\.role == 'member'[\s\S]*request\.resource\.data\.churchId == 'unaffiliated_v1'/,
-    '기존 무소속 교인 호환 create만 남아야 한다.',
-);
+assert.match(usersCreateRule, /allow create: if false;/,
+    'users 최초 생성은 서버 가입 action 전용이어야 한다.');
 assert.doesNotMatch(usersCreateRule, /churchAdmin/, '브라우저 churchAdmin users create 권한을 다시 열면 안 된다.');
 const churchRuleStart = firestoreRules.indexOf('match /churches/{churchId}');
 const churchPrivateRuleStart = firestoreRules.indexOf('match /private/{privateId}', churchRuleStart);
@@ -376,8 +381,8 @@ assert.match(
 );
 assert.match(
     firestoreRules,
-    /match \/private\/\{privateId\} \{[\s\S]*allow read, write: if privateId != 'consent'/,
-    '포괄 private 규칙이 consent 전용 제한을 우회하면 안 된다.',
+    /match \/private\/\{privateId\} \{[\s\S]*allow read: if privateId == 'auth'[\s\S]*allow create:[\s\S]*createMatchesLegacyUser[\s\S]*allow update:[\s\S]*updateMatchesLegacyUser[\s\S]*allow delete: if false;/,
+    'auth 자격증명은 제한된 가입·레거시 이관 외 브라우저 수정·삭제를 허용하면 안 된다.',
 );
 assert.match(authHook, /인증 계정은 만들어졌지만 공동체 정보 저장이 완료되지 않았습니다/);
 assert.match(authHook, /로그인 상태가 변경되어 자동 재개할 수 없습니다/);

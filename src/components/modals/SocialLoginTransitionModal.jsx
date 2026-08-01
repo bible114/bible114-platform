@@ -16,16 +16,43 @@ const SocialLoginTransitionModal = ({
 
     useEffect(() => {
         if (!show) return undefined;
+        const previouslyFocused = document.activeElement;
         const previousBodyOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
         const handleKeyDown = event => {
-            if (event.key === 'Escape') onClose();
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                onClose();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+            const focusable = dialogRef.current?.querySelectorAll(
+                'button:not([disabled]), a[href], summary, input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            );
+            if (!focusable?.length) {
+                event.preventDefault();
+                dialogRef.current?.focus();
+                return;
+            }
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (!dialogRef.current?.contains(document.activeElement)) {
+                event.preventDefault();
+                (event.shiftKey ? last : first).focus();
+            } else if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
         };
         document.addEventListener('keydown', handleKeyDown);
-        dialogRef.current?.focus();
+        dialogRef.current?.querySelector('button:not([disabled])')?.focus();
         return () => {
             document.removeEventListener('keydown', handleKeyDown);
             document.body.style.overflow = previousBodyOverflow;
+            previouslyFocused?.focus?.();
         };
     }, [onClose, show]);
 

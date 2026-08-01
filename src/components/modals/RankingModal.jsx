@@ -2,7 +2,7 @@ import React from 'react';
 import Icon from '../Icon';
 import { DEFAULT_DEPARTMENTS } from '../../data/departments';
 import { belongsToSubgroup } from '../../utils/memberships';
-import { getDaysRead } from '../../utils/helpers';
+import { getDaysRead, getPlanProgressRate } from '../../utils/helpers';
 import { getYearCompletedRounds } from '../../utils/annualReading.js';
 
 const membershipMatches = (left, right) => {
@@ -42,7 +42,7 @@ const RankingModal = ({
             {flatMembers.map((member, index) => {
                 const isMe = member.uid === currentUser?.uid;
                 const daysRead = getDaysRead(member);
-                const progressRate = Math.min(100, Math.round((daysRead / 365) * 100));
+                const progressRate = Math.round(getPlanProgressRate(member));
                 return (
                     <div key={member.uid} className={`rounded-xl border p-3 ${isMe ? 'border-blue-200 bg-blue-50' : 'border-slate-100 bg-slate-50'}`}>
                         <div className="flex items-center justify-between gap-3">
@@ -143,7 +143,9 @@ const RankingModal = ({
             return bTotalDays - aTotalDays;
         });
         const todayStr = new Date().toDateString();
-        const avgDay = members.length > 0 ? Math.round(members.reduce((sum, m) => sum + (m.currentDay || 0), 0) / members.length) : 0;
+        const avgProgress = members.length > 0
+            ? Math.round(members.reduce((sum, member) => sum + getPlanProgressRate(member), 0) / members.length)
+            : 0;
         const readToday = members.filter(m => m.lastReadDate === todayStr).length;
 
         return (
@@ -156,14 +158,14 @@ const RankingModal = ({
                     </div>
                     <div className="grid grid-cols-3 gap-2 mb-4">
                         <div className="bg-blue-50 p-3 rounded-xl text-center border border-blue-100"><p className="text-xl font-bold text-blue-600">{members.length}</p><p className="text-[10px] text-slate-500">전체 인원</p></div>
-                        <div className="bg-green-50 p-3 rounded-xl text-center border border-green-100"><p className="text-xl font-bold text-green-600">{avgDay}</p><p className="text-[10px] text-slate-500">평균 Day</p></div>
+                        <div className="bg-green-50 p-3 rounded-xl text-center border border-green-100"><p className="text-xl font-bold text-green-600">{avgProgress}%</p><p className="text-[10px] text-slate-500">평균 진행률</p></div>
                         <div className="bg-orange-50 p-3 rounded-xl text-center border border-orange-100"><p className="text-xl font-bold text-orange-600">{readToday}</p><p className="text-[10px] text-slate-500">오늘 읽음</p></div>
                     </div>
                     <div className="flex-1 overflow-y-auto space-y-2 pr-2">
                         {members.length > 0 ? members.map((member, idx) => {
                             const isMe = member.uid === currentUser.uid;
                             const readTodayFlag = member.lastReadDate === todayStr;
-                            const progressRate = Math.round((member.currentDay / 365) * 100);
+                            const progressRate = Math.round(getPlanProgressRate(member));
                             return (
                                 <div key={member.uid} className={`p-3 rounded-xl border ${isMe ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-100'}`}>
                                     <div className="flex items-center justify-between mb-2">

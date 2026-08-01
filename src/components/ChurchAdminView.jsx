@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { auth, db, firebase } from '../utils/firebase';
 import ChurchAdminTutorial from './ChurchAdminTutorial';
 import { fetchMemberCredentials } from '../utils/memberCredentials';
-import { setMemberPasswordByAdmin } from '../utils/adminPassword';
+import { adminPasswordErrorMessage, setMemberPasswordByAdmin } from '../utils/adminPassword';
 import { calculateSubgroupStats, computeAtRisk } from '../utils/statsUtils';
 import { belongsToDepartment, getMembershipList } from '../utils/memberships';
 import { downloadCSV } from '../utils/exportUtils';
@@ -18,7 +18,12 @@ import {
 } from './admin';
 import QRCode from 'qrcode';
 import { SITE_URL, UNAFFILIATED_CHURCH_ID } from '../data/constants';
-import { mergePrimaryAndRosterMembers, rosterSnapshotToMembers } from '../utils/rosterMembers';
+import {
+    hasVerifiedCommunityProgress,
+    mergeCanonicalProgressIntoRosterMembers,
+    mergePrimaryAndRosterMembers,
+    rosterSnapshotToMembers,
+} from '../utils/rosterMembers';
 import { getDaysRead } from '../utils/helpers';
 import { getYearCompletedRounds } from '../utils/annualReading.js';
 import OrganizationTab from './churchAdmin/OrganizationTab';
@@ -56,6 +61,7 @@ import {
     adminRefundPurchase,
     createRequestId,
     rotateChurchAccessCode,
+    setMemberActiveState,
 } from '../utils/platformApi';
 import { reconcileStoredRequestIds } from '../utils/adminTalentRequests';
 
@@ -229,6 +235,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const churchCodeActionRef = useRef(0);
     const churchCodeMountedRef = useRef(true);
     const currentUserRef = useRef(currentUser);
+    const communityProgressRequestRef = useRef(0);
     currentUserRef.current = currentUser;
 
     useEffect(() => {
@@ -236,6 +243,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         return () => {
             churchCodeMountedRef.current = false;
             churchCodeActionRef.current += 1;
+            communityProgressRequestRef.current += 1;
             pendingChurchCodeRequestRef.current = null;
         };
     }, []);
@@ -281,6 +289,9 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     }, [currentUser?.churchId]);
 
     const loadData = async () => {
+        const progressRequestId = ++communityProgressRequestRef.current;
+        const requestedChurchId = currentUser.churchId;
+        const requestedUid = currentUser.uid;
         setLoading(true);
         setLoadError('');
         try {
@@ -307,6 +318,29 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             ).filter(member => !member.isDeleted);
             setMembers(activeMembers);
             setDeletedMembers(loadedMembers.filter(m => m.isDeleted));
+            if (activeMembers.some(member => member.isExternalOrgMember)) {
+                void import('../utils/capacityApi.js')
+                    .then(({ getCommunityProgress }) => getCommunityProgress(requestedChurchId, {
+                        expectedUid: requestedUid,
+                        timeoutMs: 30_000,
+                    }))
+                    .then(response => {
+                        if (communityProgressRequestRef.current !== progressRequestId
+                            || currentUserRef.current?.uid !== requestedUid
+                            || currentUserRef.current?.churchId !== requestedChurchId) return;
+                        setMembers(current => mergeCanonicalProgressIntoRosterMembers(
+                            current,
+                            response.members
+                        ));
+                        setSelectedMember(current => current
+                            ? mergeCanonicalProgressIntoRosterMembers([current], response.members)[0]
+                            : current);
+                    })
+                    .catch(error => {
+                        if (communityProgressRequestRef.current !== progressRequestId) return;
+                        console.error('외부 명부 진행 동기화 실패:', error);
+                    });
+            }
             if (announcementDoc.exists) {
                 const data = announcementDoc.data() || {};
                 setAnnouncement({
@@ -473,13 +507,16 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const executeDeleteMember = async (member) => {
         if (member?.isExternalOrgMember) return;
         try {
+            const result = await setMemberActiveState(
+                { memberUid: member.uid, active: false },
+                { expectedUid: currentUser.uid }
+            );
             const deletedData = {
                 isDeleted: true,
-                deletedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                deletedBy: currentUser.uid,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                deletedAt: result.deletedAt,
+                deletedBy: result.deletedBy,
+                platformStatsReaderCounted: result.counted,
             };
-            await db.collection('users').doc(member.uid).set(deletedData, { merge: true });
             setMembers(prev => prev.filter(m => m.uid !== member.uid));
             setDeletedMembers(prev => [{ ...member, ...deletedData }, ...prev]);
             if (editing?.uid === member.uid) setEditing(null);
@@ -487,7 +524,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             toast.success(`${member.name}님을 삭제 처리했습니다.`);
         } catch (e) {
             console.error(e);
-            toast.error('삭제 처리에 실패했습니다.');
+            toast.error(e?.message || '삭제 처리에 실패했습니다.');
         }
     };
 
@@ -503,18 +540,22 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const executeRestoreMember = async (member) => {
         if (member?.isExternalOrgMember) return;
         try {
-            await db.collection('users').doc(member.uid).set({
+            const result = await setMemberActiveState(
+                { memberUid: member.uid, active: true },
+                { expectedUid: currentUser.uid }
+            );
+            setDeletedMembers(prev => prev.filter(m => m.uid !== member.uid));
+            setMembers(prev => [{
+                ...member,
                 isDeleted: false,
                 deletedAt: null,
                 deletedBy: null,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true });
-            setDeletedMembers(prev => prev.filter(m => m.uid !== member.uid));
-            setMembers(prev => [{ ...member, isDeleted: false, deletedAt: null, deletedBy: null }, ...prev]);
+                platformStatsReaderCounted: result.counted,
+            }, ...prev]);
             toast.success(`${member.name}님을 복원했습니다.`);
         } catch (e) {
             console.error(e);
-            toast.error('복원에 실패했습니다.');
+            toast.error(e?.message || '복원에 실패했습니다.');
         }
     };
 
@@ -833,28 +874,94 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
     const resetPasswordsForMembers = async (targetMembers) => {
         const updates = targetMembers.map(member => ({ member, password: generatePassword() }));
-        const resetOne = async ({ member, password }) => {
-            await setMemberPasswordByAdmin(member.uid, password);
-        };
+        const settled = [];
         for (let i = 0; i < updates.length; i += 10) {
-            await Promise.all(updates.slice(i, i + 10).map(resetOne));
+            const chunk = updates.slice(i, i + 10);
+            const chunkResults = await Promise.allSettled(
+                chunk.map(async update => {
+                    await setMemberPasswordByAdmin(update.member.uid, update.password);
+                    return update;
+                })
+            );
+            settled.push(...chunkResults.map((result, index) => ({
+                result,
+                update: chunk[index],
+            })));
         }
+        const succeeded = settled.flatMap(({ result }) => (
+            result.status === 'fulfilled' ? [result.value] : []
+        ));
+        const failed = settled.flatMap(({ result, update }) => (
+            result.status === 'rejected' ? [{ update, error: result.reason }] : []
+        ));
+        const succeededByUid = new Map(succeeded.map(update => [update.member.uid, update]));
+        const recoveryRequiredUids = new Set(
+            failed
+                .filter(({ error }) => error?.code === 'PARTIAL_UPDATE')
+                .map(({ update }) => update.member.uid)
+        );
         setMembers(prev => prev.map(m => {
-            const found = updates.find(u => u.member.uid === m.uid);
-            return found ? { ...m, password: found.password, passwordResetRequired: true } : m;
+            const found = succeededByUid.get(m.uid);
+            if (found) {
+                return {
+                    ...m,
+                    password: found.password,
+                    passwordResetRequired: true,
+                    passwordRecoveryRequired: false,
+                };
+            }
+            return recoveryRequiredUids.has(m.uid)
+                ? { ...m, passwordRecoveryRequired: true }
+                : m;
         }));
         // 상세 패널이 열려 있으면 새 비밀번호가 바로 보이도록 갱신하고, 조회 캐시는 비운다.
         setRevealedPasswords(prev => {
             const next = { ...prev };
-            updates.forEach(u => { delete next[u.member.uid]; });
+            succeeded.forEach(u => { delete next[u.member.uid]; });
             return next;
         });
         setSelectedMember(prev => {
             if (!prev) return prev;
-            const found = updates.find(u => u.member.uid === prev.uid);
-            return found ? { ...prev, password: found.password } : prev;
+            const found = succeededByUid.get(prev.uid);
+            if (found) {
+                return {
+                    ...prev,
+                    password: found.password,
+                    passwordRecoveryRequired: false,
+                };
+            }
+            return recoveryRequiredUids.has(prev.uid)
+                ? { ...prev, passwordRecoveryRequired: true }
+                : prev;
         });
-        toast.success(`${targetMembers.length}명의 실제 로그인 비밀번호를 변경했습니다.`);
+        const failedNames = failed
+            .map(({ update }) => update.member.name || '이름 없음')
+            .slice(0, 5)
+            .join(', ');
+        failed.forEach(({ error }) => {
+            console.error('회원 비밀번호 변경 실패:', error?.code || error?.message || 'UNKNOWN');
+        });
+        const partialUpdate = failed.find(({ error }) => error?.code === 'PARTIAL_UPDATE');
+        if (partialUpdate) {
+            toast.error(
+                `${succeeded.length}명 성공, ${failed.length}명 실패. 일부 반영 가능성이 있어 `
+                + `재시도하지 말고 즉시 플랫폼 관리자에게 복구를 요청하세요.`
+                + (failedNames ? ` 실패: ${failedNames}` : '')
+            );
+        } else if (failed.length > 0) {
+            const firstMessage = adminPasswordErrorMessage(failed[0].error);
+            toast.warning(
+                `${succeeded.length}명 성공, ${failed.length}명 실패. ${firstMessage}`
+                + (failedNames ? ` 실패: ${failedNames}` : '')
+            );
+        } else {
+            toast.success(`${succeeded.length}명의 실제 로그인 비밀번호를 변경했습니다.`);
+        }
+        return {
+            allSucceeded: failed.length === 0,
+            succeededUids: succeeded.map(update => update.member.uid),
+            retryUnsafe: Boolean(partialUpdate),
+        };
     };
 
     const closeMemberDetail = () => {
@@ -905,8 +1012,21 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             if (action.type === 'bulkSubgroup') {
                 shouldRunAfter = await applySubgroupToMembers(action.members, action.commId, action.subId);
             }
-            if (action.type === 'bulkPassword') await resetPasswordsForMembers(action.members);
-            if (action.type === 'singlePassword') await resetPasswordsForMembers([action.member]);
+            if (action.type === 'bulkPassword') {
+                const result = await resetPasswordsForMembers(action.members);
+                shouldRunAfter = result.allSucceeded;
+                if (!result.allSucceeded && result.retryUnsafe) {
+                    // 반영 상태가 모호한 대상이 하나라도 있으면 같은 묶음을 다시 실행하지 못하게 한다.
+                    action.after?.();
+                } else if (!result.allSucceeded) {
+                    // 성공한 회원은 선택에서 제거해 재시도 때 비밀번호가 다시 회전하지 않게 한다.
+                    action.afterSuccess?.(result.succeededUids);
+                }
+            }
+            if (action.type === 'singlePassword') {
+                const result = await resetPasswordsForMembers([action.member]);
+                shouldRunAfter = result.allSucceeded;
+            }
             if (action.type === 'deleteShopItem') await executeDeleteShopItem(action.item);
             if (action.type === 'deliverPurchase') await updatePurchaseStatus(action.purchase, 'delivered');
             if (action.type === 'refundPurchase') await updatePurchaseStatus(action.purchase, 'cancelled');
@@ -1719,6 +1839,8 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const yesterdayStr = yesterday.toDateString();
 
     const getTotalProgressDay = getDaysRead;
+    const progressMembers = members.filter(hasVerifiedCommunityProgress);
+    const unsyncedProgressCount = members.length - progressMembers.length;
     const daysSinceRead = (dateStr) => {
         if (!dateStr) return null;
         const d = new Date(dateStr);
@@ -1731,21 +1853,24 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
     const dashboardStats = (() => {
         const total = members.length;
-        const readToday = members.filter(m => m.lastReadDate === todayStr).length;
-        const readYesterday = members.filter(m => m.lastReadDate === yesterdayStr).length;
-        const recent7 = members.filter(m => {
+        const progressTotal = progressMembers.length;
+        const readToday = progressMembers.filter(m => m.lastReadDate === todayStr).length;
+        const readYesterday = progressMembers.filter(m => m.lastReadDate === yesterdayStr).length;
+        const recent7 = progressMembers.filter(m => {
             const days = daysSinceRead(m.lastReadDate);
             return days !== null && days >= 0 && days <= 6;
         }).length;
-        const avgDay = total > 0
-            ? Math.round(members.reduce((sum, m) => sum + getTotalProgressDay(m), 0) / total)
+        const avgDay = progressTotal > 0
+            ? Math.round(progressMembers.reduce((sum, m) => sum + getTotalProgressDay(m), 0) / progressTotal)
             : 0;
         return {
             total,
+            progressTotal,
+            unsyncedProgressCount,
             readToday,
             readYesterday,
             readDelta: readToday - readYesterday,
-            recent7Rate: total > 0 ? Math.round((recent7 / total) * 100) : 0,
+            recent7Rate: progressTotal > 0 ? Math.round((recent7 / progressTotal) * 100) : 0,
             avgDay,
         };
     })();
@@ -1766,28 +1891,31 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const departmentCards = Object.values(departmentStats).map(dept => {
         // 한 사람이 같은 부서 안의 여러 소그룹에 속해도 부서 단위 지표는 uid당 한 번만 센다.
         const departmentMembers = members.filter(member => belongsToDepartment(member, dept.departmentId));
+        const departmentProgressMembers = departmentMembers.filter(hasVerifiedCommunityProgress);
         const totalCount = departmentMembers.length;
-        const readCount = departmentMembers.filter(member => member.lastReadDate === todayStr).length;
-        const avgDay = totalCount > 0
-            ? Math.round(departmentMembers.reduce((sum, member) => sum + getTotalProgressDay(member), 0) / totalCount)
+        const progressMemberCount = departmentProgressMembers.length;
+        const readCount = departmentProgressMembers.filter(member => member.lastReadDate === todayStr).length;
+        const avgDay = progressMemberCount > 0
+            ? Math.round(departmentProgressMembers.reduce((sum, member) => sum + getTotalProgressDay(member), 0) / progressMemberCount)
             : 0;
         return {
             ...dept,
             totalCount,
+            progressMemberCount,
             readCount,
-            rate: totalCount > 0 ? Math.round((readCount / totalCount) * 100) : 0,
+            rate: progressMemberCount > 0 ? Math.round((readCount / progressMemberCount) * 100) : 0,
             avgDay,
         };
     });
 
-    const atRisk = computeAtRisk(members, todayStr);
-    const completedReaders = [...members]
+    const atRisk = computeAtRisk(progressMembers, todayStr);
+    const completedReaders = [...progressMembers]
         .filter(member => getYearCompletedRounds(member) > 0)
         .sort((a, b) => {
             const countDiff = getYearCompletedRounds(b) - getYearCompletedRounds(a);
             return countDiff || (a.name || '').localeCompare(b.name || '', 'ko-KR');
         });
-    const streakTop = [...members]
+    const streakTop = [...progressMembers]
         .filter(m => (m.streak || 0) > 0)
         .sort((a, b) => (b.streak || 0) - (a.streak || 0))
         .slice(0, 5);
@@ -1795,6 +1923,9 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const sortedMembers = [...members].sort((a, b) => {
         if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '', 'ko-KR');
         if (sortBy === 'day') {
+            const aVerified = hasVerifiedCommunityProgress(a);
+            const bVerified = hasVerifiedCommunityProgress(b);
+            if (aVerified !== bVerified) return aVerified ? -1 : 1;
             const aDay = getDaysRead(a);
             const bDay = getDaysRead(b);
             return bDay - aDay;
@@ -1807,11 +1938,12 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         const departmentMatch = memberDepartmentFilter === 'all'
             || belongsToDepartment(member, memberDepartmentFilter);
         const days = daysSinceRead(member.lastReadDate);
+        const progressVerified = hasVerifiedCommunityProgress(member);
         const readMatch =
             memberReadFilter === 'all' ||
-            (memberReadFilter === 'today' && member.lastReadDate === todayStr) ||
-            (memberReadFilter === 'unread' && member.lastReadDate !== todayStr) ||
-            (memberReadFilter === 'risk7' && (days === null || days >= 7));
+            (progressVerified && memberReadFilter === 'today' && member.lastReadDate === todayStr) ||
+            (progressVerified && memberReadFilter === 'unread' && member.lastReadDate !== todayStr) ||
+            (progressVerified && memberReadFilter === 'risk7' && (days === null || days >= 7));
         return departmentMatch && readMatch;
     });
 
@@ -1852,8 +1984,10 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         {
             key: 'progress',
             header: '진행',
-            render: m => `DAY ${getTotalProgressDay(m)}`,
-            sortValue: getTotalProgressDay,
+            render: m => hasVerifiedCommunityProgress(m)
+                ? `DAY ${getTotalProgressDay(m)}`
+                : <span className="text-xs font-black text-amber-600">진행 동기화 필요</span>,
+            sortValue: m => hasVerifiedCommunityProgress(m) ? getTotalProgressDay(m) : -1,
         },
         {
             key: 'streak',
@@ -2075,6 +2209,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                         </button>
                         <button
                             type="button"
+                            disabled={selectedMember.passwordRecoveryRequired === true}
                             onClick={() => setConfirmAction({
                                 type: 'singlePassword',
                                 member: selectedMember,
@@ -2083,9 +2218,11 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                 danger: true,
                                 confirmLabel: '초기화',
                             })}
-                            className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white"
+                            className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-amber-500"
                         >
-                            비밀번호 초기화
+                            {selectedMember.passwordRecoveryRequired
+                                ? '플랫폼 관리자 복구 필요'
+                                : '비밀번호 초기화'}
                         </button>
                         <button
                             type="button"
@@ -2107,13 +2244,28 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                         <div className="grid grid-cols-2 gap-3">
                             <div className="rounded-2xl bg-slate-50 p-4">
                                 <p className="text-xs font-black text-slate-400">진행</p>
-                                <p className="mt-1 text-2xl font-black text-slate-900">DAY {getTotalProgressDay(selectedMember)}</p>
-                                <p className="mt-1 text-xs font-bold text-slate-400">{selectedMember.readCount || 1}독째</p>
+                                {hasVerifiedCommunityProgress(selectedMember) ? (
+                                    <>
+                                        <p className="mt-1 text-2xl font-black text-slate-900">DAY {getTotalProgressDay(selectedMember)}</p>
+                                        <p className="mt-1 text-xs font-bold text-slate-400">{selectedMember.readCount || 1}독째</p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="mt-1 text-sm font-black text-amber-600">진행 동기화 필요</p>
+                                        <p className="mt-1 text-xs font-bold text-slate-400">권위 진행판을 확인한 뒤 표시됩니다.</p>
+                                    </>
+                                )}
                             </div>
                             <div className="rounded-2xl bg-slate-50 p-4">
                                 <p className="text-xs font-black text-slate-400">점수/연속</p>
-                                <p className="mt-1 text-2xl font-black text-slate-900">{selectedMember.score || 0}점</p>
-                                <p className="mt-1 text-xs font-bold text-slate-400">{selectedMember.streak || 0}일 연속</p>
+                                <p className="mt-1 text-2xl font-black text-slate-900">
+                                    {hasVerifiedCommunityProgress(selectedMember) ? `${selectedMember.score || 0}점` : '-'}
+                                </p>
+                                <p className="mt-1 text-xs font-bold text-slate-400">
+                                    {hasVerifiedCommunityProgress(selectedMember)
+                                        ? `${selectedMember.streak || 0}일 연속`
+                                        : '동기화 후 표시'}
+                                </p>
                             </div>
                         </div>
 
@@ -2121,10 +2273,20 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                             <div className="flex items-center justify-between gap-3">
                                 <div>
                                     <p className="text-sm font-black text-slate-800">최근 읽기 상태</p>
-                                    <p className="text-xs font-bold text-slate-400">마지막 읽기: {formatReadDate(selectedMember.lastReadDate)}</p>
+                                    <p className="text-xs font-bold text-slate-400">
+                                        {hasVerifiedCommunityProgress(selectedMember)
+                                            ? `마지막 읽기: ${formatReadDate(selectedMember.lastReadDate)}`
+                                            : '진행 동기화 필요'}
+                                    </p>
                                 </div>
-                                <span className={`rounded-full px-3 py-1 text-xs font-black ${selectedMember.lastReadDate === todayStr ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                                    {selectedMember.lastReadDate === todayStr ? '오늘 읽음' : '오늘 미독'}
+                                <span className={`rounded-full px-3 py-1 text-xs font-black ${!hasVerifiedCommunityProgress(selectedMember)
+                                    ? 'bg-amber-50 text-amber-700'
+                                    : selectedMember.lastReadDate === todayStr
+                                    ? 'bg-green-50 text-green-700'
+                                    : 'bg-slate-100 text-slate-500'}`}>
+                                    {!hasVerifiedCommunityProgress(selectedMember)
+                                        ? '확인 필요'
+                                        : selectedMember.lastReadDate === todayStr ? '오늘 읽음' : '오늘 미독'}
                                 </span>
                             </div>
                         </div>

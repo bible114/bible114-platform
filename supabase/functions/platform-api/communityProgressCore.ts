@@ -1,12 +1,22 @@
 const MAX_TEXT = 120;
-export const COMMUNITY_PROGRESS_SCHEMA_VERSION = 1;
+export const COMMUNITY_PROGRESS_SCHEMA_VERSION = 2;
 export const COMMUNITY_PROGRESS_SHARD_COUNT = 8;
+const COMMUNITY_PROGRESS_PLAN_IDS = new Set([
+  "1year_sequential",
+  "1year_revised",
+  "1year_new",
+  "nt_new",
+  "readable_revised",
+  "readable_new",
+]);
 
 type UnknownRecord = Record<string, unknown>;
 
 export type CommunityProgressMember = {
   uid: string;
   name: string;
+  planId: string;
+  fixtureType: "reading-badge-test" | null;
   currentDay: number;
   readCount: number;
   readingYear: number | null;
@@ -30,6 +40,11 @@ export type CommunityProgressMember = {
   }>;
 };
 
+export type CommunityProgressIdentity = Pick<
+  CommunityProgressMember,
+  "planId" | "fixtureType"
+>;
+
 const text = (value: unknown, fallback = "") => {
   if (typeof value !== "string") return fallback;
   const normalized = value.trim();
@@ -42,6 +57,18 @@ const text = (value: unknown, fallback = "") => {
 const optionalText = (value: unknown) => text(value) || null;
 const nonNegative = (value: unknown, fallback = 0) =>
   Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : fallback;
+
+export const projectCommunityProgressIdentity = (
+  value: UnknownRecord,
+): CommunityProgressIdentity => ({
+  planId: typeof value.planId === "string" &&
+      COMMUNITY_PROGRESS_PLAN_IDS.has(value.planId)
+    ? value.planId
+    : "1year_revised",
+  fixtureType: value.fixtureType === "reading-badge-test"
+    ? "reading-badge-test"
+    : null,
+});
 
 const memberships = (
   value: unknown,
@@ -67,10 +94,17 @@ export const projectCommunityProgressMember = (
 ): CommunityProgressMember | null => {
   const normalizedUid = text(uid);
   if (!normalizedUid || value.isDeleted === true) return null;
+  const identity = projectCommunityProgressIdentity(value);
+  const totalDays = identity.planId === "readable_revised" ||
+      identity.planId === "readable_new"
+    ? 60
+    : 365;
+  const storedDay = Math.max(1, nonNegative(value.currentDay, 1));
   return {
     uid: normalizedUid,
     name: text(value.name, "이름 없음"),
-    currentDay: Math.min(365, Math.max(1, nonNegative(value.currentDay, 1))),
+    ...identity,
+    currentDay: ((storedDay - 1) % totalDays) + 1,
     readCount: Math.max(1, nonNegative(value.readCount, 1)),
     readingYear: Number.isSafeInteger(value.readingYear) &&
         Number(value.readingYear) >= 2000
@@ -103,6 +137,31 @@ export const projectCommunityProgressMember = (
     subgroupName: optionalText(value.subgroupName),
     extraMemberships: memberships(value.extraMemberships),
   };
+};
+
+/**
+ * Roster documents carry the member's community placement and mirrored reading
+ * progress, while the root user document is authoritative for plan/fixture
+ * identity and active state.
+ */
+export const projectRosterCommunityProgressMember = (
+  uid: string,
+  roster: UnknownRecord,
+  sourceUser: UnknownRecord | null,
+): CommunityProgressMember | null => {
+  if (!sourceUser || sourceUser.isDeleted === true) return null;
+  return projectCommunityProgressMember(uid, {
+    ...roster,
+    planId: sourceUser.planId,
+    fixtureType: sourceUser.fixtureType,
+  });
+};
+
+export const legacyCommunityProgressMember = (
+  member: CommunityProgressMember,
+): Omit<CommunityProgressMember, "planId" | "fixtureType"> => {
+  const { planId: _planId, fixtureType: _fixtureType, ...legacy } = member;
+  return legacy;
 };
 
 export const mergeCommunityProgressMembers = (

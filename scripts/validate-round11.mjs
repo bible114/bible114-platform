@@ -66,7 +66,9 @@ assert.match(membership, /기본으로 설정/);
 assert.match(membership, /현재 보고 있음/);
 assert.doesNotMatch(membership, /🏆 순위/);
 assert.match(membership, /혼자 읽기 모임으로 돌아가기/);
-assert.match(department, /const orgId = orgIdOverride \|\| currentUser\?\.churchId[\s\S]*orgId === UNAFFILIATED_CHURCH_ID[\s\S]*Promise\.resolve\(\{ docs: \[\] \}\)/);
+assert.match(department, /const orgId = orgIdOverride \|\| currentUser\?\.churchId[\s\S]*orgId === UNAFFILIATED_CHURCH_ID[\s\S]*await getCommunityProgress\(orgId/);
+assert.doesNotMatch(department, /collection\('users'\)/,
+    '일반 회원 진행판은 email·birthdate가 든 users 원문을 직접 조회하면 안 된다.');
 assert.match(app, /<DashboardView[\s\S]*?currentUser=\{dashboardUser\}/);
 assert.match(app, /currentUser\.accountType === 'personal' && currentUser\.planId[\s\S]*?setView\('dashboard'\)/);
 assert.doesNotMatch(app, /currentUser\.accountType === 'personal'[\s\S]{0,160}setView\('personal_community_onboarding'\)/);

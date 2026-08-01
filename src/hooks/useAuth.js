@@ -218,8 +218,8 @@ export const useAuth = ({
         const guest = getGuestState();
         const migrateGuest = shouldMigrateGuestState();
         return {
-            // 평문 password/phone4는 본문서가 아닌 users/{uid}/private/auth 에 저장한다
-            // (finishMemberSignup). null 마커는 같은 교회 랭킹 read 허용 조건이다.
+            // 평문 password/phone4는 본문서가 아닌 users/{uid}/private/auth 에 저장한다.
+            // parent의 null은 이관 완료 마커이며, 일반 회원 진행판은 parent 원문을 직접 읽지 않는다.
             name, birthdate, password: null, email,
             role: 'member', churchId, churchName,
             extraMemberships: [],
@@ -248,15 +248,7 @@ export const useAuth = ({
         const migrateGuest = shouldMigrateGuestState();
         await writeSignupConsent(user.uid, signupConsent);
         if (credentials) {
-            try {
-                await writeMemberCredentials(user.uid, credentials);
-            } catch (credentialError) {
-                if (churchId !== UNAFFILIATED_CHURCH_ID) throw credentialError;
-                // 규칙 미배포 등으로 private 쓰기가 거부되면 구 방식(본문서 평문)으로 남긴다.
-                // 이후 로그인/세션 복원/관리자 백필의 지연 이관이 다시 옮긴다.
-                newUser.password = credentials.password ?? null;
-                if (credentials.phone4) newUser.phone4 = credentials.phone4;
-            }
+            await writeMemberCredentials(user.uid, credentials);
         }
         const result = await completeMemberSignupViaApi({
             churchId,
@@ -271,15 +263,42 @@ export const useAuth = ({
                 planId: newUser.planId,
             },
         });
-        if (!result?.user) throw new Error('MEMBER_SIGNUP_RESPONSE_INVALID');
-        const runtimeUser = result.user;
+        if (auth.currentUser?.uid !== user.uid) return;
+        if (!result?.user || result.ok !== true || result.action !== 'completeMemberSignup'
+            || typeof result.created !== 'boolean') {
+            throw new Error('MEMBER_SIGNUP_RESPONSE_INVALID');
+        }
+        // 서버 응답의 사용자 snapshot을 그대로 화면 상태로 쓰지 않는다. 특히 삭제 계정
+        // 재활성화는 기존 플랜·소속·진도를 보존하므로 source-server 원장을 다시 읽어
+        // 온보딩 필요 여부를 판단해야 이미 완료된 사용자를 빈 온보딩으로 보내지 않는다.
+        const userSnap = await db.collection('users').doc(user.uid).get({ source: 'server' });
+        if (auth.currentUser?.uid !== user.uid || !userSnap.exists) {
+            throw new Error('MEMBER_SIGNUP_STATE_MISSING');
+        }
+        const stored = userSnap.data() || {};
+        if (stored.isDeleted === true || stored.role !== 'member'
+            || stored.churchId !== churchId
+            || stored.name !== newUser.name
+            || stored.birthdate !== newUser.birthdate) {
+            throw new Error('MEMBER_SIGNUP_STATE_INVALID');
+        }
+        const runtimeUser = userDocToState(userSnap);
+        runtimeUser.extraOrgs = await loadUserExtraOrgs(user.uid);
+        if (auth.currentUser?.uid !== user.uid) return;
         await loadChurchCommunities(churchId, { requireServer: true });
         if (auth.currentUser?.uid !== user.uid) return;
-        setTempUser({ ...runtimeUser, uid: user.uid });
-        if (migrateGuest) {
+        setCurrentUser(runtimeUser);
+        setHasReadToday(runtimeUser.lastReadDate === new Date().toDateString());
+        if (result.created === true && migrateGuest) {
             saveGuestState({ migratedAt: new Date().toISOString() });
         }
-        setView('plan_type_select');
+        if (needsInitialOnboarding(runtimeUser)) {
+            setTempUser(runtimeUser);
+            setView('plan_type_select');
+        } else {
+            setTempUser(null);
+            setView('dashboard');
+        }
     };
 
     const buildPersonalUser = ({ name, birthdate = null, email, google = false, signupConsent }) => {
@@ -1444,7 +1463,18 @@ export const useAuth = ({
             const existingDoc = await db.collection('users').doc(orphanCred.user.uid).get();
             if (existingDoc.exists) {
                 if (existingDoc.data().isDeleted) {
-                    await finishMemberSignup({ user: orphanCred.user, newUser, churchId, churchCode, joinTicket, credentials, signupConsent });
+                    // 삭제 계정은 활성화되기 전 private/auth self-write가 Rules에서 닫혀 있다.
+                    // 기존 Auth 비밀번호로 로그인까지 검증됐으므로 보호 문서를 덮지 않고
+                    // 서버 재활성화만 수행해 이전 자격증명과 진도를 보존한다.
+                    await finishMemberSignup({
+                        user: orphanCred.user,
+                        newUser,
+                        churchId,
+                        churchCode,
+                        joinTicket,
+                        credentials: null,
+                        signupConsent,
+                    });
                     return;
                 }
                 setErrorMsg('이미 가입된 이름+생년월일입니다. 로그인해주세요.');

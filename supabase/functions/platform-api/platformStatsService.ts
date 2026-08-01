@@ -11,6 +11,10 @@ import {
   normalizeAdminChurchDocumentId,
   UNAFFILIATED_CHURCH_ID,
 } from "./adminChurchVisibilityCore.ts";
+import {
+  PLATFORM_STATS_READER_COUNTED_FIELD,
+  shouldCountPlatformReader,
+} from "./platformStatsCore.ts";
 
 export const REBUILD_PLATFORM_STATS_ACTION = "rebuildPlatformStats" as const;
 type RecordValue = Record<string, unknown>;
@@ -43,7 +47,7 @@ const safeAdd = (left: number, right: number, label: string) => {
 
 export const nextPlatformStatsAfterSignup = (
   current: RecordValue | null,
-  input: { readerDelta: 1; churchDelta: 0 | 1; now: Date },
+  input: { readerDelta: 0 | 1; churchDelta: 0 | 1; now: Date },
 ) => {
   const readCounter = (key: "total_readers" | "total_churches") => {
     const value = current?.[key];
@@ -119,9 +123,34 @@ export const rebuildPlatformStats = async (
   ) {
     throw new PlatformError("FORBIDDEN");
   }
-  const activeUsers = users.filter(({ data }) =>
-    data.isDeleted !== true && data.excludeFromPublicStats !== true
+  const transitioningChurch = churches.find(({ data }) =>
+    data.lifecycleStatus === "deactivating" ||
+    data.lifecycleStatus === "restoring"
   );
+  if (transitioningChurch) {
+    throw new PlatformError("CONFLICT", {
+      message:
+        "공동체 활성 상태 작업이 진행 중이라 통계를 재계산할 수 없습니다.",
+    });
+  }
+  const activeUsers = users.filter(({ data }) =>
+    shouldCountPlatformReader(data)
+  );
+  const markerBackfillDocuments = users.filter(({ data }) =>
+    data[PLATFORM_STATS_READER_COUNTED_FIELD] !==
+      shouldCountPlatformReader(data)
+  );
+  const markerBackfill = {
+    total: markerBackfillDocuments.length,
+    toCounted:
+      markerBackfillDocuments.filter(({ data }) =>
+        shouldCountPlatformReader(data)
+      ).length,
+    toUncounted:
+      markerBackfillDocuments.filter(({ data }) =>
+        !shouldCountPlatformReader(data)
+      ).length,
+  };
   const activeChurchIds = new Set(
     churches
       .filter(({ data, name }) =>
@@ -135,7 +164,11 @@ export const rebuildPlatformStats = async (
     typeof data.churchId === "string" &&
     activeChurchIds.has(data.churchId)
   );
-  const today = getLegacyCalendarDateStringKst(dependencies.now());
+  const now = dependencies.now();
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
+    throw new PlatformError("INTERNAL");
+  }
+  const today = getLegacyCalendarDateStringKst(now);
   const externalTotal = (
     key: "total_readers" | "finished_total" | "readers_today",
     onlyToday = false,
@@ -175,42 +208,91 @@ export const rebuildPlatformStats = async (
   const changed = expectedKeys.filter((key) =>
     currentValues[key] !== expected[key]
   );
-  if (!input.dryRun && changed.length > 0) {
-    if (users.length + churches.length + externalSources.length > 480) {
+  const needsApply = changed.length > 0 || markerBackfill.total > 0;
+  if (!input.dryRun && needsApply) {
+    const markerBackfillNames = new Set(
+      markerBackfillDocuments.map(({ name }) => name),
+    );
+    const userSnapshotWrites: FirestoreWrite[] = users.map((document) => {
+      if (!document.updateTime) {
+        throw new PlatformError("CONFLICT", {
+          message: "사용자 통계 스냅샷을 안전하게 검증할 수 없습니다.",
+        });
+      }
+      if (markerBackfillNames.has(document.name)) {
+        return dependencies.updateWrite(
+          service.projectId,
+          document.name.split("/documents/")[1],
+          {
+            [PLATFORM_STATS_READER_COUNTED_FIELD]: shouldCountPlatformReader(
+              document.data,
+            ),
+          },
+          {
+            updateMask: [PLATFORM_STATS_READER_COUNTED_FIELD],
+            updateTime: document.updateTime,
+          },
+        );
+      }
+      return {
+        verify: document.name,
+        currentDocument: { updateTime: document.updateTime },
+      };
+    });
+    const sourceVerifies: FirestoreWrite[] = [
+      ...churches,
+      ...externalSources,
+    ].map((document) => {
+      if (!document.updateTime) {
+        throw new PlatformError("CONFLICT", {
+          message: "통계 원본 스냅샷을 안전하게 검증할 수 없습니다.",
+        });
+      }
+      return {
+        verify: document.name,
+        currentDocument: { updateTime: document.updateTime },
+      };
+    });
+    const statsWrite = dependencies.updateWrite(
+      service.projectId,
+      "settings/platformStats",
+      {
+        ...expected,
+        updatedAt: now,
+        rebuiltAt: now,
+        rebuiltBy: uid,
+      },
+      {
+        updateMask: [
+          ...expectedKeys,
+          "updatedAt",
+          "rebuiltAt",
+          "rebuiltBy",
+        ],
+        ...(current
+          ? { updateTime: current.updateTime }
+          : { exists: false as const }),
+      },
+    );
+    const writes = [...userSnapshotWrites, ...sourceVerifies, statsWrite];
+    if (writes.length > 500) {
       throw new PlatformError("CONFLICT", {
         message: "통계 재계산 대상이 단일 안전 스냅샷 한도를 넘었습니다.",
       });
     }
-    const verifies: FirestoreWrite[] = [
-      ...users,
-      ...churches,
-      ...externalSources,
-    ]
-      .filter((document) => document.updateTime)
-      .map((document) => ({
-        verify: document.name,
-        currentDocument: { updateTime: document.updateTime },
-      }));
-    await dependencies.commitWrites(service.token, service.projectId, [
-      ...verifies,
-      dependencies.updateWrite(service.projectId, "settings/platformStats", {
-        ...expected,
-        updatedAt: dependencies.now(),
-        rebuiltAt: dependencies.now(),
-        rebuiltBy: uid,
-      }, current ? { updateTime: current.updateTime } : { exists: false }),
-    ]);
+    await dependencies.commitWrites(service.token, service.projectId, writes);
   }
   return {
     dryRun: input.dryRun,
-    applied: !input.dryRun && changed.length > 0,
+    applied: !input.dryRun && needsApply,
     expected,
     current: currentValues,
     changed,
+    markerBackfill,
     externalSources: enabledExternalSources.map(({ data, name }) => ({
       id: name.split("/").at(-1) || "",
       churchId: data.churchId,
-      todayDate: data.today_date,
+      todayDate: typeof data.today_date === "string" ? data.today_date : null,
     })),
   };
 };

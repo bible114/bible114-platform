@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { memoKey } from '../../hooks/useMemos';
+import { parseMemoKey } from '../../hooks/useMemos';
 
 const MemoSection = ({
     currentMemo,
@@ -10,16 +10,24 @@ const MemoSection = ({
     currentDay,
     readCount,
     memos,
-    memoLoadError
+    memoLoadError,
+    memoMigrating = false,
 }) => {
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState('');
     const round = readCount || 1;
     const dayIdx = (viewingDay || currentDay || 1) - 1;
-    const key = memoKey(round, dayIdx);
-
-    // 하위 호환: 1독에서만 신형 키가 없을 때 구형 숫자 키 fallback
-    const existingMemo = memos[key] || (round === 1 ? memos[dayIdx] : undefined);
+    const existingMemos = Object.entries(memos || {})
+        .map(([key, memo]) => {
+            const parsed = parseMemoKey(key);
+            return {
+                ...memo,
+                round: Number.isSafeInteger(memo?.round) ? memo.round : parsed.round,
+                day: Number.isSafeInteger(memo?.day) ? memo.day : parsed.day,
+            };
+        })
+        .filter(memo => memo.round === round && memo.day === dayIdx)
+        .sort((left, right) => new Date(left.date || 0) - new Date(right.date || 0));
 
     const handleSave = async () => {
         if (saving || !currentMemo.trim()) return;
@@ -32,7 +40,7 @@ const MemoSection = ({
             setCurrentMemo('');
         } catch (error) {
             console.error('묵상 저장 실패:', error);
-            setSaveError('묵상을 저장하지 못했습니다. 입력한 내용은 그대로 보관했어요. 잠시 후 다시 시도해 주세요.');
+            setSaveError(error?.message || '묵상을 저장하지 못했습니다. 입력한 내용은 그대로 보관했어요. 잠시 후 다시 시도해 주세요.');
         } finally {
             setSaving(false);
         }
@@ -53,6 +61,11 @@ const MemoSection = ({
                     내 기록 보기
                 </button>
             </div>
+            {memoMigrating && (
+                <p className="mb-3 rounded-xl bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700" aria-live="polite">
+                    기존 묵상을 장기 보관 방식으로 안전하게 옮기고 있어요. 완료될 때까지 입력 내용은 그대로 유지됩니다.
+                </p>
+            )}
             <textarea
                 value={currentMemo}
                 onChange={(e) => {
@@ -83,20 +96,17 @@ const MemoSection = ({
                     이전 묵상을 불러오지 못했습니다. 새로고침 후 다시 확인해 주세요.
                 </p>
             )}
-            {existingMemo && (
+            {existingMemos.length > 0 && (
                 <div className="mt-4 p-4 bg-white rounded-2xl border border-purple-100 max-h-40 overflow-y-auto shadow-sm">
                     <p className="text-[10px] text-purple-500 mb-2 font-bold flex items-center gap-1">
                         ✨ 이전에 저장한 묵상:
                     </p>
-                    {(() => {
-                        const texts = existingMemo.texts || [existingMemo.text];
-                        return texts.map((text, idx) => (
-                            <div key={idx} className={`text-sm text-slate-600 whitespace-pre-wrap leading-relaxed ${idx > 0 ? 'mt-3 pt-3 border-t border-purple-50' : ''}`}>
-                                {texts.length > 1 && <span className="text-[10px] text-purple-400 font-bold">#{idx + 1} </span>}
-                                {text}
-                            </div>
-                        ));
-                    })()}
+                    {existingMemos.flatMap(memo => memo.texts || [memo.text]).filter(Boolean).map((text, idx, texts) => (
+                        <div key={`${idx}-${text.slice(0, 12)}`} className={`text-sm text-slate-600 whitespace-pre-wrap leading-relaxed ${idx > 0 ? 'mt-3 pt-3 border-t border-purple-50' : ''}`}>
+                            {texts.length > 1 && <span className="text-[10px] text-purple-400 font-bold">#{idx + 1} </span>}
+                            {text}
+                        </div>
+                    ))}
                 </div>
             )}
         </div>

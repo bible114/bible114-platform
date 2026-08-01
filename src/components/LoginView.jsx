@@ -21,6 +21,9 @@ import {
     dismissSocialLoginTransition,
     shouldShowSocialLoginTransition,
 } from '../utils/socialLoginTransition';
+import IntroVideoCard from './IntroVideoCard';
+import NationalReadingRanking from './NationalReadingRanking';
+import { normalizePublicNationalRankingSnapshot } from '../utils/publicNationalRanking';
 
 const DemoTour = lazy(() => import('./DemoTour'));
 
@@ -130,6 +133,7 @@ const LoginView = ({
         chapters_read_today: 0,
     });
     const [statsLoading, setStatsLoading] = useState(true);
+    const [nationalRanking, setNationalRanking] = useState([]);
 
     useEffect(() => {
         if (!db) {
@@ -148,6 +152,7 @@ const LoginView = ({
                         finished_total: d.finished_total || 0,
                         chapters_read_today: d.today_date === today ? (d.readers_today || 0) : 0,
                     });
+                    setNationalRanking(normalizePublicNationalRankingSnapshot(d));
                 } else {
                     // platformStats 없으면 공개 디렉토리로 교회 수만 추정
                     // (churches 컬렉션은 Phase 3부터 미인증 read 불가)
@@ -812,10 +817,10 @@ const LoginView = ({
             <button type="button" onClick={() => setShowDemoTour(true)} className="min-h-11 w-full rounded-xl border border-amber-200 bg-amber-50 px-3 text-sm font-black text-amber-900">
                 🧭 앱 화면 먼저 둘러보기
             </button>
-            <div className="text-center text-sm font-semibold text-ink/55">
+            <div className="text-center text-sm font-semibold text-ink/75">
                 <button type="button" onClick={handleGuestLogin} disabled={loading} className="min-h-11 underline underline-offset-3">로그인 없이 둘러보기</button>
             </div>
-            <div className="rounded-xl border border-amber-100 bg-amber-50/70 px-3.5 py-3 text-center text-[12px] leading-relaxed text-ink/65 md:hidden">
+            <div className="rounded-xl border border-amber-100 bg-amber-50/70 px-3.5 py-3 text-center text-[12px] leading-relaxed text-ink/80 lg:hidden">
                 <p>⛪ 교회·모임과 함께 읽고 싶으신가요?</p>
                 <p><b>공동체 대표(관리자)가</b> 먼저 공동체를 등록해야 성도들이 찾아서 함께 읽을 수 있어요.</p>
                 <button type="button" onClick={() => { setActiveTab('adminSignup'); clearError(); }} className="mt-1.5 inline-flex min-h-11 items-center justify-center px-2 font-black text-accent underline underline-offset-3">공동체 등록하기 →</button>
@@ -1182,7 +1187,7 @@ const LoginView = ({
     // ── DESKTOP Layout (md+) / MOBILE Layout ──────────────────────────────────
     return (
         <div
-            className="min-h-screen bg-cream relative md:grid md:grid-cols-[1.15fr_1fr]"
+            className="min-h-screen bg-cream relative lg:grid lg:grid-cols-[1.15fr_1fr]"
             style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}
         >
             {/* paper warmth gradient overlay */}
@@ -1195,7 +1200,7 @@ const LoginView = ({
             />
 
             {/* ═══ TOP NAV (desktop only) ══════════════════════════════════════ */}
-            <div className="hidden md:flex absolute top-0 left-0 right-0 h-16 items-center justify-between px-14 z-10">
+            <div className="hidden lg:flex absolute top-0 left-0 right-0 h-16 items-center justify-between px-14 z-10">
                 {/* Logo */}
                 <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-[7px] bg-ink text-cream flex items-center justify-center font-serif font-bold text-[14px] tracking-wide">
@@ -1217,10 +1222,10 @@ const LoginView = ({
             </div>
 
             {/* ═══ LEFT — Editorial Hero (desktop) / Hero strip (mobile) ═══════ */}
-            <div className="relative z-[1] flex flex-col pt-6 pb-5 px-6 md:pt-[100px] md:pb-10 md:px-14">
+            <div className="relative z-[1] flex flex-col pt-6 pb-5 px-6 lg:pt-[100px] lg:pb-10 lg:px-14">
 
                 {/* Mobile logo bar */}
-                <div className="flex items-center mb-4 md:hidden">
+                <div className="flex items-center mb-4 lg:hidden">
                     <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-[6px] bg-ink text-cream flex items-center justify-center font-serif font-bold text-[13px]">114</div>
                         <span className="font-serif text-base font-semibold text-ink">성경통독 114</span>
@@ -1228,7 +1233,7 @@ const LoginView = ({
                 </div>
 
                 {/* H1 Headline */}
-                <h1 className="font-serif font-semibold text-3xl md:text-5xl lg:text-[56px] leading-[1.16] tracking-tight mb-3 md:mb-4 whitespace-pre-line">
+                <h1 className="font-serif font-semibold text-3xl lg:text-[56px] leading-[1.16] tracking-tight mb-3 lg:mb-4 whitespace-pre-line">
                     {"혼자가 아니라,\n"}
                     <span>
                         <span className="text-accent">같이</span> 펼칩니다.
@@ -1236,40 +1241,45 @@ const LoginView = ({
                 </h1>
 
                 {/* Subhead */}
-                <p className="text-[14px] md:text-[15px] leading-[1.65] text-ink/78 max-w-md mb-4 md:mb-5">
-                    <span className="md:hidden">오늘의 말씀을 함께 읽고 통독의 길을 걸어요.</span>
-                    <span className="hidden md:inline">
+                <p className="text-[14px] lg:text-[15px] leading-[1.65] text-ink/78 max-w-md mb-4 lg:mb-5">
+                    <span className="lg:hidden">오늘의 말씀을 함께 읽고 통독의 길을 걸어요.</span>
+                    <span className="hidden lg:inline">
                         전국 <b className="text-ink">{stats.total_churches > 0 ? `${stats.total_churches}개 교회` : '여러 교회'}</b>,{' '}
                         <b className="text-ink">{stats.total_readers > 0 ? `${stats.total_readers.toLocaleString()}명` : '많은 성도들'}</b>이
                         오늘도 같은 페이지를 넘기고 있습니다. 함께 걷는 통독의 길, 같이 걸어요.
                     </span>
                 </p>
 
+                <IntroVideoCard />
+                <NationalReadingRanking
+                    entries={nationalRanking}
+                />
+
                 {/* Stat strip */}
-                <div className="hidden md:grid grid-cols-4 border-t border-b border-hairline py-4 mb-5">
+                <div className="hidden lg:grid grid-cols-4 border-t border-b border-hairline py-4 mb-5">
                     {[
                         { num: statsLoading ? '…' : stats.total_churches.toString(), label: '함께하는 교회' },
                         { num: statsLoading ? '…' : stats.total_readers.toLocaleString(), label: '참여 성도' },
                         { num: statsLoading ? '…' : stats.finished_total.toLocaleString(), label: '누적 완독' },
                         { num: statsLoading ? '…' : stats.chapters_read_today.toLocaleString(), label: '오늘 읽은 성도' },
                     ].map((s, i) => (
-                        <div key={i} className={`${i > 0 ? 'border-l border-hairline pl-3 md:pl-4' : ''} pr-3 md:pr-4`}>
-                            <div className="font-serif text-[20px] md:text-[26px] font-semibold tracking-tight tabular-nums leading-tight">{s.num}</div>
-                            <div className="text-[10px] md:text-[11px] text-ink/55 mt-1 leading-tight">{s.label}</div>
+                        <div key={i} className={`${i > 0 ? 'border-l border-hairline pl-3 lg:pl-4' : ''} pr-3 lg:pr-4`}>
+                            <div className="font-serif text-[20px] lg:text-[26px] font-semibold tracking-tight tabular-nums leading-tight">{s.num}</div>
+                            <div className="text-[10px] lg:text-[11px] text-ink/70 mt-1 leading-tight">{s.label}</div>
                         </div>
                     ))}
                 </div>
 
                 {/* Today's passage card */}
-                <div className="hidden md:block bg-cream-card border border-hairline rounded-sm px-5 py-4 max-w-lg relative mb-5">
+                <div className="hidden lg:block bg-cream-card border border-hairline rounded-sm px-5 py-4 max-w-lg relative mb-5">
                     <div className="absolute top-[-1px] left-[22px] w-9 h-3 bg-accent rounded-b-sm" />
-                    <p className="font-serif text-[14px] md:text-[16px] leading-[1.65] text-ink/85 italic font-medium mb-2">
+                    <p className="font-serif text-[14px] lg:text-[16px] leading-[1.65] text-ink/85 italic font-medium mb-2">
                         "{verse.text}"
                     </p>
-                    <div className="font-serif text-[12px] md:text-[13px] text-ink/55 text-right">— {verse.ref}</div>
+                    <div className="font-serif text-[12px] lg:text-[13px] text-ink/70 text-right">— {verse.ref}</div>
                 </div>
 
-                <nav aria-label="서비스 정책" className="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-ink/50">
+                <nav aria-label="서비스 정책" className="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-ink/75">
                     {['terms', 'privacy', 'community'].map(policyId => (
                         <button
                             key={policyId}
@@ -1285,10 +1295,10 @@ const LoginView = ({
             </div>
 
             {/* ═══ RIGHT — Login Card ══════════════════════════════════════════ */}
-            <div className="relative z-[1] flex flex-col px-5 pb-10 md:pt-[100px] md:pb-10 md:px-7 md:pl-7 md:items-center md:justify-center">
+            <div className="relative z-[1] flex flex-col items-center px-5 pb-10 lg:pt-[100px] lg:pb-10 lg:px-7 lg:pl-7 lg:justify-center">
                 <div
                     ref={loginCardRef}
-                    className="w-full max-w-sm md:max-w-none bg-[#fbf7ee] border border-hairline rounded-lg p-7 md:p-9"
+                    className="mx-auto w-full max-w-sm lg:max-w-none bg-[#fbf7ee] border border-hairline rounded-lg p-7 lg:p-9"
                     style={{ boxShadow: '0 1px 0 rgba(255,255,255,0.6) inset, 0 30px 60px -30px rgba(43,58,42,0.28)', scrollMarginTop: '12px' }}
                 >
                     {/* Card header */}
@@ -1298,7 +1308,7 @@ const LoginView = ({
 
                     {/* Form content */}
                     {renderCard()}
-                    <nav aria-label="로그인 도움" className="mt-5 border-t border-hairline pt-4 md:hidden">
+                    <nav aria-label="로그인 도움" className="mt-5 border-t border-hairline pt-4 lg:hidden">
                         <button
                             type="button"
                             onClick={() => setShowReadingGuide(true)}

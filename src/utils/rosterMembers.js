@@ -1,5 +1,20 @@
 import { normalizeExtraMemberships } from './memberships.js';
 
+const COMMUNITY_PROGRESS_PLAN_IDS = new Set([
+    '1year_sequential', '1year_revised', '1year_new', 'nt_new',
+    'readable_revised', 'readable_new',
+]);
+const COMMUNITY_PROGRESS_FIELDS = [
+    'planId', 'fixtureType', 'currentDay', 'readCount', 'readingYear',
+    'yearCompletedRounds', 'lifetimeCompletedRounds', 'score', 'streak',
+    'lastReadDate', 'recentReadDates', 'weeklyReadKey', 'weeklyReadCount',
+];
+
+export const hasVerifiedCommunityProgress = member => (
+    !member?.isExternalOrgMember
+    || member.communityProgressIdentityVerified === true
+);
+
 export const rosterSnapshotToMembers = (snapshot) => {
     if (!Array.isArray(snapshot?.docs)) return [];
     return snapshot.docs.flatMap(doc => {
@@ -10,22 +25,31 @@ export const rosterSnapshotToMembers = (snapshot) => {
         if (!doc.id || data.uid !== doc.id || !orgId
             || pathParts.length !== 4 || pathParts[0] !== 'churches'
             || pathParts[1] !== orgId || pathParts[2] !== 'roster' || pathParts[3] !== doc.id) return [];
+        const hasFixtureSnapshot = Object.prototype.hasOwnProperty.call(data, 'fixtureType')
+            && (data.fixtureType === null || data.fixtureType === 'reading-badge-test');
+        const hasProgressIdentity = COMMUNITY_PROGRESS_PLAN_IDS.has(data.planId)
+            && hasFixtureSnapshot;
         return [{
             uid: doc.id,
             name: data.name || '이름 없음',
             role: 'member',
-            score: data.score || 0,
+            planId: hasProgressIdentity ? data.planId : null,
+            fixtureType: hasProgressIdentity ? data.fixtureType : null,
+            communityProgressIdentityVerified: hasProgressIdentity,
+            score: hasProgressIdentity ? (data.score || 0) : 0,
             talent: data.talent || 0,
-            currentDay: data.currentDay || 1,
-            streak: data.streak || 0,
-            readCount: data.readCount || 1,
-            readingYear: data.readingYear ?? null,
-            yearCompletedRounds: data.yearCompletedRounds ?? null,
-            lifetimeCompletedRounds: data.lifetimeCompletedRounds ?? null,
-            lastReadDate: data.lastReadDate || null,
-            recentReadDates: Array.isArray(data.recentReadDates) ? data.recentReadDates : [],
-            weeklyReadKey: data.weeklyReadKey || null,
-            weeklyReadCount: data.weeklyReadCount || 0,
+            currentDay: hasProgressIdentity ? (data.currentDay || 1) : 1,
+            streak: hasProgressIdentity ? (data.streak || 0) : 0,
+            readCount: hasProgressIdentity ? (data.readCount || 1) : 1,
+            readingYear: hasProgressIdentity ? (data.readingYear ?? null) : null,
+            yearCompletedRounds: hasProgressIdentity ? (data.yearCompletedRounds ?? null) : null,
+            lifetimeCompletedRounds: hasProgressIdentity ? (data.lifetimeCompletedRounds ?? null) : null,
+            lastReadDate: hasProgressIdentity ? (data.lastReadDate || null) : null,
+            recentReadDates: hasProgressIdentity && Array.isArray(data.recentReadDates)
+                ? data.recentReadDates
+                : [],
+            weeklyReadKey: hasProgressIdentity ? (data.weeklyReadKey || null) : null,
+            weeklyReadCount: hasProgressIdentity ? (data.weeklyReadCount || 0) : 0,
             departmentId: data.departmentId || null,
             departmentName: data.departmentName || null,
             subgroupId: data.subgroupId || null,
@@ -34,6 +58,34 @@ export const rosterSnapshotToMembers = (snapshot) => {
             isExternalOrgMember: true,
             rosterOrgId: orgId,
         }];
+    });
+};
+
+export const mergeCanonicalProgressIntoRosterMembers = (
+    members,
+    canonicalMembers
+) => {
+    const canonicalByUid = new Map(
+        (Array.isArray(canonicalMembers) ? canonicalMembers : []).flatMap(member => (
+            member?.uid && COMMUNITY_PROGRESS_PLAN_IDS.has(member.planId)
+            && (member.fixtureType === null || member.fixtureType === 'reading-badge-test')
+                ? [[member.uid, member]]
+                : []
+        ))
+    );
+    return (Array.isArray(members) ? members : []).map(member => {
+        if (!member?.isExternalOrgMember) return member;
+        const canonical = canonicalByUid.get(member.uid);
+        if (!canonical) return member;
+        return {
+            ...member,
+            ...Object.fromEntries(COMMUNITY_PROGRESS_FIELDS.flatMap(field => (
+                Object.prototype.hasOwnProperty.call(canonical, field)
+                    ? [[field, canonical[field]]]
+                    : []
+            ))),
+            communityProgressIdentityVerified: true,
+        };
     });
 };
 

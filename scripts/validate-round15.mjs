@@ -118,10 +118,10 @@ const saveMemoSource = memosHook.slice(
     memosHook.indexOf('const saveMemo = useCallback('),
     memosHook.indexOf('\n    return {', memosHook.indexOf('const saveMemo = useCallback(')),
 );
-const memoWriteIndex = saveMemoSource.indexOf("await db.collection('users').doc(uid).set(");
+const memoWriteIndex = saveMemoSource.indexOf('await db.runTransaction(');
 const memoAchievementIndex = saveMemoSource.indexOf("await checkAchievements(currentUser, 'memo')");
-const memoCompleteIndex = saveMemoSource.indexOf("typeof onComplete === 'function'");
-assert.ok(memoWriteIndex >= 0 && memoAchievementIndex > memoWriteIndex, '메모 저장 후 memo 업적을 서버에서 동기화해야 한다.');
+const memoCompleteIndex = saveMemoSource.lastIndexOf("typeof onComplete === 'function'");
+assert.ok(memoWriteIndex >= 0 && memoAchievementIndex > memoWriteIndex, '월별 메모 저장 후 memo 업적을 서버에서 동기화해야 한다.');
 assert.ok(memoCompleteIndex > memoAchievementIndex, '업적 확인 뒤에도 기존 onComplete 호출을 보존해야 한다.');
 assert.match(
     saveMemoSource.slice(memoWriteIndex, memoCompleteIndex),

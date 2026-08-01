@@ -71,7 +71,7 @@ const DemoTour = ({ onClose, onComplete }) => {
     };
 
     return (
-        <div className="demo-tour-root fixed inset-0 z-[80] overflow-y-auto bg-slate-50">
+        <div className="demo-tour-root fixed inset-0 z-[1100] overflow-y-auto bg-slate-50">
             <button
                 type="button"
                 onClick={onClose}
