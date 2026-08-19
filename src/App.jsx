@@ -617,6 +617,13 @@ const App = () => {
         },
     });
 
+    // 로그인 폼의 오류와 Firebase 세션 복원 오류는 서로 다른 상태다.
+    // Kakao redirect 시작/복귀가 실패하면 errorMsg만 갱신되므로, 전환 오버레이를
+    // 함께 닫아 사용자가 오류 안내와 재시도 버튼을 볼 수 있게 한다.
+    useEffect(() => {
+        if (errorMsg && loginTransitioning) setLoginTransitioning(false);
+    }, [errorMsg, loginTransitioning, setLoginTransitioning]);
+
     const handlePlanTypeSelect = (typeId) => { setSelectedPlanType(typeId); setView('bible_version_select'); };
 
     const handleVersionSelect = async (versionId) => {

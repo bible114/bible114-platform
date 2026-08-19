@@ -40,6 +40,7 @@ import {
     setAuthSessionValue,
 } from '../utils/authSessionStorage';
 import { detectMobileSessionContext, isInAppBrowserContext } from '../utils/mobileSessionContext';
+import { withAsyncTimeout } from '../utils/asyncTimeout.js';
 import {
     completeMemberSignup as completeMemberSignupViaApi,
     completeChurchAdminSignup as completeChurchAdminSignupViaApi,
@@ -63,6 +64,28 @@ const KAKAO_SESSION_KEYS = [
     KAKAO_ADMIN_SIGNUP_RETURNING_KEY,
     KAKAO_ADMIN_SIGNUP_DRAFT_KEY,
 ];
+const INTERACTIVE_AUTH_PERSISTENCE_TIMEOUT_MS = 8_000;
+const INTERACTIVE_AUTH_POST_LOGIN_TIMEOUT_MS = 20_000;
+
+const interactiveAuthTimeoutError = () => {
+    const error = new Error('INTERACTIVE_AUTH_TIMEOUT');
+    error.code = 'INTERACTIVE_AUTH_TIMEOUT';
+    return error;
+};
+
+const createInteractiveAuthDeadline = () => Date.now() + INTERACTIVE_AUTH_POST_LOGIN_TIMEOUT_MS;
+const awaitInteractiveAuthStep = (promise, deadline) => withAsyncTimeout(
+    promise,
+    Math.max(1, deadline - Date.now()),
+    interactiveAuthTimeoutError,
+);
+const awaitInteractiveAuthPersistence = () => withAsyncTimeout(
+    authReady,
+    INTERACTIVE_AUTH_PERSISTENCE_TIMEOUT_MS,
+    interactiveAuthTimeoutError,
+);
+const isInteractiveAuthTimeout = error => error?.code === 'INTERACTIVE_AUTH_TIMEOUT';
+const INTERACTIVE_AUTH_TIMEOUT_MESSAGE = '로그인 확인이 오래 걸리고 있습니다. 로그인 상태는 유지될 수 있으니 네트워크를 확인한 뒤 다시 시도해주세요.';
 
 const needsInitialOnboarding = user => (
     user?.role === 'churchAdmin'
@@ -184,6 +207,10 @@ export const useAuth = ({
     );
 
     const applyGooglePopupError = (err) => {
+        if (isInteractiveAuthTimeout(err)) {
+            setErrorMsg(INTERACTIVE_AUTH_TIMEOUT_MESSAGE);
+            return;
+        }
         if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') return;
         if (err?.code === 'auth/operation-not-allowed') {
             setErrorMsg('구글 로그인이 아직 활성화되지 않았습니다. 관리자에게 문의하세요.');
@@ -358,7 +385,12 @@ export const useAuth = ({
         setErrorMsg(message);
     };
 
-    const openExistingPersonalUser = async (firebaseUser, doc, loginTiming = null) => {
+    const openExistingPersonalUser = async (
+        firebaseUser,
+        doc,
+        loginTiming = null,
+        deadline = createInteractiveAuthDeadline(),
+    ) => {
         if (auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
         const data = doc.data();
         if (data.isDeleted === true) {
@@ -370,15 +402,20 @@ export const useAuth = ({
         if (data.accountType !== 'personal' && !pendingMigration) throw new Error('NOT_PERSONAL_ACCOUNT');
         let user = userDocToState(doc);
         const extraOrgsPromise = loadUserExtraOrgs(firebaseUser.uid);
-        const legacyTalent = await migrateTalentIfNeeded(firebaseUser.uid, data);
+        const legacyTalent = await awaitInteractiveAuthStep(
+            migrateTalentIfNeeded(firebaseUser.uid, data),
+            deadline,
+        );
         if (legacyTalent) {
             user.talent = legacyTalent.talent;
             user.score = legacyTalent.score;
             user.talentMigrated = true;
         }
-        user.extraOrgs = await extraOrgsPromise;
+        user.extraOrgs = await awaitInteractiveAuthStep(extraOrgsPromise, deadline);
         const deferWalletAudit = canDeferPersonalWalletAudit(user);
-        if (!deferWalletAudit) user = await migratePersonalWallet(user);
+        if (!deferWalletAudit) {
+            user = await awaitInteractiveAuthStep(migratePersonalWallet(user), deadline);
+        }
         if (auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
         setCurrentUser(user);
         setTempUser(null);
@@ -388,7 +425,12 @@ export const useAuth = ({
         return true;
     };
 
-    const openExistingSocialUser = async (firebaseUser, doc, loginTiming = null) => {
+    const openExistingSocialUser = async (
+        firebaseUser,
+        doc,
+        loginTiming = null,
+        deadline = createInteractiveAuthDeadline(),
+    ) => {
         if (auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
         const data = doc.data();
         if (data.isDeleted === true) {
@@ -398,19 +440,22 @@ export const useAuth = ({
         const pendingMigration = getPendingPersonalMigration(firebaseUser.uid)
             || restorePendingPersonalMigrationFromAuth({ firebaseUser, userData: data });
         if (data.accountType === 'personal' || pendingMigration) {
-            return await openExistingPersonalUser(firebaseUser, doc, loginTiming);
+            return await openExistingPersonalUser(firebaseUser, doc, loginTiming, deadline);
         }
         if (!['member', 'churchAdmin'].includes(data.role)) throw new Error('NOT_MEMBER_ACCOUNT');
         let user = userDocToState(doc);
         const extraOrgsPromise = loadUserExtraOrgs(firebaseUser.uid);
-        const legacyTalent = await migrateTalentIfNeeded(firebaseUser.uid, data);
+        const legacyTalent = await awaitInteractiveAuthStep(
+            migrateTalentIfNeeded(firebaseUser.uid, data),
+            deadline,
+        );
         if (legacyTalent) {
             user.talent = legacyTalent.talent;
             user.score = legacyTalent.score;
             user.talentMigrated = true;
         }
-        user.extraOrgs = await extraOrgsPromise;
-        user = await migratePersonalWallet(user);
+        user.extraOrgs = await awaitInteractiveAuthStep(extraOrgsPromise, deadline);
+        user = await awaitInteractiveAuthStep(migratePersonalWallet(user), deadline);
         if (auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
         setCurrentUser(user);
         setTempUser(null);
@@ -438,10 +483,20 @@ export const useAuth = ({
         setView('social_onboarding');
     };
 
-    const finishSocialStart = async (cred, provider, profile = {}, loginTiming = null, signupDraft = null) => {
+    const finishSocialStart = async (
+        cred,
+        provider,
+        profile = {},
+        loginTiming = null,
+        signupDraft = null,
+        deadline = createInteractiveAuthDeadline(),
+    ) => {
         const firebaseUser = cred?.user;
         if (!firebaseUser?.uid || auth.currentUser?.uid !== firebaseUser.uid) throw new Error('INVALID_SOCIAL_PROFILE');
-        const doc = await db.collection('users').doc(firebaseUser.uid).get();
+        const doc = await awaitInteractiveAuthStep(
+            db.collection('users').doc(firebaseUser.uid).get(),
+            deadline,
+        );
         if (auth.currentUser?.uid !== firebaseUser.uid) throw new Error('SOCIAL_AUTH_CHANGED');
         if (doc.exists) {
             // Google 큰 버튼(T112b)과 동일하게 저장된 관리자 역할을 먼저 판정한다.
@@ -449,10 +504,10 @@ export const useAuth = ({
             // 일반 교인 열기(NOT_MEMBER_ACCOUNT)로는 로그인할 수 없기 때문이다.
             // finishAdminLogin이 source-server 재조회로 역할을 다시 증명한다.
             if (['platformAdmin', 'superAdmin'].includes(doc.data()?.role)) {
-                await finishAdminLogin(cred, { requireRegisteredAdmin: true, loginTiming });
+                await finishAdminLogin(cred, { requireRegisteredAdmin: true, loginTiming, deadline });
                 return;
             }
-            await openExistingSocialUser(firebaseUser, doc, loginTiming);
+            await openExistingSocialUser(firebaseUser, doc, loginTiming, deadline);
             return;
         }
         openSocialOnboarding(firebaseUser, provider, profile, signupDraft);
@@ -470,7 +525,7 @@ export const useAuth = ({
         try {
             signupConsent = buildSignupConsentSnapshot({ birthdate, consents, audience: 'personal' }, { source: 'manual_personal_signup' });
             beginInteractiveAuthFlow('passwordPersonalSignup');
-            await authReady;
+            await awaitInteractiveAuthPersistence();
             let cred;
             try {
                 cred = await auth.createUserWithEmailAndPassword(email, password);
@@ -521,25 +576,33 @@ export const useAuth = ({
             let popupUid = null;
             beginInteractiveAuthFlow(flowName);
             try {
-                await authReady;
+                await awaitInteractiveAuthPersistence();
                 if (isRestrictedInAppBrowser()) { setErrorMsg(IN_APP_GOOGLE_AUTH_MESSAGE); return false; }
                 const provider = new firebase.auth.GoogleAuthProvider();
                 const cred = await auth.signInWithPopup(provider);
+                const deadline = createInteractiveAuthDeadline();
                 popupUid = cred?.user?.uid || null;
                 const hasGoogleProvider = (cred.user.providerData || []).some(item => item?.providerId === 'google.com');
                 if (!cred.user.uid || !cred.user.email || !hasGoogleProvider || auth.currentUser?.uid !== cred.user.uid) {
                     throw new Error('INVALID_GOOGLE_PERSONAL_PROFILE');
                 }
                 const userRef = db.collection('users').doc(cred.user.uid);
-                const existingDoc = await userRef.get({ source: 'server' });
+                const existingDoc = await awaitInteractiveAuthStep(
+                    userRef.get({ source: 'server' }),
+                    deadline,
+                );
                 if (auth.currentUser?.uid !== cred.user.uid) throw new Error('SOCIAL_AUTH_CHANGED');
                 if (existingDoc.exists) {
                     // 첫 화면의 큰 Google 버튼으로 들어와도 저장된 관리자 역할을 먼저
                     // 판정한다. 이메일 추측 없이 인증 uid의 서버 원본 역할만 신뢰한다.
                     if (GOOGLE_ADMIN_ROLES.has(existingDoc.data()?.role)) {
-                        return await finishAdminLogin(cred, { requireRegisteredAdmin: true, loginTiming });
+                        return await finishAdminLogin(cred, {
+                            requireRegisteredAdmin: true,
+                            loginTiming,
+                            deadline,
+                        });
                     }
-                    return await openExistingSocialUser(cred.user, existingDoc, loginTiming);
+                    return await openExistingSocialUser(cred.user, existingDoc, loginTiming, deadline);
                 }
                 if (signupDraft?.birthdate || signupDraft?.consents) {
                     buildSignupConsentSnapshot({
@@ -579,6 +642,7 @@ export const useAuth = ({
                     applyGooglePopupError(error);
                     if (popupUid
                         && auth.currentUser?.uid === popupUid
+                        && !isInteractiveAuthTimeout(error)
                         && !['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(error?.code)) {
                         setCurrentUser(null);
                         setTempUser(null);
@@ -644,7 +708,7 @@ export const useAuth = ({
     const handleGoogleLink = async () => {
         setSocialLinkNotice(null);
         try {
-            await authReady;
+            await awaitInteractiveAuthPersistence();
             if (!auth.currentUser) throw new Error('AUTH_REQUIRED');
             if (isRestrictedInAppBrowser()) {
                 setSocialLinkNotice({ type: 'error', message: IN_APP_GOOGLE_AUTH_MESSAGE });
@@ -674,7 +738,7 @@ export const useAuth = ({
     const handleKakaoLinkStart = async () => {
         setSocialLinkNotice(null);
         try {
-            await authReady;
+            await awaitInteractiveAuthPersistence();
             if (!auth.currentUser) throw new Error('AUTH_REQUIRED');
             removeAuthSessionValues([
                 KAKAO_SIGNUP_DRAFT_KEY,
@@ -742,7 +806,7 @@ export const useAuth = ({
         beginInteractiveAuthFlow(flowName);
         let shouldEndFlow = true;
         try {
-            await authReady;
+            await awaitInteractiveAuthPersistence();
             const provider = String(socialProviderRef.current || input.socialProvider || '').trim();
             const pendingGoogleCredential = provider === 'google.com'
                 ? pendingGoogleRecoveryCredentialRef.current
@@ -918,18 +982,27 @@ export const useAuth = ({
             return () => { alive = false; };
         }
         beginInteractiveAuthFlow('kakaoCustomTokenResult');
-        authReady.then(async () => {
+        awaitInteractiveAuthPersistence().then(async () => {
             const loginTiming = beginLoginTiming('Kakao 개인/소셜');
-            const linkIdToken = isLinkReturn ? await auth.currentUser?.getIdToken(true) : null;
+            const deadline = createInteractiveAuthDeadline();
+            const linkIdToken = isLinkReturn
+                ? await awaitInteractiveAuthStep(auth.currentUser?.getIdToken(true), deadline)
+                : null;
             if (isLinkReturn && !linkIdToken) throw new Error('AUTH_REQUIRED');
-            const profile = await exchangeKakaoCode({ code: callback.code, redirectUri: getKakaoRedirectUri(), linkIdToken });
+            const profile = await awaitInteractiveAuthStep(
+                exchangeKakaoCode({ code: callback.code, redirectUri: getKakaoRedirectUri(), linkIdToken }),
+                deadline,
+            );
             if (isLinkReturn) {
                 const uid = auth.currentUser.uid;
-                await db.collection('users').doc(uid).set({
-                    authProvider: 'kakao.com',
-                    authProviders: firebase.firestore.FieldValue.arrayUnion('kakao.com'),
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                }, { merge: true });
+                await awaitInteractiveAuthStep(
+                    db.collection('users').doc(uid).set({
+                        authProvider: 'kakao.com',
+                        authProviders: firebase.firestore.FieldValue.arrayUnion('kakao.com'),
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    }, { merge: true }),
+                    deadline,
+                );
                 if (alive) {
                     setCurrentUser(user => user ? {
                         ...user,
@@ -940,7 +1013,10 @@ export const useAuth = ({
                 }
                 return;
             }
-            const cred = await auth.signInWithCustomToken(profile.token);
+            const cred = await awaitInteractiveAuthStep(
+                auth.signInWithCustomToken(profile.token),
+                deadline,
+            );
             if (!alive) return;
             if (isAdminSignupReturn) {
                 const profileUid = String(cred.user?.uid || '').trim();
@@ -952,7 +1028,10 @@ export const useAuth = ({
                     await auth.signOut().catch(() => {});
                     return;
                 }
-                const existingDoc = await db.collection('users').doc(profileUid).get({ source: 'server' });
+                const existingDoc = await awaitInteractiveAuthStep(
+                    db.collection('users').doc(profileUid).get({ source: 'server' }),
+                    deadline,
+                );
                 if (!alive) return;
                 if (existingDoc.exists) {
                     if (typeof onKakaoAdminSignupReady === 'function') {
@@ -979,13 +1058,22 @@ export const useAuth = ({
                 return;
             }
             try {
-                await finishSocialStart(cred, 'kakao.com', profile, loginTiming, kakaoSignupDraft);
+                await finishSocialStart(
+                    cred,
+                    'kakao.com',
+                    profile,
+                    loginTiming,
+                    kakaoSignupDraft,
+                    deadline,
+                );
             } catch (error) {
                 console.error('카카오 커스텀 토큰 처리 실패:', error);
                 if (!alive) return;
                 if (error?.message === 'NOT_MEMBER_ACCOUNT') {
                     setErrorMsg("이미 기존 기록이 있는 계정입니다. 첫 화면에서 다시 시작해 '기존 진도·달란트 이어보기'를 선택해주세요.");
                     await auth.signOut().catch(() => {});
+                } else if (isInteractiveAuthTimeout(error)) {
+                    setErrorMsg(INTERACTIVE_AUTH_TIMEOUT_MESSAGE);
                 } else {
                     setErrorMsg(`카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요. (진단: TOKEN_${describeKakaoAuthError(error)})`);
                 }
@@ -996,11 +1084,14 @@ export const useAuth = ({
             if (isAdminSignupReturn && typeof onKakaoAdminSignupReady === 'function') {
                 onKakaoAdminSignupReady({ draft: kakaoAdminSignupDraft || {} });
             }
-            const message = error?.status === 409 ? error.message : '카카오 연결을 완료하지 못했습니다. 다시 시도해주세요.';
+            const message = isInteractiveAuthTimeout(error)
+                ? INTERACTIVE_AUTH_TIMEOUT_MESSAGE
+                : (error?.status === 409 ? error.message : '카카오 연결을 완료하지 못했습니다. 다시 시도해주세요.');
             if (isLinkReturn) setSocialLinkNotice({ type: 'error', message });
+            else if (isInteractiveAuthTimeout(error)) setErrorMsg(INTERACTIVE_AUTH_TIMEOUT_MESSAGE);
             else if (error?.message === 'KAKAO_AUTH_URL_MISSING') setErrorMsg('카카오 로그인 서버 설정이 아직 완료되지 않았습니다. 관리자에게 문의하세요.');
             else setErrorMsg(`카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요. (진단: CODE_${describeKakaoAuthError(error)})`);
-            if (!isLinkReturn) auth.signOut().catch(() => {});
+            if (!isLinkReturn && !isInteractiveAuthTimeout(error)) auth.signOut().catch(() => {});
         }).finally(() => {
             removeAuthSessionValues(KAKAO_SESSION_KEYS);
             endInteractiveAuthFlow('kakaoCustomTokenResult');
@@ -1020,7 +1111,8 @@ export const useAuth = ({
         const loginTiming = beginLoginTiming('기존 회원');
         setErrorMsg('');
         try {
-            await authReady;
+            await awaitInteractiveAuthPersistence();
+            const deadline = createInteractiveAuthDeadline();
             const isUnaffiliated = churchId === UNAFFILIATED_CHURCH_ID;
             if (isUnaffiliated && !/^\d{4}$/.test(String(phone4 || '').trim())) {
                 setErrorMsg('전화번호 뒤 4자리를 입력해주세요.');
@@ -1031,7 +1123,11 @@ export const useAuth = ({
             const newEmail = makeMemberEmail(name, birthdate, churchId, phone4);
             const oldEmail = makePseudoEmail(name, birthdate);
             let newFormatError = null;
-            let cred = await auth.signInWithEmailAndPassword(newEmail, pw).catch(err => {
+            let cred = await awaitInteractiveAuthStep(
+                auth.signInWithEmailAndPassword(newEmail, pw),
+                deadline,
+            ).catch(err => {
+                if (isInteractiveAuthTimeout(err)) throw err;
                 newFormatError = err;
                 return null;
             });
@@ -1049,7 +1145,11 @@ export const useAuth = ({
 
             if (!cred) {
                 // 구 포맷으로 재시도 (기존 계정 마이그레이션)
-                cred = await auth.signInWithEmailAndPassword(oldEmail, pw).catch(async err => {
+                cred = await awaitInteractiveAuthStep(
+                    auth.signInWithEmailAndPassword(oldEmail, pw),
+                    deadline,
+                ).catch(async err => {
+                    if (isInteractiveAuthTimeout(err)) throw err;
                     if (['auth/user-not-found', 'auth/invalid-login-credentials', 'auth/invalid-credential'].includes(err?.code)) {
                         setErrorMsg("등록되지 않은 사용자입니다. 개인 계정으로 전환하셨다면 첫 화면 '시작하기'에서 로그인해주세요.");
                     } else if (err?.code === 'auth/wrong-password') {
@@ -1065,22 +1165,31 @@ export const useAuth = ({
                 }
             }
             if (!cred) return false;
-            const doc = await db.collection('users').doc(cred.user.uid).get();
+            const doc = await awaitInteractiveAuthStep(
+                db.collection('users').doc(cred.user.uid).get(),
+                deadline,
+            );
             if (!doc.exists) { setErrorMsg('사용자 정보를 찾을 수 없습니다.'); return false; }
             if (doc.data().isDeleted) { await rejectDeletedUser(); return false; }
             let user = userDocToState(doc);
             const extraOrgsPromise = loadUserExtraOrgs(cred.user.uid);
             // [랭킹] 자격증명 지연 이관 — 본문서에 평문이 남아 있으면 private로 옮긴다.
-            if (await migrateCredentialsIfNeeded(cred.user.uid, doc.data())) user.password = null;
+            if (await awaitInteractiveAuthStep(
+                migrateCredentialsIfNeeded(cred.user.uid, doc.data()),
+                deadline,
+            )) user.password = null;
             // [점수 이중화] talent 지갑 지연 마이그레이션 (1회성) — 대시보드 진입 전에 완료해 잔액 미표시 방지
-            const migrated = await migrateTalentIfNeeded(cred.user.uid, doc.data());
+            const migrated = await awaitInteractiveAuthStep(
+                migrateTalentIfNeeded(cred.user.uid, doc.data()),
+                deadline,
+            );
             if (migrated) {
                 user.talent = migrated.talent;
                 user.score = migrated.score;
                 user.talentMigrated = true;
             }
-            user.extraOrgs = await extraOrgsPromise;
-            user = await migratePersonalWallet(user);
+            user.extraOrgs = await awaitInteractiveAuthStep(extraOrgsPromise, deadline);
+            user = await awaitInteractiveAuthStep(migratePersonalWallet(user), deadline);
             if (auth.currentUser?.uid !== cred.user.uid) return false;
             setCurrentUser(user);
             setHasReadToday(user.lastReadDate === new Date().toDateString());
@@ -1088,7 +1197,10 @@ export const useAuth = ({
                 && needsInitialOnboarding(user);
             if (user.churchId) {
                 if (requiresOnboarding) {
-                    await loadChurchCommunities(user.churchId, { requireServer: true });
+                    await awaitInteractiveAuthStep(
+                        loadChurchCommunities(user.churchId, { requireServer: true }),
+                        deadline,
+                    );
                     if (auth.currentUser?.uid !== cred.user.uid) return false;
                 } else {
                     loadChurchCommunities(user.churchId);
@@ -1108,7 +1220,9 @@ export const useAuth = ({
             return true;
         } catch (err) {
             console.error(err);
-            setErrorMsg('로그인 처리 중 오류가 발생했습니다.');
+            setErrorMsg(isInteractiveAuthTimeout(err)
+                ? INTERACTIVE_AUTH_TIMEOUT_MESSAGE
+                : '로그인 처리 중 오류가 발생했습니다.');
             return false;
         }
     };
@@ -1130,8 +1244,15 @@ export const useAuth = ({
 
     // 이메일/비밀번호와 Google 관리자가 공유하는 문서 로드·마이그레이션·화면 전환 경로.
     // requireRegisteredAdmin은 Google 로그인에만 적용해 기존 이메일 로그인 동작을 보존한다.
-    const finishAdminLogin = async (cred, { requireRegisteredAdmin = false, loginTiming = null } = {}) => {
-        const doc = await db.collection('users').doc(cred.user.uid).get({ source: 'server' });
+    const finishAdminLogin = async (cred, {
+        requireRegisteredAdmin = false,
+        loginTiming = null,
+        deadline = createInteractiveAuthDeadline(),
+    } = {}) => {
+        const doc = await awaitInteractiveAuthStep(
+            db.collection('users').doc(cred.user.uid).get({ source: 'server' }),
+            deadline,
+        );
         if (auth.currentUser?.uid !== cred.user.uid) throw new Error('ADMIN_AUTH_CHANGED');
         if (!doc.exists) {
             if (requireRegisteredAdmin) {
@@ -1158,21 +1279,30 @@ export const useAuth = ({
         let user = userDocToState(doc);
         const extraOrgsPromise = loadUserExtraOrgs(cred.user.uid);
         // [랭킹] 자격증명 지연 이관 (관리자 계정 문서도 랭킹 쿼리에 걸린다)
-        if (await migrateCredentialsIfNeeded(cred.user.uid, data)) user.password = null;
+        if (await awaitInteractiveAuthStep(
+            migrateCredentialsIfNeeded(cred.user.uid, data),
+            deadline,
+        )) user.password = null;
         // [점수 이중화] talent 지갑 지연 마이그레이션 (1회성)
-        const migrated = await migrateTalentIfNeeded(cred.user.uid, data);
+        const migrated = await awaitInteractiveAuthStep(
+            migrateTalentIfNeeded(cred.user.uid, data),
+            deadline,
+        );
         if (migrated) {
             user.talent = migrated.talent;
             user.score = migrated.score;
             user.talentMigrated = true;
         }
 
-        user.extraOrgs = await extraOrgsPromise;
-        user = await migratePersonalWallet(user);
+        user.extraOrgs = await awaitInteractiveAuthStep(extraOrgsPromise, deadline);
+        user = await awaitInteractiveAuthStep(migratePersonalWallet(user), deadline);
         if (auth.currentUser?.uid !== cred.user.uid) return false;
 
         if (user.role === 'superAdmin' || user.role === 'platformAdmin') {
-            const loaded = await loadSuperAdminData({ expectedUid: cred.user.uid });
+            const loaded = await awaitInteractiveAuthStep(
+                loadSuperAdminData({ expectedUid: cred.user.uid }),
+                deadline,
+            );
             if (loaded === false || auth.currentUser?.uid !== cred.user.uid) {
                 throw new Error('ADMIN_AUTH_CHANGED');
             }
@@ -1185,7 +1315,10 @@ export const useAuth = ({
         const requiresOnboarding = needsInitialOnboarding(user);
         if (user.churchId) {
             if (requiresOnboarding) {
-                await loadChurchCommunities(user.churchId, { requireServer: true });
+                await awaitInteractiveAuthStep(
+                    loadChurchCommunities(user.churchId, { requireServer: true }),
+                    deadline,
+                );
                 if (auth.currentUser?.uid !== cred.user.uid) return false;
             } else {
                 loadChurchCommunities(user.churchId);
@@ -1205,8 +1338,13 @@ export const useAuth = ({
         const loginTiming = beginLoginTiming('공동체 관리자 이메일');
         setErrorMsg('');
         try {
-            await authReady;
-            const cred = await auth.signInWithEmailAndPassword(email, pw).catch(err => {
+            await awaitInteractiveAuthPersistence();
+            const deadline = createInteractiveAuthDeadline();
+            const cred = await awaitInteractiveAuthStep(
+                auth.signInWithEmailAndPassword(email, pw),
+                deadline,
+            ).catch(err => {
+                if (isInteractiveAuthTimeout(err)) throw err;
                 if (['auth/user-not-found', 'auth/invalid-login-credentials', 'auth/invalid-credential'].includes(err?.code)) {
                     setErrorMsg('등록되지 않은 이메일입니다.');
                 } else if (err?.code === 'auth/wrong-password') {
@@ -1217,10 +1355,12 @@ export const useAuth = ({
                 return null;
             });
             if (!cred) return false;
-            return await finishAdminLogin(cred, { loginTiming });
+            return await finishAdminLogin(cred, { loginTiming, deadline });
         } catch (err) {
             console.error(err);
-            setErrorMsg('로그인 처리 중 오류가 발생했습니다.');
+            setErrorMsg(isInteractiveAuthTimeout(err)
+                ? INTERACTIVE_AUTH_TIMEOUT_MESSAGE
+                : '로그인 처리 중 오류가 발생했습니다.');
             return false;
         }
     };
@@ -1236,16 +1376,21 @@ export const useAuth = ({
         let popupUid = null;
         beginInteractiveAuthFlow(authFlowName);
         try {
-            await authReady;
+            await awaitInteractiveAuthPersistence();
             const provider = new firebase.auth.GoogleAuthProvider();
             const cred = await auth.signInWithPopup(provider);
+            const deadline = createInteractiveAuthDeadline();
             if (!cred?.user) {
                 setErrorMsg('구글 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.');
                 return false;
             }
             popupUid = cred.user.uid;
 
-            const didLogin = await finishAdminLogin(cred, { requireRegisteredAdmin: true, loginTiming });
+            const didLogin = await finishAdminLogin(cred, {
+                requireRegisteredAdmin: true,
+                loginTiming,
+                deadline,
+            });
             if (!didLogin) return false;
 
             const hasPasswordProvider = (cred.user.providerData || [])
@@ -1260,7 +1405,7 @@ export const useAuth = ({
             return true;
         } catch (err) {
             applyGooglePopupError(err);
-            if (popupUid && auth.currentUser?.uid === popupUid) {
+            if (popupUid && auth.currentUser?.uid === popupUid && !isInteractiveAuthTimeout(err)) {
                 setCurrentUser(null);
                 setTempUser(null);
                 await auth.signOut().catch(signOutError => {
@@ -1291,7 +1436,7 @@ export const useAuth = ({
         let popupUser = null;
         let startResult = null;
         try {
-            await authReady;
+            await awaitInteractiveAuthPersistence();
             const provider = new firebase.auth.GoogleAuthProvider();
             const cred = await auth.signInWithPopup(provider);
             if (!cred?.user) {
@@ -1412,7 +1557,7 @@ export const useAuth = ({
     const handleMemberSignup = async ({ name, birthdate, password, churchId, churchCode, phone4, consents }) => {
         setErrorMsg('');
         try {
-            await authReady;
+            await awaitInteractiveAuthPersistence();
             const signupConsent = buildSignupConsentSnapshot({
                 birthdate,
                 consents,
@@ -1538,7 +1683,7 @@ export const useAuth = ({
         };
 
         try {
-            await authReady;
+            await awaitInteractiveAuthPersistence();
             const signupConsent = buildSignupConsentSnapshot({
                 birthdate: null,
                 consents,

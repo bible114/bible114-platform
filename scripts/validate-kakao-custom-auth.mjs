@@ -14,6 +14,7 @@ import {
 
 const read = path => fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const auth = read('src/hooks/useAuth.js');
+const app = read('src/App.jsx');
 const edge = read('supabase/functions/kakao-auth/index.ts');
 const core = read('supabase/functions/kakao-auth/core.ts');
 const banner = read('src/components/dashboard/SocialLinkBanner.jsx');
@@ -39,16 +40,21 @@ assert.match(auth, /removeAuthSessionValues\(KAKAO_SESSION_KEYS\)/);
 assert.doesNotMatch(auth, /sessionStorage\.(?:getItem|setItem|removeItem)/);
 assert.match(auth, /isValidKakaoState\(callback\.state, expectedState\)/);
 assert.match(auth, /auth\.signInWithCustomToken\(profile\.token\)/);
-assert.match(auth, /openExistingSocialUser\(firebaseUser, doc, loginTiming\)/);
+assert.match(auth, /openExistingSocialUser\(firebaseUser, doc, loginTiming, deadline\)/);
 // 연결된 카카오가 플랫폼/슈퍼관리자 uid면 Google 큰 버튼(T112b)과 같은 관리자 로그인으로 진입한다.
 assert.match(auth, /\['platformAdmin', 'superAdmin'\]\.includes\(doc\.data\(\)\?\.role\)/);
-assert.match(auth, /finishAdminLogin\(cred, \{ requireRegisteredAdmin: true, loginTiming \}\)/);
+assert.match(auth, /finishAdminLogin\(cred, \{[\s\S]*requireRegisteredAdmin: true,[\s\S]*loginTiming,[\s\S]*deadline/);
 // 다른 방식으로 등록된 계정의 카카오 로그인은 일반 실패 문구로 뭉개지 않고 안내 후 세션을 정리한다.
 assert.match(auth, /error\?\.message === 'NOT_MEMBER_ACCOUNT'/);
 assert.match(auth, /linkWithPopup\(new firebase\.auth\.GoogleAuthProvider\(\)\)/);
 assert.match(auth, /exchangeKakaoCode\(\{ code: callback\.code, redirectUri: getKakaoRedirectUri\(\), linkIdToken \}\)/);
 assert.match(auth, /authProviders: firebase\.firestore\.FieldValue\.arrayUnion\('kakao\.com'\)/);
 assert.match(auth, /callback\.error === 'access_denied'/);
+assert.match(auth, /INTERACTIVE_AUTH_PERSISTENCE_TIMEOUT_MS = 8_000/);
+assert.match(auth, /INTERACTIVE_AUTH_POST_LOGIN_TIMEOUT_MS = 20_000/);
+assert.match(auth, /awaitInteractiveAuthStep\([\s\S]*exchangeKakaoCode/);
+assert.match(auth, /!isLinkReturn && !isInteractiveAuthTimeout\(error\)/);
+assert.match(app, /if \(errorMsg && loginTransitioning\) setLoginTransitioning\(false\)/);
 assert.match(edge, /FIREBASE_SERVICE_ACCOUNT/);
 assert.match(edge, /verifyFirebaseIdToken/);
 assert.match(edge, /kakaoLinks/);

@@ -322,22 +322,23 @@ const existingSocialStart = authFlow.indexOf('const openExistingSocialUser = asy
 const existingSocialEnd = authFlow.indexOf('const openSocialOnboarding =', existingSocialStart);
 const existingPersonalFlow = authFlow.slice(existingPersonalStart, existingSocialStart);
 const existingSocialFlow = authFlow.slice(existingSocialStart, existingSocialEnd);
-assert.match(existingPersonalFlow, /const openExistingPersonalUser = async \(firebaseUser, doc, loginTiming = null\) => \{\s*if \(auth\.currentUser\?\.uid !== firebaseUser\.uid\) throw new Error\('SOCIAL_AUTH_CHANGED'\);\s*const data = doc\.data\(\)/);
-assert.match(existingSocialFlow, /const openExistingSocialUser = async \(firebaseUser, doc, loginTiming = null\) => \{\s*if \(auth\.currentUser\?\.uid !== firebaseUser\.uid\) throw new Error\('SOCIAL_AUTH_CHANGED'\);\s*const data = doc\.data\(\)/);
+assert.match(existingPersonalFlow, /const openExistingPersonalUser = async \([\s\S]{0,180}deadline = createInteractiveAuthDeadline\(\)[\s\S]{0,180}auth\.currentUser\?\.uid !== firebaseUser\.uid[\s\S]{0,100}const data = doc\.data\(\)/);
+assert.match(existingSocialFlow, /const openExistingSocialUser = async \([\s\S]{0,180}deadline = createInteractiveAuthDeadline\(\)[\s\S]{0,180}auth\.currentUser\?\.uid !== firebaseUser\.uid[\s\S]{0,100}const data = doc\.data\(\)/);
 assert.match(existingPersonalFlow, /migratePersonalWallet\(user\)[\s\S]*auth\.currentUser\?\.uid !== firebaseUser\.uid[\s\S]*throw new Error\('SOCIAL_AUTH_CHANGED'\)[\s\S]*setCurrentUser\(user\)/);
 assert.match(existingSocialFlow, /migratePersonalWallet\(user\)[\s\S]*auth\.currentUser\?\.uid !== firebaseUser\.uid[\s\S]*throw new Error\('SOCIAL_AUTH_CHANGED'\)[\s\S]*setCurrentUser\(user\)/);
 assert.match(authFlow, /const canDeferPersonalWalletAudit = user => \{[\s\S]*user\.talentWalletMigrated !== true[\s\S]*user\.talent !== 0[\s\S]*primaryRoster\.talent <= 1_000_000_000/);
 assert.match(authFlow, /const auditPersonalWalletAfterLogin = user => \{[\s\S]*const initialExtraOrgs = user\.extraOrgs;[\s\S]*auth\.currentUser\?\.uid !== user\.uid[\s\S]*current\.extraOrgs !== initialExtraOrgs[\s\S]*extraOrgs: auditedUser\.extraOrgs/);
-assert.match(existingPersonalFlow, /user\.extraOrgs = await extraOrgsPromise;[\s\S]*const deferWalletAudit = canDeferPersonalWalletAudit\(user\);[\s\S]*if \(!deferWalletAudit\) user = await migratePersonalWallet\(user\);[\s\S]*setCurrentUser\(user\)[\s\S]*if \(deferWalletAudit\) auditPersonalWalletAfterLogin\(user\)/);
+assert.match(existingPersonalFlow, /user\.extraOrgs = await awaitInteractiveAuthStep\(extraOrgsPromise, deadline\);[\s\S]*const deferWalletAudit = canDeferPersonalWalletAudit\(user\);[\s\S]*if \(!deferWalletAudit\)[\s\S]*awaitInteractiveAuthStep\(migratePersonalWallet\(user\), deadline\)[\s\S]*setCurrentUser\(user\)[\s\S]*if \(deferWalletAudit\) auditPersonalWalletAfterLogin\(user\)/);
 
 const googlePersonalStart = authFlow.slice(
     authFlow.indexOf('const handleGooglePersonalSignup = async'),
     authFlow.indexOf('const handleGoogleLink = async'),
 );
-assert.match(googlePersonalStart, /existingDoc = await userRef\.get\(\{ source: 'server' \}\)/);
-assert.match(googlePersonalStart, /existingDoc = await userRef\.get\(\{ source: 'server' \}\);\s*if \(auth\.currentUser\?\.uid !== cred\.user\.uid\) throw new Error\('SOCIAL_AUTH_CHANGED'\);\s*if \(existingDoc\.exists\)/);
+assert.match(googlePersonalStart, /existingDoc = await awaitInteractiveAuthStep\([\s\S]*userRef\.get\(\{ source: 'server' \}\),[\s\S]*deadline/);
+assert.match(googlePersonalStart, /existingDoc = await awaitInteractiveAuthStep\([\s\S]*if \(auth\.currentUser\?\.uid !== cred\.user\.uid\) throw new Error\('SOCIAL_AUTH_CHANGED'\);\s*if \(existingDoc\.exists\)/);
 assert.match(googlePersonalStart, /let popupUid = null[\s\S]*popupUid = cred\?\.user\?\.uid \|\| null/);
-assert.match(googlePersonalStart, /if \(GOOGLE_ADMIN_ROLES\.has\(existingDoc\.data\(\)\?\.role\)\) \{\s*return await finishAdminLogin\(cred, \{ requireRegisteredAdmin: true, loginTiming \}\);\s*\}\s*return await openExistingSocialUser/);
+assert.match(googlePersonalStart, /if \(GOOGLE_ADMIN_ROLES\.has\(existingDoc\.data\(\)\?\.role\)\)[\s\S]*return await finishAdminLogin\(cred, \{[\s\S]*requireRegisteredAdmin: true,[\s\S]*deadline,[\s\S]*return await openExistingSocialUser\(cred\.user, existingDoc, loginTiming, deadline\)/);
+assert.match(googlePersonalStart, /auth\.currentUser\?\.uid === popupUid[\s\S]*!isInteractiveAuthTimeout\(error\)[\s\S]*await auth\.signOut/);
 assert.match(googlePersonalStart, /popupUid && auth\.currentUser\?\.uid === popupUid[\s\S]*setCurrentUser\(null\)[\s\S]*setTempUser\(null\)[\s\S]*await auth\.signOut/);
 assert.ok(
     googlePersonalStart.indexOf('finishAdminLogin(cred') < googlePersonalStart.indexOf('openExistingSocialUser(cred.user'),
@@ -348,10 +349,10 @@ const finishAdminLoginStart = authFlow.indexOf('const finishAdminLogin = async')
 const finishAdminLoginEnd = authFlow.indexOf('// ── 교회 관리자 / 슈퍼 관리자 로그인', finishAdminLoginStart);
 const finishAdminLogin = authFlow.slice(finishAdminLoginStart, finishAdminLoginEnd);
 assert.match(finishAdminLogin, /doc\(cred\.user\.uid\)\.get\(\{ source: 'server' \}\)/);
-assert.match(finishAdminLogin, /user\.role === 'superAdmin' \|\| user\.role === 'platformAdmin'[\s\S]*await loadSuperAdminData\(\{ expectedUid: cred\.user\.uid \}\)[\s\S]*auth\.currentUser\?\.uid !== cred\.user\.uid[\s\S]*setCurrentUser\(user\)/);
+assert.match(finishAdminLogin, /user\.role === 'superAdmin' \|\| user\.role === 'platformAdmin'[\s\S]*await awaitInteractiveAuthStep\([\s\S]*loadSuperAdminData\(\{ expectedUid: cred\.user\.uid \}\)[\s\S]*deadline[\s\S]*auth\.currentUser\?\.uid !== cred\.user\.uid[\s\S]*setCurrentUser\(user\)/);
 assert.match(finishAdminLogin, /const targetView = requiresOnboarding\s*\? 'plan_type_select'\s*: 'dashboard';\s*if \(requiresOnboarding\) setTempUser\(user\);\s*setView\(targetView\)/);
-assert.match(authFlow, /const handleChurchAdminLogin = async[\s\S]*await finishAdminLogin\(cred, \{ loginTiming \}\)/);
-assert.match(authFlow, /const handleGoogleAdminLogin = async[\s\S]*await finishAdminLogin\(cred, \{ requireRegisteredAdmin: true, loginTiming \}\)/);
+assert.match(authFlow, /const handleChurchAdminLogin = async[\s\S]*await finishAdminLogin\(cred, \{ loginTiming, deadline \}\)/);
+assert.match(authFlow, /const handleGoogleAdminLogin = async[\s\S]*await finishAdminLogin\(cred, \{[\s\S]*requireRegisteredAdmin: true,[\s\S]*loginTiming,[\s\S]*deadline/);
 
 assert.match(dashboard, /CHURCH_ADMIN_READER_GUIDE_KEY_PREFIX = 'b114_church_admin_reader_guide_v1'/);
 const adminReaderGuideEffectStart = dashboard.indexOf('useEffect(() => {\n        if (!isChurchAdmin || !currentUser?.uid)');
