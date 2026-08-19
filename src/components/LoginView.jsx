@@ -23,7 +23,10 @@ import {
 } from '../utils/socialLoginTransition';
 import IntroVideoCard from './IntroVideoCard';
 import NationalReadingRanking from './NationalReadingRanking';
+import MobileSessionNotice from './MobileSessionNotice';
 import { normalizePublicNationalRankingSnapshot } from '../utils/publicNationalRanking';
+import { getAuthSessionValue } from '../utils/authSessionStorage';
+import { detectMobileSessionContext, isInAppBrowserContext } from '../utils/mobileSessionContext';
 
 const DemoTour = lazy(() => import('./DemoTour'));
 
@@ -57,7 +60,7 @@ const isPendingKakaoLoginReturn = () => {
         if (hasPendingLoginTransition()) return true;
         const params = new URLSearchParams(window.location.search);
         const hasCallback = params.has('code') || params.has('error');
-        return hasCallback && sessionStorage.getItem(KAKAO_RETURNING_KEY) === 'pending';
+        return hasCallback && getAuthSessionValue(KAKAO_RETURNING_KEY) === 'pending';
     } catch {
         return false;
     }
@@ -233,7 +236,7 @@ const LoginView = ({
     const [directory, setDirectory] = useState([]);
 
     const verse = todayVerse();
-    const isKakaoTalkBrowser = typeof navigator !== 'undefined' && navigator.userAgent.includes('KAKAOTALK');
+    const isRestrictedInAppBrowser = isInAppBrowserContext(detectMobileSessionContext());
     const activeTabRef = useRef(activeTab);
     const googleAdminSignupCancelRef = useRef(null);
     activeTabRef.current = activeTab;
@@ -796,9 +799,9 @@ const LoginView = ({
                     </span>
                 )}
             </button>
-            <button type="button" onClick={handleGoogleAccountStart} disabled={loading || googlePersonalLoading || isKakaoTalkBrowser}
+            <button type="button" onClick={handleGoogleAccountStart} disabled={loading || googlePersonalLoading || isRestrictedInAppBrowser}
                 className="w-full rounded-2xl bg-slate-100 px-5 py-4 text-base font-black text-[#191919] shadow-sm transition-transform active:scale-[0.99] disabled:opacity-40"
-                title={isKakaoTalkBrowser ? 'Google 로그인은 다른 브라우저에서 이용해주세요' : '구글로 시작'}>
+                title={isRestrictedInAppBrowser ? 'Google 로그인은 다른 브라우저에서 이용해주세요' : '구글로 시작'}>
                 {googlePersonalLoading ? '구글 계정 확인 중...' : (
                     <span className="flex items-center justify-center gap-2.5">
                         <svg viewBox="0 0 48 48" className="h-5 w-5" aria-hidden="true">
@@ -852,7 +855,7 @@ const LoginView = ({
                         <input inputMode="numeric" value={pBirthdate} onChange={e => setPBirthdate(e.target.value.replace(/\D/g, ''))} placeholder="생년월일 8자리 (예: 19900101)" maxLength={8} className={inputCls} />
                         <PolicyConsent audience="personal" value={pPolicyConsents} onChange={setPPolicyConsents} disabled={loading} />
                         <GuardianConsent birthdate={pBirthdate} value={pGuardianConsent} onChange={setPGuardianConsent} disabled={loading} />
-                        {isKakaoTalkBrowser ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12px] text-amber-800">카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 다른 브라우저로 열어주세요.</p> : <button type="button" onClick={handleGooglePersonalSignup} disabled={loading || !personalConsentReady} className="w-full rounded-full border border-hairline bg-white py-3.5 text-sm font-semibold text-ink disabled:opacity-50">{googlePersonalLoading ? '구글 계정 확인 중...' : 'G 구글로 시작'}</button>}
+                        {isRestrictedInAppBrowser ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12px] text-amber-800">앱 안 브라우저에서는 구글 로그인이 제한됩니다. 다른 브라우저로 열어주세요.</p> : <button type="button" onClick={handleGooglePersonalSignup} disabled={loading || !personalConsentReady} className="w-full rounded-full border border-hairline bg-white py-3.5 text-sm font-semibold text-ink disabled:opacity-50">{googlePersonalLoading ? '구글 계정 확인 중...' : 'G 구글로 시작'}</button>}
                         <button type="button" onClick={() => { setPersonalMethod('manual'); clearError(); }} className="w-full rounded-full bg-ink py-3.5 text-sm font-semibold text-cream">이름·생일·전화번호로 시작</button>
                         {guestMigrationPreview && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-[12px] font-semibold text-emerald-800">지금까지 읽은 {guestMigrationPreview.currentDay}일차 진도를 가져옵니다.</div>}
                         {errorMsg && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-center text-xs text-red-500">{errorMsg}</p>}
@@ -940,9 +943,9 @@ const LoginView = ({
                     <span className="text-[11px] font-semibold text-ink/35">또는</span>
                     <span className="h-px flex-1 bg-hairline" />
                 </div>
-                {isKakaoTalkBrowser ? (
+                {isRestrictedInAppBrowser ? (
                     <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12px] leading-relaxed text-amber-800">
-                        카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 우측 하단 ⋯ 메뉴에서 '다른 브라우저로 열기'를 눌러주세요.
+                        앱 안 브라우저에서는 구글 로그인이 제한됩니다. 화면의 메뉴에서 '다른 브라우저로 열기'를 눌러주세요.
                     </p>
                 ) : (
                     <button
@@ -1065,9 +1068,9 @@ const LoginView = ({
                                 </span>
                             )}
                         </button>
-                        {isKakaoTalkBrowser ? (
+                        {isRestrictedInAppBrowser ? (
                             <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12px] leading-relaxed text-amber-800">
-                                카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 우측 하단 ⋯ 메뉴에서 '다른 브라우저로 열기'를 눌러주세요.
+                                앱 안 브라우저에서는 구글 로그인이 제한됩니다. 화면의 메뉴에서 '다른 브라우저로 열기'를 눌러주세요.
                             </p>
                         ) : (
                             <button
@@ -1250,13 +1253,8 @@ const LoginView = ({
                     </span>
                 </p>
 
-                <IntroVideoCard />
-                <NationalReadingRanking
-                    entries={nationalRanking}
-                />
-
                 {/* Stat strip */}
-                <div className="hidden lg:grid grid-cols-4 border-t border-b border-hairline py-4 mb-5">
+                <div data-testid="platform-stats" className="grid grid-cols-4 border-t border-b border-hairline py-4 mb-5">
                     {[
                         { num: statsLoading ? '…' : stats.total_churches.toString(), label: '함께하는 교회' },
                         { num: statsLoading ? '…' : stats.total_readers.toLocaleString(), label: '참여 성도' },
@@ -1269,6 +1267,11 @@ const LoginView = ({
                         </div>
                     ))}
                 </div>
+
+                <IntroVideoCard />
+                <NationalReadingRanking
+                    entries={nationalRanking}
+                />
 
                 {/* Today's passage card */}
                 <div className="hidden lg:block bg-cream-card border border-hairline rounded-sm px-5 py-4 max-w-lg relative mb-5">
@@ -1306,6 +1309,8 @@ const LoginView = ({
                         <h2 className="font-serif text-[26px] font-semibold text-ink tracking-tight">{cardTitle}</h2>
                     </div>
 
+                    <MobileSessionNotice className="mb-5" showStandalone />
+
                     {/* Form content */}
                     {renderCard()}
                     <nav aria-label="로그인 도움" className="mt-5 border-t border-hairline pt-4 lg:hidden">
@@ -1326,7 +1331,7 @@ const LoginView = ({
                 onClose={closeExistingMemberNotice}
                 onKakao={() => startSocialConnectionFromNotice(handleKakaoAccountStart)}
                 onGoogle={() => startSocialConnectionFromNotice(handleGoogleAccountStart)}
-                googleDisabled={isKakaoTalkBrowser}
+                googleDisabled={isRestrictedInAppBrowser}
             />
 
             {showDemoTour && (

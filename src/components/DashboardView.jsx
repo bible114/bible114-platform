@@ -50,6 +50,7 @@ import {
     BibleQuizCard,
 } from './dashboard';
 import TutorialOverlay from './TutorialOverlay';
+import MobileSessionNotice from './MobileSessionNotice';
 
 const TalentShop = lazy(() => import('./dashboard/TalentShop'));
 const ReadingChampionSection = lazy(() => import('./dashboard/ReadingChampionSection'));
@@ -671,6 +672,8 @@ const DashboardView = ({
                 className="max-w-5xl mx-auto w-full mt-4"
                 style={{ paddingBottom: 'var(--app-fixed-bottom-clearance)' }}
             >
+                <MobileSessionNotice className="mx-4 mb-6" dismissible />
+
                 {hasCommunity && !isReadingPeople && (
                     <section aria-label="함께 읽는 통독 현황" className="mb-6">
                         <div className="mb-3 px-4">

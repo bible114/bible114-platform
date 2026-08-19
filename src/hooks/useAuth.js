@@ -34,6 +34,13 @@ import {
 import { buildSignupConsentSnapshot, buildSignupConsentSummary } from '../utils/signupConsent';
 import { writeSignupConsent } from '../utils/signupConsentStore';
 import {
+    getAuthSessionValue,
+    removeAuthSessionValue,
+    removeAuthSessionValues,
+    setAuthSessionValue,
+} from '../utils/authSessionStorage';
+import { detectMobileSessionContext, isInAppBrowserContext } from '../utils/mobileSessionContext';
+import {
     completeMemberSignup as completeMemberSignupViaApi,
     completeChurchAdminSignup as completeChurchAdminSignupViaApi,
     completePersonalSignup as completePersonalSignupViaApi,
@@ -46,8 +53,16 @@ const GOOGLE_ADMIN_ROLES = new Set(['churchAdmin', 'platformAdmin', 'superAdmin'
 const GOOGLE_ADMIN_NOT_FOUND_MESSAGE = "이 구글 계정으로 등록된 관리자가 없습니다. 기존 관리자는 첫 화면에서 구글로 시작한 뒤 '기존 진도·달란트 이어보기'를 선택해주세요.";
 const GOOGLE_ADMIN_SIGNUP_FLOW_NAME = 'googleAdminSignup';
 const GOOGLE_ADMIN_ALREADY_REGISTERED_MESSAGE = '이미 등록된 계정입니다. 첫 화면에서 구글로 시작해주세요.';
-const KAKAO_GOOGLE_AUTH_MESSAGE = "카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 우측 하단 ⋯ 메뉴에서 '다른 브라우저로 열기'를 눌러주세요.";
+const IN_APP_GOOGLE_AUTH_MESSAGE = "앱 안 브라우저에서는 구글 로그인이 제한됩니다. 화면의 메뉴에서 '다른 브라우저로 열기'를 눌러주세요.";
 const KAKAO_SIGNUP_DRAFT_KEY = 'b114_kakao_signup_consent_v1';
+const KAKAO_SESSION_KEYS = [
+    KAKAO_STATE_KEY,
+    KAKAO_RETURNING_KEY,
+    KAKAO_LINK_RETURNING_KEY,
+    KAKAO_SIGNUP_DRAFT_KEY,
+    KAKAO_ADMIN_SIGNUP_RETURNING_KEY,
+    KAKAO_ADMIN_SIGNUP_DRAFT_KEY,
+];
 
 const needsInitialOnboarding = user => (
     user?.role === 'churchAdmin'
@@ -164,8 +179,8 @@ export const useAuth = ({
         endInteractiveAuthFlow(flowName);
     };
 
-    const isKakaoTalkBrowser = () => (
-        typeof navigator !== 'undefined' && navigator.userAgent.includes('KAKAOTALK')
+    const isRestrictedInAppBrowser = () => (
+        isInAppBrowserContext(detectMobileSessionContext())
     );
 
     const applyGooglePopupError = (err) => {
@@ -507,7 +522,7 @@ export const useAuth = ({
             beginInteractiveAuthFlow(flowName);
             try {
                 await authReady;
-                if (isKakaoTalkBrowser()) { setErrorMsg(KAKAO_GOOGLE_AUTH_MESSAGE); return false; }
+                if (isRestrictedInAppBrowser()) { setErrorMsg(IN_APP_GOOGLE_AUTH_MESSAGE); return false; }
                 const provider = new firebase.auth.GoogleAuthProvider();
                 const cred = await auth.signInWithPopup(provider);
                 popupUid = cred?.user?.uid || null;
@@ -589,28 +604,32 @@ export const useAuth = ({
             try {
                 // 중단된 다른 Kakao redirect 흐름이 남아 있어도 이번 시작 모드를
                 // link/admin 가입으로 오분류하지 않도록 상호 배타적으로 초기화한다.
-                sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
-                sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY);
-                sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
+                removeAuthSessionValues([
+                    KAKAO_LINK_RETURNING_KEY,
+                    KAKAO_ADMIN_SIGNUP_RETURNING_KEY,
+                    KAKAO_ADMIN_SIGNUP_DRAFT_KEY,
+                ]);
                 if (signupDraft?.birthdate || signupDraft?.consents) {
                     buildSignupConsentSnapshot({
                         birthdate: signupDraft?.birthdate,
                         consents: signupDraft?.consents,
                         audience: 'personal',
                     }, { source: 'kakao_personal_signup' });
-                    sessionStorage.setItem(KAKAO_SIGNUP_DRAFT_KEY, JSON.stringify(signupDraft));
+                    setAuthSessionValue(KAKAO_SIGNUP_DRAFT_KEY, JSON.stringify(signupDraft));
                 } else {
-                    sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
+                    removeAuthSessionValue(KAKAO_SIGNUP_DRAFT_KEY);
                 }
                 const state = createKakaoState();
-                sessionStorage.setItem(KAKAO_STATE_KEY, state);
-                sessionStorage.setItem(KAKAO_RETURNING_KEY, 'pending');
+                setAuthSessionValue(KAKAO_STATE_KEY, state);
+                setAuthSessionValue(KAKAO_RETURNING_KEY, 'pending');
                 window.location.assign(buildKakaoAuthorizeUrl({ state }));
             } catch (error) {
                 console.error('카카오 로그인 시작 실패:', error);
-                sessionStorage.removeItem(KAKAO_STATE_KEY);
-                sessionStorage.removeItem(KAKAO_RETURNING_KEY);
-                sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
+                removeAuthSessionValues([
+                    KAKAO_STATE_KEY,
+                    KAKAO_RETURNING_KEY,
+                    KAKAO_SIGNUP_DRAFT_KEY,
+                ]);
                 if (error?.message === 'KAKAO_REST_KEY_MISSING') setErrorMsg('카카오 로그인 설정이 아직 완료되지 않았습니다. 관리자에게 문의하세요.');
                 else setErrorMsg('카카오 로그인을 시작하지 못했습니다. 잠시 후 다시 시도해주세요.');
                 endInteractiveAuthFlow(flowName);
@@ -627,8 +646,8 @@ export const useAuth = ({
         try {
             await authReady;
             if (!auth.currentUser) throw new Error('AUTH_REQUIRED');
-            if (isKakaoTalkBrowser()) {
-                setSocialLinkNotice({ type: 'error', message: KAKAO_GOOGLE_AUTH_MESSAGE });
+            if (isRestrictedInAppBrowser()) {
+                setSocialLinkNotice({ type: 'error', message: IN_APP_GOOGLE_AUTH_MESSAGE });
                 return;
             }
             await auth.currentUser.linkWithPopup(new firebase.auth.GoogleAuthProvider());
@@ -657,19 +676,23 @@ export const useAuth = ({
         try {
             await authReady;
             if (!auth.currentUser) throw new Error('AUTH_REQUIRED');
-            sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
-            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY);
-            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
+            removeAuthSessionValues([
+                KAKAO_SIGNUP_DRAFT_KEY,
+                KAKAO_ADMIN_SIGNUP_RETURNING_KEY,
+                KAKAO_ADMIN_SIGNUP_DRAFT_KEY,
+            ]);
             const state = createKakaoState();
-            sessionStorage.setItem(KAKAO_STATE_KEY, state);
-            sessionStorage.setItem(KAKAO_RETURNING_KEY, 'pending');
-            sessionStorage.setItem(KAKAO_LINK_RETURNING_KEY, 'pending');
+            setAuthSessionValue(KAKAO_STATE_KEY, state);
+            setAuthSessionValue(KAKAO_RETURNING_KEY, 'pending');
+            setAuthSessionValue(KAKAO_LINK_RETURNING_KEY, 'pending');
             window.location.assign(buildKakaoAuthorizeUrl({ state }));
         } catch (error) {
-            sessionStorage.removeItem(KAKAO_STATE_KEY);
-            sessionStorage.removeItem(KAKAO_RETURNING_KEY);
-            sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
-            sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
+            removeAuthSessionValues([
+                KAKAO_STATE_KEY,
+                KAKAO_RETURNING_KEY,
+                KAKAO_LINK_RETURNING_KEY,
+                KAKAO_SIGNUP_DRAFT_KEY,
+            ]);
             setSocialLinkNotice({ type: 'error', message: '카카오 연결을 시작하지 못했습니다. 잠시 후 다시 시도해주세요.' });
         }
     };
@@ -751,7 +774,7 @@ export const useAuth = ({
                 return { ok: true, redirecting: true };
             }
 
-            if (isKakaoTalkBrowser()) throw new Error('GOOGLE_IN_APP_UNAVAILABLE');
+            if (isRestrictedInAppBrowser()) throw new Error('GOOGLE_IN_APP_UNAVAILABLE');
             if (pendingGoogleCredential) {
                 await legacy.credential.user.linkWithCredential(pendingGoogleCredential);
                 pendingGoogleRecoveryCredentialRef.current = null;
@@ -783,7 +806,7 @@ export const useAuth = ({
                 LEGACY_CHURCH_MISMATCH: '선택한 교회와 기존 기록의 교회가 다릅니다.',
                 SOCIAL_RECOVERY_SESSION_MISSING: '소셜 로그인 확인 시간이 지났습니다. 처음 화면에서 다시 시작해주세요.',
                 SOCIAL_RECOVERY_ALREADY_REGISTERED: '이미 등록된 소셜 계정입니다. 처음 화면에서 바로 로그인해주세요.',
-                GOOGLE_IN_APP_UNAVAILABLE: KAKAO_GOOGLE_AUTH_MESSAGE,
+                GOOGLE_IN_APP_UNAVAILABLE: IN_APP_GOOGLE_AUTH_MESSAGE,
             };
             if (auth.currentUser) await auth.signOut().catch(() => {});
             throw new Error(messages[error?.message]
@@ -850,30 +873,25 @@ export const useAuth = ({
         let alive = true;
         const callback = readKakaoCallback();
         if (!callback.code && !callback.error) return () => { alive = false; };
-        const expectedState = sessionStorage.getItem(KAKAO_STATE_KEY);
-        const returnStatus = sessionStorage.getItem(KAKAO_RETURNING_KEY);
-        const isLinkReturn = sessionStorage.getItem(KAKAO_LINK_RETURNING_KEY) === 'pending';
-        const isAdminSignupReturn = sessionStorage.getItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY) === 'pending';
+        const expectedState = getAuthSessionValue(KAKAO_STATE_KEY);
+        const returnStatus = getAuthSessionValue(KAKAO_RETURNING_KEY);
+        const isLinkReturn = getAuthSessionValue(KAKAO_LINK_RETURNING_KEY) === 'pending';
+        const isAdminSignupReturn = getAuthSessionValue(KAKAO_ADMIN_SIGNUP_RETURNING_KEY) === 'pending';
         let kakaoSignupDraft = null;
         let kakaoAdminSignupDraft = null;
         try {
-            kakaoSignupDraft = JSON.parse(sessionStorage.getItem(KAKAO_SIGNUP_DRAFT_KEY) || 'null');
+            kakaoSignupDraft = JSON.parse(getAuthSessionValue(KAKAO_SIGNUP_DRAFT_KEY) || 'null');
         } catch {
-            sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
+            removeAuthSessionValue(KAKAO_SIGNUP_DRAFT_KEY);
         }
         try {
-            kakaoAdminSignupDraft = JSON.parse(sessionStorage.getItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY) || 'null');
+            kakaoAdminSignupDraft = JSON.parse(getAuthSessionValue(KAKAO_ADMIN_SIGNUP_DRAFT_KEY) || 'null');
         } catch {
-            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
+            removeAuthSessionValue(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
         }
         clearKakaoCallbackUrl();
         if (callback.error) {
-            sessionStorage.removeItem(KAKAO_STATE_KEY);
-            sessionStorage.removeItem(KAKAO_RETURNING_KEY);
-            sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
-            sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
-            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY);
-            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
+            removeAuthSessionValues(KAKAO_SESSION_KEYS);
             if (isAdminSignupReturn && typeof onKakaoAdminSignupReady === 'function') {
                 onKakaoAdminSignupReady({ draft: kakaoAdminSignupDraft || {} });
             }
@@ -884,18 +902,21 @@ export const useAuth = ({
             return () => { alive = false; };
         }
         if (!isValidKakaoState(callback.state, expectedState) || returnStatus === 'processing') {
-            sessionStorage.removeItem(KAKAO_STATE_KEY);
-            sessionStorage.removeItem(KAKAO_RETURNING_KEY);
-            sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
-            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY);
-            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
+            removeAuthSessionValues(KAKAO_SESSION_KEYS);
             if (isAdminSignupReturn && typeof onKakaoAdminSignupReady === 'function') {
                 onKakaoAdminSignupReady({ draft: kakaoAdminSignupDraft || {} });
             }
             setErrorMsg('로그인 확인 시간이 지났어요. 노란 [카카오로 시작] 버튼을 다시 한 번 눌러주세요.');
             return () => { alive = false; };
         }
-        sessionStorage.setItem(KAKAO_RETURNING_KEY, 'processing');
+        try {
+            setAuthSessionValue(KAKAO_RETURNING_KEY, 'processing');
+        } catch (storageError) {
+            console.error('카카오 로그인 복귀 상태 저장 실패:', storageError);
+            removeAuthSessionValues(KAKAO_SESSION_KEYS);
+            setErrorMsg("브라우저가 로그인 확인 정보를 저장하지 못했습니다. 앱 메뉴에서 '다른 브라우저로 열기'를 눌러 다시 시도해주세요.");
+            return () => { alive = false; };
+        }
         beginInteractiveAuthFlow('kakaoCustomTokenResult');
         authReady.then(async () => {
             const loginTiming = beginLoginTiming('Kakao 개인/소셜');
@@ -981,12 +1002,7 @@ export const useAuth = ({
             else setErrorMsg(`카카오 로그인을 완료하지 못했습니다. 다시 시도해주세요. (진단: CODE_${describeKakaoAuthError(error)})`);
             if (!isLinkReturn) auth.signOut().catch(() => {});
         }).finally(() => {
-            sessionStorage.removeItem(KAKAO_STATE_KEY);
-            sessionStorage.removeItem(KAKAO_RETURNING_KEY);
-            sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
-            sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
-            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY);
-            sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
+            removeAuthSessionValues(KAKAO_SESSION_KEYS);
             endInteractiveAuthFlow('kakaoCustomTokenResult');
         });
         return () => { alive = false; };
@@ -1212,8 +1228,8 @@ export const useAuth = ({
     const handleGoogleAdminLogin = async () => {
         const loginTiming = beginLoginTiming('공동체 관리자 Google');
         setErrorMsg('');
-        if (isKakaoTalkBrowser()) {
-            setErrorMsg(KAKAO_GOOGLE_AUTH_MESSAGE);
+        if (isRestrictedInAppBrowser()) {
+            setErrorMsg(IN_APP_GOOGLE_AUTH_MESSAGE);
             return false;
         }
         const authFlowName = 'googleAdminLogin';
@@ -1259,8 +1275,8 @@ export const useAuth = ({
 
     const handleGoogleAdminSignupStart = async () => {
         setErrorMsg('');
-        if (isKakaoTalkBrowser()) {
-            setErrorMsg(KAKAO_GOOGLE_AUTH_MESSAGE);
+        if (isRestrictedInAppBrowser()) {
+            setErrorMsg(IN_APP_GOOGLE_AUTH_MESSAGE);
             return null;
         }
         if (googleAdminSignupStartingRef.current) return googleAdminSignupStartingRef.current;
@@ -1348,20 +1364,17 @@ export const useAuth = ({
             const flowName = 'kakaoAdminSignupStart';
             beginInteractiveAuthFlow(flowName);
             try {
-                sessionStorage.removeItem(KAKAO_LINK_RETURNING_KEY);
-                sessionStorage.removeItem(KAKAO_SIGNUP_DRAFT_KEY);
+                removeAuthSessionValue(KAKAO_LINK_RETURNING_KEY);
+                removeAuthSessionValue(KAKAO_SIGNUP_DRAFT_KEY);
                 const state = createKakaoState();
-                sessionStorage.setItem(KAKAO_STATE_KEY, state);
-                sessionStorage.setItem(KAKAO_RETURNING_KEY, 'pending');
-                sessionStorage.setItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY, 'pending');
-                sessionStorage.setItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY, JSON.stringify(draft || {}));
+                setAuthSessionValue(KAKAO_STATE_KEY, state);
+                setAuthSessionValue(KAKAO_RETURNING_KEY, 'pending');
+                setAuthSessionValue(KAKAO_ADMIN_SIGNUP_RETURNING_KEY, 'pending');
+                setAuthSessionValue(KAKAO_ADMIN_SIGNUP_DRAFT_KEY, JSON.stringify(draft || {}));
                 window.location.assign(buildKakaoAuthorizeUrl({ state }));
             } catch (error) {
                 console.error('카카오 공동체 등록 시작 실패:', error);
-                sessionStorage.removeItem(KAKAO_STATE_KEY);
-                sessionStorage.removeItem(KAKAO_RETURNING_KEY);
-                sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY);
-                sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
+                removeAuthSessionValues(KAKAO_SESSION_KEYS);
                 endInteractiveAuthFlow(flowName);
                 setErrorMsg(error?.message === 'KAKAO_REST_KEY_MISSING'
                     ? '카카오 로그인 설정이 아직 완료되지 않았습니다. 관리자에게 문의하세요.'
@@ -1378,8 +1391,8 @@ export const useAuth = ({
         setErrorMsg('');
         googleAdminSignupAttemptRef.current += 1;
         if (typeof onKakaoAdminSignupReady === 'function') onKakaoAdminSignupReady(null);
-        sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_RETURNING_KEY);
-        sessionStorage.removeItem(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
+        removeAuthSessionValue(KAKAO_ADMIN_SIGNUP_RETURNING_KEY);
+        removeAuthSessionValue(KAKAO_ADMIN_SIGNUP_DRAFT_KEY);
         setCurrentUser(null);
         try {
             await auth.signOut();

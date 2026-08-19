@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { auth, authReady, db } from '../utils/firebase';
+import { auth, authReady, db, retryAuthPersistence } from '../utils/firebase';
 import { userDocToState, migrateTalentIfNeeded, migratePersonalTalentWalletIfNeeded } from '../utils/helpers';
 import { getGuestState } from '../utils/guestStorage';
 import { migrateCredentialsIfNeeded } from '../utils/memberCredentials';
@@ -8,6 +8,22 @@ import { loadUserExtraOrgs } from '../utils/roster';
 import { normalizeLegacyReadingPosition } from '../utils/platformApi';
 import { restorePendingPersonalMigrationFromAuth } from '../utils/personalAccountMigration';
 import { needsAnnualReadingSync } from '../utils/annualReading.js';
+import { withAsyncTimeout } from '../utils/asyncTimeout.js';
+
+const AUTH_PERSISTENCE_TIMEOUT_MS = 8_000;
+const AUTH_RESTORE_TIMEOUT_MS = 20_000;
+
+const authPersistenceTimeoutError = () => {
+    const error = new Error('AUTH_PERSISTENCE_TIMEOUT');
+    error.code = 'AUTH_PERSISTENCE_TIMEOUT';
+    return error;
+};
+
+const authRestoreTimeoutError = () => {
+    const error = new Error('AUTH_RESTORE_TIMEOUT');
+    error.code = 'AUTH_RESTORE_TIMEOUT';
+    return error;
+};
 
 const isRecoverableReadingPositionAuditError = error => {
     const status = Number(error?.status);
@@ -37,7 +53,12 @@ export const useUserAuth = () => {
         let unsubscribe = null;
         let cancelled = false;
 
-        authReady.then(() => {
+        const persistenceReady = retryKey > 0 ? retryAuthPersistence() : authReady;
+        withAsyncTimeout(
+            persistenceReady,
+            AUTH_PERSISTENCE_TIMEOUT_MS,
+            authPersistenceTimeoutError,
+        ).then(() => {
             if (cancelled) return;
 
             unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
@@ -49,6 +70,12 @@ export const useUserAuth = () => {
                 }
 
                 setAuthError('');
+                const restoreDeadline = Date.now() + AUTH_RESTORE_TIMEOUT_MS;
+                const awaitRestoreStep = promise => withAsyncTimeout(
+                    promise,
+                    Math.max(1, restoreDeadline - Date.now()),
+                    authRestoreTimeoutError,
+                );
 
                 const discardStaleEvent = () => {
                     if (cancelled) return true;
@@ -83,7 +110,9 @@ export const useUserAuth = () => {
 
                         // Firestore에서 사용자 데이터 불러오기
                         if (discardStaleEvent()) return;
-                        const userDoc = await db.collection('users').doc(firebaseUser.uid).get();
+                        const userDoc = await awaitRestoreStep(
+                            db.collection('users').doc(firebaseUser.uid).get(),
+                        );
                         if (discardStaleEvent()) return;
 
                         if (userDoc.exists) {
@@ -103,7 +132,9 @@ export const useUserAuth = () => {
                             const user = userDocToState(userDoc);
                             // [랭킹] 자격증명 지연 이관 — 재로그인 없이 세션 복원만 하는
                             // 상시 사용자가 가장 많으므로 이 경로가 핵심 이관 지점이다.
-                            const credentialsMigrated = await migrateCredentialsIfNeeded(firebaseUser.uid, userData);
+                            const credentialsMigrated = await awaitRestoreStep(
+                                migrateCredentialsIfNeeded(firebaseUser.uid, userData),
+                            );
                             if (discardStaleEvent()) return;
                             if (credentialsMigrated) {
                                 user.password = null;
@@ -112,7 +143,9 @@ export const useUserAuth = () => {
                             // [점수 이중화] talent 지갑 지연 마이그레이션 (1회성)
                             // 마이그레이션이 끝나기 전에는 talent가 undefined이므로,
                             // score로 대체 표시하지 않고 완료를 기다린다 (구매 화면에서 잔액 0 오표시 방지).
-                            const migrated = await migrateTalentIfNeeded(firebaseUser.uid, userData);
+                            const migrated = await awaitRestoreStep(
+                                migrateTalentIfNeeded(firebaseUser.uid, userData),
+                            );
                             if (discardStaleEvent()) return;
                             if (migrated) {
                                 user.talent = migrated.talent;
@@ -124,10 +157,12 @@ export const useUserAuth = () => {
                             // 먼저 서버에서 materialize한다. 아래 진도 감사는 이 필드를
                             // 사용하지 않지만, 모든 후속 화면에는 보정 뒤 source-server
                             // 명부만 적용해 로그인 시작 전의 stale query를 재사용하지 않는다.
-                            const walletMigration = await migratePersonalTalentWalletIfNeeded(
-                                firebaseUser.uid,
-                                user.primaryOrgId,
-                                user
+                            const walletMigration = await awaitRestoreStep(
+                                migratePersonalTalentWalletIfNeeded(
+                                    firebaseUser.uid,
+                                    user.primaryOrgId,
+                                    user,
+                                ),
                             );
                             if (discardStaleEvent()) return;
                             if (walletMigration) {
@@ -213,7 +248,7 @@ export const useUserAuth = () => {
                             };
 
                             if (localUserNeedsNormalization) {
-                                const sessionPatch = await loadSessionDetails();
+                                const sessionPatch = await awaitRestoreStep(loadSessionDetails());
                                 if (!sessionPatch) return;
                                 setCurrentUser({ ...user, ...sessionPatch });
                             } else {
@@ -252,14 +287,20 @@ export const useUserAuth = () => {
                                 return;
                             }
                         } else {
-                            // Firestore에 데이터가 없으면 로그인 화면으로/초기화
+                            // Auth만 남고 사용자 문서가 없는 고아 세션은 명시적으로 종료한다.
                             if (discardStaleEvent()) return;
                             setCurrentUser(null);
+                            await auth.signOut().catch(signOutError => {
+                                console.error('사용자 문서 없는 인증 세션 종료 실패:', signOutError);
+                            });
+                            setAuthError('로그인 계정 정보가 확인되지 않아 세션을 안전하게 종료했습니다. 다시 로그인해주세요.');
                         }
                     } catch (e) {
                         if (discardStaleEvent()) return;
                         console.error('사용자 데이터 로딩 실패:', e);
-                        setAuthError('로그인은 유지되어 있지만 사용자 정보를 불러오지 못했습니다. 네트워크를 확인한 뒤 다시 시도해주세요.');
+                        setAuthError(e?.code === 'AUTH_RESTORE_TIMEOUT'
+                            ? '로그인은 유지되어 있지만 사용자 확인이 오래 걸리고 있습니다. 네트워크를 확인한 뒤 다시 시도해주세요.'
+                            : '로그인은 유지되어 있지만 사용자 정보를 불러오지 못했습니다. 네트워크를 확인한 뒤 다시 시도해주세요.');
                     }
                 } else {
                     // 로그인 안 된 상태

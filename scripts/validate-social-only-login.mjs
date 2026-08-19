@@ -94,6 +94,6 @@ assert.match(transitionAudit, /transitionUnlinkedWithAuth/);
 assert.match(transitionAudit, /transitionUnlinkedWithoutAuth/);
 
 assert.match(app, /onLegacyLink=\{handleLegacySocialRecovery\}/);
-assert.match(app, /const handleGuestSignupStart = \(\) => \{\s*setLoginInitialTab\('member'\)/);
+assert.match(app, /const handleGuestSignupStart = async \(\) => \{\s*setLoginInitialTab\('member'\)/);
 
 console.log('social-only login validation passed');

@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
+  KAKAO_STATE_KEY,
   isValidKakaoState,
   readKakaoCallback,
   sanitizeKakaoCallbackUrl,
 } from '../src/utils/kakaoAuth.js';
+import {
+  getAuthSessionValue,
+  removeAuthSessionValue,
+  setAuthSessionValue,
+} from '../src/utils/authSessionStorage.js';
 
 const read = path => fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const auth = read('src/hooks/useAuth.js');
@@ -28,7 +34,9 @@ const cancelled = readKakaoCallback('https://www.bible114.net/?error=access_deni
 assert.equal(cancelled.error, 'access_denied');
 assert.equal(sanitizeKakaoCallbackUrl('https://www.bible114.net/?error=access_denied'), '/');
 
-assert.match(auth, /sessionStorage\.setItem\(KAKAO_STATE_KEY/);
+assert.match(auth, /setAuthSessionValue\(KAKAO_STATE_KEY/);
+assert.match(auth, /removeAuthSessionValues\(KAKAO_SESSION_KEYS\)/);
+assert.doesNotMatch(auth, /sessionStorage\.(?:getItem|setItem|removeItem)/);
 assert.match(auth, /isValidKakaoState\(callback\.state, expectedState\)/);
 assert.match(auth, /auth\.signInWithCustomToken\(profile\.token\)/);
 assert.match(auth, /openExistingSocialUser\(firebaseUser, doc, loginTiming\)/);
@@ -52,5 +60,40 @@ assert.match(core, /KAKAO_TOKEN_EXCHANGE_FAILED/);
 assert.match(core, /Bearer \$\{tokenPayload\.access_token\}/);
 assert.match(banner, /7일 동안 보지 않기/);
 assert.match(banner, /다음부터 카카오\/구글로 3초 로그인/);
+
+const createStorage = ({ throws = false } = {}) => {
+  const values = new Map();
+  return {
+    getItem(key) {
+      if (throws) throw new Error('storage blocked');
+      return values.has(key) ? values.get(key) : null;
+    },
+    setItem(key, value) {
+      if (throws) throw new Error('storage blocked');
+      values.set(key, String(value));
+    },
+    removeItem(key) {
+      if (throws) throw new Error('storage blocked');
+      values.delete(key);
+    },
+  };
+};
+
+const fallbackStorage = createStorage();
+globalThis.window = { sessionStorage: createStorage({ throws: true }), localStorage: fallbackStorage };
+setAuthSessionValue(KAKAO_STATE_KEY, 'cross-tab-state');
+globalThis.window.sessionStorage = createStorage();
+assert.equal(getAuthSessionValue(KAKAO_STATE_KEY), 'cross-tab-state');
+removeAuthSessionValue(KAKAO_STATE_KEY);
+assert.equal(getAuthSessionValue(KAKAO_STATE_KEY), null);
+globalThis.window = {
+  sessionStorage: createStorage({ throws: true }),
+  localStorage: createStorage({ throws: true }),
+};
+assert.throws(
+  () => setAuthSessionValue(KAKAO_STATE_KEY, 'blocked'),
+  error => error?.code === 'AUTH_SESSION_STORAGE_UNAVAILABLE',
+);
+delete globalThis.window;
 
 console.log('카카오 커스텀 인증 계약 검증 통과: 로그인 매핑, 기존 계정 연결, state, JWT');

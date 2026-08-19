@@ -176,13 +176,13 @@ const kakaoAdminStartFlow = authHook.slice(
     authHook.indexOf('const handleKakaoAdminSignupStart = async'),
     authHook.indexOf('const cancelGoogleAdminSignup = async'),
 );
-assert.match(kakaoPersonalStartFlow, /removeItem\(KAKAO_LINK_RETURNING_KEY\)[\s\S]*removeItem\(KAKAO_ADMIN_SIGNUP_RETURNING_KEY\)[\s\S]*removeItem\(KAKAO_ADMIN_SIGNUP_DRAFT_KEY\)/);
-assert.match(kakaoLinkStartFlow, /removeItem\(KAKAO_SIGNUP_DRAFT_KEY\)[\s\S]*removeItem\(KAKAO_ADMIN_SIGNUP_RETURNING_KEY\)[\s\S]*removeItem\(KAKAO_ADMIN_SIGNUP_DRAFT_KEY\)/);
-assert.match(kakaoAdminStartFlow, /removeItem\(KAKAO_LINK_RETURNING_KEY\)[\s\S]*removeItem\(KAKAO_SIGNUP_DRAFT_KEY\)[\s\S]*setItem\(KAKAO_ADMIN_SIGNUP_RETURNING_KEY, 'pending'\)/);
+assert.match(kakaoPersonalStartFlow, /removeAuthSessionValues\(\[[\s\S]*KAKAO_LINK_RETURNING_KEY,[\s\S]*KAKAO_ADMIN_SIGNUP_RETURNING_KEY,[\s\S]*KAKAO_ADMIN_SIGNUP_DRAFT_KEY/);
+assert.match(kakaoLinkStartFlow, /removeAuthSessionValues\(\[[\s\S]*KAKAO_SIGNUP_DRAFT_KEY,[\s\S]*KAKAO_ADMIN_SIGNUP_RETURNING_KEY,[\s\S]*KAKAO_ADMIN_SIGNUP_DRAFT_KEY/);
+assert.match(kakaoAdminStartFlow, /removeAuthSessionValue\(KAKAO_LINK_RETURNING_KEY\)[\s\S]*removeAuthSessionValue\(KAKAO_SIGNUP_DRAFT_KEY\)[\s\S]*setAuthSessionValue\(KAKAO_ADMIN_SIGNUP_RETURNING_KEY, 'pending'\)/);
 assert.match(authHook, /이미 등록된 카카오 계정입니다\. 첫 화면의 카카오로 시작 버튼으로 로그인해주세요\./);
 assert.match(authHook, /finally \{[\s\S]*if \(finalResult\.ok \|\| finalResult\.resetGoogleProfile\) \{[\s\S]*onKakaoAdminSignupReady\(null\)[\s\S]*if \(isSocialSignup\)/);
-assert.match(app, /const handleLogout = \(\) => \{[\s\S]*setPendingKakaoAdminSignup\(null\)[\s\S]*setLoginInitialTab\('member'\)/);
-assert.match(app, /const handleGuestSignupStart = \(\) => \{[\s\S]*setPendingKakaoAdminSignup\(null\)[\s\S]*setView\('login'\)/);
+assert.match(app, /const handleLogout = async \(\) => \{[\s\S]*setPendingKakaoAdminSignup\(null\)[\s\S]*setLoginInitialTab\('member'\)/);
+assert.match(app, /const handleGuestSignupStart = async \(\) => \{[\s\S]*setPendingKakaoAdminSignup\(null\)[\s\S]*setView\('login'\)/);
 assert.match(socialOnboarding, /<GuardianConsent/);
 assert.match(socialOnboarding, /<PolicyConsent/);
 assert.match(authHook, /writeSignupConsent\(/);

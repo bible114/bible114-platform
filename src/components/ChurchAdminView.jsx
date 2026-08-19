@@ -1552,6 +1552,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
           <div class="step"><span class="num">①</span><span>화면 아래 <b>공유 버튼</b> <span class="share-icon">⬆︎</span> 누르기</span></div>
           <div class="step"><span class="num">②</span><span><b>"홈 화면에 추가"</b> 찾아 누르기</span></div>
           <div class="step"><span class="num">③</span><span>오른쪽 위 <b>추가</b> 누르기</span></div>
+          <div class="step"><span class="num">④</span><span>바탕화면의 <b>114 아이콘</b>을 열고 그 안에서 카카오·구글 로그인 한 번</span></div>
         </div>
         <div class="device">
           <h3>🤖 갤럭시 (크롬·삼성인터넷)</h3>
@@ -1560,7 +1561,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
           <div class="step"><span class="num">③</span><span><b>추가</b> 누르기</span></div>
         </div>
       </div>
-      <div class="highlight">✅ 이제 바탕화면의 <b>114 아이콘</b>만 누르면 바로 열려요. 로그인도 유지됩니다!</div>
+      <div class="highlight">✅ 이후에는 바탕화면의 <b>114 아이콘</b>으로 들어오면 같은 로그인 상태로 편하게 읽을 수 있어요.</div>
     </div>
     <div class="footer">뒷면에 "매일 이렇게 해요"가 있어요 →</div>
   </main>

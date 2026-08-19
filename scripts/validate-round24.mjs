@@ -759,7 +759,7 @@ assert.doesNotMatch(walletMigrationHelper, /migratePersonalTalentWalletViaApi\(\
 assert.match(useAuthSource, /talent: 0,[\s\S]*talentWalletMigrated: true/,
     '이관 후 users 지갑 상태는 검증된 canonical 결과에 맞춰 적용해야 한다.');
 const sessionWalletMigrationIndex = useUserAuthSource.indexOf(
-    'const walletMigration = await migratePersonalTalentWalletIfNeeded(',
+    'const walletMigration = await awaitRestoreStep(',
 );
 const sessionPositionAuditIndex = useUserAuthSource.indexOf(
     'positionAudit = await normalizeLegacyReadingPosition({',
@@ -785,7 +785,7 @@ assert.doesNotMatch(
 );
 assert.match(
     useUserAuthSource,
-    /if \(localUserNeedsNormalization\) \{[\s\S]*await loadSessionDetails\(\)[\s\S]*\} else \{[\s\S]*setCurrentUser\(user\);[\s\S]*setAuthLoading\(false\);[\s\S]*void loadSessionDetails\(\)/,
+    /if \(localUserNeedsNormalization\) \{[\s\S]*await awaitRestoreStep\(loadSessionDetails\(\)\)[\s\S]*\} else \{[\s\S]*setCurrentUser\(user\);[\s\S]*setAuthLoading\(false\);[\s\S]*void loadSessionDetails\(\)/,
     '정상 진도 계정은 상세 감사 전에 화면을 열고, 보정 필요 계정만 상세 확인을 기다려야 한다.',
 );
 assert.match(

@@ -63,6 +63,12 @@ const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 
 assert.match(loginView, /normalizePublicNationalRankingSnapshot\(d\)/);
 assert.match(loginView, /<NationalReadingRanking[\s\S]*entries=\{nationalRanking\}/);
+const statsStripIndex = loginView.indexOf('data-testid="platform-stats"');
+const introVideoIndex = loginView.indexOf('<IntroVideoCard />');
+assert.notEqual(statsStripIndex, -1, '첫 화면 공개 통계 영역이 있어야 합니다.');
+assert.notEqual(introVideoIndex, -1, '첫 화면 소개 영상이 있어야 합니다.');
+assert.equal(statsStripIndex < introVideoIndex, true, '공개 통계는 소개 영상보다 먼저 보여야 합니다.');
+assert.match(loginView, /data-testid="platform-stats" className="grid grid-cols-4/);
 assert.match(rankingComponent, /h-\[270px\].*overflow-y-auto.*overscroll-contain/);
 assert.match(rankingComponent, /\{entry\.churchName\}[\s\S]*·[\s\S]*\{entry\.maskedName\}/);
 assert.match(rankingComponent, /formatNationalReadingProgress\(entry\)/);

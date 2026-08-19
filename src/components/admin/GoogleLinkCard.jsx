@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { auth, authReady, db, firebase } from '../../utils/firebase';
+import { detectMobileSessionContext, isInAppBrowserContext } from '../../utils/mobileSessionContext';
 
 const ADMIN_ROLES = new Set(['churchAdmin', 'platformAdmin', 'superAdmin']);
 const GOOGLE_PROVIDER_ID = firebase.auth.GoogleAuthProvider.PROVIDER_ID;
 const PASSWORD_PROVIDER_ID = firebase.auth.EmailAuthProvider.PROVIDER_ID;
-const KAKAO_GOOGLE_AUTH_MESSAGE = "카카오톡 브라우저에서는 구글 로그인이 제한됩니다. 우측 하단 ⋯ 메뉴에서 '다른 브라우저로 열기'를 눌러주세요.";
+const IN_APP_GOOGLE_AUTH_MESSAGE = "앱 안 브라우저에서는 구글 로그인이 제한됩니다. 화면의 메뉴에서 '다른 브라우저로 열기'를 눌러주세요.";
 
 const snapshotProviders = (user) => (user?.providerData || []).map(provider => ({
     providerId: provider?.providerId || '',
@@ -215,7 +216,7 @@ const GoogleLinkCard = ({ accountUid, accountRole }) => {
 
     const googleProvider = providerData.find(provider => provider.providerId === GOOGLE_PROVIDER_ID);
     const hasPasswordProvider = providerData.some(provider => provider.providerId === PASSWORD_PROVIDER_ID);
-    const isKakaoTalkBrowser = typeof navigator !== 'undefined' && navigator.userAgent.includes('KAKAOTALK');
+    const isRestrictedInAppBrowser = isInAppBrowserContext(detectMobileSessionContext());
 
     return (
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="google-link-card-title">
@@ -250,9 +251,9 @@ const GoogleLinkCard = ({ accountUid, accountRole }) => {
                         <p className="mt-3 text-sm font-semibold text-blue-800">구글 로그인만 사용 중</p>
                     )}
                 </div>
-            ) : isKakaoTalkBrowser ? (
+            ) : isRestrictedInAppBrowser ? (
                 <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800" role="note">
-                    {KAKAO_GOOGLE_AUTH_MESSAGE}
+                    {IN_APP_GOOGLE_AUTH_MESSAGE}
                 </p>
             ) : (
                 <button

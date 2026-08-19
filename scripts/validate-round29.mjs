@@ -27,7 +27,7 @@ for (const pattern of [
     /아이폰 \(사파리\)/,
     /갤럭시 \(크롬·삼성인터넷\)/,
     /114 아이콘/,
-    /로그인도 유지됩니다/,
+    /114 아이콘[\s\S]*그 안에서 카카오·구글 로그인 한 번/,
     /매일 이렇게 해요 \(5분이면 충분해요\)/,
     /매일성경 영상[\s\S]*\(선택\)/,
     /오늘 본문[\s\S]*듣기 ▶️[\s\S]*글씨는 <b>\+<\/b>/,
@@ -44,6 +44,7 @@ for (const pattern of [
     /신규 성도만[\s\S]*처음 시작하기/,
     /신규 성도의 교회 입장코드/,
 ]) assert.match(guide, pattern);
+assert.doesNotMatch(guide, /로그인도 유지됩니다/);
 
 assert.equal((guide.match(/<main/g) || []).length, 2, '가입 안내문은 정확히 A4 2면이어야 한다.');
 assert.match(guide, /const codeBlock = code[\s\S]*class="code"[\s\S]*class="code blank"[\s\S]*관리자가 적어주세요/);
@@ -114,7 +115,7 @@ assert.match(loginView, /aria-label="로그인 도움"[\s\S]*setShowReadingGuide
 assert.doesNotMatch(loginView, /로그인·기록 문의|setShowAdminContact|AdminContactModal/);
 assert.match(loginView, /onClick=\{\(\) => setShowReadingGuide\(true\)\}[^>]*>읽는 방법<\/button>/);
 assert.match(loginView, /aria-label="로그인 도움" className="[^"]*lg:hidden"[\s\S]{0,420}도움말/);
-assert.match(loginView, /hidden lg:grid grid-cols-4/);
+assert.match(loginView, /data-testid="platform-stats" className="grid grid-cols-4/);
 assert.match(loginView, /hidden lg:block bg-cream-card/);
 assert.doesNotMatch(loginView, /5초만에 빠른 시작|기존 성도 안내 다시 보기/);
 assert.match(loginView, /type=\{showMemberEntryCode \? 'text' : 'password'\}/);

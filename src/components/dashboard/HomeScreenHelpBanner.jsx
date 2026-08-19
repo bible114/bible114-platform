@@ -42,6 +42,9 @@ const HomeScreenHelpBanner = () => {
                 <div className="space-y-3 border-t border-emerald-100 px-3 py-3 text-sm font-bold leading-relaxed text-emerald-900">
                     <p>🍎 아이폰 Safari: 아래 공유 ⬆︎ → 홈 화면에 추가 → 추가</p>
                     <p>🤖 갤럭시 Chrome·삼성인터넷: ⋮ 또는 ☰ → 홈 화면에 추가 → 추가</p>
+                    <p className="rounded-xl bg-amber-50 px-3 py-2 text-amber-900">
+                        아이폰은 추가한 뒤 114 아이콘을 열고, 로그인 화면이 보이면 그 아이콘 안에서 한 번만 로그인해주세요.
+                    </p>
                 </div>
             </details>
         </aside>

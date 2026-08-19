@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { rankWeeklyMembers } from '../src/utils/weeklyRanking.js';
 import { getCompletedReadingRounds, getReadingRoundBadgeLabel } from '../src/utils/readingRounds.js';
+import { detectMobileSessionContext } from '../src/utils/mobileSessionContext.js';
 
 const guest = fs.readFileSync(new URL('../src/components/GuestReaderView.jsx', import.meta.url), 'utf8');
 const reader = fs.readFileSync(new URL('../src/components/dashboard/BibleReader.jsx', import.meta.url), 'utf8');
@@ -23,6 +24,58 @@ const helpers = fs.readFileSync(new URL('../src/utils/helpers.js', import.meta.u
 const app = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
 const login = fs.readFileSync(new URL('../src/components/LoginView.jsx', import.meta.url), 'utf8');
 const platformPopup = fs.readFileSync(new URL('../src/components/PlatformPopupAd.jsx', import.meta.url), 'utf8');
+const mobileSessionNotice = fs.readFileSync(new URL('../src/components/MobileSessionNotice.jsx', import.meta.url), 'utf8');
+const homeScreenHelp = fs.readFileSync(new URL('../src/components/dashboard/HomeScreenHelpBanner.jsx', import.meta.url), 'utf8');
+const churchAdmin = fs.readFileSync(new URL('../src/components/ChurchAdminView.jsx', import.meta.url), 'utf8');
+const userAuth = fs.readFileSync(new URL('../src/hooks/useUserAuth.js', import.meta.url), 'utf8');
+const firebaseClient = fs.readFileSync(new URL('../src/utils/firebase.js', import.meta.url), 'utf8');
+const googleLinkCard = fs.readFileSync(new URL('../src/components/admin/GoogleLinkCard.jsx', import.meta.url), 'utf8');
+
+assert.equal(detectMobileSessionContext({
+    userAgent: 'Mozilla/5.0 (iPhone) KAKAOTALK/25.0',
+    standalone: false,
+}), 'kakao');
+assert.equal(detectMobileSessionContext({
+    userAgent: 'Mozilla/5.0 (Linux; Android 15) NAVER(inapp; search; 2000)',
+    standalone: false,
+}), 'naver');
+assert.equal(detectMobileSessionContext({
+    userAgent: 'Mozilla/5.0 (iPhone) Mobile Instagram 350.0',
+    standalone: false,
+}), 'instagram');
+assert.equal(detectMobileSessionContext({
+    userAgent: 'Mozilla/5.0 (iPhone) [FBAN/FBIOS;FBAV/500.0]',
+    standalone: false,
+}), 'facebook');
+assert.equal(detectMobileSessionContext({
+    userAgent: 'Mozilla/5.0 (iPhone) Line/14.0',
+    standalone: false,
+}), 'line');
+assert.equal(detectMobileSessionContext({
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile/15E148 Safari/604.1',
+    standalone: true,
+}), 'ios-standalone');
+assert.equal(detectMobileSessionContext({
+    userAgent: 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/130 Mobile Safari/537.36',
+    standalone: false,
+}), null);
+assert.match(mobileSessionNotice, /지금 \$\{contextLabel\} 안에서 열렸어요/);
+assert.match(mobileSessionNotice, /Safari·Chrome·홈 화면 114 아이콘의 로그인과 따로 저장돼요/);
+assert.match(mobileSessionNotice, /메뉴 → 다른 브라우저로 열기/);
+assert.match(login, /<MobileSessionNotice className="mb-5" showStandalone \/>/);
+assert.match(dashboard, /<MobileSessionNotice className="mx-4 mb-6" dismissible \/>/);
+assert.match(homeScreenHelp, /114 아이콘을 열고[\s\S]*그 아이콘 안에서 한 번만 로그인/);
+assert.match(churchAdmin, /114 아이콘[\s\S]*카카오·구글 로그인 한 번/);
+assert.doesNotMatch(churchAdmin, /로그인도 유지됩니다!/);
+assert.match(login, /isRestrictedInAppBrowser[\s\S]*googleDisabled=\{isRestrictedInAppBrowser\}/);
+assert.match(googleLinkCard, /isInAppBrowserContext\(detectMobileSessionContext\(\)\)/);
+assert.match(firebaseClient, /export const retryAuthPersistence[\s\S]*configureAuthPersistence\(\)/);
+assert.match(userAuth, /AUTH_PERSISTENCE_TIMEOUT_MS = 8_000/);
+assert.match(userAuth, /AUTH_RESTORE_TIMEOUT_MS = 20_000/);
+assert.match(userAuth, /retryKey > 0 \? retryAuthPersistence\(\) : authReady/);
+assert.match(userAuth, /사용자 문서 없는 인증 세션 종료 실패/);
+assert.match(app, /const handleLogout = async \(\)[\s\S]*await auth\.signOut\(\)/);
+assert.match(app, /const handleGuestSignupStart = async \(\)[\s\S]*await auth\.signOut\(\)/);
 
 assert.match(guest, /가입하고 저장/);
 assert.match(guest, /읽는 순서와 성경 번역 선택/);

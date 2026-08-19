@@ -280,15 +280,6 @@ const App = () => {
         return saved ? parseInt(saved, 10) : 16; // 기본값 16px
     });
 
-    // 인앱 브라우저 감지 (네이버 등)
-    const [isInAppBrowser, setIsInAppBrowser] = useState(false);
-    useEffect(() => {
-        const ua = navigator.userAgent;
-        if (ua.indexOf('NAVER') > -1 || ua.indexOf('KAKAOTALK') > -1) {
-            setIsInAppBrowser(true);
-        }
-    }, []);
-
     // ★ Auth Side Effects (Navigation & Data Sync)
     useEffect(() => {
         if (authLoading) return;
@@ -316,7 +307,12 @@ const App = () => {
                         // 공동체 관리자는 로그인하면 성도와 같은 읽기 화면이 기본이다.
                         // 단, 관리 화면에서 새로고침한 경우에만 같은 화면을 복원한다.
                         if (dashboardUser?.churchId) loadChurchCommunities(dashboardUser.churchId);
-                        const savedAdminEntry = sessionStorage.getItem(ADMIN_ENTRY_SESSION_KEY);
+                        let savedAdminEntry = null;
+                        try {
+                            savedAdminEntry = sessionStorage.getItem(ADMIN_ENTRY_SESSION_KEY);
+                        } catch {
+                            // 저장소가 차단된 브라우저에서는 기본 읽기 화면으로 연다.
+                        }
                         setView(savedAdminEntry === 'church_admin' ? 'church_admin' : 'dashboard');
                     }
                 } else {
@@ -364,7 +360,11 @@ const App = () => {
     useEffect(() => {
         if (currentUser?.role !== 'churchAdmin') return;
         if (!['dashboard', 'church_admin'].includes(view)) return;
-        sessionStorage.setItem(ADMIN_ENTRY_SESSION_KEY, view);
+        try {
+            sessionStorage.setItem(ADMIN_ENTRY_SESSION_KEY, view);
+        } catch {
+            // 저장소가 차단돼도 현재 화면 이용은 계속한다.
+        }
     }, [currentUser?.role, view]);
 
     // getLevelInfo는 data/levels에서 import됨
@@ -842,24 +842,42 @@ const App = () => {
         handlePersonalAccountMigrate(pending.phone4);
     }, [currentUser?.uid, currentUser?.accountType]);
 
-    const handleLogout = () => {
-        if (auth) auth.signOut();
-        sessionStorage.removeItem(ADMIN_ENTRY_SESSION_KEY);
+    const handleLogout = async () => {
+        try {
+            if (auth) await auth.signOut();
+        } catch (signOutError) {
+            console.error('로그아웃 실패:', signOutError);
+            window.alert('로그아웃을 완료하지 못했습니다. 네트워크를 확인한 뒤 다시 눌러주세요.');
+            return false;
+        }
+        try {
+            sessionStorage.removeItem(ADMIN_ENTRY_SESSION_KEY);
+        } catch {
+            // 저장소가 차단돼도 로그아웃 정리는 계속한다.
+        }
         resetReaderSessionState();
         setCurrentUser(null); setTempUser(null); setChurchCommunities([]);
         setAllUsers([]); setAllChurches([]);
         setPendingKakaoAdminSignup(null);
         setLoginInitialTab('member');
         setErrorMsg(''); setView('login'); setHasReadToday(false); setEditingUser(null); setDepartmentMembers([]);
+        return true;
     };
 
-    const handleGuestSignupStart = () => {
+    const handleGuestSignupStart = async () => {
         setLoginInitialTab('member');
-        if (auth) auth.signOut();
+        try {
+            if (auth) await auth.signOut();
+        } catch (signOutError) {
+            console.error('게스트 가입 전 로그아웃 실패:', signOutError);
+            window.alert('계정 전환 준비를 완료하지 못했습니다. 네트워크를 확인한 뒤 다시 눌러주세요.');
+            return false;
+        }
         resetReaderSessionState();
         setCurrentUser(null); setTempUser(null); setChurchCommunities([]);
         setPendingKakaoAdminSignup(null);
         setErrorMsg(''); setView('login'); setHasReadToday(false); setEditingUser(null); setDepartmentMembers([]);
+        return true;
     };
 
     const handleChangeVersionStart = () => { setSelectedPlanType(null); setTempUser(null); setView('plan_type_select'); };

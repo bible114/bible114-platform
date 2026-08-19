@@ -14,6 +14,10 @@ const firebaseConfig = {
 // Initialize Firebase
 let db, auth;
 let authReady = Promise.resolve();
+const configureAuthPersistence = () => {
+    if (!auth) return Promise.reject(new Error('FIREBASE_AUTH_UNAVAILABLE'));
+    return auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+};
 try {
     if (!firebase.apps.length) {
         firebase.initializeApp(firebaseConfig);
@@ -21,10 +25,15 @@ try {
         firebase.app(); // if already initialized, use that one
     }
     auth = firebase.auth();
-    authReady = auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    authReady = configureAuthPersistence();
     db = firebase.firestore();
 } catch (e) {
     console.error("Firebase init failed:", e);
 }
+
+export const retryAuthPersistence = () => {
+    authReady = configureAuthPersistence();
+    return authReady;
+};
 
 export { firebase, auth, authReady, db };

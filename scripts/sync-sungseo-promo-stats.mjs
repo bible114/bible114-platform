@@ -53,8 +53,8 @@ const firebaseAuth = require('./lib/auth');
 const account = firebaseAuth.getGlobalDefaultAccount();
 if (!account?.tokens?.refresh_token) fail('Firebase CLI login not found. Run firebase login --reauth.');
 const scopes = String(account.tokens.scope || 'https://www.googleapis.com/auth/cloud-platform')
-  .split(/\s+/)
-  .filter(Boolean);
+    .split(/\s+/)
+    .filter(Boolean);
 const tokenResult = await firebaseAuth.getAccessToken(account.tokens.refresh_token, scopes);
 const targetAccessToken = tokenResult?.access_token || tokenResult;
 if (!targetAccessToken) fail('Unable to obtain Firebase admin access token.');
