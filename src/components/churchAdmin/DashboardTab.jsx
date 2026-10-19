@@ -4,11 +4,17 @@ const DashboardTab = ({
     dashboardStats, deletedMembers, completedReaders, setShowCompletedReaders,
     departmentCards, streakTop, getMemberMembershipText,
     renderRiskList, atRisk, daysSinceRead, getTotalProgressDay, formatReadDate,
+    progressLoadError,
 }) => (
     <div id="admin-tut-dashboard" className="space-y-6">
         <div>
             <h2 className="font-black text-slate-800 text-lg">목양 대시보드</h2>
-            <p className="text-xs text-slate-400 mt-1">오늘 읽기 비교는 현재 권한에서 접근 가능한 회원 문서 기준입니다. history 시간값은 앞으로 쌓이는 기록부터 적용됩니다.</p>
+            <p className="text-xs text-slate-400 mt-1">오늘 읽기 비교는 현재 공동체에서 확인한 회원 기록을 기준으로 합니다.</p>
+            {progressLoadError && (
+                <p role="alert" className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+                    진행 정보를 불러오지 못했어요. 다시 시도해주세요.
+                </p>
+            )}
             {dashboardStats.unsyncedProgressCount > 0 && (
                 <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
                     외부 명부 {dashboardStats.unsyncedProgressCount}명의 진행을 확인 중입니다. 확인 전에는 진행률·위험·순위 집계에서 제외합니다.

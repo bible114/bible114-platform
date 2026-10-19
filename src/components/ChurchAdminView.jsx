@@ -191,6 +191,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     const [deletedMembers, setDeletedMembers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState('');
+    const [progressLoadError, setProgressLoadError] = useState(false);
     const [tab, setTab] = useState('dashboard');
     const [showTutorial, setShowTutorial] = useState(false);
     const toast = useToast();
@@ -294,6 +295,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         const requestedUid = currentUser.uid;
         setLoading(true);
         setLoadError('');
+        setProgressLoadError(false);
         try {
             // 전국 단위 가상 공동체의 users 목록은 일반 공동체 관리자 화면에서
             // 조회하지 않는다. 슈퍼관리자 목록 화면이 이미 주 소속 회원을 보여주며,
@@ -338,8 +340,13 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     })
                     .catch(error => {
                         if (communityProgressRequestRef.current !== progressRequestId) return;
+                        if (currentUserRef.current?.uid !== requestedUid
+                            || currentUserRef.current?.churchId !== requestedChurchId) return;
+                        setProgressLoadError(true);
                         console.error('외부 명부 진행 동기화 실패:', error);
                     });
+            } else {
+                setProgressLoadError(false);
             }
             if (announcementDoc.exists) {
                 const data = announcementDoc.data() || {};
@@ -1053,9 +1060,11 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     ...announcement,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
-            alert('공지가 저장되었습니다!');
+            toast.success(announcement.enabled
+                ? '공지를 저장했습니다.'
+                : '공지를 저장했습니다. 표시가 꺼져 있어 성도에게 보이지 않습니다.');
         } catch (e) {
-            alert('저장 실패');
+            toast.error('공지 저장에 실패했습니다.');
         }
         setSaving(false);
     };
@@ -1195,9 +1204,9 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                 { merge: true }
             );
             setOrgComms(valid);
-            alert('조직이 저장되었습니다!\n\n⚠️ 부서명이나 소그룹명을 변경한 경우, 기존 교인의 소그룹 배정 표기가 달라질 수 있습니다.');
+            toast.success('조직을 저장했습니다. 부서명이나 소그룹명을 바꾸면 기존 배정 표기에도 영향이 있을 수 있습니다.');
         } catch (e) {
-            alert('저장 실패');
+            toast.error('조직 저장에 실패했습니다.');
         }
         setSavingOrg(false);
     };
@@ -2135,6 +2144,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                                 renderRiskList={renderRiskList} atRisk={atRisk}
                                 daysSinceRead={daysSinceRead} getTotalProgressDay={getTotalProgressDay}
                                 formatReadDate={formatReadDate}
+                                progressLoadError={progressLoadError}
                             />
                         )}
 
