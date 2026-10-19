@@ -20,7 +20,7 @@ const AnnouncementBanner = ({ announcement }) => {
                 </div>
 
                 <div className="min-w-0">
-                    <div className="font-bold leading-snug text-slate-800 [&_p]:mb-0">
+                    <div className="font-bold leading-snug text-slate-800 [overflow-wrap:anywhere] [&_p]:mb-0">
                         <MarkdownRenderer content={announcement.text} fontSize={17} />
                     </div>
 
@@ -32,13 +32,13 @@ const AnnouncementBanner = ({ announcement }) => {
                                     href={link.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className={`inline-flex min-h-10 items-center justify-center rounded-full px-4 py-2 text-sm font-black transition active:scale-[0.98] ${idx === 0
+                                    className={`inline-flex min-h-10 min-w-0 max-w-full items-center justify-center rounded-full px-4 py-2 text-sm font-black transition active:scale-[0.98] ${idx === 0
                                         ? 'bg-slate-900 text-white shadow-[0_8px_20px_-12px_rgba(15,23,42,0.9)] hover:bg-indigo-700'
                                         : 'border border-slate-200/90 bg-white/80 text-slate-700 hover:border-indigo-200 hover:text-indigo-700'
                                     }`}
                                 >
-                                    {link.text}
-                                    <svg viewBox="0 0 20 20" fill="none" className="ml-1.5 h-3.5 w-3.5" aria-hidden="true">
+                                    <span className="min-w-0 [overflow-wrap:anywhere]">{link.text}</span>
+                                    <svg viewBox="0 0 20 20" fill="none" className="ml-1.5 h-3.5 w-3.5 shrink-0" aria-hidden="true">
                                         <path d="M7 5h8v8M15 5l-9 9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                                     </svg>
                                 </a>

@@ -75,7 +75,7 @@ const BibleReader = ({
                     </button>
 
                     <div className="min-w-0 text-center">
-                        <h2 className="text-lg font-black leading-snug tracking-[-0.02em] text-white sm:text-2xl">
+                        <h2 className="text-lg font-black leading-snug tracking-[-0.02em] text-white [overflow-wrap:anywhere] sm:text-2xl">
                             {verseData.loading ? '말씀을 불러오는 중' : verseData.title}
                         </h2>
                     </div>
@@ -108,14 +108,14 @@ const BibleReader = ({
                         ↩ 내 진도 DAY {currentUser.currentDay}로 돌아가기
                     </button>
                 )}
-                <div className="flex justify-between items-end mb-2">
-                    <div className="flex-1 min-w-0">
-                        <p className="opacity-90 text-sm font-bold text-white/90 mb-1 flex items-center gap-2">
+                <div className="flex flex-wrap justify-between items-end gap-y-3 mb-2">
+                    <div className="min-w-0 flex-1 basis-48">
+                        <p className="opacity-90 text-sm font-bold text-white/90 mb-1 break-keep [overflow-wrap:anywhere]">
                             {verseData.subtitle}
                         </p>
                         <p className="opacity-80 text-xs">{getEncouragementMessage()}</p>
                     </div>
-                    <div id="tut-font-size" className="flex items-center gap-1 bg-white/20 backdrop-blur-md rounded-full px-2 py-1 shadow-sm shrink-0 ml-4">
+                    <div id="tut-font-size" className="flex items-center gap-1 bg-white/20 backdrop-blur-md rounded-full px-2 py-1 shadow-sm shrink-0 ml-auto">
                         <button
                             onClick={() => {
                                 const newSize = Math.max(12, fontSize - 2);
@@ -128,8 +128,8 @@ const BibleReader = ({
                             −
                         </button>
                         <div className="flex flex-col items-center px-1">
-                            <span className="text-white/70 text-[9px] font-bold leading-none">글씨</span>
-                            <span className="text-white text-xs font-bold leading-none">{fontSize}</span>
+                            <span className="text-white/90 text-xs font-bold leading-tight">글씨</span>
+                            <span className="text-white text-sm font-bold leading-tight">{fontSize}</span>
                         </div>
                         <button
                             onClick={() => {
@@ -154,16 +154,16 @@ const BibleReader = ({
                             </p>
                         ) : (
                         <div className="flex flex-col gap-2">
-                            <div className="flex items-center justify-between">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
                                     <span className="text-xl">{isSpeaking ? '🔊' : '🔈'}</span>
                                     <div className="flex flex-col">
-                                        <span className="text-xs font-bold text-white/85 leading-tight">성경 읽어주기</span>
-                                        <span className="text-[11px] text-white/65 leading-tight">{isSpeaking ? (isPaused ? "잠시 멈춤" : "낭독 중...") : "듣기를 누르면 시작해요"}</span>
+                                        <span className="text-sm font-bold text-white/90 leading-tight">성경 읽어주기</span>
+                                        {isSpeaking && <span className="text-sm text-white/90 leading-tight">{isPaused ? "잠시 멈춤" : "낭독 중..."}</span>}
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-2">
+                                <div className="flex shrink-0 items-center gap-2">
                                     <div className="flex items-center bg-black/20 rounded-lg px-1 py-0.5">
                                         <button
                                             onClick={() => handleSpeedChange(-0.1)}
@@ -173,7 +173,7 @@ const BibleReader = ({
                                         >
                                             -
                                         </button>
-                                        <span className="text-xs font-bold text-white min-w-[32px] text-center">
+                                        <span className="text-sm font-bold text-white min-w-[32px] text-center">
                                             {ttsSpeed.toFixed(1)}x
                                         </span>
                                         <button
@@ -188,7 +188,7 @@ const BibleReader = ({
 
                                     <button
                                         onClick={() => isSpeaking ? handleStop() : handleSpeak(verseData.text)}
-                                        className={`min-h-11 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm ${isSpeaking
+                                        className={`min-h-11 shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm ${isSpeaking
                                             ? "bg-red-500 text-white hover:bg-red-600 ring-2 ring-red-400/50"
                                             : "bg-white text-indigo-600 hover:bg-indigo-50"
                                             }`}
@@ -200,7 +200,7 @@ const BibleReader = ({
 
                             {availableVoices.length > 0 && (
                                 <div className="flex items-center gap-2 pt-1 border-t border-white/10">
-                                    <span className="text-xs text-white/70 shrink-0">목소리:</span>
+                                    <span className="text-sm text-white/90 shrink-0">목소리:</span>
                                     <select
                                         value={selectedVoiceURI}
                                         onChange={(e) => {
@@ -209,7 +209,7 @@ const BibleReader = ({
                                             setSelectedVoiceURI(newVoiceURI);
                                             localStorage.setItem('bible_selectedVoiceURI', newVoiceURI);
                                         }}
-                                        className="min-h-10 flex-1 bg-black/30 text-white text-xs py-2 px-2 rounded border border-white/10 focus:outline-none focus:ring-1 focus:ring-white/30 truncate"
+                                        className="min-h-11 min-w-0 flex-1 bg-black/30 text-white text-sm py-2 px-2 rounded border border-white/10 focus:outline-none focus:ring-1 focus:ring-white/30 truncate"
                                     >
                                         {availableVoices.map(voice => (
                                             <option key={voice.voiceURI} value={voice.voiceURI}>

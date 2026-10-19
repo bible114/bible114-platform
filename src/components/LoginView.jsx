@@ -823,7 +823,7 @@ const LoginView = ({
             <div className="text-center text-sm font-semibold text-ink/75">
                 <button type="button" onClick={handleGuestLogin} disabled={loading} className="min-h-11 underline underline-offset-3">로그인 없이 둘러보기</button>
             </div>
-            <div className="rounded-xl border border-amber-100 bg-amber-50/70 px-3.5 py-3 text-center text-[12px] leading-relaxed text-ink/80 lg:hidden">
+            <div className="rounded-xl border border-amber-100 bg-amber-50/70 px-3.5 py-3 text-center text-sm leading-relaxed text-ink/80 lg:hidden">
                 <p>⛪ 교회·모임과 함께 읽고 싶으신가요?</p>
                 <p><b>공동체 대표(관리자)가</b> 먼저 공동체를 등록해야 성도들이 찾아서 함께 읽을 수 있어요.</p>
                 <button type="button" onClick={() => { setActiveTab('adminSignup'); clearError(); }} className="mt-1.5 inline-flex min-h-11 items-center justify-center px-2 font-black text-accent underline underline-offset-3">공동체 등록하기 →</button>
@@ -1282,7 +1282,7 @@ const LoginView = ({
                     <div className="font-serif text-[12px] lg:text-[13px] text-ink/70 text-right">— {verse.ref}</div>
                 </div>
 
-                <nav aria-label="서비스 정책" className="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-ink/75">
+                <nav aria-label="서비스 정책" className="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-ink/75">
                     {['terms', 'privacy', 'community'].map(policyId => (
                         <button
                             key={policyId}

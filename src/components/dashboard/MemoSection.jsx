@@ -48,7 +48,7 @@ const MemoSection = ({
 
     return (
         <div id="tut-memo-section" className="mt-4 bg-[#fdf4ff] p-5 rounded-3xl border border-purple-100 shadow-sm">
-            <div className="flex justify-between items-center mb-3">
+            <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
                 <h3 className="font-bold text-purple-700 flex items-center gap-2">✍️ 오늘의 묵상</h3>
                 <button
                     onClick={(e) => {
@@ -56,7 +56,7 @@ const MemoSection = ({
                         e.stopPropagation();
                         setShowMemoList(true);
                     }}
-                    className="min-h-11 rounded-xl px-3 py-2 text-sm font-bold text-purple-600 underline hover:bg-white hover:text-purple-800"
+                    className="min-h-11 rounded-xl px-3 py-2 text-sm font-bold text-purple-600 whitespace-nowrap shrink-0 underline hover:bg-white hover:text-purple-800"
                 >
                     내 기록 보기
                 </button>
@@ -102,7 +102,7 @@ const MemoSection = ({
                         ✨ 이전에 저장한 묵상:
                     </p>
                     {existingMemos.flatMap(memo => memo.texts || [memo.text]).filter(Boolean).map((text, idx, texts) => (
-                        <div key={`${idx}-${text.slice(0, 12)}`} className={`text-sm text-slate-600 whitespace-pre-wrap leading-relaxed ${idx > 0 ? 'mt-3 pt-3 border-t border-purple-50' : ''}`}>
+                        <div key={`${idx}-${text.slice(0, 12)}`} className={`text-sm text-slate-600 whitespace-pre-wrap [overflow-wrap:anywhere] leading-relaxed ${idx > 0 ? 'mt-3 pt-3 border-t border-purple-50' : ''}`}>
                             {texts.length > 1 && <span className="text-[10px] text-purple-400 font-bold">#{idx + 1} </span>}
                             {text}
                         </div>
