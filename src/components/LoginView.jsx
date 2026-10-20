@@ -1129,7 +1129,7 @@ const LoginView = ({
                         </div>
                     </div>
                 )}
-                <input type="text" value={aName} onChange={e => setAName(e.target.value)} placeholder="이름" className={inputCls} />
+                <input type="text" aria-label="교회에서 불리는 이름" value={aName} onChange={e => setAName(e.target.value)} placeholder="교회에서 불리는 이름" className={inputCls} />
                 <input
                     type="email"
                     value={aEmail}
@@ -1154,7 +1154,7 @@ const LoginView = ({
                 {errorMsg && <p className="text-red-500 text-xs text-center py-1 bg-red-50 rounded-lg px-3">{errorMsg}</p>}
                 <button type="submit" disabled={loading || !adminConsentReady || !googleAdminSignupProfile}
                     className="w-full bg-accent text-cream font-semibold py-3.5 rounded-full text-sm flex items-center justify-center gap-2 hover:bg-accent/90 transition-colors disabled:opacity-50">
-                    {loading ? '확인 중...' : googleAdminSignupProfile ? '다음: 조직 구성 →' : '카카오 또는 구글을 먼저 선택해주세요'}
+                    {loading ? '확인 중...' : googleAdminSignupProfile ? '다음: 조직 구성 →' : errorMsg ? '안내를 확인해주세요' : '카카오 또는 구글을 먼저 선택해주세요'}
                 </button>
             </form>
         );

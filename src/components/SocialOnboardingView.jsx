@@ -159,9 +159,9 @@ const SocialOnboardingView = ({ tempUser, onComplete, onLegacyLink }) => {
 
                 {step === 1 && <section className="rounded-3xl bg-white p-6 shadow-sm">
                     <p className="text-xs font-bold text-blue-600">1단계 / 3단계</p>
-                    <h1 className="mt-2 text-2xl font-black text-slate-900">성함이 어떻게 되세요?</h1>
-                    <p className="mt-2 text-sm text-slate-500">랭킹과 단체 명부에 보이는 이름이에요.</p>
-                    <input value={name} onChange={event => setName(event.target.value)} maxLength={30} className="mt-6 w-full rounded-xl border border-slate-200 px-4 py-3 text-base" placeholder="성함" autoFocus />
+                    <h1 className="mt-2 text-2xl font-black text-slate-900">교회에서 불리는 이름이 어떻게 되세요?</h1>
+                    <p className="mt-2 text-sm text-slate-500">랭킹과 단체 명부에 보이는 이름이에요. 구글 이름은 기본값이며 바꿀 수 있어요.</p>
+                    <input aria-label="교회에서 불리는 이름" value={name} onChange={event => setName(event.target.value)} maxLength={30} className="mt-6 w-full rounded-xl border border-slate-200 px-4 py-3 text-base" placeholder="교회에서 불리는 이름" autoFocus />
                     <input inputMode="numeric" value={birthdate} onChange={event => setBirthdate(event.target.value.replace(/\D/g, ''))} maxLength={8} className="mt-3 w-full rounded-xl border border-slate-200 px-4 py-3 text-base" placeholder="생년월일 8자리 (예: 20150101)" />
                     <PolicyConsent audience="personal" value={policyConsents} onChange={setPolicyConsents} disabled={busy} className="mt-4" />
                     <div className="mt-3"><GuardianConsent birthdate={birthdate} value={guardianConsent} onChange={setGuardianConsent} disabled={busy} /></div>
@@ -176,7 +176,7 @@ const SocialOnboardingView = ({ tempUser, onComplete, onLegacyLink }) => {
 
                 {step === 3 && <section className="rounded-3xl bg-white p-6 shadow-sm">
                     <p className="text-xs font-bold text-blue-600">3단계 / 3단계</p>
-                    <h1 className="mt-2 text-2xl font-black text-slate-900">읽을 버전을 선택해주세요</h1>
+                    <h1 className="mt-2 text-2xl font-black text-slate-900">읽기 계획 선택</h1>
                     {!planType ? <div className="mt-5 space-y-3">{PLAN_TYPES.map(plan => <button type="button" key={plan.id} onClick={() => setPlanType(plan.id)} className="w-full rounded-xl border border-slate-200 p-4 text-left hover:border-blue-400"><p className="font-bold text-slate-800">{plan.title}</p><p className="mt-1 text-xs text-slate-500">{plan.desc}</p></button>)}</div>
                         : <div className="mt-5 space-y-3"><button type="button" onClick={() => setPlanType(null)} className="text-xs font-bold text-slate-500">← 계획 다시 선택</button>{getVisibleBibleVersions(planType, { ...tempUser, name }).map(version => <button type="button" key={version.id} disabled={busy} onClick={() => finish(version.id)} className="w-full rounded-xl border border-slate-200 p-4 text-left hover:border-blue-400 disabled:opacity-50"><p className="font-bold text-slate-800">{version.name}</p><p className="mt-1 text-xs text-slate-500">{version.desc}</p></button>)}</div>}
                     {error && <p role="alert" className="mt-4 text-xs font-bold text-red-600">{error}</p>}
