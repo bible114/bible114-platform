@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { auth, db, firebase } from '../utils/firebase';
 import ChurchAdminTutorial from './ChurchAdminTutorial';
-import { fetchMemberCredentials } from '../utils/memberCredentials';
-import { adminPasswordErrorMessage, setMemberPasswordByAdmin } from '../utils/adminPassword';
+
 import { calculateSubgroupStats, computeAtRisk } from '../utils/statsUtils';
 import { belongsToDepartment, getMembershipList } from '../utils/memberships';
 import { downloadCSV } from '../utils/exportUtils';
@@ -198,8 +197,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
     // 교인 관리
     const [sortBy, setSortBy] = useState('name');
-    const [editing, setEditing] = useState(null); // { uid, mode: 'pw' | 'subgroup' }
-    const [revealedPasswords, setRevealedPasswords] = useState({}); // uid -> '__loading__' | '__error__' | 실제 비밀번호
+    const [editing, setEditing] = useState(null); // { uid, mode: 'subgroup' }
     const [sgCommId, setSgCommId] = useState('');
     const [sgSubId, setSgSubId] = useState('');
     const [extraCommId, setExtraCommId] = useState('');
@@ -446,19 +444,6 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         }
     };
 
-    // 이관 완료된 회원은 본문서의 password가 null이므로, 필요할 때만 private 하위문서를 조회한다.
-    const revealPassword = async (uid) => {
-        setRevealedPasswords(prev => ({ ...prev, [uid]: '__loading__' }));
-        try {
-            const data = await fetchMemberCredentials(uid);
-            setRevealedPasswords(prev => ({ ...prev, [uid]: data?.password || '알 수 없음' }));
-        } catch (e) {
-            setRevealedPasswords(prev => ({ ...prev, [uid]: '__error__' }));
-            if (members.find(member => member.uid === uid)?.isExternalOrgMember) {
-                toast.warning('기준 공동체 관리자만 이 개인 계정의 비밀번호를 확인할 수 있습니다.');
-            }
-        }
-    };
 
     const deleteMember = async (member) => {
         if (member?.isExternalOrgMember) {
@@ -566,7 +551,6 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         }
     };
 
-    const generatePassword = () => String(Math.floor(100000 + Math.random() * 900000));
 
     const getMemberMembershipLabels = (member) => {
         const primaryMembership = getPrimaryMembership(member);
@@ -879,97 +863,6 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
         }
     };
 
-    const resetPasswordsForMembers = async (targetMembers) => {
-        const updates = targetMembers.map(member => ({ member, password: generatePassword() }));
-        const settled = [];
-        for (let i = 0; i < updates.length; i += 10) {
-            const chunk = updates.slice(i, i + 10);
-            const chunkResults = await Promise.allSettled(
-                chunk.map(async update => {
-                    await setMemberPasswordByAdmin(update.member.uid, update.password);
-                    return update;
-                })
-            );
-            settled.push(...chunkResults.map((result, index) => ({
-                result,
-                update: chunk[index],
-            })));
-        }
-        const succeeded = settled.flatMap(({ result }) => (
-            result.status === 'fulfilled' ? [result.value] : []
-        ));
-        const failed = settled.flatMap(({ result, update }) => (
-            result.status === 'rejected' ? [{ update, error: result.reason }] : []
-        ));
-        const succeededByUid = new Map(succeeded.map(update => [update.member.uid, update]));
-        const recoveryRequiredUids = new Set(
-            failed
-                .filter(({ error }) => error?.code === 'PARTIAL_UPDATE')
-                .map(({ update }) => update.member.uid)
-        );
-        setMembers(prev => prev.map(m => {
-            const found = succeededByUid.get(m.uid);
-            if (found) {
-                return {
-                    ...m,
-                    password: found.password,
-                    passwordResetRequired: true,
-                    passwordRecoveryRequired: false,
-                };
-            }
-            return recoveryRequiredUids.has(m.uid)
-                ? { ...m, passwordRecoveryRequired: true }
-                : m;
-        }));
-        // 상세 패널이 열려 있으면 새 비밀번호가 바로 보이도록 갱신하고, 조회 캐시는 비운다.
-        setRevealedPasswords(prev => {
-            const next = { ...prev };
-            succeeded.forEach(u => { delete next[u.member.uid]; });
-            return next;
-        });
-        setSelectedMember(prev => {
-            if (!prev) return prev;
-            const found = succeededByUid.get(prev.uid);
-            if (found) {
-                return {
-                    ...prev,
-                    password: found.password,
-                    passwordRecoveryRequired: false,
-                };
-            }
-            return recoveryRequiredUids.has(prev.uid)
-                ? { ...prev, passwordRecoveryRequired: true }
-                : prev;
-        });
-        const failedNames = failed
-            .map(({ update }) => update.member.name || '이름 없음')
-            .slice(0, 5)
-            .join(', ');
-        failed.forEach(({ error }) => {
-            console.error('회원 비밀번호 변경 실패:', error?.code || error?.message || 'UNKNOWN');
-        });
-        const partialUpdate = failed.find(({ error }) => error?.code === 'PARTIAL_UPDATE');
-        if (partialUpdate) {
-            toast.error(
-                `${succeeded.length}명 성공, ${failed.length}명 실패. 일부 반영 가능성이 있어 `
-                + `재시도하지 말고 즉시 플랫폼 관리자에게 복구를 요청하세요.`
-                + (failedNames ? ` 실패: ${failedNames}` : '')
-            );
-        } else if (failed.length > 0) {
-            const firstMessage = adminPasswordErrorMessage(failed[0].error);
-            toast.warning(
-                `${succeeded.length}명 성공, ${failed.length}명 실패. ${firstMessage}`
-                + (failedNames ? ` 실패: ${failedNames}` : '')
-            );
-        } else {
-            toast.success(`${succeeded.length}명의 실제 로그인 비밀번호를 변경했습니다.`);
-        }
-        return {
-            allSucceeded: failed.length === 0,
-            succeededUids: succeeded.map(update => update.member.uid),
-            retryUnsafe: Boolean(partialUpdate),
-        };
-    };
 
     const closeMemberDetail = () => {
         detailRequestRef.current += 1;
@@ -1019,21 +912,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
             if (action.type === 'bulkSubgroup') {
                 shouldRunAfter = await applySubgroupToMembers(action.members, action.commId, action.subId);
             }
-            if (action.type === 'bulkPassword') {
-                const result = await resetPasswordsForMembers(action.members);
-                shouldRunAfter = result.allSucceeded;
-                if (!result.allSucceeded && result.retryUnsafe) {
-                    // 반영 상태가 모호한 대상이 하나라도 있으면 같은 묶음을 다시 실행하지 못하게 한다.
-                    action.after?.();
-                } else if (!result.allSucceeded) {
-                    // 성공한 회원은 선택에서 제거해 재시도 때 비밀번호가 다시 회전하지 않게 한다.
-                    action.afterSuccess?.(result.succeededUids);
-                }
-            }
-            if (action.type === 'singlePassword') {
-                const result = await resetPasswordsForMembers([action.member]);
-                shouldRunAfter = result.allSucceeded;
-            }
+
             if (action.type === 'deleteShopItem') await executeDeleteShopItem(action.item);
             if (action.type === 'deliverPurchase') await updatePurchaseStatus(action.purchase, 'delivered');
             if (action.type === 'refundPurchase') await updatePurchaseStatus(action.purchase, 'cancelled');
@@ -1549,7 +1428,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
       <h2>1️⃣ 카카오·구글로 시작</h2>
       <div class="legacy-alert"><b>기존 성도님:</b> 7월 31일까지 카카오·구글을 연결해주세요. 새로 가입하거나 교회를 다시 찾지 마세요. 소셜 로그인 뒤 <b>"기존 진도·달란트 이어보기"</b>를 누르면 기록이 그대로 연결됩니다. 8월 1일부터는 카카오·구글 로그인만 이용합니다.</div>
       <div class="step"><span class="num">①</span><span>QR로 접속한 뒤 <b>카카오로 시작</b> 또는 <b>구글로 시작</b>을 눌러주세요</span></div>
-      <div class="step"><span class="num">②</span><span><b>기존 성도</b>: <b>기존 진도·달란트 이어보기</b> → 기존 교회·이름·생년월일·비밀번호를 한 번 확인</span></div>
+      <div class="step"><span class="num">②</span><span><b>기존 성도</b>: <b>기존 진도·달란트 이어보기</b> → 기존 교회·이름·생년월일을 입력하고 교회 관리자에게 기록 연결을 요청</span></div>
       <div class="step"><span class="num">③</span><span><b>신규 성도만</b>: <b>처음 시작하기</b> → 이름·생년월일 입력 → <b>"${churchName}"</b> 찾기</span></div>
       <div class="step"><span class="num">④</span><span>신규 성도의 교회 입장코드: ${codeBlock}</span></div>
     </div>
@@ -1629,7 +1508,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
   <div class="sec"><h2>👥 교인 관리</h2><ul>
     <li>이름 검색, 부서/읽기 상태 필터, 교인을 클릭하면 상세 정보가 열려요.</li>
-    <li><b>예전 기록을 아직 연결하지 못한 교인</b>: 교인 클릭 → "비밀번호 재설정" → 임시 비밀번호를 전달하고, 소셜 로그인 뒤 기존 기록 연결을 안내해주세요.</li>
+    <li><b>예전 기록을 아직 연결하지 못한 교인</b>: 카카오·구글 로그인 뒤 기존 교회·이름·생년월일을 확인하고 교회 관리자에게 기록 연결을 요청하도록 안내해주세요.</li>
     <li>여러 명 선택 후 주 소속 일괄 변경도 가능해요. CSV 내보내기로 명단을 저장할 수 있어요.</li>
   </ul></div>
 
@@ -1654,7 +1533,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
 
   <div class="sec"><h2>❓ 자주 묻는 질문</h2><ul>
     <li><b>기존 성도가 어떻게 들어가나요?</b> → 카카오·구글 시작 → <b>기존 진도·달란트 이어보기</b>입니다. "처음 시작하기"와 교회 찾기는 누르지 않도록 안내하세요.</li>
-    <li><b>교인이 로그인이 안 된대요</b> → 전에 연결한 카카오·구글 버튼이 맞는지 확인하세요. 아직 연결 전이면 기존 교회·이름·생년월일을 확인하고, 필요하면 임시 비밀번호를 재설정하세요.</li>
+    <li><b>교인이 로그인이 안 된대요</b> → 전에 연결한 카카오·구글 버튼이 맞는지 확인하세요. 예전 기록 연결이 필요하면 교회 관리자에게 기록 연결을 요청하도록 안내하세요.</li>
     <li><b>가입 안내문의 입장코드 칸이 비어 있어요</b> → 코드는 원문을 저장하지 않아요. 설정에서 코드를 입력·변경한 직후 인쇄하거나 빈칸에 직접 적어주세요.</li>
     <li><b>교인이 날짜가 밀렸대요</b> → 밀린 날부터 이어 읽으면 됩니다. 읽기 불이익은 없고 연속 보너스만 다시 시작해요. 날짜는 성도 화면의 📅 날짜 설정에서 맞출 수 있어요.</li>
     <li><b>수령 완료를 잘못 눌렀어요</b> → 해당 구매를 취소·환불해 달란트를 돌려준 뒤 다시 처리해주세요.</li>
@@ -2218,23 +2097,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                         >
                             닫기
                         </button>
-                        <button
-                            type="button"
-                            disabled={selectedMember.passwordRecoveryRequired === true}
-                            onClick={() => setConfirmAction({
-                                type: 'singlePassword',
-                                member: selectedMember,
-                                title: `${selectedMember.name}님의 비밀번호를 초기화할까요?`,
-                                message: '6자리 임시 비밀번호가 새로 발급됩니다. 새 비밀번호는 교인 상세의 "비밀번호 확인"에서 조회할 수 있습니다.',
-                                danger: true,
-                                confirmLabel: '초기화',
-                            })}
-                            className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-amber-500"
-                        >
-                            {selectedMember.passwordRecoveryRequired
-                                ? '플랫폼 관리자 복구 필요'
-                                : '비밀번호 초기화'}
-                        </button>
+
                         <button
                             type="button"
                             onClick={() => deleteMember(selectedMember)}
@@ -2249,7 +2112,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                     <div className="space-y-5">
                         {selectedMember.isExternalOrgMember && (
                             <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-sm font-bold text-violet-800">
-                                외부 공동체 멤버 · 이 공동체 안에서 주 소속과 추가 소그룹을 배정하거나 제명할 수 있습니다. 개인 계정의 기준 공동체라면 비밀번호 지원도 가능합니다.
+                                외부 공동체 멤버 · 이 공동체 안에서 주 소속과 추가 소그룹을 배정하거나 제명할 수 있습니다.
                             </div>
                         )}
                         <div className="grid grid-cols-2 gap-3">
@@ -2302,33 +2165,6 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
                             </div>
                         </div>
 
-                        {/* 비밀번호 조회 — 이관 후 평문은 private 하위문서에 있으므로 필요할 때만 조회한다.
-                            초기화 직후에도 이 버튼으로 새로 발급된 비밀번호를 확인해 전달할 수 있다. */}
-                        <div className="rounded-2xl border border-slate-100 p-4">
-                            <div className="flex items-center justify-between gap-3">
-                                <div>
-                                    <p className="text-sm font-black text-slate-800">비밀번호</p>
-                                    <p className="text-xs font-bold text-slate-400">로그인을 못 하는 교인에게 확인 후 전달해주세요.</p>
-                                </div>
-                                {typeof selectedMember.password === 'string' && selectedMember.password ? (
-                                    <span className="font-mono text-sm font-bold text-slate-700">{selectedMember.password}</span>
-                                ) : revealedPasswords[selectedMember.uid] === '__loading__' ? (
-                                    <span className="text-xs font-bold text-slate-400">확인 중...</span>
-                                ) : revealedPasswords[selectedMember.uid] === '__error__' ? (
-                                    <span className="text-xs font-bold text-red-400">조회 실패</span>
-                                ) : revealedPasswords[selectedMember.uid] ? (
-                                    <span className="font-mono text-sm font-bold text-slate-700">{revealedPasswords[selectedMember.uid]}</span>
-                                ) : (
-                                    <button
-                                        type="button"
-                                        onClick={() => revealPassword(selectedMember.uid)}
-                                        className="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600 hover:bg-slate-200"
-                                    >
-                                        확인
-                                    </button>
-                                )}
-                            </div>
-                        </div>
 
                         <div className="rounded-2xl border border-slate-100 p-4">
                             <div className="mb-3 flex items-center justify-between gap-3">
