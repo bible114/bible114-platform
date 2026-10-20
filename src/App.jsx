@@ -367,6 +367,14 @@ const App = () => {
         }
     }, [currentUser?.role, view]);
 
+    // 등록 완료 안내를 먼저 보여준 뒤 관리자 화면으로 자동 이동한다.
+    // 이 화면은 서버에서 관리자 역할과 온보딩 완료 상태를 확인한 뒤에만 설정된다.
+    useEffect(() => {
+        if (view !== 'admin_signup_complete' || currentUser?.role !== 'churchAdmin') return undefined;
+        const timeoutId = window.setTimeout(() => setView('church_admin'), 1500);
+        return () => window.clearTimeout(timeoutId);
+    }, [currentUser?.role, view]);
+
     // getLevelInfo는 data/levels에서 import됨
 
 
