@@ -52,15 +52,7 @@ service cloud.firestore {
     function planTotalDays(planId) {
       return planId in ['readable_revised', 'readable_new'] ? 60 : 365;
     }
-    function hasProtectedCredentialCopy(uid, before) {
-      let path = /databases/$(database)/documents/users/$(uid)/private/auth;
-      return existsAfter(path) &&
-        (!before.keys().hasAny(['password']) ||
-          before.get('password', null) == null ||
-          getAfter(path).data.password == before.password) &&
-        (!before.keys().hasAny(['phone4']) ||
-          getAfter(path).data.phone4 == before.phone4);
-    }
+
     // 플랫폼 관리자의 교차 사용자 users 쓰기는 아래 네 payload 외에는 열지 않는다.
     function isPlatformAdminMemberOrganizationUpdate(before, after) {
       let changed = after.diff(before).affectedKeys();
@@ -81,15 +73,7 @@ service cloud.firestore {
         changed.hasAny(['updatedAt']) &&
         after.updatedAt == request.time;
     }
-    function isPlatformAdminCredentialParentCleanup(uid, before, after) {
-      let changed = after.diff(before).affectedKeys();
-      return changed.hasAny(['password', 'phone4']) &&
-        changed.hasOnly(['password', 'phone4']) &&
-        after.keys().hasAll(['password']) &&
-        after.password == null &&
-        !after.keys().hasAny(['phone4']) &&
-        hasProtectedCredentialCopy(uid, before);
-    }
+
     function isPlatformAdminTalentReset(before, after) {
       let changed = after.diff(before).affectedKeys();
       return changed.hasAny(['talent', 'talentMigrated', 'talentWalletMigrated']) &&
@@ -115,7 +99,7 @@ service cloud.firestore {
       let changed = after.diff(before).affectedKeys();
       return changed.hasOnly([
           'primaryOrgId', 'dayOffset',
-          'authProvider', 'authProviders', 'password', 'phone4',
+          'authProvider', 'authProviders',
           'quizLevel', 'dailyVideoCollapsed', 'videoMode', 'updatedAt'
         ]) &&
         (!changed.hasAny(['updatedAt']) || after.updatedAt == request.time) &&
@@ -126,18 +110,15 @@ service cloud.firestore {
         (!changed.hasAny(['dayOffset']) ||
           (after.dayOffset is int && after.dayOffset >= -364 && after.dayOffset <= 364)) &&
         (!changed.hasAny(['authProvider']) ||
-          after.authProvider in ['password', 'google.com', 'kakao.com']) &&
+          after.authProvider in ['google.com', 'kakao.com']) &&
         (!changed.hasAny(['authProviders']) ||
           (after.authProviders is list &&
             after.authProviders.size() >= 1 &&
             after.authProviders.size() <= 3 &&
-            after.authProviders.hasOnly(['password', 'google.com', 'kakao.com']) &&
+            after.authProviders.hasOnly(['google.com', 'kakao.com']) &&
             after.authProviders.hasAll([after.authProvider]) &&
             after.authProviders.toSet().size() == after.authProviders.size())) &&
-        (!changed.hasAny(['password', 'phone4']) ||
-          (after.get('password', null) == null &&
-            !after.keys().hasAny(['phone4']) &&
-            hasProtectedCredentialCopy(request.auth.uid, before))) &&
+
         (!changed.hasAny(['quizLevel']) ||
           after.quizLevel in ['standard', 'easy']) &&
         (!changed.hasAny(['dailyVideoCollapsed']) ||
@@ -212,11 +193,7 @@ service cloud.firestore {
             resource.data,
             request.resource.data
           ) ||
-          isPlatformAdminCredentialParentCleanup(
-            uid,
-            resource.data,
-            request.resource.data
-          ) ||
+
           isPlatformAdminTalentReset(
             resource.data,
             request.resource.data
@@ -273,95 +250,9 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-      // 자격증명 하위문서 (평문 비밀번호·phone4) — 조회는 본인, 같은 교회 관리자,
-      // 플랫폼 관리자만. 비밀번호 변경은 Auth와 보상 transaction을 묶는 서버 함수만
-      // 수행하며, 브라우저 관리자는 절대 직접 수정·삭제하지 않는다.
-      // [라운드 10] 개인 계정 전환 교인은 churchId가 null이 되므로, 기준 공동체(primaryOrgId)
-      // 관리자에게도 열어 어르신 비밀번호 지원이 전환 후에도 유지되게 한다.
+      // 자격증명 관련 레거시 경로는 완전히 폐쇄한다.
       match /private/{privateId} {
-        function credentialDocumentIsSafe(data) {
-          return data.keys().hasOnly(['password', 'phone4', 'updatedAt']) &&
-            data.keys().hasAll(['updatedAt']) &&
-            data.updatedAt == request.time &&
-            (!data.keys().hasAny(['password']) ||
-              (data.password is string &&
-                data.password.size() >= 6 && data.password.size() <= 128)) &&
-            (!data.keys().hasAny(['phone4']) ||
-              (data.phone4 is string && data.phone4.matches('^[0-9]{4}$')));
-        }
-        function createMatchesLegacyUser(data) {
-          let userPath = /databases/$(database)/documents/users/$(uid);
-          let user = get(userPath).data;
-          return exists(userPath) &&
-            (!data.keys().hasAny(['password']) ||
-              (user.get('password', null) is string &&
-                data.password == user.password)) &&
-            (!data.keys().hasAny(['phone4']) ||
-              (user.get('phone4', null) is string &&
-                data.phone4 == user.phone4));
-        }
-        function updateMatchesLegacyUser(data, changed, allowNewPhone4) {
-          let userPath = /databases/$(database)/documents/users/$(uid);
-          let user = get(userPath).data;
-          return exists(userPath) &&
-            (!changed.hasAny(['password']) ||
-              (user.get('password', null) is string &&
-                data.password == user.password)) &&
-            (!changed.hasAny(['phone4']) || allowNewPhone4 ||
-              (user.get('phone4', null) is string &&
-                data.phone4 == user.phone4));
-        }
-        function credentialOwnerIsActive() {
-          let userPath = /databases/$(database)/documents/users/$(uid);
-          return exists(userPath) &&
-            get(userPath).data.get('isDeleted', false) != true;
-        }
-        function credentialTargetIsActiveMember() {
-          let userPath = /databases/$(database)/documents/users/$(uid);
-          return credentialOwnerIsActive() &&
-            get(userPath).data.get('role', null) == 'member';
-        }
-        function credentialOwnerIsActiveOrSignupPending() {
-          let userPath = /databases/$(database)/documents/users/$(uid);
-          return !exists(userPath) ||
-            get(userPath).data.get('isDeleted', false) != true;
-        }
-        allow read: if privateId == 'auth' && isRealUser() && (
-          (request.auth.uid == uid && credentialOwnerIsActive()) ||
-          isPlatformAdmin() ||
-          (credentialTargetIsActiveMember() &&
-            (isChurchAdmin(get(/databases/$(database)/documents/users/$(uid)).data.churchId) ||
-              isChurchAdmin(get(/databases/$(database)/documents/users/$(uid)).data.get('primaryOrgId', null)))));
-        // 신규 가입은 users 문서를 서버가 만들기 전에 본인이 auth 문서를 먼저 만든다.
-        // 기존 사용자 이관은 users의 레거시 값과 정확히 같은 값만 복사할 수 있다.
-        allow create: if privateId == 'auth' && credentialDocumentIsSafe(request.resource.data) &&
-          ((isRealUser() && request.auth.uid == uid &&
-              credentialOwnerIsActiveOrSignupPending() &&
-              (!exists(/databases/$(database)/documents/users/$(uid)) ||
-                createMatchesLegacyUser(request.resource.data))) ||
-            (isPlatformAdmin() && createMatchesLegacyUser(request.resource.data)));
-        // 본인은 가입 중 users 원장이 아직 없을 때 자격증명 재시도를 할 수 있다.
-        // users 원장이 있으면 활성 계정의 개인 전환용 phone4 또는 남은 레거시 값만 갱신한다.
-        // 플랫폼 관리자는 레거시 이관만 가능하고, 교회 관리자는 서버 함수만 사용한다.
-        allow update: if privateId == 'auth' &&
-          credentialDocumentIsSafe(request.resource.data) &&
-          request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['password', 'phone4', 'updatedAt']) &&
-          ((isRealUser() && request.auth.uid == uid &&
-              credentialOwnerIsActiveOrSignupPending() &&
-              (!exists(/databases/$(database)/documents/users/$(uid)) ||
-                updateMatchesLegacyUser(
-                  request.resource.data,
-                  request.resource.data.diff(resource.data).affectedKeys(),
-                  true
-                ))) ||
-            (isPlatformAdmin() &&
-              updateMatchesLegacyUser(
-                request.resource.data,
-                request.resource.data.diff(resource.data).affectedKeys(),
-                false
-              )));
-        allow delete: if false;
+        allow read, write: if false;
       }
 
       // 읽기·퀴즈 서버 action의 멱등 ledger. 소유자와 관리자도 브라우저 SDK로

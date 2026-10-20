@@ -28,6 +28,9 @@ export const fetchMemberCredentials = async (uid) => {
 // boolean을 반환하고, 관리자 전수 이관은 returnResult 옵션으로 실패를 별도 집계한다.
 export const migrateCredentialsIfNeeded = async (uid, docData, { returnResult = false } = {}) => {
     const finish = status => returnResult ? { status } : status === 'migrated';
+    // 2026-10-20 목사님 결정: 평문 비밀번호 저장·이관 폐지. private/auth는 규칙상 접근 불가이므로 이관하지 않는다.
+    return finish('skipped');
+    // eslint-disable-next-line no-unreachable
     if (!docData) return finish('skipped');
     const hasLegacyPassword = typeof docData.password === 'string' && docData.password.length > 0;
     const hasLegacyPhone4 = typeof docData.phone4 === 'string' && docData.phone4.length > 0;
