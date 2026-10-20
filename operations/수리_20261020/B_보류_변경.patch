@@ -1,0 +1,88 @@
+diff --git a/firestore.rules b/firestore.rules
+index 816b29a..1c4d2c0 100644
+--- a/firestore.rules
++++ b/firestore.rules
+@@ -326,12 +326,8 @@ service cloud.firestore {
+           return !exists(userPath) ||
+             get(userPath).data.get('isDeleted', false) != true;
+         }
+-        allow read: if privateId == 'auth' && isRealUser() && (
+-          (request.auth.uid == uid && credentialOwnerIsActive()) ||
+-          isPlatformAdmin() ||
+-          (credentialTargetIsActiveMember() &&
+-            (isChurchAdmin(get(/databases/$(database)/documents/users/$(uid)).data.churchId) ||
+-              isChurchAdmin(get(/databases/$(database)/documents/users/$(uid)).data.get('primaryOrgId', null)))));
++        // 자격증명 원문은 브라우저에서 읽지 않는다. 임시 비밀번호 발급은 서버 함수만 제공한다.
++        allow read: if false;
+         // 신규 가입은 users 문서를 서버가 만들기 전에 본인이 auth 문서를 먼저 만든다.
+         // 기존 사용자 이관은 users의 레거시 값과 정확히 같은 값만 복사할 수 있다.
+         allow create: if privateId == 'auth' && credentialDocumentIsSafe(request.resource.data) &&
+diff --git a/src/components/ChurchAdminView.jsx b/src/components/ChurchAdminView.jsx
+index 5a3a79d..ae8af9c 100644
+--- a/src/components/ChurchAdminView.jsx
++++ b/src/components/ChurchAdminView.jsx
+@@ -1,7 +1,7 @@
+ import React, { useState, useEffect, useRef } from 'react';
+ import { auth, db, firebase } from '../utils/firebase';
+ import ChurchAdminTutorial from './ChurchAdminTutorial';
+-import { fetchMemberCredentials } from '../utils/memberCredentials';
++
+ import { adminPasswordErrorMessage, setMemberPasswordByAdmin } from '../utils/adminPassword';
+ import { calculateSubgroupStats, computeAtRisk } from '../utils/statsUtils';
+ import { belongsToDepartment, getMembershipList } from '../utils/memberships';
+@@ -446,19 +446,7 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
+         }
+     };
+ 
+-    // 이관 완료된 회원은 본문서의 password가 null이므로, 필요할 때만 private 하위문서를 조회한다.
+-    const revealPassword = async (uid) => {
+-        setRevealedPasswords(prev => ({ ...prev, [uid]: '__loading__' }));
+-        try {
+-            const data = await fetchMemberCredentials(uid);
+-            setRevealedPasswords(prev => ({ ...prev, [uid]: data?.password || '알 수 없음' }));
+-        } catch (e) {
+-            setRevealedPasswords(prev => ({ ...prev, [uid]: '__error__' }));
+-            if (members.find(member => member.uid === uid)?.isExternalOrgMember) {
+-                toast.warning('기준 공동체 관리자만 이 개인 계정의 비밀번호를 확인할 수 있습니다.');
+-            }
+-        }
+-    };
++
+ 
+     const deleteMember = async (member) => {
+         if (member?.isExternalOrgMember) {
+@@ -2302,32 +2290,9 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
+                             </div>
+                         </div>
+ 
+-                        {/* 비밀번호 조회 — 이관 후 평문은 private 하위문서에 있으므로 필요할 때만 조회한다.
+-                            초기화 직후에도 이 버튼으로 새로 발급된 비밀번호를 확인해 전달할 수 있다. */}
+                         <div className="rounded-2xl border border-slate-100 p-4">
+-                            <div className="flex items-center justify-between gap-3">
+-                                <div>
+-                                    <p className="text-sm font-black text-slate-800">비밀번호</p>
+-                                    <p className="text-xs font-bold text-slate-400">로그인을 못 하는 교인에게 확인 후 전달해주세요.</p>
+-                                </div>
+-                                {typeof selectedMember.password === 'string' && selectedMember.password ? (
+-                                    <span className="font-mono text-sm font-bold text-slate-700">{selectedMember.password}</span>
+-                                ) : revealedPasswords[selectedMember.uid] === '__loading__' ? (
+-                                    <span className="text-xs font-bold text-slate-400">확인 중...</span>
+-                                ) : revealedPasswords[selectedMember.uid] === '__error__' ? (
+-                                    <span className="text-xs font-bold text-red-400">조회 실패</span>
+-                                ) : revealedPasswords[selectedMember.uid] ? (
+-                                    <span className="font-mono text-sm font-bold text-slate-700">{revealedPasswords[selectedMember.uid]}</span>
+-                                ) : (
+-                                    <button
+-                                        type="button"
+-                                        onClick={() => revealPassword(selectedMember.uid)}
+-                                        className="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600 hover:bg-slate-200"
+-                                    >
+-                                        확인
+-                                    </button>
+-                                )}
+-                            </div>
++                            <p className="text-sm font-black text-slate-800">비밀번호</p>
++                            <p className="mt-1 text-xs font-bold text-slate-500">기존 비밀번호는 확인할 수 없습니다. 로그인을 못 하는 교인은 비밀번호를 초기화한 뒤 새 임시 비밀번호를 전달해주세요.</p>
+                         </div>
+ 
+                         <div className="rounded-2xl border border-slate-100 p-4">

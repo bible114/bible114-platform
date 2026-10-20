@@ -1,0 +1,183 @@
+diff --git a/src/components/LoginView.jsx b/src/components/LoginView.jsx
+index f9e7ecf..b82ca37 100644
+--- a/src/components/LoginView.jsx
++++ b/src/components/LoginView.jsx
+@@ -823,7 +823,7 @@ const LoginView = ({
+             <div className="text-center text-sm font-semibold text-ink/75">
+                 <button type="button" onClick={handleGuestLogin} disabled={loading} className="min-h-11 underline underline-offset-3">로그인 없이 둘러보기</button>
+             </div>
+-            <div className="rounded-xl border border-amber-100 bg-amber-50/70 px-3.5 py-3 text-center text-[12px] leading-relaxed text-ink/80 lg:hidden">
++            <div className="rounded-xl border border-amber-100 bg-amber-50/70 px-3.5 py-3 text-center text-sm leading-relaxed text-ink/80 lg:hidden">
+                 <p>⛪ 교회·모임과 함께 읽고 싶으신가요?</p>
+                 <p><b>공동체 대표(관리자)가</b> 먼저 공동체를 등록해야 성도들이 찾아서 함께 읽을 수 있어요.</p>
+                 <button type="button" onClick={() => { setActiveTab('adminSignup'); clearError(); }} className="mt-1.5 inline-flex min-h-11 items-center justify-center px-2 font-black text-accent underline underline-offset-3">공동체 등록하기 →</button>
+@@ -1282,7 +1282,7 @@ const LoginView = ({
+                     <div className="font-serif text-[12px] lg:text-[13px] text-ink/70 text-right">— {verse.ref}</div>
+                 </div>
+ 
+-                <nav aria-label="서비스 정책" className="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-ink/75">
++                <nav aria-label="서비스 정책" className="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-ink/75">
+                     {['terms', 'privacy', 'community'].map(policyId => (
+                         <button
+                             key={policyId}
+diff --git a/src/components/dashboard/AnnouncementBanner.jsx b/src/components/dashboard/AnnouncementBanner.jsx
+index e7386a7..d583351 100644
+--- a/src/components/dashboard/AnnouncementBanner.jsx
++++ b/src/components/dashboard/AnnouncementBanner.jsx
+@@ -20,7 +20,7 @@ const AnnouncementBanner = ({ announcement }) => {
+                 </div>
+ 
+                 <div className="min-w-0">
+-                    <div className="font-bold leading-snug text-slate-800 [&_p]:mb-0">
++                    <div className="font-bold leading-snug text-slate-800 [overflow-wrap:anywhere] [&_p]:mb-0">
+                         <MarkdownRenderer content={announcement.text} fontSize={17} />
+                     </div>
+ 
+@@ -32,13 +32,13 @@ const AnnouncementBanner = ({ announcement }) => {
+                                     href={link.url}
+                                     target="_blank"
+                                     rel="noopener noreferrer"
+-                                    className={`inline-flex min-h-10 items-center justify-center rounded-full px-4 py-2 text-sm font-black transition active:scale-[0.98] ${idx === 0
++                                    className={`inline-flex min-h-10 min-w-0 max-w-full items-center justify-center rounded-full px-4 py-2 text-sm font-black transition active:scale-[0.98] ${idx === 0
+                                         ? 'bg-slate-900 text-white shadow-[0_8px_20px_-12px_rgba(15,23,42,0.9)] hover:bg-indigo-700'
+                                         : 'border border-slate-200/90 bg-white/80 text-slate-700 hover:border-indigo-200 hover:text-indigo-700'
+                                     }`}
+                                 >
+-                                    {link.text}
+-                                    <svg viewBox="0 0 20 20" fill="none" className="ml-1.5 h-3.5 w-3.5" aria-hidden="true">
++                                    <span className="min-w-0 [overflow-wrap:anywhere]">{link.text}</span>
++                                    <svg viewBox="0 0 20 20" fill="none" className="ml-1.5 h-3.5 w-3.5 shrink-0" aria-hidden="true">
+                                         <path d="M7 5h8v8M15 5l-9 9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                     </svg>
+                                 </a>
+diff --git a/src/components/dashboard/BibleReader.jsx b/src/components/dashboard/BibleReader.jsx
+index 20ee68f..6a3d2d9 100644
+--- a/src/components/dashboard/BibleReader.jsx
++++ b/src/components/dashboard/BibleReader.jsx
+@@ -75,7 +75,7 @@ const BibleReader = ({
+                     </button>
+ 
+                     <div className="min-w-0 text-center">
+-                        <h2 className="text-lg font-black leading-snug tracking-[-0.02em] text-white sm:text-2xl">
++                        <h2 className="text-lg font-black leading-snug tracking-[-0.02em] text-white [overflow-wrap:anywhere] sm:text-2xl">
+                             {verseData.loading ? '말씀을 불러오는 중' : verseData.title}
+                         </h2>
+                     </div>
+@@ -108,14 +108,14 @@ const BibleReader = ({
+                         ↩ 내 진도 DAY {currentUser.currentDay}로 돌아가기
+                     </button>
+                 )}
+-                <div className="flex justify-between items-end mb-2">
+-                    <div className="flex-1 min-w-0">
+-                        <p className="opacity-90 text-sm font-bold text-white/90 mb-1 flex items-center gap-2">
++                <div className="flex flex-wrap justify-between items-end gap-y-3 mb-2">
++                    <div className="min-w-0 flex-1 basis-48">
++                        <p className="opacity-90 text-sm font-bold text-white/90 mb-1 break-keep [overflow-wrap:anywhere]">
+                             {verseData.subtitle}
+                         </p>
+                         <p className="opacity-80 text-xs">{getEncouragementMessage()}</p>
+                     </div>
+-                    <div id="tut-font-size" className="flex items-center gap-1 bg-white/20 backdrop-blur-md rounded-full px-2 py-1 shadow-sm shrink-0 ml-4">
++                    <div id="tut-font-size" className="flex items-center gap-1 bg-white/20 backdrop-blur-md rounded-full px-2 py-1 shadow-sm shrink-0 ml-auto">
+                         <button
+                             onClick={() => {
+                                 const newSize = Math.max(12, fontSize - 2);
+@@ -128,8 +128,8 @@ const BibleReader = ({
+                             −
+                         </button>
+                         <div className="flex flex-col items-center px-1">
+-                            <span className="text-white/70 text-[9px] font-bold leading-none">글씨</span>
+-                            <span className="text-white text-xs font-bold leading-none">{fontSize}</span>
++                            <span className="text-white/90 text-xs font-bold leading-tight">글씨</span>
++                            <span className="text-white text-sm font-bold leading-tight">{fontSize}</span>
+                         </div>
+                         <button
+                             onClick={() => {
+@@ -154,16 +154,16 @@ const BibleReader = ({
+                             </p>
+                         ) : (
+                         <div className="flex flex-col gap-2">
+-                            <div className="flex items-center justify-between">
++                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                 <div className="flex items-center gap-2">
+                                     <span className="text-xl">{isSpeaking ? '🔊' : '🔈'}</span>
+                                     <div className="flex flex-col">
+-                                        <span className="text-xs font-bold text-white/85 leading-tight">성경 읽어주기</span>
+-                                        <span className="text-[11px] text-white/65 leading-tight">{isSpeaking ? (isPaused ? "잠시 멈춤" : "낭독 중...") : "듣기를 누르면 시작해요"}</span>
++                                        <span className="text-sm font-bold text-white/90 leading-tight">성경 읽어주기</span>
++                                        {isSpeaking && <span className="text-sm text-white/90 leading-tight">{isPaused ? "잠시 멈춤" : "낭독 중..."}</span>}
+                                     </div>
+                                 </div>
+ 
+-                                <div className="flex items-center gap-2">
++                                <div className="flex shrink-0 items-center gap-2">
+                                     <div className="flex items-center bg-black/20 rounded-lg px-1 py-0.5">
+                                         <button
+                                             onClick={() => handleSpeedChange(-0.1)}
+@@ -173,7 +173,7 @@ const BibleReader = ({
+                                         >
+                                             -
+                                         </button>
+-                                        <span className="text-xs font-bold text-white min-w-[32px] text-center">
++                                        <span className="text-sm font-bold text-white min-w-[32px] text-center">
+                                             {ttsSpeed.toFixed(1)}x
+                                         </span>
+                                         <button
+@@ -188,7 +188,7 @@ const BibleReader = ({
+ 
+                                     <button
+                                         onClick={() => isSpeaking ? handleStop() : handleSpeak(verseData.text)}
+-                                        className={`min-h-11 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm ${isSpeaking
++                                        className={`min-h-11 shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm ${isSpeaking
+                                             ? "bg-red-500 text-white hover:bg-red-600 ring-2 ring-red-400/50"
+                                             : "bg-white text-indigo-600 hover:bg-indigo-50"
+                                             }`}
+@@ -200,7 +200,7 @@ const BibleReader = ({
+ 
+                             {availableVoices.length > 0 && (
+                                 <div className="flex items-center gap-2 pt-1 border-t border-white/10">
+-                                    <span className="text-xs text-white/70 shrink-0">목소리:</span>
++                                    <span className="text-sm text-white/90 shrink-0">목소리:</span>
+                                     <select
+                                         value={selectedVoiceURI}
+                                         onChange={(e) => {
+@@ -209,7 +209,7 @@ const BibleReader = ({
+                                             setSelectedVoiceURI(newVoiceURI);
+                                             localStorage.setItem('bible_selectedVoiceURI', newVoiceURI);
+                                         }}
+-                                        className="min-h-10 flex-1 bg-black/30 text-white text-xs py-2 px-2 rounded border border-white/10 focus:outline-none focus:ring-1 focus:ring-white/30 truncate"
++                                        className="min-h-11 min-w-0 flex-1 bg-black/30 text-white text-sm py-2 px-2 rounded border border-white/10 focus:outline-none focus:ring-1 focus:ring-white/30 truncate"
+                                     >
+                                         {availableVoices.map(voice => (
+                                             <option key={voice.voiceURI} value={voice.voiceURI}>
+diff --git a/src/components/dashboard/MemoSection.jsx b/src/components/dashboard/MemoSection.jsx
+index 5d13f7e..e43cc4b 100644
+--- a/src/components/dashboard/MemoSection.jsx
++++ b/src/components/dashboard/MemoSection.jsx
+@@ -48,7 +48,7 @@ const MemoSection = ({
+ 
+     return (
+         <div id="tut-memo-section" className="mt-4 bg-[#fdf4ff] p-5 rounded-3xl border border-purple-100 shadow-sm">
+-            <div className="flex justify-between items-center mb-3">
++            <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+                 <h3 className="font-bold text-purple-700 flex items-center gap-2">✍️ 오늘의 묵상</h3>
+                 <button
+                     onClick={(e) => {
+@@ -56,7 +56,7 @@ const MemoSection = ({
+                         e.stopPropagation();
+                         setShowMemoList(true);
+                     }}
+-                    className="min-h-11 rounded-xl px-3 py-2 text-sm font-bold text-purple-600 underline hover:bg-white hover:text-purple-800"
++                    className="min-h-11 rounded-xl px-3 py-2 text-sm font-bold text-purple-600 whitespace-nowrap shrink-0 underline hover:bg-white hover:text-purple-800"
+                 >
+                     내 기록 보기
+                 </button>
+@@ -102,7 +102,7 @@ const MemoSection = ({
+                         ✨ 이전에 저장한 묵상:
+                     </p>
+                     {existingMemos.flatMap(memo => memo.texts || [memo.text]).filter(Boolean).map((text, idx, texts) => (
+-                        <div key={`${idx}-${text.slice(0, 12)}`} className={`text-sm text-slate-600 whitespace-pre-wrap leading-relaxed ${idx > 0 ? 'mt-3 pt-3 border-t border-purple-50' : ''}`}>
++                        <div key={`${idx}-${text.slice(0, 12)}`} className={`text-sm text-slate-600 whitespace-pre-wrap [overflow-wrap:anywhere] leading-relaxed ${idx > 0 ? 'mt-3 pt-3 border-t border-purple-50' : ''}`}>
+                             {texts.length > 1 && <span className="text-[10px] text-purple-400 font-bold">#{idx + 1} </span>}
+                             {text}
+                         </div>

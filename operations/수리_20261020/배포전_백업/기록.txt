@@ -1,0 +1,10 @@
+2026-10-20 12:23:26
+platform-api v26 (2026-07-28), kakao-auth v7, admin-set-password v4
+되돌리기: git worktree로 674ec5d(2026-07-28) 체크아웃 후 같은 명령으로 platform-api 재배포
+배포 결과(2026-10-20 대장):
+- rules-safety 42/42 통과(ccaa716)
+- platform-api v26→v27 배포. 무로그인 진행판 요청 400→401(형식 통과) 확인
+- firestore:rules 배포 완료
+- hosting 배포 완료(갈래 fix/live-audit-20261020, main 미병합)
+- 평문 비밀번호 삭제: 사용자 61명 검사, 문서 90개·항목 97개 삭제, 재검사 0개
+- 남음: admin-set-password 함수(v4) 아직 배포돼 있음(사용처 없음), 실사이트 화면 확인은 브라우저 권한 거부로 미실시
