@@ -68,6 +68,11 @@ const TalentShopTab = ({ ctx }) => {
                                             </label>
                                         </div>
                                     </div>
+                                    {activeShopItems.length === 0 && (
+                                        <p className="mt-3 rounded-xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs font-bold leading-relaxed text-violet-800">
+                                            시작하려면 아래에서 상품을 3개 정도 추가한 뒤, 위의 상점 사용 스위치를 켜주세요. 상품을 등록한 다음에도 교인에게 보이려면 상점을 켜야 합니다.
+                                        </p>
+                                    )}
                                 </div>
 
                                 <section aria-label="달란트 상품 가격 기준" className="overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-violet-50 shadow-sm">
@@ -338,7 +343,7 @@ const TalentShopTab = ({ ctx }) => {
                                             <span className="text-xs font-bold text-slate-400">{activeShopItems.length}개</span>
                                         </div>
                                         {activeShopItems.length === 0 ? (
-                                            <p className="py-10 text-center text-xs font-bold text-slate-300">아직 상품이 없습니다.</p>
+                                            <p className="py-10 text-center text-xs font-bold text-slate-500">아직 등록된 상품이 없습니다. 왼쪽에서 상품을 추가해주세요.</p>
                                         ) : (
                                             <div className="space-y-2">
                                                 {activeShopItems.map(item => (

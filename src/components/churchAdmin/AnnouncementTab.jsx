@@ -10,6 +10,11 @@ const AnnouncementTab = ({
                     className="w-4 h-4 rounded" />
                 <span className="font-bold text-slate-700">공지 표시 활성화</span>
             </label>
+            {!announcement.enabled && (
+                <p role="status" className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-800">
+                    표시가 꺼져 있어요. 이 상태로 저장하면 성도에게 공지가 보이지 않습니다.
+                </p>
+            )}
             <textarea value={announcement.text}
                 onChange={e => setAnnouncement(prev => ({ ...prev, text: e.target.value }))}
                 placeholder="공지사항 내용을 입력하세요..." rows={4}

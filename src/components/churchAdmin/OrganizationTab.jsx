@@ -7,7 +7,7 @@ const OrganizationTab = ({ orgComms, setOrgComms, saveOrg, savingOrg }) => (
         <div className="bg-indigo-50 rounded-2xl p-4 border border-indigo-100">
             <p className="text-sm font-bold text-indigo-700 mb-1">📋 교회 조직 관리</p>
             <p className="text-xs text-slate-500">부서와 소그룹을 자유롭게 구성할 수 있습니다.</p>
-            <p className="text-xs text-indigo-500 mt-1">💡 조직은 관리자 메뉴에서도 변경이 가능합니다.</p>
+
         </div>
         <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
             <OrgEditor departments={orgComms} onChange={setOrgComms} />
