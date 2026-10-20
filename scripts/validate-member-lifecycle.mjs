@@ -39,7 +39,7 @@ assert.match(lifecycleTest, /marker 누락 또는 타 교회 관리자는 쓰기
 
 assert.match(client, /export const setMemberActiveState[\s\S]*callPlatformApi\('setMemberActiveState'/);
 assert.match(client, /MEMBER_ACTIVE_STATE_RESULT_KEYS[\s\S]*'totalReaders'[\s\S]*'deletedAt'/);
-const appDelete = sliceBetween(app, 'const deleteUser = async', '\n    const changePassword');
+const appDelete = sliceBetween(app, 'const deleteUser = async', '\n    const startEditUser');
 assert.match(appDelete, /setMemberActiveState\([\s\S]*memberUid: uid[\s\S]*active: false/);
 assert.doesNotMatch(appDelete, /collection\('users'\)|\.set\(/);
 const appEdit = sliceBetween(app, 'const saveEditUser = async', '\n    /*\n     ============================================================================');
@@ -48,7 +48,7 @@ assert.match(appEditUpdateData, /churchId[\s\S]*churchName[\s\S]*departmentId[\s
 assert.doesNotMatch(appEditUpdateData, /\b(?:planId|currentDay|readCount|score|streak|lastReadDate)\b/,
     '관리자 조직 편집 writer는 읽기 원장 필드를 저장하면 안 됩니다.');
 const churchDelete = sliceBetween(churchAdmin, 'const executeDeleteMember = async', '\n    const restoreMember');
-const churchRestore = sliceBetween(churchAdmin, 'const executeRestoreMember = async', '\n    const generatePassword');
+const churchRestore = sliceBetween(churchAdmin, 'const executeRestoreMember = async', '\n    const getMemberMembershipLabels');
 assert.match(churchDelete, /setMemberActiveState\([\s\S]*active: false/);
 assert.match(churchRestore, /setMemberActiveState\([\s\S]*active: true/);
 assert.doesNotMatch(`${churchDelete}\n${churchRestore}`, /collection\('users'\)|\.set\(/);
@@ -56,12 +56,12 @@ assert.doesNotMatch(`${churchDelete}\n${churchRestore}`, /collection\('users'\)|
 const usersRules = sliceBetween(rules, 'match /users/{uid} {', '\n      match /private/consent');
 const usersRead = sliceBetween(usersRules, 'allow read:', '\n      // 모든 최초 users');
 assert.match(usersRead, /request\.auth\.uid == uid/);
-assert.match(usersRead, /sameChurch\(resource\.data\.churchId\)/);
-assert.match(usersRead, /exists\(\/databases\/\$\(database\)\/documents\/churches\/\$\(resource\.data\.churchId\)\/roster\/\$\(request\.auth\.uid\)\)/);
+assert.match(usersRead, /isChurchAdmin\(resource\.data\.churchId\)/);
+assert.match(usersRead, /isPlatformAdmin\(\)/);
 assert.doesNotMatch(usersRules, /deletedAt == request\.time[\s\S]*deletedBy == request\.auth\.uid/);
 const platformAdminOrgRule = sliceBetween(rules,
     'function isPlatformAdminMemberOrganizationUpdate',
-    '\n    function isPlatformAdminCredentialParentCleanup');
+    '\n    function isPlatformAdminTalentReset');
 assert.match(platformAdminOrgRule, /before\.get\('role', null\) == 'member'/);
 assert.match(platformAdminOrgRule, /after\.get\('role', null\) == before\.get\('role', null\)/);
 assert.match(platformAdminOrgRule, /before\.get\('accountType', null\) != 'personal'/);
@@ -71,16 +71,8 @@ assert.match(platformAdminOrgRule, /changed\.hasAny\(\[[\s\S]*'churchId'[\s\S]*'
 assert.match(platformAdminOrgRule, /changed\.hasOnly\(\[[\s\S]*'churchId'[\s\S]*'subgroupName', 'updatedAt'/);
 assert.match(platformAdminOrgRule, /changed\.hasAny\(\['updatedAt'\]\)[\s\S]*after\.updatedAt == request\.time/);
 
-const platformAdminCredentialRule = sliceBetween(rules,
-    'function isPlatformAdminCredentialParentCleanup',
-    '\n    function isPlatformAdminTalentReset');
-assert.match(platformAdminCredentialRule, /changed\.hasAny\(\['password', 'phone4'\]\)/);
-assert.match(platformAdminCredentialRule, /changed\.hasOnly\(\['password', 'phone4'\]\)/);
-assert.match(platformAdminCredentialRule, /after\.keys\(\)\.hasAll\(\['password'\]\)/);
-assert.match(platformAdminCredentialRule, /after\.password == null/);
-assert.match(platformAdminCredentialRule, /!after\.keys\(\)\.hasAny\(\['phone4'\]\)/);
-assert.match(platformAdminCredentialRule, /hasProtectedCredentialCopy\(uid, before\)/);
-assert.match(rules, /function hasProtectedCredentialCopy\(uid, before\)[\s\S]*existsAfter\(path\)[\s\S]*getAfter\(path\)\.data\.password == before\.password[\s\S]*getAfter\(path\)\.data\.phone4 == before\.phone4/);
+assert.doesNotMatch(rules, /isPlatformAdminCredentialParentCleanup|hasProtectedCredentialCopy/,
+    '폐지된 관리자 평문 자격증명 정리 권한이 남으면 안 됩니다.');
 
 const platformAdminTalentRule = sliceBetween(rules,
     'function isPlatformAdminTalentReset',
@@ -98,7 +90,7 @@ const platformAdminUsersWrite = sliceBetween(usersRules,
     '(isPlatformAdmin() && (',
     '\n      // 구형 users.memos');
 assert.match(platformAdminUsersWrite, /isPlatformAdminMemberOrganizationUpdate\(/);
-assert.match(platformAdminUsersWrite, /isPlatformAdminCredentialParentCleanup\(/);
+assert.doesNotMatch(platformAdminUsersWrite, /CredentialParentCleanup/);
 assert.match(platformAdminUsersWrite, /isPlatformAdminTalentReset\(/);
 assert.match(platformAdminUsersWrite, /isPlatformAdminTimestampTouch\(/);
 assert.doesNotMatch(platformAdminUsersWrite, /!request\.resource\.data\.diff/);
@@ -151,11 +143,6 @@ assert.doesNotMatch(progressReference, /<input|onChange=|setEditingUser\(/,
 
 const platformAdminAllowlistCases = [
     '플랫폼 관리자의 active 일반 member 조직 변경 허용',
-    '플랫폼 관리자의 active credential parent 정리 허용',
-    '플랫폼 관리자의 deleted credential parent 정리 허용',
-    '플랫폼 관리자의 private 보호 사본 없는 credential parent 정리 거부',
-    '플랫폼 관리자의 password 불일치 credential parent 정리 거부',
-    '플랫폼 관리자의 phone4 불일치 credential parent 정리 거부',
     '플랫폼 관리자의 active talent reset 허용',
     '플랫폼 관리자의 deleted talent reset 허용',
     '플랫폼 관리자의 updatedAt-only timestamp touch 허용',

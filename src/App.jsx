@@ -5,7 +5,6 @@ import { BIBLE_VERSIONS } from './data/bible_options';
 import { getPlanTotalDays } from './data/schedules';
 import { userDocToState, dateToOffset } from './utils/helpers';
 import { completeMemberOnboarding, setMemberActiveState } from './utils/platformApi';
-import { adminPasswordErrorMessage, setMemberPasswordByAdmin } from './utils/adminPassword';
 import { calculateSubgroupStats, getWeeklyMVP, formatSubgroupRanking, formatProgressRanking, getAdminStats } from './utils/statsUtils';
 import { getSubgroupDisplay } from './utils/dashboardUtils';
 import { generateMemosHTML, downloadCSV, downloadPeriodStatsCSV } from './utils/exportUtils';
@@ -270,9 +269,7 @@ const App = () => {
     const [allChurches, setAllChurches] = useState([]);       // 전체 교회 목록 (슈퍼관리자용)
 
     const [editingUser, setEditingUser] = useState(null);     // 편집 중인 사용자
-    const [changingPassword, setChangingPassword] = useState(null); // 비밀번호 변경 대상
     const memberOnboardingRequestRef = useRef(null);
-    const [newPassword, setNewPassword] = useState('');       // 새 비밀번호
     const [adminSortBy, setAdminSortBy] = useState('name'); // 'name', 'day', 'score', 'subgroup'
     const [kakaoLinkInput, setKakaoLinkInput] = useState(''); // 카카오 링크 입력
     const [fontSize, setFontSize] = useState(() => {
@@ -434,33 +431,6 @@ const App = () => {
         } catch (e) { console.error(e); alert('삭제 실패: ' + e.message); }
     };
 
-    const changePassword = async (uid, userName, currentPassword) => {
-        if (!newPassword || newPassword.length < 6) {
-            alert('새 암호는 6자리 이상이어야 합니다.');
-            return;
-        }
-
-        if (!confirm(`${userName}님의 암호를 변경하시겠습니까?\n\n새 암호: ${newPassword}`)) {
-            return;
-        }
-
-        try {
-            await setMemberPasswordByAdmin(uid, newPassword);
-            alert(`✅ ${userName}님의 실제 로그인 비밀번호가 변경되었습니다.\n\n새 암호: ${newPassword}\n\n※ 사용자에게 새 암호를 전달해주세요.`);
-
-            // 사용자 목록 업데이트
-            setAllUsers(prev => prev.map(u =>
-                // 실제 평문은 private/auth에만 저장한다. 본문서의 이관 완료 마커는 유지한다.
-                u.uid === uid ? { ...u, password: null } : u
-            ));
-
-            setChangingPassword(null);
-            setNewPassword('');
-        } catch (e) {
-            console.error(e);
-            alert(`암호 변경 실패\n\n${adminPasswordErrorMessage(e)}`);
-        }
-    };
 
     const startEditUser = (user) => setEditingUser({ ...user });
 
@@ -590,14 +560,9 @@ const App = () => {
     const {
         errorMsg,
         setErrorMsg,
-        handleMemberLogin,
-        handleMemberSignup,
-        handlePersonalSignup,
-        handleGooglePersonalSignup,
         handleKakaoStart,
         handleGoogleLink,
         handleKakaoLinkStart,
-        handleLegacySocialRecovery,
         socialLinkNotice,
         setSocialLinkNotice,
         handleSocialOnboardingComplete,
@@ -961,11 +926,6 @@ const App = () => {
                     setEditingUser={setEditingUser}
                     startEditUser={startEditUser}
                     saveEditUser={saveEditUser}
-                    changingPassword={changingPassword}
-                    setChangingPassword={setChangingPassword}
-                    newPassword={newPassword}
-                    setNewPassword={setNewPassword}
-                    changePassword={changePassword}
                     deleteUser={deleteUser}
                     adminStats={getAdminStats(allUsers)}
                     kakaoLinkInput={kakaoLinkInput}
@@ -984,15 +944,11 @@ const App = () => {
     if (view === 'login') {
         pageContent = (
             <LoginView
-                onMemberLogin={handleMemberLogin}
-                onChurchAdminLogin={handleChurchAdminLogin}
                 onGoogleAdminLogin={handleGoogleAdminLogin}
                 onGoogleAdminSignupStart={handleGoogleAdminSignupStart}
                 onKakaoAdminSignupStart={handleKakaoAdminSignupStart}
                 onGoogleAdminSignupCancel={cancelGoogleAdminSignup}
                 initialKakaoAdminSignup={pendingKakaoAdminSignup}
-                onMemberSignup={handleMemberSignup}
-                onPersonalSignup={handlePersonalSignup}
                 onGooglePersonalSignup={handleGooglePersonalSignup}
                 onKakaoStart={handleKakaoStart}
                 onChurchAdminSignup={handleChurchAdminSignup}
@@ -1004,7 +960,7 @@ const App = () => {
             />
         );
     } else if (view === 'social_onboarding' && tempUser?.uid) {
-        pageContent = <SocialOnboardingView tempUser={tempUser} onComplete={handleSocialOnboardingComplete} onLegacyLink={handleLegacySocialRecovery} />;
+        pageContent = <SocialOnboardingView tempUser={tempUser} onComplete={handleSocialOnboardingComplete} />;
     } else if (view === 'personal_community_onboarding' && tempUser?.accountType === 'personal') {
         pageContent = (
             <div className="min-h-screen bg-slate-50 p-6 flex items-center justify-center" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>

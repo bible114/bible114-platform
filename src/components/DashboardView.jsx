@@ -694,6 +694,10 @@ const DashboardView = ({
                         </div>
                     )}
 
+                    <DailyVideoCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
+
+                    {hasCommunity && <AnnouncementBanner announcement={announcement} />}
+
                     <BibleReader
                         verseData={verseData}
                         viewingDay={viewingDay}
@@ -745,10 +749,6 @@ const DashboardView = ({
                             </Suspense>
                         ) : null}
                     />
-
-                    <DailyVideoCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
-
-                    {hasCommunity && <AnnouncementBanner announcement={announcement} />}
 
                     {socialLinkNotice && (
                         <SocialLinkBanner

@@ -16,7 +16,6 @@ export const KAKAO_CHANNEL_URL = "https://pf.kakao.com/_xdJrRX/chat";
 // 실제 값은 배포 빌드의 VITE_KAKAO_REST_KEY로 주입한다.
 export const KAKAO_REST_KEY = import.meta.env?.VITE_KAKAO_REST_KEY || '';
 export const KAKAO_AUTH_URL = import.meta.env?.VITE_KAKAO_AUTH_URL || '';
-export const ADMIN_SET_PASSWORD_URL = import.meta.env?.VITE_ADMIN_SET_PASSWORD_URL || '';
 export const PLATFORM_API_URL = import.meta.env?.VITE_PLATFORM_API_URL || '';
 export const ADMIN_ENTRY_SESSION_KEY = 'b114_admin_entry_v1';
 

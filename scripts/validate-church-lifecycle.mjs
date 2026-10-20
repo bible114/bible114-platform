@@ -126,7 +126,7 @@ const ensureVirtual = sliceBetween(platformAdmin, 'const handleEnsureUnaffiliate
 assert.match(ensureVirtual, /ensureUnaffiliatedChurch/);
 assert.doesNotMatch(ensureVirtual, /db\.collection\('churches'\)|\.set\(/);
 
-const churchAdminLoad = sliceBetween(churchAdmin, 'const loadData = async', '\n    // 이관 완료된 회원');
+const churchAdminLoad = sliceBetween(churchAdmin, 'const loadData = async', '\n    const deleteMember = async');
 assert.match(churchAdmin, /import \{ SITE_URL, UNAFFILIATED_CHURCH_ID \} from '\.\.\/data\/constants'/);
 assert.match(churchAdminLoad, /currentUser\.churchId === UNAFFILIATED_CHURCH_ID[\s\S]*Promise\.resolve\(\{ docs: \[\] \}\)[\s\S]*where\('churchId', '==', currentUser\.churchId\)\.get\(\)/);
 assert.match(churchAdminLoad, /const \[membersSnap, rosterSnap[\s\S]*membersRequest/);

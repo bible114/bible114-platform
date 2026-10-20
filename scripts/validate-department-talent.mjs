@@ -340,14 +340,14 @@ assert.doesNotMatch(rules, /deletedAt == request\.time[\s\S]*deletedBy == reques
     '교인 삭제·복원은 브라우저 규칙이 아니라 서버 통계 transaction만 수행해야 한다.');
 assert.match(rules, /function isPlatformAdminMemberOrganizationUpdate\(before, after\)[\s\S]*changed\.hasOnly\(\[[\s\S]*'churchId'[\s\S]*'subgroupName', 'updatedAt'[\s\S]*after\.updatedAt == request\.time/,
     '플랫폼 관리자의 타 회원 조직 수정은 정확한 소속 필드 allowlist여야 한다.');
-assert.match(rules, /function isPlatformAdminCredentialParentCleanup\(uid, before, after\)[\s\S]*changed\.hasOnly\(\['password', 'phone4'\]\)[\s\S]*after\.password == null[\s\S]*!after\.keys\(\)\.hasAny\(\['phone4'\]\)[\s\S]*hasProtectedCredentialCopy\(uid, before\)/,
-    '플랫폼 관리자의 평문 자격증명 정리는 private auth 사본과 결합되어야 한다.');
+assert.doesNotMatch(rules, /isPlatformAdminCredentialParentCleanup|hasProtectedCredentialCopy/,
+    '폐지된 관리자 평문 자격증명 정리 권한이 남으면 안 된다.');
 assert.match(rules, /function isPlatformAdminTalentReset\(before, after\)[\s\S]*changed\.hasOnly\(\[[\s\S]*'talentWalletMigrated', 'updatedAt'[\s\S]*after\.talent == 0[\s\S]*after\.talentMigrated == true[\s\S]*after\.talentWalletMigrated == true/,
     '플랫폼 관리자의 legacy 달란트 정리는 0과 완료 marker로만 수렴해야 한다.');
 assert.match(rules, /function isPlatformAdminTimestampTouch\(before, after\)[\s\S]*changed\.hasOnly\(\['updatedAt'\]\)[\s\S]*after\.updatedAt == request\.time/,
     '플랫폼 관리자의 타 회원 timestamp 보정은 updatedAt 단독 쓰기여야 한다.');
-assert.match(rules, /\(isPlatformAdmin\(\) && \([\s\S]*isPlatformAdminMemberOrganizationUpdate\([\s\S]*isPlatformAdminCredentialParentCleanup\([\s\S]*isPlatformAdminTalentReset\([\s\S]*isPlatformAdminTimestampTouch\(/,
-    '플랫폼 관리자의 타 회원 쓰기는 네 개의 정밀 predicate로만 열려야 한다.');
+assert.match(rules, /\(isPlatformAdmin\(\) && \([\s\S]*isPlatformAdminMemberOrganizationUpdate\([\s\S]*isPlatformAdminTalentReset\([\s\S]*isPlatformAdminTimestampTouch\(/,
+    '플랫폼 관리자의 타 회원 쓰기는 승인된 세 정밀 predicate로만 열려야 한다.');
 assert.doesNotMatch(
     rules.match(/function isSafeSelfPreferenceUpdate\(before, after\) \{([\s\S]*?)\n    \}/)?.[1] || '',
     /score|talent|talentMigrated|talentWalletMigrated/,

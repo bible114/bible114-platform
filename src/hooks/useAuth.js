@@ -1984,7 +1984,7 @@ export const useAuth = ({
         handleKakaoStart,
         handleGoogleLink,
         handleKakaoLinkStart,
-        handleLegacySocialRecovery,
+
         socialLinkNotice,
         setSocialLinkNotice,
         handleSocialOnboardingComplete,

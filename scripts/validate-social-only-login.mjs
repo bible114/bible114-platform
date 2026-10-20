@@ -58,11 +58,8 @@ assert.equal(transitionHelpers.hasSocialLoginProvider({ authProvider: 'google.co
 assert.equal(transitionHelpers.hasSocialLoginProvider({ authProviders: ['kakao.com'] }), true);
 assert.equal(transitionHelpers.hasSocialLoginProvider({ authProvider: 'password' }), false);
 
-assert.match(onboarding, /기존 진도·달란트 이어보기/);
-assert.match(onboarding, /처음 시작하기/);
-assert.match(onboarding, /accountKind === 'admin'/);
-assert.match(onboarding, /legacyRecoveryOnly/);
-assert.match(onboarding, /처음 화면에서 다시 시작/);
+assert.match(onboarding, /기존 기록을 찾으려면 교회 관리자에게 문의/);
+assert.doesNotMatch(onboarding, /onLegacyLink|legacyPassword|기존 비밀번호|type="password"/);
 
 const churchAdmin = read('src/components/ChurchAdminView.jsx');
 const churchAdminSettings = read('src/components/churchAdmin/SettingsTab.jsx');
@@ -72,28 +69,18 @@ assert.match(churchAdmin, /기존 성도님:[\s\S]*새로 가입하거나 교회
 assert.match(churchAdmin, /신규 성도만[\s\S]*처음 시작하기/);
 assert.match(churchAdmin, /신규 성도의 교회 입장코드/);
 assert.match(churchAdmin, /7월 31일까지[\s\S]*8월 1일부터는 카카오·구글 로그인만/);
-assert.match(churchAdminSettings, /7월 31일까지[\s\S]*8월 1일부터는 카카오·구글 로그인만/);
+assert.match(churchAdminSettings, /성도용 로그인·가입 안내문 인쇄/);
 assert.match(readingGuide, /휴대폰을 바꿨어요[\s\S]*카카오 또는 구글[\s\S]*기존 진도·달란트 이어보기/);
 assert.doesNotMatch(readingGuide, /로그인이 안 돼요|비밀번호를 잊었어요/);
 assert.match(migration, /카카오·구글[\s\S]*기존 진도·달란트 이어보기[\s\S]*소속 교회 없이 혼자 읽었어요/);
 
-const recovery = auth.slice(
-    auth.indexOf('const handleLegacySocialRecovery ='),
-    auth.indexOf('const handleSocialOnboardingComplete ='),
-);
-assert.match(recovery, /get\(\{ source: 'server' \}\)/);
-assert.match(recovery, /if \(pendingDoc\.exists\) throw new Error\('SOCIAL_RECOVERY_ALREADY_REGISTERED'\)/);
-assert.ok(recovery.indexOf('pendingDoc.exists') < recovery.indexOf('await pendingSocialUser.delete()'));
-assert.ok(recovery.indexOf('signInLegacyMemberForSocialRecovery') < recovery.indexOf('linkWithPopup'));
-assert.match(recovery, /linkWithCredential\(pendingGoogleCredential\)/);
-assert.match(recovery, /handleKakaoLinkStart\(\)/);
-assert.match(auth, /auth\/account-exists-with-different-credential/);
 assert.match(auth, /legacyRecoveryOnly: true/);
+assert.doesNotMatch(auth.slice(auth.lastIndexOf('return {')), /handleLegacySocialRecovery/);
 assert.match(transitionAudit, /transitionRoles = new Set\(\['member', 'churchAdmin', 'platformAdmin', 'superAdmin'\]\)/);
 assert.match(transitionAudit, /transitionUnlinkedWithAuth/);
 assert.match(transitionAudit, /transitionUnlinkedWithoutAuth/);
 
-assert.match(app, /onLegacyLink=\{handleLegacySocialRecovery\}/);
+assert.doesNotMatch(app, /onLegacyLink=|handleLegacySocialRecovery/);
 assert.match(app, /const handleGuestSignupStart = async \(\) => \{\s*setLoginInitialTab\('member'\)/);
 
 console.log('social-only login validation passed');

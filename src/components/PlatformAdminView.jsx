@@ -6,7 +6,7 @@ import ChurchAdminView from './ChurchAdminView';
 import { adminPreviewDailyVideo, adminRenameChurch, adminSetChurchLifecycle, adminSetChurchVisibility, ensureUnaffiliatedChurch, rebuildPlatformStats, rebuildPublicChurches } from '../utils/platformApi';
 import { getDaysRead, getVideoDateKST, parseAndMapChapters, extractYouTubePlaylistId } from '../utils/helpers';
 import { invalidateChurchDirectoryCache, migrateChurchAccessSecrets } from '../utils/churchDirectory';
-import { migrateCredentialsIfNeeded, fetchMemberCredentials } from '../utils/memberCredentials';
+import { migrateCredentialsIfNeeded } from '../utils/memberCredentials';
 import { UNAFFILIATED_CHURCH_ID } from '../data/constants';
 import { PlatformPopupCard } from './PlatformPopupAd';
 
@@ -20,9 +20,6 @@ const PlatformAdminView = ({
     DEFAULT_DEPARTMENTS,
     editingUser, setEditingUser,
     startEditUser, saveEditUser,
-    changingPassword, setChangingPassword,
-    newPassword, setNewPassword,
-    changePassword,
     deleteUser,
     adminStats,
     kakaoLinkInput, setKakaoLinkInput,
@@ -56,8 +53,6 @@ const PlatformAdminView = ({
     const [accessSecretsProgress, setAccessSecretsProgress] = React.useState({ done: 0, total: 0, phase: null });
     const [accessSecretsReport, setAccessSecretsReport] = React.useState(null);
     const [checkingUnaffiliatedChurch, setCheckingUnaffiliatedChurch] = React.useState(false);
-    const [fetchedCurrentPassword, setFetchedCurrentPassword] = React.useState(null); // changingPassword 모달에서 조회한 현재 암호
-    const passwordCredentialRequestRef = React.useRef(0);
     const [credentialMigrating, setCredentialMigrating] = React.useState(false);
     const [credentialMigrationProgress, setCredentialMigrationProgress] = React.useState({ done: 0, total: 0 });
     const [credentialMigrationSummary, setCredentialMigrationSummary] = React.useState(null);
@@ -288,41 +283,6 @@ const PlatformAdminView = ({
             if (doc.exists) setPlatformKakaoInput(doc.data().kakaoUrl || '');
         });
     }, [db]);
-
-    // 암호 변경 모달을 열 때, 본문서 password가 이미 null 마커로 이관되었다면 private 하위문서에서 조회한다.
-    React.useEffect(() => {
-        const requestId = ++passwordCredentialRequestRef.current;
-        setNewPassword('');
-        if (!changingPassword?.uid) { setFetchedCurrentPassword(null); return undefined; }
-        if (typeof changingPassword.password === 'string' && changingPassword.password) {
-            setFetchedCurrentPassword(null);
-            return undefined;
-        }
-        setFetchedCurrentPassword('__loading__');
-        fetchMemberCredentials(changingPassword.uid)
-            .then(data => {
-                if (passwordCredentialRequestRef.current === requestId) {
-                    setFetchedCurrentPassword(data?.password || null);
-                }
-            })
-            .catch(() => {
-                if (passwordCredentialRequestRef.current === requestId) {
-                    setFetchedCurrentPassword('__error__');
-                }
-            });
-        return () => {
-            if (passwordCredentialRequestRef.current === requestId) {
-                passwordCredentialRequestRef.current += 1;
-            }
-        };
-    }, [changingPassword?.uid, changingPassword?.password, setNewPassword]);
-
-    const closePasswordModal = () => {
-        passwordCredentialRequestRef.current += 1;
-        setFetchedCurrentPassword(null);
-        setNewPassword('');
-        setChangingPassword(null);
-    };
 
     const savePlatformKakao = async () => {
         if (!db) return;
@@ -905,7 +865,7 @@ const PlatformAdminView = ({
                                                                 <td className="px-3 py-2 text-center text-xs text-slate-400">{u.lastReadDate ? new Date(u.lastReadDate).toLocaleDateString('ko-KR') : '-'}</td>
                                                                 <td className="px-3 py-2 text-center">
                                                                     <div className="flex justify-center gap-1">
-                                                                        <button onClick={() => setChangingPassword(u)} className="text-purple-500 p-1 bg-purple-50 rounded hover:bg-purple-100" title="암호 변경"><Icon name="refresh" size={14} /></button>
+
                                                                         <button onClick={() => startEditUser(u)} className="text-blue-500 p-1 bg-blue-50 rounded hover:bg-blue-100" title="정보 수정"><Icon name="edit" size={14} /></button>
                                                                         <button onClick={() => setDeleteUserConfirm({ uid: u.uid, name: u.name })} className="text-red-500 p-1 bg-red-50 rounded hover:bg-red-100" title="삭제"><Icon name="trash" size={14} /></button>
                                                                     </div>
@@ -1084,9 +1044,7 @@ const PlatformAdminView = ({
                                                     <td className="px-3 py-3 text-center text-xs text-slate-400">{u.lastReadDate ? new Date(u.lastReadDate).toLocaleDateString('ko-KR') : '-'}</td>
                                                     <td className="px-3 py-3 text-center">
                                                         <div className="flex justify-center gap-1">
-                                                            {u.accountType !== 'personal' || (!u.authProvider && String(u.email || '').endsWith('@bible.local'))
-                                                                ? <button onClick={() => setChangingPassword(u)} className="text-purple-500 p-1 bg-purple-50 rounded" title="암호 확인 및 변경"><Icon name="refresh" size={14} /></button>
-                                                                : <span className="rounded bg-slate-100 px-1.5 py-1 text-[10px] font-bold text-slate-400" title="소셜 개인 계정은 비밀번호가 없습니다">{['kakao.com', 'oidc.kakao'].includes(u.authProvider) ? '카카오 로그인' : 'Google 로그인'}</span>}
+
                                                             <button onClick={() => startEditUser(u)} className="text-blue-500 p-1 bg-blue-50 rounded" title="정보 수정"><Icon name="edit" size={14} /></button>
                                                             {u.role === 'member' && <button onClick={() => setDeleteUserConfirm({ uid: u.uid, name: u.name })} className="text-red-500 p-1 bg-red-50 rounded" title="삭제"><Icon name="trash" size={14} /></button>}
                                                         </div>
@@ -1677,45 +1635,7 @@ const PlatformAdminView = ({
                 </div>
             )}
 
-            {/* Change Password Modal */}
-            {changingPassword && (
-                <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={closePasswordModal}>
-                    <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
-                        <h3 className="text-xl font-bold text-slate-800 mb-4 border-b pb-2">🔑 암호 변경</h3>
-                        <div className="bg-blue-50 p-3 rounded-lg mb-4">
-                            <p className="text-sm text-blue-700"><strong>{changingPassword.name}</strong>님의 암호를 변경합니다.</p>
-                            <p className="text-xs text-blue-600 mt-1">현재 암호: {
-                                typeof changingPassword.password === 'string' && changingPassword.password
-                                    ? changingPassword.password
-                                    : fetchedCurrentPassword === '__loading__'
-                                        ? '확인 중...'
-                                        : fetchedCurrentPassword === '__error__'
-                                            ? '조회 실패'
-                                            : fetchedCurrentPassword || '알 수 없음(이관됨/미설정)'
-                            }</p>
-                        </div>
-                        <div className="mb-4">
-                            <label className="block text-sm font-bold text-slate-600 mb-2">새 암호 (6자리 이상)</label>
-                            <input type="text" value={newPassword} onChange={e => setNewPassword(e.target.value)}
-                                placeholder="123456"
-                                className="w-full border border-slate-300 rounded-lg p-3 text-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                autoFocus />
-                            <p className="text-xs text-slate-400 mt-1">※ 사용자에게 이 암호를 전달해주세요</p>
-                        </div>
-                        <div className="flex gap-2">
-                            <button onClick={() => changePassword(changingPassword.uid, changingPassword.name, changingPassword.password)}
-                                disabled={!newPassword || newPassword.length < 6}
-                                className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-bold">
-                                암호 변경
-                            </button>
-                            <button onClick={closePasswordModal}
-                                className="flex-1 bg-slate-200 text-slate-600 py-3 rounded-lg hover:bg-slate-300 font-bold">
-                                취소
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+
         </div>
     );
 };

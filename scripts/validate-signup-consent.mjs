@@ -381,8 +381,8 @@ assert.match(
 );
 assert.match(
     firestoreRules,
-    /match \/private\/\{privateId\} \{[\s\S]*allow read: if privateId == 'auth'[\s\S]*allow create:[\s\S]*createMatchesLegacyUser[\s\S]*allow update:[\s\S]*updateMatchesLegacyUser[\s\S]*allow delete: if false;/,
-    'auth 자격증명은 제한된 가입·레거시 이관 외 브라우저 수정·삭제를 허용하면 안 된다.',
+    /match \/private\/\{privateId\} \{\s*allow read, write: if false;/,
+    '폐기된 auth 자격증명 경로는 브라우저에서 읽거나 쓸 수 없어야 한다.',
 );
 assert.match(authHook, /인증 계정은 만들어졌지만 공동체 정보 저장이 완료되지 않았습니다/);
 assert.match(authHook, /로그인 상태가 변경되어 자동 재개할 수 없습니다/);
