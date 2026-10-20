@@ -36,5 +36,5 @@
 
 - 수정: `src/components/ChurchAdminView.jsx` — 비밀번호 조회 import/state/함수, 임시 비밀번호 생성·초기화 처리, 교인 상세의 비밀번호 영역과 초기화 버튼 제거. 인쇄용 안내의 비밀번호 재설정 문구도 카카오·구글 로그인 후 관리자에게 기록 연결을 요청하는 안내로 교체.
 - 수정: `src/components/churchAdmin/MembersTab.jsx` — 일괄 비밀번호 초기화 버튼 및 비밀번호 복구 경고 제거.
-- 확인: 두 파일에서 `fetchMemberCredentials`, `admin-set-password`, 비밀번호 조회·초기화 관련 참조 없음. `npm run build` 통과. `git diff --check` 실행 예정.
-- 커밋: 빌드·diff 검사 후 이 작업 파일만 별도 커밋으로 기록.
+- 확인: 두 파일에서 `fetchMemberCredentials`, `admin-set-password`, 비밀번호 조회·초기화 관련 참조 없음. `git diff --check` 및 `npm run build` 통과.
+- 커밋: `39f03be` (`fix: remove church admin password controls`).
