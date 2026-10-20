@@ -37,6 +37,17 @@ const SocialOnboardingView = ({ tempUser, onComplete, onLegacyLink }) => {
     };
     const consentReady = validateSignupConsent({ birthdate, consents: consentPayload, audience: 'personal' }).ok;
 
+    if (recoveryOnly) return (
+        <div className="min-h-screen bg-slate-50 px-5 py-10" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
+            <section className="mx-auto w-full max-w-lg rounded-3xl bg-white p-6 shadow-sm">
+                <p className="text-sm font-bold text-blue-600">{providerLabel} 로그인 확인 완료</p>
+                <h1 className="mt-2 text-2xl font-black text-slate-900">카카오·구글로 새로 시작해 주세요</h1>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">기존 기록 연결이 필요하면 교회 관리자에게 문의해 주세요.</p>
+                <button type="button" onClick={returnToLogin} className="mt-6 min-h-14 w-full rounded-2xl bg-blue-600 px-5 py-4 text-base font-black text-white">로그인 처음 화면</button>
+            </section>
+        </div>
+    );
+
     const chooseOrganization = org => {
         setOrganization(org);
         setStep(3);

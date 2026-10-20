@@ -32,6 +32,14 @@
 
 저장소 `/Users/jaeam/b114`, 갈래 `fix/live-audit-20261020`. 먼저 Firebase CLI 자격증명을 사용자가 재인증한 뒤 `npm run test:firestore-rules-safety`를 재실행한다. 그 다음 useAuth 및 회원자격증명 유틸의 모든 잔존 이메일/비밀번호·평문 저장 경로를 제거하고 관리자 초기화 UI/서버 함수 사용처, LoginView 안내, count-only dry-run 스크립트를 처리한다. LoginView 수정은 C4 완료 후 충돌을 재확인한다. 배포·실DB 쓰기·로그인은 하지 않는다.
 
+## B 마무리 — 2026-10-20
+
+- `LoginView.jsx`: 옛 성도 진입 화면을 렌더링하지 않도록 제거하고, 첫 화면에 카카오·구글로 시작하라는 한 줄 안내를 추가.
+- `SocialOnboardingView.jsx`: 레거시 복구 전용 유입은 입력 폼 대신 소셜로 새로 시작하고 교회 관리자에게 기록 연결을 문의하라는 안내를 표시.
+- `scripts/purge-plaintext-passwords.mjs`: 기본 실행은 값 없이 대상 문서/필드 개수만 출력. 실제 삭제에는 `--apply --confirm=PURGE_PLAINTEXT`가 모두 필요. Firebase CLI 관리자 인증으로 users 및 각 users/{uid}/private/auth 문서의 password·phone4만 삭제 대상으로 처리.
+- 제한: 삭제 스크립트는 실행하지 않음(카드 지시대로 `node --check`만 수행). 배포·실DB 변경·로그인은 하지 않음.
+- 검사: `node --check scripts/purge-plaintext-passwords.mjs`, `git diff --check`, `npm run build` 통과. rules-safety 미실행.
+
 ## 관리자 비밀번호 화면 제거 (2026-10-20)
 
 - 수정: `src/components/ChurchAdminView.jsx` — 비밀번호 조회 import/state/함수, 임시 비밀번호 생성·초기화 처리, 교인 상세의 비밀번호 영역과 초기화 버튼 제거. 인쇄용 안내의 비밀번호 재설정 문구도 카카오·구글 로그인 후 관리자에게 기록 연결을 요청하는 안내로 교체.

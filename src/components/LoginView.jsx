@@ -827,6 +827,7 @@ const LoginView = ({
                 )}
             </button>
             <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pt-1 text-[11px] text-ink/65">
+            <p className="w-full text-center text-[11px] text-ink/55">기존 기록이 있다면 카카오·구글로 새로 시작해 주세요.</p>
             <button type="button" onClick={() => setShowExistingMemberNotice(true)} className="min-h-11 px-1 underline underline-offset-2">
                 기존 성도이신가요? 안내 보기
             </button>
@@ -846,13 +847,6 @@ const LoginView = ({
         if (activeTab === 'member' && memberStep === 'entry') {
             return renderEntryChoice();
         }
-        if (activeTab === 'member' && memberStep === 'legacy' && !loginChurchId) return (
-            <div className="space-y-3.5">
-                <button type="button" onClick={() => { setMemberStep('entry'); clearError(); }} className="text-[12px] text-ink/50">← 다른 방법으로 로그인</button>
-                {renderLegacyEntryChoice()}
-                <button type="button" onClick={() => { setActiveTab('personalSignup'); setPersonalMethod('manual'); clearError(); }} className="w-full py-2 text-xs font-semibold text-blue-600 underline underline-offset-4">소셜 계정이 없어요 → 이름으로 가입</button>
-            </div>
-        );
 
         if (activeTab === 'personalSignup') return (
             <div className="space-y-3.5">
