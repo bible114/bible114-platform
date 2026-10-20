@@ -542,7 +542,7 @@ const DashboardView = ({
 
             {/* Modals */}
             <ScoreInfoModal show={showScoreInfo} onClose={() => setShowScoreInfo(false)} myLevel={myLevel} score={score} />
-            <ReadingGuideModal show={showReadingGuide} onClose={() => setShowReadingGuide(false)} mode="guide" />
+            <ReadingGuideModal show={showReadingGuide} onClose={() => setShowReadingGuide(false)} mode="guide" planId={currentUser?.planId} />
             <ReadingGuideModal show={showFaq} onClose={() => setShowFaq(false)} mode="faq" />
             <AchievementsModal show={showAchievements} onClose={() => setShowAchievements(false)} currentUser={currentUser} />
             <CalendarModal

@@ -20,10 +20,14 @@ const MEMBER_FAQ_ITEMS = [
     },
 ];
 
-const ReadingGuideModal = ({ show, onClose, mode = 'guide' }) => {
+const ReadingGuideModal = ({ show, onClose, mode = 'guide', planId = '1year_revised' }) => {
     const closeButtonRef = React.useRef(null);
     const dialogRef = React.useRef(null);
     const isFaq = mode === 'faq';
+    const [planType] = String(planId || '1year_revised').split('_');
+    const guideTitle = planType === 'nt'
+        ? '신약 일독 가이드'
+        : planType === 'readable' ? '60일 연대순 성경읽기 가이드' : '성경통독 114 가이드';
 
     React.useEffect(() => {
         if (!show) return undefined;
@@ -63,12 +67,14 @@ const ReadingGuideModal = ({ show, onClose, mode = 'guide' }) => {
             <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="reading-guide-title" className="bg-white rounded-2xl p-6 w-full max-w-sm max-h-[92vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-4 border-b pb-2">
                     <h3 id="reading-guide-title" className="text-xl font-bold text-slate-800">
-                        {isFaq ? '❓ 자주 묻는 질문' : '📖 성경통독 114 가이드'}
+                        {isFaq ? '❓ 자주 묻는 질문' : `📖 ${guideTitle}`}
                     </h3>
                     <button ref={closeButtonRef} type="button" aria-label="도움말 닫기" onClick={onClose} className="min-w-11 min-h-11 flex items-center justify-center text-slate-400"><Icon name="close" /></button>
                 </div>
 
                 <div className="min-h-0 flex-1 space-y-3 overflow-y-auto text-sm">
+                    {!isFaq && planType === 'nt' && <p className="rounded-lg border border-blue-100 bg-blue-50 p-3 leading-relaxed text-slate-600"><strong>신약 일독:</strong> 신약성경 27권을 1년 동안 읽는 계획입니다. 오늘 본문을 따라 하루씩 이어 읽으세요.</p>}
+                    {!isFaq && planType === 'readable' && <p className="rounded-lg border border-blue-100 bg-blue-50 p-3 leading-relaxed text-slate-600"><strong>60일 연대순 읽기:</strong> 성경의 사건을 시간 흐름에 따라 60일 동안 읽는 계획입니다. 오늘 본문을 따라 성경 전체의 흐름을 살펴보세요.</p>}
                     {isFaq ? (
                         <section aria-label="자주 묻는 질문 목록" className="text-sm">
                         <div className="space-y-2">
