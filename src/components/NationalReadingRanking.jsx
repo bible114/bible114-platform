@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { formatNationalReadingProgress } from '../utils/publicNationalRanking';
 
 const rankStyle = rank => {
@@ -9,7 +9,9 @@ const rankStyle = rank => {
 };
 
 const NationalReadingRanking = ({ entries = [] }) => {
+    const [showAll, setShowAll] = useState(false);
     if (!Array.isArray(entries) || entries.length === 0) return null;
+    const visibleEntries = showAll ? entries : entries.slice(0, 5);
 
     return (
         <section
@@ -21,17 +23,19 @@ const NationalReadingRanking = ({ entries = [] }) => {
                     전국 통독 순위
                 </h2>
                 {entries.length > 5 && (
-                    <span className="text-[10px] font-bold tabular-nums text-ink/70" aria-hidden="true">
-                        1–{entries.length}위 ↕
-                    </span>
+                    <button type="button" onClick={() => setShowAll(value => !value)}
+                        aria-expanded={showAll}
+                        className="min-h-11 px-2 text-[11px] font-bold text-ink/70 underline underline-offset-2">
+                        {showAll ? '접기' : `전체 ${entries.length}위 보기`}
+                    </button>
                 )}
             </div>
             <ol
                 className="h-[270px] snap-y snap-mandatory overflow-y-auto overscroll-contain border-t border-forest/[0.07] [scrollbar-color:rgba(43,58,42,0.18)_transparent] [scrollbar-width:thin]"
-                aria-label={`전국 통독 순위 1위부터 ${entries.length}위까지`}
+                aria-label={`전국 통독 순위 1위부터 ${visibleEntries.length}위까지`}
                 tabIndex={0}
             >
-                {entries.map(entry => {
+                {visibleEntries.map(entry => {
                     const progressText = formatNationalReadingProgress(entry);
                     const completedReadCount = entry.readCount - 1;
                     return (

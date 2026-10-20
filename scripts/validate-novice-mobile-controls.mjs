@@ -84,7 +84,8 @@ assert.match(guest, /min-h-11 w-full min-w-0[\s\S]*sm:max-w-\[65%\]/);
 assert.doesNotMatch(guest, /className="bg-emerald-600[^\n]*text-xs/);
 assert.doesNotMatch(guest, /className="text-xs font-bold text-slate-400 hover:text-red-500 px-1"/);
 assert.match(login, /서비스 정책[\s\S]*inline-flex min-h-11 items-center/);
-assert.match(login, /inline-flex min-h-11 items-center justify-center px-2[\s\S]{0,160}공동체 등록하기 →/);
+assert.match(login, /공동체 등록<\/button>/);
+assert.match(login, /카카오로 시작[\s\S]*구글로 시작/);
 assert.match(platformPopup, /광고 닫기[\s\S]*h-11 w-11/);
 assert.equal((platformPopup.match(/inline-flex min-h-11 items-center/g) || []).length >= 2, true);
 

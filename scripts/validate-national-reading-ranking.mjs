@@ -72,7 +72,9 @@ assert.match(loginView, /data-testid="platform-stats" className="grid grid-cols-
 assert.match(rankingComponent, /h-\[270px\].*overflow-y-auto.*overscroll-contain/);
 assert.match(rankingComponent, /\{entry\.churchName\}[\s\S]*·[\s\S]*\{entry\.maskedName\}/);
 assert.match(rankingComponent, /formatNationalReadingProgress\(entry\)/);
-assert.match(rankingComponent, /1–\{entries\.length\}위/);
+assert.match(rankingComponent, /entries\.slice\(0, 5\)/);
+assert.match(rankingComponent, /전체 \$\{entries\.length\}위 보기/);
+assert.match(rankingComponent, /aria-expanded=\{showAll\}/);
 assert.doesNotMatch(rankingComponent, /🥇|🥈|🥉/);
 assert.match(syncScript, /PUBLIC_NATIONAL_RANKING_LIMIT/);
 assert.match(syncScript, /schemaVersion !== 3/);
@@ -97,4 +99,4 @@ assert.equal(
   'node scripts/sync-national-reading-ranking.mjs',
 );
 
-console.log('✅ 전국 통독 개인 가린이름 50위·5행 스크롤 계약 검증 통과');
+console.log('✅ 전국 통독 개인 가린이름 50위·기본 5위·펼치기 계약 검증 통과');
