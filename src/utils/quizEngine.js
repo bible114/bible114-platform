@@ -186,8 +186,17 @@ export const selectQuiz = (pool, readCount = 1) => {
         if (Number(a.ch) !== Number(b.ch)) return Number(a.ch) - Number(b.ch);
         return Number(a.order || 0) - Number(b.order || 0);
     });
-    const index = (Math.max(1, Number(readCount) || 1) - 1) % sorted.length;
-    return sorted[index];
+    const cycle = Math.max(1, Number(readCount) || 1);
+    let selectedIndex = -1;
+    for (let cycleIndex = 1; cycleIndex <= cycle; cycleIndex += 1) {
+        const cycleSeed = cycle - cycleIndex + 1;
+        const random = createSeededRandom(cycleSeed);
+        let nextIndex = Math.floor(random() * sorted.length);
+        // 회독이 바뀌었는데 같은 문항이 연속 선택되면 다음 문항으로 이동한다.
+        if (nextIndex === selectedIndex && sorted.length > 1) nextIndex = (nextIndex + 1) % sorted.length;
+        selectedIndex = nextIndex;
+    }
+    return sorted[selectedIndex];
 };
 
 export { BOOKS, getBookByFullName, parseReadingRange };

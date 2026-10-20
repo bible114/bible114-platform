@@ -580,7 +580,7 @@ const BibleQuizCard = ({
             } else if (freshProgress.skipped || freshProgress.attempts >= 2) {
                 setFeedback({ type: 'done', message: '아쉽지만 오늘의 시도는 끝났습니다. 정답을 확인해보세요.' });
             } else {
-                setFeedback({ type: 'retry', message: '아쉬워요. 다시 선택해 보세요. 한 번 더 도전할 수 있어요.' });
+                setFeedback({ type: 'retry', message: '아쉬워요. 한 번 더 도전해 보세요. 다시 선택해 보세요.' });
                 setSelectedIndex(null);
             }
         } catch (e) {
