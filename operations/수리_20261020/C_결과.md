@@ -12,10 +12,10 @@
 | 9 — 오늘 읽은 0명·단일 교회 순위 | 미완 | 실데이터 없이 표시 조건을 검증하지 못했다. |
 | 5 — Google 팝업·앱 안 브라우저 안내 | 미완 | 가입 UI에 인앱 브라우저 안내 일부가 확인되나 팝업 실패 후 redirect 전환 여부는 확인하지 못했다. |
 | 6 — 공동체 등록 완료 후 관리자 화면 | 고침 | 서버에서 관리자 역할·등록 상태 확인 후 등록 완료 안내를 보여주고, 1.5초 뒤 관리자 화면으로 자동 이동한다. 안내 화면의 수동 버튼도 유지했다. |
-| 22 — 기존 계정 안내 모순 | 미완 | 코드 경로 대조 및 수정 검증 미완료. |
-| 13 — 가입 시 교회에서 불리는 이름 | 일부 | 소셜 온보딩에서 이름 입력과 `onComplete` 전달이 존재한다. 성도·관리자 양쪽 가입 경로는 대조하지 못했다. |
+| 22 — 기존 계정 안내 모순 | 고침 | `src/components/LoginView.jsx:1157`에서 기존 계정 안내 오류가 표시될 때 기본 "카카오 또는 구글을 먼저 선택해주세요" 버튼 안내가 함께 나오지 않도록 상태별 문구를 분리했다. |
+| 13 — 가입 시 교회에서 불리는 이름 | 고침 | `src/components/SocialOnboardingView.jsx:162-165` 성도 이름 입력을 명확히 표시하고, 기존 Google 이름은 기본값이되 변경 가능함을 안내한다. `src/components/LoginView.jsx:1132` 관리자 이름 입력도 같은 의미로 표시한다. |
 | 12 일부 — 로그인·가입·등록 화면 광고 숨김 | 일부 | 팝업 광고는 현재 `dashboard` 및 게스트 읽기 화면에만 렌더링된다. 추가 광고 구성 경로는 대조하지 못했다. |
-| 하위 — 게스트 준비 표시·동의 단순화·가입 3단계 제목 | 미완 | 관련 화면을 전부 대조하지 못했다. |
+| 하위 — 게스트 준비 표시·동의 단순화·가입 3단계 제목 | 일부 | `src/components/SocialOnboardingView.jsx:179`에서 3단계 제목을 "읽기 계획 선택"으로 변경했다. 게스트 준비 표시와 동의 단순화는 미완이다. |
 
 ## 수정 및 검증
 
@@ -32,6 +32,13 @@
 검증: `npm run validate:signup-consent` 통과, `npm run validate:church-lifecycle` 통과, `npm run build` 통과. 실사이트 로그인·DB 쓰기·배포는 하지 않았다.
 
 묶음 C의 다른 항목은 앞 표 기준으로 미완료 또는 일부 상태이며, 이 수정 범위 밖이다.
+
+## C4 후속 — 가입 안내
+
+- 커밋: `2ca7da9` (`fix: clarify signup name and account guidance`). 수정 파일: `src/components/SocialOnboardingView.jsx:162-165,179`, `src/components/LoginView.jsx:1132,1157`.
+- 확인: `npm run build` 통과, `npm run validate:signup-consent` 통과, `git diff --check` 통과.
+- `npm run validate:social-only-login`은 실패했다. 현재 작업과 무관하게 수정 중인 `src/components/churchAdmin/SettingsTab.jsx`에서 구형 7월 로그인 안내 문구가 없어졌다는 검사 실패였다. 그 파일은 다른 묶음 담당 파일이므로 수정하지 않았다.
+- 배포·실사이트 로그인·실DB 쓰기는 하지 않았다.
 
 ## 항목 5 후속 — Google 팝업·앱 안 브라우저 안내
 
