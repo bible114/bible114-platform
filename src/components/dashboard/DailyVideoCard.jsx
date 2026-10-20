@@ -593,7 +593,7 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
             <div className="p-5 bg-gradient-to-br from-indigo-600 to-blue-700 text-white">
                 <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                     <h2 className="text-lg font-bold flex items-center gap-2">
-                        <span className="text-xl">🎬</span> 매일성경
+                        <span className="text-xl">🎬</span> 오늘의 묵상 영상 (교회 공통)
                     </h2>
                     <div className="flex w-full shrink-0 items-center justify-between gap-2 sm:w-auto">
                         <div className="flex items-center bg-white/20 backdrop-blur-md rounded-full p-1 shrink-0">

@@ -336,6 +336,18 @@ const BibleReader = ({
                     </div>
                 )}
             </div>
+            {!hasReadToday && isCurrentProgressDay && !verseData.loading && !hasContentError && (
+                <div className="fixed inset-x-0 z-[90] px-4" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)' }}>
+                    <button
+                        type="button"
+                        onClick={handleRead}
+                        disabled={readSubmitting}
+                        className="mx-auto flex min-h-12 w-full max-w-xl items-center justify-center gap-2 rounded-full bg-indigo-700 px-6 py-3 text-base font-black text-white shadow-xl ring-2 ring-white/90 disabled:opacity-60"
+                    >
+                        {readSubmitting ? '읽기를 기록하고 있어요…' : '오늘 읽기 완료'}
+                    </button>
+                </div>
+            )}
         </div>
     );
 };

@@ -630,7 +630,7 @@ const BibleQuizCard = ({
                 </div>
                 {talentProgramEnabled && <div className="shrink-0 rounded-2xl bg-amber-50 px-3 py-2 text-right">
                     <p className="text-[11px] font-black text-amber-600">{dailyRewardAlready ? '오늘 적립 완료' : '보상'}</p>
-                    <p className="text-sm font-black text-amber-700">{dailyRewardAlready ? '⭐ +0' : '⭐ 10 / 5'}</p>
+                    <p className="text-sm font-black text-amber-700">{dailyRewardAlready ? '오늘 보상 받음' : '정답 10 · 다음 정답 5'}</p>
                 </div>}
             </div>
 
