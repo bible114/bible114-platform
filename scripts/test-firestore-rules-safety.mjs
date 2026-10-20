@@ -134,8 +134,8 @@ const cases = [
     },
   ),
   testCase(
-    '같은 교회 관리자의 private/auth 조회 허용',
-    'ALLOW',
+    '같은 교회 관리자의 private/auth 조회 거부(2026-10-20 비밀번호 폐지)',
+    'DENY',
     {
       auth: passwordAuth(callerUid),
       path: privatePath,
@@ -298,8 +298,8 @@ const cases = [
     },
   ),
   testCase(
-    '가입 서버 실패 뒤 users 원장이 없는 본인의 private/auth 재시도 허용',
-    'ALLOW',
+    '가입 서버 실패 뒤 users 원장이 없는 본인의 private/auth 재시도 거부(2026-10-20 비밀번호 폐지)',
+    'DENY',
     {
       auth: passwordAuth('rules-test-signup-pending'),
       path: documentPath('users/rules-test-signup-pending/private/auth'),
@@ -500,8 +500,8 @@ const cases = [
     },
   ),
   testCase(
-    '플랫폼 관리자의 active credential parent 정리 허용',
-    'ALLOW',
+    '플랫폼 관리자의 active credential parent 정리 거부(2026-10-20 비밀번호 폐지)',
+    'DENY',
     {
       auth: passwordAuth(platformUid),
       path: documentPath(`users/${targetUid}`),
@@ -518,8 +518,8 @@ const cases = [
     },
   ),
   testCase(
-    '플랫폼 관리자의 deleted credential parent 정리 허용',
-    'ALLOW',
+    '플랫폼 관리자의 deleted credential parent 정리 거부(2026-10-20 비밀번호 폐지)',
+    'DENY',
     {
       auth: passwordAuth(platformUid),
       path: documentPath(`users/${targetUid}`),
@@ -703,8 +703,8 @@ const cases = [
     },
   ),
   testCase(
-    '본인의 GoogleLink provider 메타데이터 변경 허용',
-    'ALLOW',
+    '본인의 GoogleLink provider 메타데이터 변경 거부(2026-10-20 비밀번호 폐지)',
+    'DENY',
     {
       auth: passwordAuth(targetUid),
       path: documentPath(`users/${targetUid}`),
