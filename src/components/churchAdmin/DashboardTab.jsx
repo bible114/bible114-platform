@@ -9,7 +9,7 @@ const DashboardTab = ({
     <div id="admin-tut-dashboard" className="space-y-6">
         <div>
             <h2 className="font-black text-slate-800 text-lg">목양 대시보드</h2>
-            <p className="text-xs text-slate-400 mt-1">오늘 읽기 비교는 현재 공동체에서 확인한 회원 기록을 기준으로 합니다.</p>
+            <p className="text-xs text-slate-400 mt-1">오늘 읽기 현황은 이 교회에서 확인된 기록으로 보여드려요.</p>
             {progressLoadError && (
                 <p role="alert" className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
                     진행 정보를 불러오지 못했어요. 다시 시도해주세요.
@@ -17,16 +17,16 @@ const DashboardTab = ({
             )}
             {dashboardStats.unsyncedProgressCount > 0 && (
                 <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
-                    외부 명부 {dashboardStats.unsyncedProgressCount}명의 진행을 확인 중입니다. 확인 전에는 진행률·위험·순위 집계에서 제외합니다.
+                    다른 명부에서 온 {dashboardStats.unsyncedProgressCount}명의 읽기 기록을 확인하고 있어요. 확인 전에는 진행 집계에서 제외합니다.
                 </p>
             )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <StatCard label="전체 교인" value={`${dashboardStats.total}명`} subvalue={`${deletedMembers.length}명 삭제 보관`} icon="👥" accent />
             <StatCard label="오늘 진도" value={`${dashboardStats.readToday}명`}
-                subvalue={`동기화 ${dashboardStats.progressTotal}명 기준 · 어제 ${dashboardStats.readYesterday}명 · ${dashboardStats.readDelta >= 0 ? '+' : ''}${dashboardStats.readDelta}명`} icon="📖" />
-            <StatCard label="최근 7일 읽기율" value={`${dashboardStats.recent7Rate}%`} subvalue={`동기화 ${dashboardStats.progressTotal}명 기준`} icon="🗓️" />
-            <StatCard label="평균 진행 DAY" value={dashboardStats.avgDay || '-'} subvalue={`동기화 ${dashboardStats.progressTotal}명 · 올해 독수 포함`} icon="🏁" />
+                subvalue={`${dashboardStats.progressTotal}명 기록 기준 · 어제 ${dashboardStats.readYesterday}명 · ${dashboardStats.readDelta >= 0 ? '+' : ''}${dashboardStats.readDelta}명`} icon="📖" />
+            <StatCard label="최근 7일 읽기율" value={`${dashboardStats.recent7Rate}%`} subvalue={`${dashboardStats.progressTotal}명 기록 기준`} icon="🗓️" />
+            <StatCard label="평균 읽기 진행일" value={dashboardStats.avgDay || '-'} subvalue={`${dashboardStats.progressTotal}명 기록 · 올해 읽기도 포함`} icon="🏁" />
             <div role="button" tabIndex={0} aria-label={`완독자 ${completedReaders.length}명 명단 보기`}
                 onClick={() => setShowCompletedReaders(true)}
                 onKeyDown={event => {
@@ -77,7 +77,7 @@ const DashboardTab = ({
                 )}
             </div>
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-                <h3 className="text-sm font-black text-slate-800 mb-4">이번 주 스트릭 리더 Top 5</h3>
+                <h3 className="text-sm font-black text-slate-800 mb-4">이번 주 연속 읽기 많이 한 성도 5명</h3>
                 {streakTop.length === 0 ? <p className="py-10 text-center text-xs font-bold text-slate-300">아직 스트릭 기록이 없습니다.</p> : (
                     <div className="space-y-2">
                         {streakTop.map((member, index) => (
@@ -98,7 +98,7 @@ const DashboardTab = ({
                 const days = daysSinceRead(member.lastReadDate);
                 return days === null ? '기록 없음' : `${days}일`;
             })}
-            {renderRiskList('진행 하위 10%', atRisk.bottomProgress, '진행 하위 대상이 없습니다.', member => `DAY ${getTotalProgressDay(member)}`)}
+            {renderRiskList('읽기 진도가 느린 성도', atRisk.bottomProgress, '읽기 진도를 확인할 성도가 없습니다.', member => `${getTotalProgressDay(member)}일째 읽는 중`)}
             {renderRiskList('최근 7일 신규 가입', atRisk.recentNewMembers, '최근 신규 가입자가 없습니다.',
                 member => formatReadDate(member.createdAt?.toDate ? member.createdAt.toDate().toDateString() : member.createdAt))}
         </div>

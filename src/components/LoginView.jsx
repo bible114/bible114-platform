@@ -1261,7 +1261,9 @@ const LoginView = ({
                         { num: statsLoading ? '…' : stats.total_churches.toString(), label: '함께하는 교회' },
                         { num: statsLoading ? '…' : stats.total_readers.toLocaleString(), label: '참여 성도' },
                         { num: statsLoading ? '…' : stats.finished_total.toLocaleString(), label: '누적 완독' },
-                        { num: statsLoading ? '…' : stats.chapters_read_today.toLocaleString(), label: '오늘 읽은 성도' },
+                        ...(statsLoading || stats.chapters_read_today > 0
+                            ? [{ num: statsLoading ? '…' : stats.chapters_read_today.toLocaleString(), label: '오늘 읽은 성도' }]
+                            : []),
                     ].map((s, i) => (
                         <div key={i} className={`${i > 0 ? 'border-l border-hairline pl-3 lg:pl-4' : ''} pr-3 lg:pr-4`}>
                             <div className="font-serif text-[20px] lg:text-[26px] font-semibold tracking-tight tabular-nums leading-tight">{s.num}</div>

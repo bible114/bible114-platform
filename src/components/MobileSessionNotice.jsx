@@ -13,6 +13,7 @@ const MobileSessionNotice = ({
     showStandalone = false,
 }) => {
     const [context] = useState(() => detectMobileSessionContext());
+    const [expanded, setExpanded] = useState(false);
     const [dismissed, setDismissed] = useState(() => {
         if (!dismissible || typeof sessionStorage === 'undefined') return false;
         try {
@@ -48,6 +49,10 @@ const MobileSessionNotice = ({
                     <p className="text-sm font-black">
                         {isInApp ? `지금 ${contextLabel} 안에서 열렸어요` : '114 아이콘에서 처음 열었나요?'}
                     </p>
+                    <button type="button" className="mt-1 text-xs font-bold underline" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>
+                        {expanded ? '안내 접기' : '로그인 저장 안내 보기'}
+                    </button>
+                    {expanded && <>
                     <p className="mt-1 text-xs font-bold leading-relaxed text-amber-900/85">
                         {isInApp
                             ? '여기서 로그인하면 Safari·Chrome·홈 화면 114 아이콘의 로그인과 따로 저장돼요.'
@@ -58,6 +63,7 @@ const MobileSessionNotice = ({
                             계속 편하게 쓰려면 {contextLabel} 화면의 메뉴 → 다른 브라우저로 열기
                         </p>
                     )}
+                    </>}
                 </div>
                 {dismissible && (
                     <button
