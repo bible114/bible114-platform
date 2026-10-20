@@ -32,3 +32,9 @@
 검증: `npm run validate:signup-consent` 통과, `npm run validate:church-lifecycle` 통과, `npm run build` 통과. 실사이트 로그인·DB 쓰기·배포는 하지 않았다.
 
 묶음 C의 다른 항목은 앞 표 기준으로 미완료 또는 일부 상태이며, 이 수정 범위 밖이다.
+
+## 항목 5 후속 — Google 팝업·앱 안 브라우저 안내
+
+- 고침: `src/hooks/useAuth.js:209-225`에서 `auth/popup-blocked`, `auth/popup-closed-by-user`, `auth/cancelled-popup-request`에 외부 브라우저 안내 문구를 표시하도록 했다. redirect 전환은 하지 않았다.
+- 고침: `src/components/LoginView.jsx:238-251,1317-1333`에서 인앱 브라우저 감지 또는 팝업 차단 안내 시 로그인 카드 상단에 외부 브라우저 열기·주소 복사 버튼과 사용 안내를 표시한다. 복사 실패 시에도 안내가 유지된다.
+- 검증: `npm run build` 통과(336 modules), `npm run validate:kakao-auth` 통과, `git diff --check` 통과. 로그인 시도·배포·실DB 쓰기는 하지 않았다.

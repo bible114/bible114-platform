@@ -211,13 +211,16 @@ export const useAuth = ({
             setErrorMsg(INTERACTIVE_AUTH_TIMEOUT_MESSAGE);
             return;
         }
-        if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') return;
+        if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+            setErrorMsg('팝업이 막혔어요. 아래 버튼으로 외부 브라우저에서 열어 주세요.');
+            return;
+        }
         if (err?.code === 'auth/operation-not-allowed') {
             setErrorMsg('구글 로그인이 아직 활성화되지 않았습니다. 관리자에게 문의하세요.');
             return;
         }
         if (err?.code === 'auth/popup-blocked') {
-            setErrorMsg('팝업이 차단되었습니다. 브라우저 설정을 확인해주세요.');
+            setErrorMsg('팝업이 막혔어요. 아래 버튼으로 외부 브라우저에서 열어 주세요.');
             return;
         }
         if (err?.code === 'auth/account-exists-with-different-credential') {

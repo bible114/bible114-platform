@@ -237,6 +237,18 @@ const LoginView = ({
 
     const verse = todayVerse();
     const isRestrictedInAppBrowser = isInAppBrowserContext(detectMobileSessionContext());
+    const [loginUrlCopied, setLoginUrlCopied] = useState(false);
+    const [loginUrlCopyError, setLoginUrlCopyError] = useState('');
+    const showGooglePopupHelp = /팝업이 막혔어요/.test(errorMsg || '');
+    const copyLoginUrl = async () => {
+        try {
+            await navigator.clipboard.writeText(window.location.href);
+            setLoginUrlCopied(true);
+        } catch {
+            setLoginUrlCopyError('주소를 복사하지 못했어요. 브라우저 주소창에서 직접 복사해 주세요.');
+        }
+    };
+    const openLoginInBrowser = () => window.open(window.location.href, '_blank', 'noopener,noreferrer');
     const activeTabRef = useRef(activeTab);
     const googleAdminSignupCancelRef = useRef(null);
     activeTabRef.current = activeTab;
@@ -1306,6 +1318,17 @@ const LoginView = ({
                     </div>
 
                     <MobileSessionNotice className="mb-5" showStandalone />
+                    {(isRestrictedInAppBrowser || showGooglePopupHelp) && (
+                        <div role="note" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12px] leading-relaxed text-amber-900">
+                            <p className="font-bold">{showGooglePopupHelp ? '팝업이 막혔어요. 아래 버튼으로 외부 브라우저에서 열어 주세요.' : '앱 안 브라우저에서는 로그인이 제한될 수 있어요. 외부 브라우저로 열어 주세요.'}</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                <button type="button" onClick={openLoginInBrowser} className="min-h-10 rounded-lg bg-amber-900 px-3 font-semibold text-white">외부 브라우저로 열기</button>
+                                <button type="button" onClick={copyLoginUrl} className="min-h-10 rounded-lg border border-amber-300 bg-white px-3 font-semibold">{loginUrlCopied ? '주소를 복사했어요' : '주소 복사'}</button>
+                            </div>
+                            {loginUrlCopyError && <p className="mt-1 text-[11px]">{loginUrlCopyError}</p>}
+                            <p className="mt-1 text-[11px]">열리지 않으면 복사한 주소를 크롬·사파리 등에서 붙여 넣어 주세요.</p>
+                        </div>
+                    )}
 
                     {/* Form content */}
                     {renderCard()}
