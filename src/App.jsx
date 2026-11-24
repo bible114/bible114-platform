@@ -568,6 +568,7 @@ const App = () => {
         handleSocialOnboardingComplete,
         handleChurchAdminLogin,
         handleChurchAdminSignup,
+        handleGooglePersonalSignup,
         handleGoogleAdminLogin,
         handleGoogleAdminSignupStart,
         handleKakaoAdminSignupStart,
