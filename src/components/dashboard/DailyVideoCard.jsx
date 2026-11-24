@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { db } from '../../utils/firebase';
 import { getVideoDateKST, extractYouTubeId } from '../../utils/helpers';
-import { saveGuestState } from '../../utils/guestStorage';
 import { resolveDailyVideo } from '../../utils/platformApi';
 import {
     clearDailyVideoRetryNotBefore,
@@ -18,10 +17,9 @@ import {
     shouldResolveDailyVideo,
 } from '../../utils/dailyVideoClient';
 
-const CHAPTER_ORDER = [
-    { key: '해설', label: '묵상 해설', emoji: '📖' },
-    { key: '성경읽기', label: '성경읽기', emoji: '📕' },
-    { key: '기도', label: '기도제목', emoji: '🙏' },
+const LISTEN_OPTIONS = [
+    { mode: 'adult', label: '묵상해설 듣기', emoji: '📖' },
+    { mode: 'kids', label: '어린이 묵상해설 듣기', emoji: '🧒' },
 ];
 
 const AUTO_RETRY_FOCUS_COOLDOWN_MS = 5 * 60 * 1000;
@@ -52,14 +50,12 @@ const dailyVideoSnapshotSignature = (exists, value) => JSON.stringify({
 
 // 매일 유튜브 영상 카드 — 저장 캐시를 먼저 보여주고, 준비되지 않은 캐시만
 // 인증된 platform-api에 맡긴다. 브라우저는 YouTube API 키·설정·daily 쓰기를 하지 않는다.
-const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
+const DailyVideoCard = ({ currentUser }) => {
     const [video, setVideo] = useState(undefined); // undefined: 로딩중, null: 표시할 영상 없음
-    const [mode, setMode] = useState((currentUser?.videoMode || currentUser?.videoType) === 'kids' ? 'kids' : 'adult');
+    const [mode, setMode] = useState('adult');
     const [playing, setPlaying] = useState(false);
     const [startSec, setStartSec] = useState(0);
     const [dateKey, setDateKey] = useState(getVideoDateKST());
-    const [collapsed, setCollapsed] = useState(currentUser?.dailyVideoCollapsed === true);
-    const iframeRef = useRef(null);
     const carriedResolveRef = useRef(null);
 
     const applyVideoDoc = (data) => setVideo(data);
@@ -464,221 +460,95 @@ const DailyVideoCard = ({ currentUser, setCurrentUser }) => {
         };
     }, [dateKey, currentUser?.uid]);
 
-    useEffect(() => {
-        setMode((currentUser?.videoMode || currentUser?.videoType) === 'kids' ? 'kids' : 'adult');
-    }, [currentUser?.videoMode, currentUser?.videoType]);
-
-    useEffect(() => {
-        setCollapsed(currentUser?.dailyVideoCollapsed === true);
-    }, [currentUser?.uid, currentUser?.dailyVideoCollapsed]);
-
-    const handleCollapsedChange = async () => {
-        const nextCollapsed = !collapsed;
-        setCollapsed(nextCollapsed);
-        setPlaying(false);
-        if (currentUser?.role === 'guest') {
-            saveGuestState({ dailyVideoCollapsed: nextCollapsed });
-            setCurrentUser?.(previous => previous ? { ...previous, dailyVideoCollapsed: nextCollapsed } : previous);
-            return;
-        }
-        if (!currentUser?.uid || !db) return;
-        setCurrentUser?.(previous => previous?.uid === currentUser.uid
-            ? { ...previous, dailyVideoCollapsed: nextCollapsed }
-            : previous);
-        try {
-            await db.collection('users').doc(currentUser.uid).set({
-                dailyVideoCollapsed: nextCollapsed,
-            }, { merge: true });
-        } catch (error) {
-            console.error('매일성경 열림 상태 저장 실패:', error);
-        }
-    };
-
     if (video === null) return null;
-
-    if (collapsed) {
-        return (
-            <section id="tut-daily-video" className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm" aria-label="매일성경 영상">
-                <div className="flex items-center justify-between gap-3 bg-gradient-to-br from-indigo-600 to-blue-700 px-5 py-4 text-white">
-                    <h2 className="flex items-center gap-2 text-base font-bold"><span className="text-xl">🎬</span> 매일성경</h2>
-                    <button type="button" onClick={handleCollapsedChange} aria-expanded="false" className="min-h-11 rounded-full bg-white/20 px-4 py-2 text-sm font-black hover:bg-white/30">열기</button>
-                </div>
-            </section>
-        );
-    }
 
     if (video === undefined) {
         return (
-            <section id="tut-daily-video" className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm" aria-label="매일성경 영상">
-                <div className="flex items-center justify-between gap-3 bg-gradient-to-br from-indigo-600 to-blue-700 px-5 py-4 text-white">
-                    <h2 className="flex items-center gap-2 text-base font-bold"><span className="text-xl">🎬</span> 매일성경</h2>
-                    <button type="button" onClick={handleCollapsedChange} aria-expanded="true" className="min-h-11 rounded-full bg-white/20 px-4 py-2 text-sm font-black hover:bg-white/30">닫기</button>
+            <section id="tut-daily-video" className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm" aria-label="매일성경 묵상해설">
+                <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-5 py-4 text-white">
+                    <h2 className="flex items-center gap-2 text-lg font-bold"><span className="text-xl">🎬</span> 매일성경 묵상해설</h2>
                 </div>
-                <p className="px-5 py-4 text-center text-sm font-bold text-slate-500" role="status">오늘 영상을 불러오는 중이에요.</p>
+                <p className="px-5 py-4 text-center text-base font-bold text-slate-500" role="status">오늘 묵상해설을 불러오는 중이에요.</p>
             </section>
         );
     }
 
-    const selectedEntry = video[mode];
-    const otherMode = mode === 'adult' ? 'kids' : 'adult';
-    const otherEntry = video[otherMode];
+    const options = LISTEN_OPTIONS
+        .map(option => {
+            const entry = video?.[option.mode];
+            const videoId = entry?.url ? extractYouTubeId(entry.url) : null;
+            return videoId ? { ...option, entry, videoId } : null;
+        })
+        .filter(Boolean);
 
-    const usingFallback = !selectedEntry?.url && !!otherEntry?.url;
-    const activeEntry = selectedEntry?.url ? selectedEntry : (usingFallback ? otherEntry : null);
-    const activeModeLabel = (selectedEntry?.url ? mode : otherMode) === 'adult' ? '성인용' : '어린이용';
+    if (options.length === 0) return null;
 
-    if (!activeEntry?.url) return null;
+    const activeOption = playing ? options.find(option => option.mode === mode) : null;
 
-    const videoId = extractYouTubeId(activeEntry.url);
-    if (!videoId) return null;
-    const activeChapters = Array.isArray(activeEntry.chapters) ? activeEntry.chapters : [];
-
-    const handleModeChange = async (newMode) => {
-        const useEasyQuiz = newMode === 'kids' && String(currentUser?.planId || '').startsWith('nt_');
-        setMode(newMode);
-        setPlaying(false);
-        if (currentUser?.role === 'guest') {
-            saveGuestState({ videoType: newMode, ...(useEasyQuiz ? { quizLevel: 'easy' } : {}) });
-            if (typeof setCurrentUser === 'function') {
-                setCurrentUser(prev => prev ? { ...prev, videoType: newMode, ...(useEasyQuiz ? { quizLevel: 'easy' } : {}) } : prev);
-            }
-            return;
-        }
-        if (currentUser?.uid && db) {
-            if (typeof setCurrentUser === 'function') {
-                setCurrentUser(prev => prev ? { ...prev, videoMode: newMode, ...(useEasyQuiz ? { quizLevel: 'easy' } : {}) } : prev);
-            }
-            try {
-                await db.collection('users').doc(currentUser.uid).set({
-                    videoMode: newMode,
-                    ...(useEasyQuiz ? { quizLevel: 'easy' } : {}),
-                }, { merge: true });
-            } catch (e) {
-                console.error('videoMode 저장 실패:', e);
-            }
-        }
+    const handleListen = (option) => {
+        const chapters = Array.isArray(option.entry.chapters) ? option.entry.chapters : [];
+        const commentary = chapters.find(ch => ch?.label === '해설');
+        setStartSec(commentary?.sec > 0 ? commentary.sec : 0);
+        setMode(option.mode);
+        setPlaying(true);
     };
 
-    const embedSrc = (sec) => {
+    const handleStop = () => {
+        setPlaying(false);
+        setStartSec(0);
+    };
+
+    const embedSrc = (videoId, sec) => {
         const base = `https://www.youtube.com/embed/${videoId}?enablejsapi=1&autoplay=1&playsinline=1`;
         return sec ? `${base}&start=${sec}` : base;
     };
 
-    const handlePlayClick = () => {
-        const commentary = activeChapters.find(ch => ch?.label === '해설');
-        setStartSec(commentary?.sec > 0 ? commentary.sec : 0);
-        setPlaying(true);
-    };
-
-    const handleChapterClick = (sec) => {
-        if (!playing) {
-            setStartSec(sec);
-            setPlaying(true);
-            return;
-        }
-        if (iframeRef.current && iframeRef.current.contentWindow) {
-            iframeRef.current.contentWindow.postMessage(
-                JSON.stringify({ event: 'command', func: 'seekTo', args: [sec, true] }),
-                '*'
-            );
-        }
-    };
-
-    const availableChapters = CHAPTER_ORDER
-        .map(c => ({ ...c, chapter: activeChapters.find(ch => ch?.label === c.key) }))
-        .filter(c => c.chapter);
-
     return (
-        <div id="tut-daily-video" className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
-            <div className="p-5 bg-gradient-to-br from-indigo-600 to-blue-700 text-white">
-                <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-                    <h2 className="text-lg font-bold flex items-center gap-2">
-                        <span className="text-xl">🎬</span> 오늘의 묵상 영상 (교회 공통)
-                    </h2>
-                    <div className="flex w-full shrink-0 items-center justify-between gap-2 sm:w-auto">
-                        <div className="flex items-center bg-white/20 backdrop-blur-md rounded-full p-1 shrink-0">
-                            <button
-                                type="button"
-                                onClick={() => handleModeChange('adult')}
-                                aria-pressed={mode === 'adult'}
-                                className={`min-h-11 rounded-full px-3 py-2 text-sm font-bold transition-all ${mode === 'adult' ? 'bg-white text-indigo-700 shadow-sm' : 'text-white/80'}`}
-                            >
-                                성인용
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => handleModeChange('kids')}
-                                aria-pressed={mode === 'kids'}
-                                className={`min-h-11 rounded-full px-3 py-2 text-sm font-bold transition-all ${mode === 'kids' ? 'bg-white text-indigo-700 shadow-sm' : 'text-white/80'}`}
-                            >
-                                어린이용
-                            </button>
-                        </div>
-                        <button type="button" onClick={handleCollapsedChange} aria-expanded="true" className="min-h-11 rounded-full bg-white/20 px-3 py-2 text-sm font-black hover:bg-white/30">닫기</button>
-                    </div>
-                </div>
-                {usingFallback && (
-                    <p className="text-xs text-white/80 mt-2">
-                        {mode === 'adult' ? '성인용' : '어린이용'} 영상이 없어 {activeModeLabel} 영상을 보여드려요.
-                    </p>
-                )}
+        <section id="tut-daily-video" className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm" aria-label="매일성경 묵상해설">
+            <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-5 py-4 text-white">
+                <h2 className="flex items-center gap-2 text-lg font-bold"><span className="text-xl">🎬</span> 매일성경 묵상해설</h2>
             </div>
+            <div className="space-y-3 p-5">
+                {options.map(option => (
+                    <button
+                        key={option.mode}
+                        type="button"
+                        onClick={() => handleListen(option)}
+                        aria-pressed={activeOption?.mode === option.mode}
+                        className={`flex min-h-[56px] w-full items-center justify-center gap-2 rounded-2xl px-5 py-4 text-lg font-black transition-all active:scale-95 ${
+                            activeOption?.mode === option.mode
+                                ? 'bg-indigo-700 text-white shadow-lg'
+                                : 'bg-indigo-50 text-indigo-800 hover:bg-indigo-100'
+                        }`}
+                    >
+                        <span className="text-2xl" aria-hidden="true">{option.emoji}</span> {option.label}
+                    </button>
+                ))}
 
-            <div className="p-5 bg-white">
-                <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-slate-900">
-                    {playing ? (
-                        <iframe
-                            ref={iframeRef}
-                            className="absolute inset-0 w-full h-full"
-                            src={embedSrc(startSec)}
-                            title="매일성경"
-                            frameBorder="0"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                        />
-                    ) : (
-                        <button
-                            onClick={handlePlayClick}
-                            className="absolute inset-0 w-full h-full group"
-                            aria-label="영상 재생"
-                        >
-                            <img
-                                src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}
-                                alt="영상 미리보기"
-                                className="w-full h-full object-cover"
-                                loading="lazy"
+                {activeOption && (
+                    <div className="space-y-3 pt-1">
+                        <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-slate-900">
+                            <iframe
+                                key={`${activeOption.mode}-${startSec}`}
+                                className="absolute inset-0 h-full w-full"
+                                src={embedSrc(activeOption.videoId, startSec)}
+                                title={activeOption.label}
+                                frameBorder="0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
                             />
-                            <div className="absolute inset-0 bg-black/20 flex items-center justify-center group-hover:bg-black/30 transition-colors">
-                                <div className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center shadow-xl group-active:scale-95 transition-transform">
-                                    <span className="text-3xl text-indigo-600 ml-1">▶</span>
-                                </div>
-                            </div>
-                        </button>
-                    )}
-                </div>
-
-                {availableChapters.length > 0 && (
-                    <div className="mt-4">
-                        <p className="mb-2 text-xs font-bold text-slate-400">영상 속 구간으로 바로 이동해요</p>
-                        <div className="flex flex-wrap gap-2">
-                            {availableChapters.map(({ key, label, emoji, chapter }) => (
-                                <button
-                                    key={key}
-                                    onClick={() => handleChapterClick(chapter.sec)}
-                                    className={`flex min-h-11 items-center gap-1.5 rounded-2xl px-4 py-2.5 text-sm font-bold transition-all active:scale-95 ${
-                                        key === '기도'
-                                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 hover:bg-indigo-700'
-                                            : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-                                    }`}
-                                >
-                                    <span>{emoji}</span> {label}
-                                </button>
-                            ))}
                         </div>
+                        <button
+                            type="button"
+                            onClick={handleStop}
+                            className="flex min-h-[56px] w-full items-center justify-center rounded-2xl border-2 border-slate-300 bg-white px-5 py-4 text-lg font-black text-slate-700 hover:bg-slate-50"
+                        >
+                            ⏹ 그만 듣기
+                        </button>
                     </div>
                 )}
             </div>
-        </div>
+        </section>
     );
 };
 

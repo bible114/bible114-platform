@@ -120,10 +120,9 @@ assert.doesNotMatch(header, /<header className="[^"]*z-\[90\]/);
 assert.doesNotMatch(header, />\{currentOrganizationName \|\| '내 단체 관리'\}<\/span>/);
 assert.doesNotMatch(header, /md:flex-nowrap md:justify-end/);
 
-assert.equal((video.match(/min-h-11/g) || []).length >= 3, true);
-assert.match(video, /dailyVideoCollapsed/);
-assert.match(video, /aria-expanded="false"[\s\S]*열기/);
-assert.match(video, /collection\('users'\)\.doc\(currentUser\.uid\)\.set\(\{[\s\S]*dailyVideoCollapsed: nextCollapsed/);
+assert.equal((video.match(/min-h-\[56px\]/g) || []).length >= 2, true, '묵상해설 단추는 어르신이 누르기 쉽게 56px 이상이어야 합니다.');
+assert.match(video, /mode: 'adult', label: '묵상해설 듣기', emoji: '📖'[\s\S]*mode: 'kids', label: '어린이 묵상해설 듣기', emoji: '🧒'/);
+assert.match(video, /그만 듣기/);
 assert.match(quiz, /min-h-11 rounded-xl px-3 py-2 text-sm font-bold[\s\S]*이 DAY는 건너뛰기/);
 assert.match(quiz, /DAY \{progressDay\} 성경퀴즈[\s\S]*QuizLevelToggle/);
 assert.match(quiz, /text-xl font-black[\s\S]*sm:text-2xl[^>]*>DAY \{progressDay\} 성경퀴즈/);
@@ -132,7 +131,7 @@ assert.match(dashboard, /lazy\(\(\) => import\('\.\/dashboard\/TalentShop'\)\)/)
 assert.match(dashboard, /show=\{showFaq\}[\s\S]*mode="faq"/);
 assert.match(dashboard, /setShowFaq=\{setShowFaq\}[\s\S]*setShowTutorial=\{setShowTutorial\}/);
 assert.equal((dashboard.match(/<Suspense fallback=/g) || []).length >= 1, true);
-assert.match(dashboard, /함께 읽는 통독 현황[\s\S]*<RaceMap[\s\S]*<DailyVideoCard[\s\S]*<AnnouncementBanner[\s\S]*<BibleReader[\s\S]*belowQuizContent[\s\S]*<TalentShop[\s\S]*<CommunityRankingSummary[\s\S]*aria-label="읽기왕"[\s\S]*<ReadingChampionSection/);
+assert.match(dashboard, /함께 읽는 통독 현황[\s\S]*<RaceMap[\s\S]*<AnnouncementBanner[\s\S]*<BibleReader[\s\S]*belowQuizContent[\s\S]*<TalentShop[\s\S]*<DailyVideoCard[\s\S]*<CommunityRankingSummary[\s\S]*aria-label="읽기왕"[\s\S]*<ReadingChampionSection/);
 assert.match(app, /getWeeklyMVP=\{\(\) => getWeeklyMVP\(allMembersForRace\)\}/,
     '읽기왕은 현재 부서만이 아니라 활동 중인 교회 전체 명단으로 계산해야 한다.');
 assert.doesNotMatch(app, /getWeeklyMVP=\{\(\) => getWeeklyMVP\(departmentMembers\)\}/,

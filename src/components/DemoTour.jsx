@@ -31,17 +31,16 @@ const DEMO_USER = {
 };
 
 const DemoVideoCard = () => (
-    <section id="tut-daily-video" className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-xl">
-        <div className="flex items-center justify-between bg-gradient-to-br from-indigo-600 to-blue-700 p-5 text-white">
-            <h2 className="flex items-center gap-2 text-lg font-bold"><span>🎬</span> 매일성경</h2>
-            <span className="rounded-full bg-white/20 px-3 py-2 text-sm font-bold">성인용</span>
+    <section id="tut-daily-video" className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm" aria-label="매일성경 묵상해설">
+        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-5 py-4 text-white">
+            <h2 className="flex items-center gap-2 text-lg font-bold"><span className="text-xl">🎬</span> 매일성경 묵상해설</h2>
         </div>
-        <div className="p-5">
-            <div className="flex aspect-video items-center justify-center rounded-2xl bg-gradient-to-br from-slate-800 to-indigo-950 text-center text-white">
-                <div>
-                    <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-white/95 text-3xl text-indigo-600 shadow-xl">▶</div>
-                    <p className="text-sm font-bold">오늘의 본문 해설과 기도</p>
-                </div>
+        <div className="space-y-3 p-5">
+            <div className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-indigo-50 px-5 py-4 text-lg font-black text-indigo-800">
+                <span className="text-2xl" aria-hidden="true">📖</span> 묵상해설 듣기
+            </div>
+            <div className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-indigo-50 px-5 py-4 text-lg font-black text-indigo-800">
+                <span className="text-2xl" aria-hidden="true">🧒</span> 어린이 묵상해설 듣기
             </div>
         </div>
     </section>
@@ -104,8 +103,6 @@ const DemoTour = ({ onClose, onComplete }) => {
                 />
 
                 <main className="mx-auto w-full max-w-3xl space-y-6 px-4 pb-12 pt-3">
-                    <DemoVideoCard />
-
                     <BibleReader
                         verseData={DEMO_VERSE_DATA}
                         viewingDay={viewingDay}
@@ -131,6 +128,8 @@ const DemoTour = ({ onClose, onComplete }) => {
                         handleRead={noop}
                         quizContent={<DemoQuiz />}
                     />
+
+                    <DemoVideoCard />
 
                     <MemoSection
                         currentMemo={currentMemo}

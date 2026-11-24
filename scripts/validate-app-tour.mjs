@@ -15,12 +15,12 @@ const stepIds = [...overlay.matchAll(/^\s*id: '(tut-[^']+)'/gm)].map(match => ma
 assert.deepEqual(stepIds, [
     'tut-version-btn',
     'tut-menu-btn',
-    'tut-daily-video',
     'tut-bible-header',
     'tut-tts-area',
     'tut-bible-text',
     'tut-quiz-area',
     'tut-read-btn',
+    'tut-daily-video',
     'tut-memo-section',
 ]);
 

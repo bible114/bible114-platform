@@ -89,7 +89,6 @@ export const QuizLevelToggle = ({ currentUser, setCurrentUser, finished = false 
                     </button>
                 ))}
             </div>
-            <p className="max-w-[15rem] text-right text-[10px] font-bold leading-snug text-indigo-500">어린이 영상을 선택하면 쉬운 퀴즈로 자동 변경돼요.</p>
             {finished && <p className="whitespace-nowrap text-[10px] font-bold text-slate-400">변경한 난이도는 내일부터 적용돼요.</p>}
             {saveError && <p className="max-w-[15rem] text-right text-[10px] font-bold text-red-500">{saveError}</p>}
         </div>

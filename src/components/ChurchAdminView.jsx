@@ -1458,10 +1458,10 @@ const ChurchAdminView = ({ currentUser, handleLogout, onBack }) => {
     <div class="section">
       <h2>3️⃣ 매일 이렇게 해요 (5분이면 충분해요)</h2>
       <div class="step"><span class="num">①</span><span>바탕화면 <b>114 아이콘</b>을 눌러 들어와요 (자동 로그인)</span></div>
-      <div class="step"><span class="num">②</span><span>🎬 <b>매일성경 영상</b>을 봐도 좋아요 (선택)</span></div>
-      <div class="step"><span class="num">③</span><span>📖 <b>오늘 본문</b>을 읽어요 — 눈이 침침하면 <b>듣기 ▶️</b> 버튼, 글씨는 <b>+</b> 버튼으로 크게</span></div>
-      <div class="step"><span class="num">④</span><span>❓ <b>성경퀴즈</b>는 선택이에요 — 풀면 달란트 ⭐ 추가! 어려우면 건너뛰어도 돼요</span></div>
-      <div class="step"><span class="num">⑤</span><span>다 읽으면 파란 <b>"오늘 읽기 완료"</b> 버튼을 꼭 눌러요 → 다음 날로 넘어가요</span></div>
+      <div class="step"><span class="num">②</span><span>📖 <b>오늘 본문</b>을 읽어요 — 눈이 침침하면 <b>듣기 ▶️</b> 버튼, 글씨는 <b>+</b> 버튼으로 크게</span></div>
+      <div class="step"><span class="num">③</span><span>❓ <b>성경퀴즈</b>는 선택이에요 — 풀면 달란트 ⭐ 추가! 어려우면 건너뛰어도 돼요</span></div>
+      <div class="step"><span class="num">④</span><span>다 읽으면 파란 <b>"오늘 읽기 완료"</b> 버튼을 꼭 눌러요 → 다음 날로 넘어가요</span></div>
+      <div class="step"><span class="num">⑤</span><span>🎬 그 아래 <b>매일성경 묵상해설 듣기</b> 단추로 해설을 들어도 좋아요 (선택)</span></div>
     </div>
     <div class="section">
       <h2>⭐ 달란트는 이렇게 모여요</h2>

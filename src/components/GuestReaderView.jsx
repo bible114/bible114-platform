@@ -228,8 +228,6 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
                     </div>
                 )}
 
-                <DailyVideoCard currentUser={currentUser} setCurrentUser={setCurrentUser} />
-
                 <BibleReader
                     verseData={verseData}
                     viewingDay={viewingDay || currentUser?.currentDay || 1}
@@ -260,6 +258,8 @@ const GuestReaderView = ({ currentUser, setCurrentUser, handleLogout, onSignupCl
                     readSubmitting={readSubmitting}
                     bibleHeaderRef={bibleHeaderRef}
                 />
+
+                <DailyVideoCard currentUser={currentUser} />
             </div>
 
             {isSpeaking && (

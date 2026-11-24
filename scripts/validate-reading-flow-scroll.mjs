@@ -107,10 +107,10 @@ const announcementPosition = dashboardSource.indexOf('<AnnouncementBanner');
 const dailyVideoPosition = dashboardSource.indexOf('<DailyVideoCard');
 assert.ok(bibleReaderPosition > -1, '대시보드에 성경 본문이 있어야 합니다.');
 assert.ok(
-    raceMapPosition < dailyVideoPosition
-        && dailyVideoPosition < announcementPosition
-        && announcementPosition < bibleReaderPosition,
-    '천로역정 레이스 다음에 매일성경 영상, 교회 광고, 성경 본문 순서로 보여야 합니다.',
+    raceMapPosition < announcementPosition
+        && announcementPosition < bibleReaderPosition
+        && bibleReaderPosition < dailyVideoPosition,
+    '천로역정 레이스 다음에 교회 광고, 성경 본문(읽기 완료 포함), 매일성경 묵상해설 순서로 보여야 합니다.',
 );
 assert.match(dashboardSource, /quizContent=\{\([\s\S]*BibleQuizCard[\s\S]*belowQuizContent=\{hasCommunity && talentMarketVisible \? \([\s\S]*TalentShop/);
 assert.doesNotMatch(dashboardSource, /오늘 말씀 DAY \{currentDay\} 바로가기/);

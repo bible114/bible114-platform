@@ -680,14 +680,13 @@ assert.match(
     /collection\('dailyVideos'\)\.doc\(date\)\.delete\(\)/,
     '관리자 수동 영상 삭제 경로는 유지해야 한다.',
 );
-assert.match(dailyVideo, /newMode === 'kids'[\s\S]*startsWith\('nt_'\)/);
-assert.match(dailyVideo, /saveGuestState\(\{ videoType: newMode,[\s\S]*quizLevel: 'easy'/);
-assert.match(dailyVideo, /videoMode: newMode,[\s\S]*quizLevel: 'easy'/);
-assert.match(dailyVideo, /currentUser\?\.dailyVideoCollapsed === true/);
-assert.match(dailyVideo, /saveGuestState\(\{ dailyVideoCollapsed: nextCollapsed \}\)/);
-assert.match(dailyVideo, /collection\('users'\)\.doc\(currentUser\.uid\)\.set\(\{[\s\S]*dailyVideoCollapsed: nextCollapsed/);
+// 11/25 묵상해설 카드 단순화: 영상 모드 저장·접기 저장 없이 단추 2개(성인·어린이)만 둔다.
+assert.match(dailyVideo, /묵상해설 듣기/);
+assert.match(dailyVideo, /어린이 묵상해설 듣기/);
+assert.match(dailyVideo, /그만 듣기/);
+assert.doesNotMatch(dailyVideo, /videoMode: newMode|dailyVideoCollapsed|saveGuestState|기도제목|성경읽기/);
 assert.match(guestStorage, /dailyVideoCollapsed: raw\?\.dailyVideoCollapsed === true/);
-assert.match(quiz, /어린이 영상을 선택하면 쉬운 퀴즈로 자동 변경돼요/);
+assert.doesNotMatch(quiz, /어린이 영상을 선택하면 쉬운 퀴즈로 자동 변경돼요/);
 assert.match(helperSource, /export \{ parseChapters, mapToStandardLabel, parseAndMapChapters \} from '\.\/dailyVideoChapters\.js'/);
 assert.match(dailyVideoChaptersSource, /label\.includes\('해설'\) \|\| label\.includes\('묵상'\)/);
 assert.match(app, /\['dashboard', 'church_admin'\]\.includes\(view\)[\s\S]*sessionStorage\.setItem\(ADMIN_ENTRY_SESSION_KEY, view\)/);
