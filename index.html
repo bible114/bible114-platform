@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#1e293b" />
-  <meta name="bible114-build" content="2026-11-24-2257" />
+  <meta name="bible114-build" content="2026-11-25-0201" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="성경통독 114" />
@@ -18,9 +18,14 @@
   <!-- Noto Serif KR -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <!-- Pretendard -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+  <!-- 렌더를 막지 않도록 먼저 받아두고, 다 받으면 적용한다(2026-11-25 속도 개선). -->
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600;700&display=swap"></noscript>
+  <!-- Pretendard: 통파일(굵기당 약 780KB) 대신 쓰는 글자 조각만 받는 판 (2026-11-25) -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css"></noscript>
   <style>
     /* 하단 고정 광고(50px + 여백)가 버튼·본문을 가리지 않도록 페이지 전체에 광고 높이만큼 공간을 준다. */
     body {
@@ -80,7 +85,7 @@
       }
     }
   </style>
-  <script type="module" crossorigin src="/assets/index-CdH5qPCq.js"></script>
+  <script type="module" crossorigin src="/assets/index-bkH1KP2J.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/vendor-react-DQCpd17N.js">
   <link rel="modulepreload" crossorigin href="/assets/vendor-BURj0p3m.js">
   <link rel="modulepreload" crossorigin href="/assets/vendor-firebase-core-2mLKdCzX.js">
@@ -151,7 +156,27 @@
         slot.appendChild(script);
       };
 
-      window.refreshKakaoAdBanner();
+      // 첫 화면이 다 뜬 뒤(load + 쉬는 시간)에 광고를 넣는다. 읽기 완료 등에서
+      // 앱이 먼저 refreshKakaoAdBanner()를 부르면 그때 이미 들어간 것으로 본다.
+      var initialAdStarted = false;
+      var originalRefresh = window.refreshKakaoAdBanner;
+      window.refreshKakaoAdBanner = function () {
+        initialAdStarted = true;
+        originalRefresh();
+      };
+      var startInitialAd = function () {
+        if (initialAdStarted) return;
+        window.refreshKakaoAdBanner();
+      };
+      var scheduleInitialAd = function () {
+        if ('requestIdleCallback' in window) {
+          window.requestIdleCallback(startInitialAd, { timeout: 3000 });
+        } else {
+          setTimeout(startInitialAd, 1);
+        }
+      };
+      if (document.readyState === 'complete') scheduleInitialAd();
+      else window.addEventListener('load', scheduleInitialAd, { once: true });
     })();
   </script>
 </body>
